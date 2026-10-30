@@ -53,8 +53,9 @@ type ClusterPatch struct {
 	ExternalCertificateID *uint
 	// ServiceEndpointMode switches how the cluster's service apps are reached by name; running services follow.
 	ServiceEndpointMode *models.ServiceEndpointMode
-	// IngressIP and IngressHostname are where the cluster's public DNS records point.
+	// IngressIP, IngressIPv6 and IngressHostname are where the cluster's public DNS records point.
 	IngressIP       *string
+	IngressIPv6     *string
 	IngressHostname *string
 	// OrganizationID dedicates the cluster to one organization; 0 releases it back to shared. Set it
 	// together with Visibility "organization" — the handler keeps the two in step.
@@ -210,19 +211,22 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		}
 	}
 	ingressChanged := false
-	if p.IngressIP != nil || p.IngressHostname != nil {
-		ip, host := c.IngressIP, c.IngressHostname
+	if p.IngressIP != nil || p.IngressIPv6 != nil || p.IngressHostname != nil {
+		addr := c.PublicAddress()
 		if p.IngressIP != nil {
-			ip = *p.IngressIP
+			addr.IPv4 = *p.IngressIP
+		}
+		if p.IngressIPv6 != nil {
+			addr.IPv6 = *p.IngressIPv6
 		}
 		if p.IngressHostname != nil {
-			host = *p.IngressHostname
+			addr.Hostname = *p.IngressHostname
 		}
-		if ip, host, err = normalizeIngress(ip, host); err != nil {
+		if addr, err = normalizeIngress(addr); err != nil {
 			return nil, err
 		}
-		if ip != c.IngressIP || host != c.IngressHostname {
-			cols["ingress_ip"], cols["ingress_hostname"] = ip, host
+		if addr != c.PublicAddress() {
+			maps.Copy(cols, ingressColumns(addr))
 			ingressChanged = true
 		}
 	}

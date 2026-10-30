@@ -120,8 +120,8 @@ func TestGatewayServerAndDNSTarget(t *testing.T) {
 			if _, got := s.gatewayServer(tt.app); got != tt.wantEdge {
 				t.Errorf("gatewayServer = %v, want %v", got, tt.wantEdge)
 			}
-			if ip, _ := s.dnsTarget(tt.app); ip != tt.wantIP {
-				t.Errorf("dnsTarget = %q, want %q", ip, tt.wantIP)
+			if got := s.dnsTarget(tt.app); got.IPv4 != tt.wantIP {
+				t.Errorf("dnsTarget = %+v, want %q", got, tt.wantIP)
 			}
 		})
 	}
@@ -143,17 +143,18 @@ func TestRemoteSwarmIsServedByItsIngressNode(t *testing.T) {
 		if id, ok := s.gatewayServer(app); !ok || id != edgeServer {
 			t.Errorf("app %s: gatewayServer = %d, %v, want the ingress node", app.Alias, id, ok)
 		}
-		if ip, _ := s.dnsTarget(app); ip != "" {
-			t.Errorf("app %s: dnsTarget = %q, want none until the cluster has a public address", app.Alias, ip)
+		if got := s.dnsTarget(app); !got.IsZero() {
+			t.Errorf("app %s: dnsTarget = %+v, want none until the cluster has a public address", app.Alias, got)
 		}
 		if got := s.displayBackends(app, 8080); len(got) != 1 || got[0] != "http://"+app.Alias+":8080" {
 			t.Errorf("app %s: displayBackends = %v, want its alias", app.Alias, got)
 		}
 	}
 
-	gw.IngressIP = "192.0.2.10"
-	if ip, _ := s.dnsTarget(&models.Application{ClusterID: 9, ServerID: memberServer}); ip != "192.0.2.10" {
-		t.Errorf("dnsTarget = %q, want the cluster's public address", ip)
+	gw.IngressIP, gw.IngressIPv6 = "192.0.2.10", "2001:db8::10"
+	want := models.PublicAddress{IPv4: "192.0.2.10", IPv6: "2001:db8::10"}
+	if got := s.dnsTarget(&models.Application{ClusterID: 9, ServerID: memberServer}); got != want {
+		t.Errorf("dnsTarget = %+v, want the cluster's public address %+v", got, want)
 	}
 	if _, ok := s.gatewayServer(&models.Application{ClusterID: 1, ServerID: memberServer}); ok {
 		t.Error("an app outside the swarm was handed to its gateway")

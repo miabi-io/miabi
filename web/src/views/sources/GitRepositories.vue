@@ -122,11 +122,11 @@ function connection(r: GitRepository) {
 // after a green check — so the tooltip always says when it was taken.
 function connectionTitle(r: GitRepository): string {
   const when = r.connection_checked_at
-    ? ` · checked ${new Date(r.connection_checked_at).toLocaleString()}`
+    ? ` · ${t('gitRepos.conn.checkedAt', { when: new Date(r.connection_checked_at).toLocaleString() })}`
     : ''
-  if (r.connection_status === 'failed') return `${r.connection_error || 'Connection failed'}${when}`
-  if (r.connection_status === 'ok') return `Connected${when}`
-  return 'Not checked yet — use Test to check this credential.'
+  if (r.connection_status === 'failed') return `${r.connection_error || t('gitRepos.conn.failed')}${when}`
+  if (r.connection_status === 'ok') return `${t('gitRepos.conn.connected')}${when}`
+  return t('gitRepos.conn.uncheckedHint')
 }
 
 const pendingDelete = ref<GitRepository | null>(null)
@@ -204,7 +204,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                      and when it was observed. -->
                 <span class="conn" :class="connection(r).cls" :title="connectionTitle(r)">
                   <span class="mdi" :class="connection(r).icon"></span>
-                  <span class="conn-label">{{ connection(r).label }}</span>
+                  <span class="conn-label">{{ $t(connection(r).label) }}</span>
                 </span>
               </td>
               <td class="text-right table-actions">

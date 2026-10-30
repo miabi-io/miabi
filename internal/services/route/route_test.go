@@ -183,14 +183,14 @@ func (f fakeCluster) IsDefaultCluster(id uint) bool {
 	return id == models.DefaultClusterID || id == f.defaultID
 }
 
-func (f fakeCluster) IngressAddress(id uint) (string, string) {
+func (f fakeCluster) IngressAddress(id uint) models.PublicAddress {
 	if f.gateway != nil && f.gateway.ID == id {
-		return f.gateway.IngressIP, f.gateway.IngressHostname
+		return f.gateway.PublicAddress()
 	}
 	if f.IsDefaultCluster(id) {
 		id = f.defaultID
 	}
-	return f.ingress[id], ""
+	return models.PublicAddress{IPv4: f.ingress[id]}
 }
 
 // Regression: the old host-port upstream could only name one container, so a canary received 0% of traffic

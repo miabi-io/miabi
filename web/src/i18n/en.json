@@ -1869,7 +1869,9 @@
     "conn": {
       "connected": "Connected",
       "failed": "Connection failed",
-      "unchecked": "Not checked yet"
+      "unchecked": "Not checked yet",
+      "checkedAt": "checked {when}",
+      "uncheckedHint": "Not checked yet: use Test to check this credential."
     },
     "connection": "Connection",
     "displayNameHint": "The label shown in the console. Leave blank to fall back to the name.",
@@ -3443,7 +3445,7 @@
     "compressionHint": "Responses are compressed for clients that support it. Untick compression, or set excluded paths on it, for pages that show user input next to a secret such as a CSRF token.",
     "noMiddlewaresDefinedYet": "No middlewares defined yet.",
     "noMiddlewaresHint": "No middlewares defined in this workspace yet. {link} to attach it here.",
-    "noPublicAddressHint": "No public address is set for the node serving this route. Set its {field} on the node's page so Miabi can show the record to create.",
+    "noPublicAddressHint": "No public address is set for the location serving this route. Set its {field} under Admin → Clusters so Miabi can show the records to create.",
     "openEditor": "Open editor",
     "optional": "(optional)",
     "optionalDefaultsToTheApp": "(optional — defaults to the app's port)",
@@ -3451,7 +3453,7 @@
     "overview": "Overview",
     "path": "Path",
     "previewTextHint": "Browsers land here: the {header} header they send matches none of the structured formats.",
-    "publicIp": "Public IP",
+    "publicIp": "public address",
     "removeHost": "Remove host",
     "responseWhileParked": "Response while parked",
     "rewrite": "Rewrite",

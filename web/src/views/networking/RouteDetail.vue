@@ -86,8 +86,8 @@ function hostUrl(host: string): string {
   const path = item.value?.path && item.value.path !== '/' ? item.value.path : ''
   return `${scheme}://${host}${path}`
 }
-const dnsTarget = computed(() => item.value?.dns_target || '')
-const dnsHostname = computed(() => item.value?.dns_hostname || '')
+// Planned server-side: an A and an AAAA per IP family, or a CNAME, with www aliasing its bare name.
+const dnsRecords = computed(() => item.value?.dns_records ?? [])
 
 async function copy(text: string) {
   try {
@@ -407,15 +407,15 @@ async function removeRoute() {
         <div class="card-header"><h2>DNS</h2></div>
         <div class="card-body">
           <p class="text-muted text-sm" style="margin-top: 0">{{ $t('routes.dnsHint') }}</p>
-          <div v-if="dnsTarget || dnsHostname" class="dns-table">
+          <div v-if="dnsRecords.length" class="dns-table">
             <div class="dns-head">
               <span>{{ $t('routes.type') }}</span><span>{{ $t('apps.form.name') }}</span><span>{{ $t('routes.value') }}</span><span></span>
             </div>
-            <div v-for="h in hosts" :key="h" class="dns-row">
-              <span class="badge badge-neutral">{{ dnsTarget ? 'A' : 'CNAME' }}</span>
-              <span class="mono">{{ h }}</span>
-              <span class="mono">{{ dnsTarget || dnsHostname }}</span>
-              <button class="btn-icon btn-icon-muted" :title="$t('routes.copyValue')" :aria-label="$t('routes.copyValue')" @click="copy(dnsTarget || dnsHostname)"><span class="mdi mdi-content-copy"></span></button>
+            <div v-for="r in dnsRecords" :key="`${r.name}-${r.type}`" class="dns-row">
+              <span class="badge badge-neutral">{{ r.type }}</span>
+              <span class="mono">{{ r.name }}</span>
+              <span class="mono">{{ r.value }}</span>
+              <button class="btn-icon btn-icon-muted" :title="$t('routes.copyValue')" :aria-label="$t('routes.copyValue')" @click="copy(r.value)"><span class="mdi mdi-content-copy"></span></button>
             </div>
           </div>
           <div v-else class="dns-empty">

@@ -22,7 +22,8 @@ package cluster
 import (
 	"context"
 	"errors"
-	"net"
+	"maps"
+	"net/netip"
 	"regexp"
 	"strings"
 
@@ -39,17 +40,18 @@ var (
 	ErrGatewayNeedsSwarm       = errors.New("only a swarm cluster other than the default one has a gateway of its own")
 	ErrGatewayNodeNotInCluster = errors.New("the gateway node must belong to the cluster")
 	ErrGatewayNodeNoGateway    = errors.New("the gateway node must run its own gateway: set its connectivity to edge gateway")
-	ErrInvalidIngressIP        = errors.New("the ingress IP is not a valid IP address")
+	ErrInvalidIngressIP        = errors.New("the public IPv4 address is not a valid IPv4 address")
+	ErrInvalidIngressIPv6      = errors.New("the public IPv6 address is not a valid, global IPv6 address")
 	ErrInvalidIngressHostname  = errors.New("the ingress hostname must be a DNS name such as lb.eu-central.example.com")
 )
 
 var hostnamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$`)
 
-// GatewayPatch sets the node serving a swarm cluster's routes and the address its DNS records point at.
+// GatewayPatch sets the node serving a swarm cluster's routes and, when Address is set, the address its DNS
+// records point at.
 type GatewayPatch struct {
 	ServerID uint
-	IP       string
-	Hostname string
+	Address  *models.PublicAddress
 }
 
 // SetGatewayListener is told when a cluster's gateway moves, so the cluster's routes follow it.
@@ -86,15 +88,15 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	if srv.Connectivity != models.ConnectivityEdgeGateway {
 		return nil, ErrGatewayNodeNoGateway
 	}
-	ip, host, err := normalizeIngress(p.IP, p.Hostname)
-	if err != nil {
-		return nil, err
+	cols := map[string]any{"ingress_server_id": srv.ID}
+	if p.Address != nil {
+		addr, err := normalizeIngress(*p.Address)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(cols, ingressColumns(addr))
 	}
-	if err := s.store.UpdateColumns(c.ID, map[string]any{
-		"ingress_server_id": srv.ID,
-		"ingress_ip":        ip,
-		"ingress_hostname":  host,
-	}); err != nil {
+	if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 		return nil, err
 	}
 	s.AttachGateway(ctx, c.ID)
@@ -102,17 +104,34 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	return s.Cluster(c.ID)
 }
 
-// normalizeIngress validates a cluster's public address: an IP, and a DNS name for records that cannot use one.
-func normalizeIngress(ip, hostname string) (string, string, error) {
-	ip = strings.TrimSpace(ip)
-	if ip != "" && net.ParseIP(ip) == nil {
-		return "", "", ErrInvalidIngressIP
+// normalizeIngress validates a cluster's public address: an IPv4 and an IPv6 address, and a DNS name for records
+// that cannot use either.
+func normalizeIngress(a models.PublicAddress) (models.PublicAddress, error) {
+	var out models.PublicAddress
+	if v4 := strings.TrimSpace(a.IPv4); v4 != "" {
+		ip, err := netip.ParseAddr(v4)
+		if err != nil || !ip.Is4() {
+			return out, ErrInvalidIngressIP
+		}
+		out.IPv4 = ip.String()
 	}
-	hostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hostname)), ".")
-	if hostname != "" && !hostnamePattern.MatchString(hostname) {
-		return "", "", ErrInvalidIngressHostname
+	if v6 := strings.TrimSpace(a.IPv6); v6 != "" {
+		ip, err := netip.ParseAddr(strings.Trim(v6, "[]"))
+		// A link-local or unique-local address answers only on the machine's own network, never from the internet.
+		if err != nil || !ip.Is6() || ip.Is4In6() || ip.Zone() != "" || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+			return out, ErrInvalidIngressIPv6
+		}
+		out.IPv6 = ip.String()
 	}
-	return ip, hostname, nil
+	out.Hostname = models.NormalizeHost(a.Hostname)
+	if out.Hostname != "" && !hostnamePattern.MatchString(out.Hostname) {
+		return out, ErrInvalidIngressHostname
+	}
+	return out, nil
+}
+
+func ingressColumns(a models.PublicAddress) map[string]any {
+	return map[string]any{"ingress_ip": a.IPv4, "ingress_ipv6": a.IPv6, "ingress_hostname": a.Hostname}
 }
 
 // ResyncRoutes re-syncs a cluster's routes in the background, after the gateway serving them changed.

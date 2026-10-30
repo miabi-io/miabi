@@ -96,8 +96,11 @@ type Cluster struct {
 	ManagerServerID uint   `json:"manager_server_id"`
 	AgentTokenHash  string `json:"-"`
 	// IngressServerID is the node running the cluster gateway; 0 is the local node.
-	IngressServerID uint              `json:"ingress_server_id"`
+	IngressServerID uint `json:"ingress_server_id"`
+	// IngressIP is the IPv4 address and IngressIPv6 the IPv6 address public DNS records point at; with both, a host
+	// gets an A and an AAAA record.
 	IngressIP       string            `json:"ingress_ip,omitempty"`
+	IngressIPv6     string            `json:"ingress_ipv6,omitempty" gorm:"column:ingress_ipv6"`
 	IngressHostname string            `json:"ingress_hostname,omitempty"`
 	Visibility      ClusterVisibility `json:"visibility" gorm:"not null;default:all"`
 	// OrganizationID dedicates the cluster to one organization. Set together with
@@ -147,6 +150,14 @@ type ClusterCapacity struct {
 	NodesWithUsage   int64   `json:"nodes_with_usage"`
 	CPUPercent       float64 `json:"cpu_percent"`
 	MemUsedBytes     int64   `json:"mem_used_bytes"`
+}
+
+// PublicAddress is where the cluster's public DNS records point.
+func (c *Cluster) PublicAddress() PublicAddress {
+	if c == nil {
+		return PublicAddress{}
+	}
+	return PublicAddress{IPv4: c.IngressIP, IPv6: c.IngressIPv6, Hostname: c.IngressHostname}
 }
 
 // Label is the cluster's display name, falling back to its handle.

@@ -19,6 +19,7 @@ export interface ClusterUpdate {
   external_certificate_id?: number
   service_endpoint_mode?: 'vip' | 'dnsrr'
   ingress_ip?: string
+  ingress_ipv6?: string
   ingress_hostname?: string
 }
 
@@ -43,9 +44,11 @@ export interface ConvertIngressInput {
   target_cluster_id?: number
 }
 
+/** Omitted address fields keep their value. */
 export interface ClusterGatewayInput {
   server_id: number
   ingress_ip?: string
+  ingress_ipv6?: string
   ingress_hostname?: string
 }
 

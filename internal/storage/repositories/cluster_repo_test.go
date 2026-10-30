@@ -41,6 +41,7 @@ type clusterTable struct {
 	AgentTokenHash  string
 	IngressServerID uint
 	IngressIP       string
+	IngressIPv6     string `gorm:"column:ingress_ipv6"`
 	IngressHostname string
 	Visibility      string
 	OrganizationID  *uint

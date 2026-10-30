@@ -19,7 +19,13 @@
 
 package dnsprovider
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/miabi-io/miabi/internal/dns"
+	"github.com/miabi-io/miabi/internal/models"
+)
 
 // relName must reduce both a Miabi FQDN and a provider's already-relative name to
 // the same label, so conflict detection compares like for like.
@@ -38,22 +44,60 @@ func TestRelName(t *testing.T) {
 	}
 }
 
-// addressRecord prefers an A/AAAA from the IP, falls back to a CNAME from the
-// hostname, and never emits a CNAME at the zone apex.
-func TestAddressRecord(t *testing.T) {
-	if r := addressRecord("blog.example.com", "example.com", "1.2.3.4", "gw.example.net"); r.Type != "A" || r.Value != "1.2.3.4" {
-		t.Errorf("ipv4 => %+v, want A 1.2.3.4", r)
+func recordSet(recs []dns.Record) string {
+	parts := make([]string, 0, len(recs))
+	for _, r := range recs {
+		parts = append(parts, r.Type+" "+r.Name+" "+r.Value)
 	}
-	if r := addressRecord("blog.example.com", "example.com", "2001:db8::1", ""); r.Type != "AAAA" {
-		t.Errorf("ipv6 => %+v, want AAAA", r)
+	return strings.Join(parts, "; ")
+}
+
+// addressRecords writes an A and an AAAA for each IP family, falls back to a CNAME to the hostname, never puts a
+// CNAME at the zone apex, and aliases a www host to its bare name when that name is routed too.
+func TestAddressRecords(t *testing.T) {
+	dual := models.PublicAddress{IPv4: "203.0.113.1", IPv6: "2001:db8::1", Hostname: "gw.example.net"}
+	cases := []struct {
+		name   string
+		host   string
+		routed []string
+		target models.PublicAddress
+		want   string
+	}{
+		{"ipv4 only", "blog.example.com", nil, models.PublicAddress{IPv4: "203.0.113.1"}, "A blog.example.com 203.0.113.1"},
+		{"ipv6 only", "blog.example.com", nil, models.PublicAddress{IPv6: "2001:db8::1"}, "AAAA blog.example.com 2001:db8::1"},
+		{"dual stack", "blog.example.com", nil, dual, "A blog.example.com 203.0.113.1; AAAA blog.example.com 2001:db8::1"},
+		{"hostname only", "blog.example.com", nil, models.PublicAddress{Hostname: "gw.example.net"}, "CNAME blog.example.com gw.example.net."},
+		{"hostname only at apex", "example.com", nil, models.PublicAddress{Hostname: "gw.example.net"}, ""},
+		{"no target", "blog.example.com", nil, models.PublicAddress{}, ""},
+		{"www beside its apex", "www.example.com", []string{"example.com", "www.example.com"}, dual, "CNAME www.example.com example.com."},
+		{"www beside a subdomain", "www.shop.example.com", []string{"Shop.Example.com."}, dual, "CNAME www.shop.example.com shop.example.com."},
+		{"www alone", "www.example.com", []string{"www.example.com"}, dual, "A www.example.com 203.0.113.1; AAAA www.example.com 2001:db8::1"},
+		{"www with a hostname only", "www.example.com", []string{"example.com"}, models.PublicAddress{Hostname: "gw.example.net"}, "CNAME www.example.com gw.example.net."},
+		{"apex www is a zone", "www.com", []string{"com"}, dual, "A www.com 203.0.113.1; AAAA www.com 2001:db8::1"},
+		{"www that is the zone apex", "www.example.com", []string{"example.com"}, dual, "A www.example.com 203.0.113.1; AAAA www.example.com 2001:db8::1"},
 	}
-	if r := addressRecord("blog.example.com", "example.com", "", "gw.example.net"); r.Type != "CNAME" || r.Value != "gw.example.net." {
-		t.Errorf("hostname => %+v, want CNAME gw.example.net.", r)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			zone := "example.com"
+			if tc.name == "www that is the zone apex" {
+				zone = "www.example.com"
+			}
+			if got := recordSet(addressRecords(tc.host, zone, tc.routed, tc.target)); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
-	if r := addressRecord("example.com", "example.com", "", "gw.example.net"); r.Type != "" {
-		t.Errorf("apex CNAME => %+v, want none (CNAME forbidden at apex)", r)
-	}
-	if r := addressRecord("blog.example.com", "example.com", "", ""); r.Type != "" {
-		t.Errorf("no target => %+v, want none", r)
+}
+
+func TestCnameClash(t *testing.T) {
+	for _, tc := range []struct {
+		have, want string
+		clash      bool
+	}{
+		{"A", "CNAME", true}, {"CNAME", "AAAA", true}, {"TXT", "CNAME", false}, {"A", "AAAA", false}, {"CNAME", "CNAME", false},
+	} {
+		if got := cnameClash(tc.have, tc.want); got != tc.clash {
+			t.Errorf("cnameClash(%s, %s) = %v, want %v", tc.have, tc.want, got, tc.clash)
+		}
 	}
 }
