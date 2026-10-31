@@ -142,3 +142,11 @@ func (r *ReleaseRepository) ImageRefs() ([]string, error) {
 	}
 	return refs, nil
 }
+
+// ImageTagByImage returns the version tag an earlier release of the same image ref carried.
+func (r *ReleaseRepository) ImageTagByImage(appID uint, image string) (string, error) {
+	var rel models.Release
+	err := r.db.Select("image_tag").Where("application_id = ? AND image = ? AND image_tag <> ''", appID, image).
+		Order("id DESC").First(&rel).Error
+	return rel.ImageTag, err
+}

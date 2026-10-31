@@ -32,9 +32,11 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/pipeline"
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"github.com/miabi-io/miabi/internal/webhooksig"
 	"github.com/miabi-io/miabi/internal/worker"
 )
@@ -72,6 +74,9 @@ type CreatePipelineRequest struct {
 		Branch        string          `json:"branch"` // ref a repository-bound run builds
 		Spec          string          `json:"spec" required:"true"`
 		Enabled       bool            `json:"enabled"`
+		// Versioning configures how the image repository numbers its builds, when it has no policy yet.
+		// Omitted gives a building pipeline the default: v1.0.0, then a patch bump per build.
+		Versioning *versioning.Settings `json:"versioning"`
 	} `json:"body"`
 }
 
@@ -102,6 +107,10 @@ type TriggerPipelineRequest struct {
 		// NoCache rebuilds every layer of this run's build steps, ignoring the cache.
 		// Per-run and one-off: it never edits the pipeline file.
 		NoCache bool `json:"no_cache"`
+		// Bump raises this run's version by patch, minor or major instead of the policy default.
+		Bump string `json:"bump"`
+		// Version sets this run's exact version, e.g. 2.0.0. Admins only.
+		Version string `json:"version"`
 	} `json:"body"`
 }
 
@@ -123,7 +132,7 @@ func (h *PipelineHandler) Create(c *okapi.Context, req *CreatePipelineRequest) e
 	p, err := h.svc.Create(wsID, pipeline.Input{
 		Name: req.Body.Name, DisplayName: req.Body.DisplayName, ApplicationID: req.Body.ApplicationID,
 		GitRepositoryID: repoID, Branch: req.Body.Branch,
-		Spec: req.Body.Spec, Enabled: &req.Body.Enabled,
+		Spec: req.Body.Spec, Enabled: &req.Body.Enabled, Versioning: req.Body.Versioning,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -202,9 +211,14 @@ func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest)
 	}
 	wsID := middlewares.WorkspaceID(c)
 	actor := middlewares.UserID(c)
+	// Setting an exact version can jump a whole series ahead, so it is an admin decision; a bump is not.
+	if strings.TrimSpace(req.Body.Version) != "" && !middlewares.WorkspaceRole(c).AtLeast(models.WorkspaceRoleAdmin) {
+		return c.AbortForbidden("setting an exact version requires the admin role")
+	}
 	run, err := h.svc.Trigger(wsID, id, pipeline.TriggerInput{
 		Trigger: "manual", Branch: req.Body.Branch, Commit: req.Body.Commit,
 		CommitMessage: req.Body.CommitMessage, UserID: &actor, NoCache: req.Body.NoCache,
+		Bump: models.VersionBump(strings.TrimSpace(req.Body.Bump)), Version: req.Body.Version,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -473,6 +487,11 @@ func (h *PipelineHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, pipeline.ErrNoPipelineInRepo), errors.Is(err, pipeline.ErrNotGitApp),
 		errors.Is(err, pipeline.ErrAdoptionUnavailable):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, pipeline.ErrInvalidVersioning):
+		if isVersioningInputErr(err) {
+			return c.AbortBadRequest(err.Error())
+		}
+		return c.AbortInternalServerError("version reservation failed", err)
 	case errors.Is(err, pipeline.ErrInvalidSpec), errors.Is(err, pipeline.ErrNameRequired), errors.Is(err, pipeline.ErrDisabled),
 		errors.Is(err, pipeline.ErrSourceConflict), errors.Is(err, pipeline.ErrDeployNeedsApp),
 		errors.Is(err, pipeline.ErrBuildNeedsSource), errors.Is(err, pipeline.ErrRepositoryNotFound),

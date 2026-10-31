@@ -241,6 +241,8 @@ func Run(db *gorm.DB) error {
 		&models.PipelineDefinition{},
 		&models.PipelineRun{},
 		&models.PipelineStepRun{},
+		&models.VersionPolicy{},
+		&models.VersionAllocation{},
 		&models.Runner{},
 		&models.RunnerLease{},
 		&models.AnalyticsRollup{},
@@ -289,6 +291,17 @@ func Run(db *gorm.DB) error {
 			`ON notifications (user_id, announcement_id) WHERE announcement_id IS NOT NULL`,
 	).Error; err != nil {
 		return fmt.Errorf("failed to create announcement-delivery uniqueness index: %w", err)
+	}
+
+	// One version policy per image repository: an app, or an unbound pipeline. Two policies on one
+	// repository would mint the same tag twice.
+	for _, stmt := range []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_version_policy_app ON version_policies (application_id) WHERE application_id IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_version_policy_pipeline ON version_policies (pipeline_id) WHERE pipeline_id IS NOT NULL`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("failed to create version-policy uniqueness index: %w", err)
+		}
 	}
 
 	if err := db.Exec(

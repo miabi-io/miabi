@@ -83,6 +83,17 @@ type PipelineHandler struct {
 	registry          string               // fallback registry host (raw MIABI_REGISTRY_HOST)
 	registryHosts     RegistryHostResolver // resolves the live host (UI-/domain-derived)
 	runnerWaitTimeout time.Duration        // how long a run waits for a runner before failing
+	versions          VersionKeeper
+}
+
+// SetVersions wires version policies: a run's version tag is checked free before dispatch and given back
+// when the run fails here, before a runner ever reports.
+func (h *PipelineHandler) SetVersions(v VersionKeeper) { h.versions = v }
+
+// VersionKeeper checks and settles a run's reserved version. Satisfied by *versioning.Service.
+type VersionKeeper interface {
+	VerifyTagFree(ctx context.Context, run *models.PipelineRun, repository string, log func(string)) error
+	Settle(ctx context.Context, run *models.PipelineRun, digest, repository string, log func(string))
 }
 
 // RegistryHostResolver resolves the live registry host a runner logs into and
@@ -211,6 +222,11 @@ func (h *PipelineHandler) runOnRunner(ctx context.Context, run *models.PipelineR
 	in, err := h.jobInputs(run, def)
 	if err != nil {
 		return h.failRun(run, err)
+	}
+	if h.versions != nil {
+		if err := h.versions.VerifyTagFree(ctx, run, in.Repository, func(line string) { h.log(run.ID, line) }); err != nil {
+			return h.failRun(run, err)
+		}
 	}
 	err = h.dispatcher.Dispatch(ctx, in, nil, subjectUser(run))
 	switch {
@@ -383,6 +399,7 @@ func (d *PipelineDeployer) DeployByDigest(run *models.PipelineRun, appID uint, i
 		Trigger:       "pipeline",
 		Image:         imageRef,
 		ImageID:       run.ImageID,
+		ImageTag:      run.ImageTag,
 		RunnerID:      run.RunnerID,
 		Commit:        run.Commit,
 		// The app's configured strategy, not the column default. Leaving it unset meant an app set to
@@ -411,6 +428,9 @@ func (h *PipelineHandler) failRun(run *models.PipelineRun, err error) error {
 	run.FinishedAt = &end
 	_ = h.pipelines.UpdateRun(run)
 	h.log(run.ID, "✖ "+err.Error())
+	if h.versions != nil {
+		h.versions.Settle(context.Background(), run, "", "", func(line string) { h.log(run.ID, line) })
+	}
 	h.publishStatus(run.ID, models.PipelineRunFailed)
 	// Returning nil: the failure is recorded on the run; asynq must not retry
 	// (runs are not idempotent and MaxRetry is 0 anyway).

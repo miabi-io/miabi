@@ -65,6 +65,12 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
+// VersionSettler finishes a run's reserved version once the run is terminal: tagged and published on
+// success, released otherwise. Satisfied by *versioning.Service; nil-safe.
+type VersionSettler interface {
+	Settle(ctx context.Context, run *models.PipelineRun, digest, repository string, log func(string))
+}
+
 // Deployer performs a deploy-by-digest: it creates a deployment of the image a runner built and
 // enqueues it to the target node, which pulls and runs it — the node never builds. Implemented by
 // the worker's pipeline deployer; nil-safe (unset = a build-only pipeline that never deploys).
@@ -83,6 +89,7 @@ type Dispatcher struct {
 	images   ImageRecorder
 	bus      Publisher
 	deployer Deployer
+	versions VersionSettler
 	secrets  SecretResolver
 	logs     *logstore.Store // externalizes step logs on terminal (nil-safe)
 	timeout  time.Duration   // per-job deadline (0 = none)
@@ -91,6 +98,9 @@ type Dispatcher struct {
 // SetDeployer wires the deploy-by-digest hook, so a pipeline's terminal deploy
 // step rolls the runner-built image out to the target node (nil-safe).
 func (d *Dispatcher) SetDeployer(dep Deployer) { d.deployer = dep }
+
+// SetVersions wires version settling, so a succeeded build is tagged with its version before it deploys.
+func (d *Dispatcher) SetVersions(v VersionSettler) { d.versions = v }
 
 // SetSecrets wires the workspace vault used to resolve ${{ secrets.NAME }} in a
 // pipeline's env. Without it, a pipeline that references one fails to dispatch.
@@ -262,12 +272,15 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 			run.Status = models.PipelineRunFailed
 			run.Error = f.Error
 			d.finish(run)
+			d.settleVersion(run, meta)
 			d.persistStepLogs(run, byOrdinal, stepLogs)
 			d.publish(run.ID, "status", string(models.PipelineRunFailed))
 			return models.PipelineRunFailed, nil
 		case proto.FrameDone:
 			run.Status = mapStatus(f.Status)
 			d.finish(run)
+			// Before the deploy, so the version tag exists by the time the release records it.
+			d.settleVersion(run, meta)
 			d.persistStepLogs(run, byOrdinal, stepLogs)
 			d.publish(run.ID, "status", string(run.Status))
 			if run.Status == models.PipelineRunSucceeded {
@@ -276,6 +289,20 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 			return run.Status, nil
 		}
 	}
+}
+
+// settleTimeout bounds the registry calls that tag a published version.
+const settleTimeout = 30 * time.Second
+
+// settleVersion runs on a fresh context: the job's own may already be past its deadline, and the tag must
+// still be written for a build that succeeded.
+func (d *Dispatcher) settleVersion(run *models.PipelineRun, meta dispatchMeta) {
+	if d.versions == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), settleTimeout)
+	defer cancel()
+	d.versions.Settle(ctx, run, meta.builtDigest, meta.repository, func(line string) { d.publish(run.ID, "log", line) })
 }
 
 func buf(m map[int]*strings.Builder, ordinal int) *strings.Builder {
@@ -321,6 +348,7 @@ func (d *Dispatcher) recordImage(run *models.PipelineRun, meta dispatchMeta, dig
 	img, err := d.images.Record(imagesvc.RecordInput{
 		WorkspaceID:   run.WorkspaceID,
 		Repository:    meta.repository,
+		Tag:           fmt.Sprintf("run-%d", run.Number),
 		Digest:        digest,
 		ApplicationID: meta.appID,
 		PipelineRunID: &run.ID,

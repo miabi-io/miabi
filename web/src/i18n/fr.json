@@ -2360,7 +2360,8 @@
       "containerRegistry": "Registre de conteneurs",
       "generator": "Générateur",
       "title": "Développeurs",
-      "webhooks": "Webhooks"
+      "webhooks": "Webhooks",
+      "versioning": "Versionnage"
     },
     "networking": {
       "certificates": "Certificats",
@@ -2792,6 +2793,12 @@
     "wsKeys": {
       "rotated": "Clés renouvelées (clé de données v{version}), {count} valeurs rechiffrées",
       "rotatedKeptOld": "Clés renouvelées (clé de données v{version}), mais d’anciennes clés de données ont été conservées : {columns} les utilisent encore"
+    },
+    "versioning": {
+      "created": "Politique de version créée",
+      "updated": "Politique de version enregistrée",
+      "deleted": "Politique de version supprimée",
+      "seriesSwitched": "Publication sur {series} : le prochain build est {next}"
     }
   },
   "oauth": {
@@ -4432,5 +4439,89 @@
       "manageLicense": "Gérer la licence"
     },
     "managedBy": "via SSO ({provider})"
+  },
+  "versioning": {
+    "title": "Versionnage",
+    "subtitle": "Comment les builds de pipeline sont versionnés : la version, et le tag d'image, de chaque build.",
+    "policy": "Politique de version",
+    "repository": "Dépôt",
+    "scheme": "Schéma",
+    "schemes": {
+      "semver": "Sémantique (1.4.2)",
+      "calver": "Calendaire (2026.10.3)",
+      "run": "Numéro d'exécution (run-17)"
+    },
+    "template": "Modèle de tag",
+    "templateHint": "Doit contenir {'{version}'}. Aussi disponibles : {'{major}'}, {'{minor}'}, {'{patch}'}, {'{sha}'}.",
+    "runHint": "Les builds gardent le tag run-<numéro> d'avant le versionnage. Les déploiements se font par digest dans tous les cas.",
+    "series": "Série",
+    "seriesHint": "Les parties fixes ne changent jamais : 1.x.x autorise les incréments mineurs et correctifs, 1.4.x seulement les correctifs. Changez de série pour une nouvelle version majeure.",
+    "start": "Première version",
+    "bump": "Incrément par build",
+    "bumps": {
+      "patch": "Correctif (1.4.2 → 1.4.3)",
+      "minor": "Mineur (1.4.2 → 1.5.0)",
+      "major": "Majeur (1.4.2 → 2.0.0)"
+    },
+    "bumpFromCommits": "Lire les Conventional Commits : feat incrémente le mineur, un changement cassant le majeur",
+    "calverFormat": "Format de date",
+    "branchesAndTags": "Branches et tags supplémentaires",
+    "releaseBranches": "Branches de release",
+    "releaseBranchesHint": "Séparées par des virgules ; les motifs comme release/* fonctionnent. Vide : toutes les branches publient.",
+    "otherBranches": "Autres branches",
+    "others": {
+      "prerelease": "Pré-version (v1.4.3-feat-login.1)",
+      "runTag": "Pas de version (run-<numéro>)"
+    },
+    "floatingTags": "Tags flottants",
+    "floatingTagsHint": "Déplacés vers la version la plus récente qu'ils désignent après chaque build réussi, p. ex. latest, v{'{major}'}.",
+    "branchSeries": "Séries par branche",
+    "branchSeriesHint": "Une par ligne : motif = série. Une branche release/1.x peut ainsi continuer la 1.x pendant que main livre la 2.x.",
+    "nextTags": "Prochains tags",
+    "onBranch": "sur {branch} :",
+    "previewFailed": "Impossible de prévisualiser ces paramètres.",
+    "current": "Dernière version",
+    "next": "Prochain tag",
+    "updated": "Mis à jour",
+    "ownerApp": "Images de l'application (partagées par ses pipelines)",
+    "ownerPipeline": "Images du pipeline",
+    "fromFile": "depuis le fichier",
+    "managedHint": "Défini par le bloc versioning du pipeline {pipeline}",
+    "managedNotice": "Ces paramètres viennent du bloc {block} du pipeline {pipeline}. Modifiez le fichier du pipeline pour les changer.",
+    "enable": "Activer le versionnage",
+    "enableHint": "La politique couvre le dépôt d'images du pipeline : celui de son application, s'il est lié à une.",
+    "emptyTitle": "Aucune politique de version",
+    "emptyHint": "Les nouveaux pipelines qui construisent une image en reçoivent une automatiquement. Activez le versionnage sur un pipeline existant pour remplacer les tags run-<numéro> par des versions.",
+    "settings": "Paramètres",
+    "switchSeries": "Changer de série",
+    "switch": "Changer",
+    "switchSeriesHint": "La série actuelle est {current}. Une nouvelle série commence à sa première version ; revenir à une série plus ancienne reprend là où elle s'est arrêtée.",
+    "history": "Historique des versions",
+    "noHistory": "Aucune version attribuée pour l'instant.",
+    "tag": "Tag",
+    "when": "Quand",
+    "setByHand": "fixée à la main",
+    "status": {
+      "reserved": "en build",
+      "published": "publiée",
+      "abandoned": "sautée"
+    },
+    "deleteTitle": "Supprimer la politique de version",
+    "deleteMessage": "Les builds de {repository} reviennent aux tags run-<numéro>. Les tags déjà présents dans le registre restent.",
+    "imageVersions": "Versions d'image",
+    "createHint": "Comment ce pipeline tague les images qu'il construit. Les déploiements épinglent toujours le digest exact.",
+    "sharedPolicy": "{app} a déjà une politique de version : ce pipeline continue sa séquence (prochain : {next}). Gérez-la dans {link}.",
+    "runWithVersion": "Exécuter avec une version…",
+    "runLead": "Le prochain build est {tag} sur {series}.",
+    "useDefault": "Valeur par défaut de la politique ({bump})",
+    "bumpNotOnSeries": "Impossible sur {series} : changez plutôt de série",
+    "exact": "Version exacte",
+    "exactAdminOnly": "Fixer une version exacte nécessite le rôle admin",
+    "noOverrides": "Les versions calendaires suivent la date : il n'y a rien à surcharger.",
+    "runHintTagOnSuccess": "Le tag est écrit dans le registre une fois l'exécution réussie. Une exécution échouée rend sa version.",
+    "runBuilds": "Build de {tag}.",
+    "nextTagTitle": "Le tag du prochain build",
+    "runVersionTitle": "La version construite par cette exécution",
+    "imageTagTitle": "Tag de version de l'image"
   }
 }

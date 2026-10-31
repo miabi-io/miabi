@@ -680,6 +680,7 @@ type Deployment struct {
 	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
 	Commit        string           `json:"commit,omitempty"`
 	ImageID       *uint            `json:"image_id,omitempty"`
+	ImageTag      string           `json:"image_tag,omitempty"` // policy version tag of a pipeline build, e.g. v1.4.2
 	RegistryID    *uint            `json:"registry_id,omitempty"`
 	NoCache       bool             `json:"no_cache,omitempty" gorm:"not null;default:false"`
 	RunnerID      *uint            `json:"runner_id,omitempty"`
@@ -733,6 +734,7 @@ type Release struct {
 	Commit        string      `json:"commit,omitempty"`                       // source commit, when known
 	PipelineRunID *uint       `json:"pipeline_run_id,omitempty" gorm:"index"` // producing run
 	ImageID       *uint       `json:"image_id,omitempty" gorm:"index"`        // catalog artifact
+	ImageTag      string      `json:"image_tag,omitempty"`                    // policy version tag, e.g. v1.4.2
 	EnvironmentID *uint       `json:"environment_id,omitempty" gorm:"index"`  // promotion stage
 
 	CreatedAt time.Time `json:"created_at"`

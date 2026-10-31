@@ -12,7 +12,9 @@ import { relativeTime, formatDuration } from '@/utils/time'
 import { fmtDateTime } from '@/utils/datetime'
 import { statusMeta } from './status'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
-import type { PipelineDefinition, PipelineRun, PipelineRunEvent } from '@/api/types'
+import RunVersionModal from './RunVersionModal.vue'
+import { versioningApi } from '@/api/versioning'
+import type { PipelineDefinition, PipelineRun, PipelineRunEvent, VersionPolicy } from '@/api/types'
 
 const ws = useWorkspaceStore()
 const isTerminal = (s: string) => ['succeeded', 'failed', 'canceled'].includes(s)
@@ -29,6 +31,8 @@ const runs = ref<PipelineRun[]>([])
 const loading = ref(false)
 const triggering = ref(false)
 const showWebhook = ref(false)
+const showRunVersion = ref(false)
+const policy = ref<VersionPolicy | null>(null)
 const now = ref(Date.now())
 
 const { pageable, goToPage } = usePagination(async (page) => {
@@ -55,6 +59,17 @@ async function loadPipeline() {
   } catch (e) {
     notify.apiError(e)
   }
+  // No policy is the ordinary case for a pipeline that builds nothing, not an error.
+  try {
+    policy.value = (await versioningApi.forPipeline(wid, pipelineId.value)).data.data
+  } catch {
+    policy.value = null
+  }
+}
+
+function runStarted(run: PipelineRun) {
+  if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
+  loadPipeline()
 }
 loadPipeline()
 watch([currentWorkspaceId, pipelineId], () => { loadPipeline(); goToPage(0) })
@@ -69,6 +84,7 @@ async function trigger(noCache = false) {
     const run = (await pipelineApi.trigger(wid, pipeline.value.id, { no_cache: noCache })).data.data
     // Prepend and stay on the list; the stream drives it from pending onwards.
     if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
+    if (policy.value) loadPipeline()
     notify.success(t('notify.pipelines.runNumberQueued', { number: run.number }), {
       detail: noCache ? 'Building without cache — expect a slower run.' : 'Open it to follow the logs.',
     })
@@ -137,6 +153,10 @@ onBeforeUnmount(() => {
         </p>
       </div>
       <div class="header-actions">
+        <router-link v-if="policy" :to="{ name: 'version-policy', params: { uid: policy.uid } }" class="next-tag" :title="$t('versioning.nextTagTitle')">
+          <span class="mdi mdi-tag-outline"></span>{{ policy.next || 'run-N' }}</router-link>
+        <button v-if="ws.canEdit && pipeline?.enabled && policy && policy.scheme !== 'run'" class="btn btn-secondary" :disabled="triggering" @click="showRunVersion = true">
+          <span class="mdi mdi-tag-arrow-up-outline"></span>{{ $t('versioning.runWithVersion') }}</button>
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="showWebhook = true">
           <span class="mdi mdi-webhook"></span>{{ $t('pipelines.pushWebhook') }}</button>
         <button
@@ -153,6 +173,7 @@ onBeforeUnmount(() => {
     </div>
 
     <PipelineWebhookModal :open="showWebhook" :pipeline="pipeline" @close="showWebhook = false" />
+    <RunVersionModal :pipeline="showRunVersion ? pipeline : null" :policy="policy" @close="showRunVersion = false" @started="runStarted" />
 
     <div class="card">
       <div v-if="loading && runs.length === 0" class="card-body"><span class="spinner"></span></div>
@@ -169,6 +190,7 @@ onBeforeUnmount(() => {
             <tr v-for="r in runs" :key="r.id" class="row-link" :class="`rail-${statusMeta(r.status).badge}`" @click="openRun(r)">
               <td class="cell-title">
                 #{{ r.number }}
+                <code v-if="r.image_tag" class="run-tag" :class="{ dim: r.status === 'failed' || r.status === 'canceled' }">{{ r.image_tag }}</code>
                 <span v-if="r.no_cache" class="badge badge-neutral no-cache" :title="$t('pipelines.builtWithoutCache')">{{ $t('pipelines.noCache') }}</span>
               </td>
               <td>
@@ -203,6 +225,13 @@ onBeforeUnmount(() => {
 .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .title-row .badge .mdi { font-size: 13px; }
 .no-cache { margin-left: 6px; font-size: 11px; font-weight: 500; }
+.run-tag { margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12)); }
+.run-tag.dim { opacity: 0.55; text-decoration: line-through; }
+.next-tag {
+  display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--text-secondary, var(--text-muted)); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px dashed var(--border);
+}
+.next-tag:hover { color: var(--primary-500); }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .back-link:hover { color: var(--primary-500); }

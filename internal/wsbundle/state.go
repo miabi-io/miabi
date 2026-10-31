@@ -20,6 +20,7 @@
 package wsbundle
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -33,7 +34,8 @@ import (
 //	2  adds configs, and config mounts on an application
 //	3  healthcheck_type "none" disables the image's own HEALTHCHECK; before, it kept it ("image")
 //	4  adds sealing keys, and the sealed-value fingerprint on secrets
-const StateSchema = 4
+//	5  adds a pipeline's version policy and the latest version of each series
+const StateSchema = 5
 
 // HealthcheckNoneDisables is the first schema whose "none" healthcheck disables the image's own check.
 const HealthcheckNoneDisables = 3
@@ -221,6 +223,10 @@ type Pipeline struct {
 	Source     string `json:"source,omitempty"`
 	SourcePath string `json:"source_path,omitempty"`
 	SourceRef  string `json:"source_ref,omitempty"`
+	// Versioning is the image repository's version policy and the latest version of each series, so a
+	// restored repository continues its numbering instead of starting over at tags that already exist.
+	// Opaque here: the versioning service owns the shape.
+	Versioning json.RawMessage `json:"versioning,omitempty"`
 }
 
 // GitSource is a GitOps connection: the repository of manifests, not a fork of it. The manifests

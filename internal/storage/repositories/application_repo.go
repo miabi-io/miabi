@@ -65,6 +65,13 @@ func (r *ApplicationRepository) Delete(id uint) error {
 				return err
 			}
 		}
+		policies := tx.Model(&models.VersionPolicy{}).Select("id").Where("application_id = ?", id)
+		if err := tx.Where("policy_id IN (?)", policies).Delete(&models.VersionAllocation{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("application_id = ?", id).Delete(&models.VersionPolicy{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&models.Application{}, id).Error
 	})
 }

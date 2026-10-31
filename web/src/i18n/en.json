@@ -2360,7 +2360,8 @@
       "containerRegistry": "Container Registry",
       "generator": "Generator",
       "title": "Developers",
-      "webhooks": "Webhooks"
+      "webhooks": "Webhooks",
+      "versioning": "Versioning"
     },
     "networking": {
       "certificates": "Certificates",
@@ -2792,6 +2793,12 @@
     "wsKeys": {
       "rotated": "Keys rotated (data key v{version}), {count} values re-encrypted",
       "rotatedKeptOld": "Keys rotated (data key v{version}), but older data keys were kept: {columns} still use them"
+    },
+    "versioning": {
+      "created": "Version policy created",
+      "updated": "Version policy saved",
+      "deleted": "Version policy deleted",
+      "seriesSwitched": "Now releasing on {series}: next build is {next}"
     }
   },
   "oauth": {
@@ -4432,5 +4439,89 @@
       "manageLicense": "Manage license"
     },
     "managedBy": "via SSO ({provider})"
+  },
+  "versioning": {
+    "title": "Versioning",
+    "subtitle": "How pipeline builds are versioned: the version, and image tag, each build gets.",
+    "policy": "Version policy",
+    "repository": "Repository",
+    "scheme": "Scheme",
+    "schemes": {
+      "semver": "Semantic (1.4.2)",
+      "calver": "Calendar (2026.10.3)",
+      "run": "Run number (run-17)"
+    },
+    "template": "Tag template",
+    "templateHint": "Must contain {'{version}'}. Also available: {'{major}'}, {'{minor}'}, {'{patch}'}, {'{sha}'}.",
+    "runHint": "Builds keep the run-<number> tag they had before versioning. Deploys are by digest either way.",
+    "series": "Series",
+    "seriesHint": "Fixed parts never change: 1.x.x allows minor and patch bumps, 1.4.x only patch bumps. Switch the series to start a new major.",
+    "start": "First version",
+    "bump": "Bump per build",
+    "bumps": {
+      "patch": "Patch (1.4.2 → 1.4.3)",
+      "minor": "Minor (1.4.2 → 1.5.0)",
+      "major": "Major (1.4.2 → 2.0.0)"
+    },
+    "bumpFromCommits": "Read Conventional Commits: feat bumps the minor, a breaking change the major",
+    "calverFormat": "Date format",
+    "branchesAndTags": "Branches and extra tags",
+    "releaseBranches": "Release branches",
+    "releaseBranchesHint": "Comma-separated; patterns like release/* work. Empty: every branch releases.",
+    "otherBranches": "Other branches",
+    "others": {
+      "prerelease": "Prerelease (v1.4.3-feat-login.1)",
+      "runTag": "No version (run-<number>)"
+    },
+    "floatingTags": "Floating tags",
+    "floatingTagsHint": "Moved to the newest version they name after each successful build, e.g. latest, v{'{major}'}.",
+    "branchSeries": "Branch series",
+    "branchSeriesHint": "One per line: pattern = series. A release/1.x branch can then keep shipping 1.x while main ships 2.x.",
+    "nextTags": "Next tags",
+    "onBranch": "on {branch}:",
+    "previewFailed": "Could not preview these settings.",
+    "current": "Latest version",
+    "next": "Next tag",
+    "updated": "Updated",
+    "ownerApp": "Application images (shared by its pipelines)",
+    "ownerPipeline": "Pipeline images",
+    "fromFile": "from file",
+    "managedHint": "Set by the versioning block of pipeline {pipeline}",
+    "managedNotice": "These settings come from the {block} block in pipeline {pipeline}. Edit the pipeline file to change them.",
+    "enable": "Enable versioning",
+    "enableHint": "The policy covers the pipeline's image repository: its application's, when it is bound to one.",
+    "emptyTitle": "No version policies yet",
+    "emptyHint": "New pipelines that build an image get one automatically. Enable versioning on an existing pipeline to replace run-<number> tags with versions.",
+    "settings": "Settings",
+    "switchSeries": "Switch series",
+    "switch": "Switch",
+    "switchSeriesHint": "The current series is {current}. A new series starts at its first version; going back to an older one continues where it stopped.",
+    "history": "Version history",
+    "noHistory": "No versions handed out yet.",
+    "tag": "Tag",
+    "when": "When",
+    "setByHand": "set by hand",
+    "status": {
+      "reserved": "building",
+      "published": "published",
+      "abandoned": "skipped"
+    },
+    "deleteTitle": "Delete version policy",
+    "deleteMessage": "Builds of {repository} go back to run-<number> tags. Tags already in the registry stay.",
+    "imageVersions": "Image versions",
+    "createHint": "How this pipeline tags the images it builds. Deploys still pin the exact digest.",
+    "sharedPolicy": "{app} already has a version policy, so this pipeline continues its sequence (next: {next}). Manage it in {link}.",
+    "runWithVersion": "Run with version…",
+    "runLead": "The next build is {tag} on {series}.",
+    "useDefault": "Policy default ({bump})",
+    "bumpNotOnSeries": "Not possible on {series}: switch the series instead",
+    "exact": "Exact version",
+    "exactAdminOnly": "Setting an exact version requires the admin role",
+    "noOverrides": "Calendar versions follow the date, so there is nothing to override.",
+    "runHintTagOnSuccess": "The tag is written to the registry once the run succeeds. A failed run gives its version back.",
+    "runBuilds": "Building {tag}.",
+    "nextTagTitle": "The tag the next build gets",
+    "runVersionTitle": "The version this run builds",
+    "imageTagTitle": "Image version tag"
   }
 }

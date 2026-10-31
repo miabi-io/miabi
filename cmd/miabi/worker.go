@@ -312,6 +312,7 @@ func runWorker() error {
 	)
 	pipelineHandler.SetLogStore(logStore)
 	pipelineHandler.SetSecrets(secretService)
+	pipelineHandler.SetVersions(newVersionService(db, registryDistributor))
 
 	srv := worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, false)
 

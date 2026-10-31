@@ -9,6 +9,8 @@ import { useNotificationStore } from '@/stores/notification'
 import { pipelineApi, type PipelineInput } from '@/api/pipelines'
 import { appApi } from '@/api/apps'
 import { gitRepositoryApi } from '@/api/gitRepositories'
+import { versioningApi, defaultSettings } from '@/api/versioning'
+import VersioningSettingsForm from '@/components/VersioningSettingsForm.vue'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -16,7 +18,7 @@ import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import { relativeTime } from '@/utils/time'
 import { fmtDateTime } from '@/utils/datetime'
 import { statusMeta } from './status'
-import type { PipelineDefinition, Application, GitRepository, PipelineRunEvent } from '@/api/types'
+import type { PipelineDefinition, Application, GitRepository, PipelineRunEvent, VersionPolicy } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
 const ws = useWorkspaceStore()
@@ -28,6 +30,7 @@ const { currentWorkspaceId } = storeToRefs(ws)
 const items = ref<PipelineDefinition[]>([])
 const apps = ref<Application[]>([])
 const repos = ref<GitRepository[]>([])
+const policies = ref<VersionPolicy[]>([])
 // Which kind of source the form is binding to. The two are mutually exclusive —
 // each supplies the checkout, so together there is no answer to what a run clones.
 type SourceKind = 'none' | 'application' | 'repository'
@@ -66,6 +69,11 @@ async function loadApps(id: number | null) {
     // A workspace with no repositories, or no permission to list them, simply
     // offers no repository option — it must not break the app picker.
     repos.value = []
+  }
+  try {
+    policies.value = (await versioningApi.list(id)).data.data ?? []
+  } catch {
+    policies.value = []
   }
 }
 watch(currentWorkspaceId, (id) => { loadApps(id); goToPage(0) }, { immediate: true })
@@ -132,8 +140,17 @@ steps:
 const secretRefExample = '${{ secrets.NAME }}'
 
 function emptyForm(): PipelineInput {
-  return { name: '', application_id: null, git_repository: null, branch: '', spec: sampleSpec, enabled: true }
+  return { name: '', application_id: null, git_repository: null, branch: '', spec: sampleSpec, enabled: true, versioning: defaultSettings() }
 }
+
+// An application's images share one version sequence across all its pipelines, so a second pipeline
+// on the same app joins the existing policy instead of starting another.
+const sharedPolicy = computed(() =>
+  sourceKind.value === 'application' && form.value.application_id
+    ? policies.value.find((p) => p.application_id === form.value.application_id) ?? null
+    : null,
+)
+const showVersioning = computed(() => !editing.value && sourceKind.value !== 'none')
 
 function openCreate() {
   editing.value = null
@@ -198,8 +215,11 @@ async function save() {
       await pipelineApi.update(currentWorkspaceId.value, editing.value.id, payload)
       notify.success(t(editingRepoOwned.value ? (form.value.enabled ? 'notify.pipelines.enabled' : 'notify.pipelines.disabled') : 'notify.pipelines.updated'))
     } else {
-      await pipelineApi.create(currentWorkspaceId.value, form.value)
+      const payload: PipelineInput = { ...form.value }
+      if (!showVersioning.value || sharedPolicy.value) delete payload.versioning
+      await pipelineApi.create(currentWorkspaceId.value, payload)
       notify.success(t('notify.pipelines.created'))
+      loadApps(currentWorkspaceId.value)
     }
     showModal.value = false
     reload()
@@ -313,6 +333,7 @@ function openLastRun(p: PipelineDefinition) {
                   <span class="badge" :class="statusMeta(p.last_run.status).badge">
                     <span class="mdi" :class="statusMeta(p.last_run.status).icon"></span> {{ statusMeta(p.last_run.status).label }}
                   </span>
+                  <code v-if="p.last_run.image_tag" class="last-run-tag">{{ p.last_run.image_tag }}</code>
                   <span class="last-run-time">{{ relativeTime(p.last_run.started_at || p.last_run.created_at) }}</span>
                 </button>
                 <span v-else class="cell-sub">{{ $t('pipelines.neverRun') }}</span>
@@ -443,6 +464,20 @@ function openLastRun(p: PipelineDefinition) {
                 </i18n-t>
               </p>
             </div>
+            <div v-if="showVersioning" class="versioning-section">
+              <h4><span class="mdi mdi-tag-multiple-outline"></span>{{ $t('versioning.imageVersions') }}</h4>
+              <p v-if="sharedPolicy" class="form-hint">
+                <i18n-t keypath="versioning.sharedPolicy" tag="span">
+                  <template #app>{{ appName(form.application_id) }}</template>
+                  <template #next><code>{{ sharedPolicy.next || 'run-N' }}</code></template>
+                  <template #link><RouterLink :to="{ name: 'version-policy', params: { uid: sharedPolicy.uid } }">{{ $t('versioning.title') }}</RouterLink></template>
+                </i18n-t>
+              </p>
+              <template v-else-if="form.versioning">
+                <p class="form-hint">{{ $t('versioning.createHint') }}</p>
+                <VersioningSettingsForm v-model="form.versioning" />
+              </template>
+            </div>
             <label class="check"><input type="checkbox" v-model="form.enabled" /> <span>{{ $t('jobs.enabled') }}</span></label>
           </div>
           <div class="modal-footer">
@@ -523,5 +558,8 @@ function openLastRun(p: PipelineDefinition) {
 }
 .last-run .badge .mdi { font-size: 13px; }
 .last-run-time { font-size: 12px; color: var(--text-muted); }
+.last-run-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12)); }
+.versioning-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.versioning-section h4 { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 0 0 6px; }
 .last-run:hover .last-run-time { color: var(--primary-500); }
 </style>

@@ -131,6 +131,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
 	"github.com/miabi-io/miabi/internal/services/webhook"
 	"github.com/miabi-io/miabi/internal/services/workspace"
@@ -217,6 +218,7 @@ type routerHandlers struct {
 	apply           *handlers.ApplyHandler
 	gitops          *handlers.GitOpsHandler
 	pipeline        *handlers.PipelineHandler
+	versioning      *handlers.VersioningHandler
 	image           *handlers.ImageHandler
 	environment     *handlers.EnvironmentHandler
 	release         *handlers.ReleaseHandler
@@ -1277,6 +1279,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// at the moment it is saved. The deploy worker enforces the same boundary; this makes it a
 	// validation error on the form rather than a failed deployment.
 	appService.SetImageGuard(registryServerService)
+	// Version policies: each building run reserves its image version before it is queued, and the
+	// dispatcher tags the published digest with it once the run succeeds.
+	versionService := versioning.NewService(repositories.NewVersionRepository(db), appRepo, repositories.NewPipelineRepository(db))
+	versionService.SetRegistry(registryServerService)
+	versionService.SetImages(imageService)
+	pipelineService.SetVersions(versionService)
 	// Runner job dispatch: sends a build to a runner over its tunnel, mints the
 	// per-job credentials, and streams report frames back onto the run. Returned
 	// so the caller can wire it into the pipeline worker (which holds the tunnels).
@@ -1294,6 +1302,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	runnerDispatcher.SetDeployer(worker.NewPipelineDeployer(appRepo, deploymentRepo, producer))
 	// Pipeline env may reference workspace secrets; resolved on this side, never by a runner.
 	runnerDispatcher.SetSecrets(secretService)
+	runnerDispatcher.SetVersions(versionService)
 	// Promotion environments + release catalog/approval gates.
 	environmentRepo := repositories.NewEnvironmentRepository(db)
 	environmentService := environment.NewService(environmentRepo)
@@ -1325,6 +1334,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		GitRepo:     gitRepoService,
 		GitOps:      gitopsService,
 		Pipeline:    pipelineService,
+		Versions:    versionService,
 		Environment: environmentService,
 		Jobs:        jobService,
 		Backup:      backupService,
@@ -1521,6 +1531,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			apply:           handlers.NewApplyHandler(applyService, appService, placer, auditLogger),
 			gitops:          handlers.NewGitOpsHandler(gitopsService, auditLogger),
 			pipeline:        handlers.NewPipelineHandler(pipelineService, bus, auditLogger),
+			versioning:      handlers.NewVersioningHandler(versionService, pipelineService, auditLogger),
 			image:           handlers.NewImageHandler(imageService, dockerClient, auditLogger),
 			environment:     handlers.NewEnvironmentHandler(environmentService, auditLogger),
 			release:         handlers.NewReleaseHandler(releaseService, auditLogger),
@@ -1915,6 +1926,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.applyRoutes()...)
 	r.register(r.gitOpsRoutes()...)
 	r.register(r.pipelineRoutes()...)
+	r.register(r.versioningRoutes()...)
 	r.register(r.imageRoutes()...)
 	r.register(r.environmentRoutes()...)
 	r.register(r.releaseRoutes()...)

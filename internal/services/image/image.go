@@ -113,6 +113,9 @@ func (s *Service) Record(in RecordInput) (*models.Image, error) {
 }
 
 // List returns the workspace's catalog, optionally narrowed to one application.
+// SetTag relabels a recorded image, e.g. with the version its pipeline run published.
+func (s *Service) SetTag(imageID uint, tag string) error { return s.images.SetTag(imageID, tag) }
+
 func (s *Service) List(workspaceID uint, appID *uint) ([]models.Image, error) {
 	if appID != nil {
 		return s.images.ListByApp(workspaceID, *appID)

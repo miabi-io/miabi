@@ -150,6 +150,7 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
               </td>
               <td>
                 v{{ r.version }}
+                <code v-if="r.image_tag" class="image-tag" :title="$t('versioning.imageTagTitle')">{{ r.image_tag }}</code>
                 <span v-if="r.active" class="badge badge-success" style="margin-left:6px">{{ $t('releases.active') }}</span>
                 <span v-if="r.pinned" class="badge badge-neutral" style="margin-left:4px">{{ $t('releases.pinned') }}</span>
               </td>
@@ -213,6 +214,10 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
 </template>
 
 <style scoped>
+.image-tag {
+  margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+  padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
+}
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }

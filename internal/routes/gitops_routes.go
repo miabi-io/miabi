@@ -166,6 +166,105 @@ func (r *Router) gitOpsRoutes() []okapi.RouteDefinition {
 	}
 }
 
+// versioningRoutes serve version policies: how pipeline-built images are numbered and tagged. Reading is
+// open to viewers; changing the rules, or the series a repository releases on, is an admin decision.
+func (r *Router) versioningRoutes() []okapi.RouteDefinition {
+	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Versioning", Description: "Version policies: the version, and image tag, each pipeline build gets."})
+	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
+		return []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(min)}
+	}
+	const base = "/{workspace}/versioning/policies"
+	const preview = "/{workspace}/versioning/preview"
+	const pipelinePolicy = "/{workspace}/pipelines/{pipelineID}/versioning"
+
+	return []okapi.RouteDefinition{
+		{
+			Method:      http.MethodGet,
+			Path:        base,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.versioning.List,
+			Summary:     "List version policies",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     okapi.H(r.h.versioning.Create),
+			Summary:     "Create a version policy for a pipeline's image repository",
+			Request:     &handlers.CreateVersionPolicyRequest{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        preview,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     okapi.H(r.h.versioning.PreviewSettings),
+			Summary:     "Preview the versions unsaved settings would produce",
+			Request:     &handlers.PreviewVersionsRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{policyID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.versioning.Get,
+			Summary:     "Get a version policy",
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        base + "/{policyID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     okapi.H(r.h.versioning.Update),
+			Summary:     "Replace a version policy's settings",
+			Request:     &handlers.UpdateVersionPolicyRequest{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        base + "/{policyID}",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     r.h.versioning.Delete,
+			Summary:     "Delete a version policy",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{policyID}/switch-series",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     okapi.H(r.h.versioning.SwitchSeries),
+			Summary:     "Switch the series a policy releases on",
+			Request:     &handlers.SwitchSeriesRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{policyID}/allocations",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.versioning.Allocations,
+			Summary:     "List the versions a policy handed out",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{policyID}/preview",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.versioning.Preview,
+			Summary:     "Preview the next versions a policy will hand out",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        pipelinePolicy,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.versioning.ForPipeline,
+			Summary:     "Get the version policy covering a pipeline's image repository",
+		},
+	}
+}
+
 func (r *Router) pipelineRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Pipelines", Description: "CI/CD pipelines: build, test, and deploy on the internal runner."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

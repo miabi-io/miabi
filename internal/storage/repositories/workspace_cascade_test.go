@@ -37,22 +37,23 @@ var wsScoped = []string{
 	"release_approvals", "template_sources", "template_installs", "routes", "certificates",
 	"dns_providers", "registries", "git_repositories", "git_sources", "networks",
 	"secrets", "middlewares", "notification_channels", "workspace_keys", "workspace_sealing_keys",
-	"workspace_backup_settings", "workspace_members", "workspace_invitations",
+	"workspace_backup_settings", "workspace_members", "workspace_invitations", "version_policies",
 }
 
 // child table -> FK column and the parent table whose IDs it references.
 var wsChildren = map[string][2]string{
-	"app_env_vars":       {"application_id", "applications"},
-	"app_ports":          {"application_id", "applications"},
-	"deployments":        {"application_id", "applications"},
-	"releases":           {"application_id", "applications"},
-	"app_events":         {"application_id", "applications"},
-	"metric_samples":     {"application_id", "applications"},
-	"databases":          {"instance_id", "database_instances"},
-	"volume_backups":     {"volume_id", "volumes"},
-	"dns_records":        {"domain_id", "domains"},
-	"pipeline_step_runs": {"pipeline_run_id", "pipeline_runs"},
-	"stack_env_vars":     {"stack_id", "stacks"},
+	"app_env_vars":        {"application_id", "applications"},
+	"app_ports":           {"application_id", "applications"},
+	"deployments":         {"application_id", "applications"},
+	"releases":            {"application_id", "applications"},
+	"app_events":          {"application_id", "applications"},
+	"metric_samples":      {"application_id", "applications"},
+	"databases":           {"instance_id", "database_instances"},
+	"volume_backups":      {"volume_id", "volumes"},
+	"dns_records":         {"domain_id", "domains"},
+	"pipeline_step_runs":  {"pipeline_run_id", "pipeline_runs"},
+	"stack_env_vars":      {"stack_id", "stacks"},
+	"version_allocations": {"policy_id", "version_policies"},
 	// Templates have no workspace_id — they hang off a (workspace-owned) source.
 	"templates": {"source_id", "template_sources"},
 }

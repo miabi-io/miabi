@@ -952,9 +952,16 @@ func (r *restoreRun) applyDelivery() {
 			in.ApplicationID = &id
 			in.SetApplicationID = true
 		}
-		if _, err := r.svc.Pipeline.Create(r.target, in); err != nil {
+		def, err := r.svc.Pipeline.Create(r.target, in)
+		if err != nil {
 			r.add("pipeline", p.Name, "failed", err.Error())
 			continue
+		}
+		if r.svc.Versions != nil && len(p.Versioning) > 0 {
+			if err := r.svc.Versions.Import(def, p.Versioning); err != nil {
+				r.add("pipeline", p.Name, "created", "version policy not restored: "+err.Error())
+				continue
+			}
 		}
 		r.add("pipeline", p.Name, "created", "")
 	}

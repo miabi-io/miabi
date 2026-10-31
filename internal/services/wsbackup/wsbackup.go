@@ -54,6 +54,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/stack"
 	"github.com/miabi-io/miabi/internal/services/storage"
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"github.com/miabi-io/miabi/internal/services/workspace"
 	"github.com/miabi-io/miabi/internal/storage/blob"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -124,6 +125,8 @@ type Deps struct {
 	GitRepo     *gitrepo.Service
 	GitOps      *gitops.Service
 	Pipeline    *pipeline.Service
+	// Versions carries each pipeline's version policy; nil leaves policies out of the bundle.
+	Versions    *versioning.Service
 	Environment *environment.Service
 	Jobs        *job.Service
 	Backup      *backup.Service

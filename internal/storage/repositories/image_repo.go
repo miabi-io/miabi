@@ -33,6 +33,11 @@ func NewImageRepository(db *gorm.DB) *ImageRepository { return &ImageRepository{
 
 func (r *ImageRepository) Create(i *models.Image) error { return r.db.Create(i).Error }
 func (r *ImageRepository) Update(i *models.Image) error { return r.db.Save(i).Error }
+
+// SetTag relabels an image with its human-readable tag.
+func (r *ImageRepository) SetTag(id uint, tag string) error {
+	return r.db.Model(&models.Image{}).Where("id = ?", id).Update("tag", tag).Error
+}
 func (r *ImageRepository) Delete(workspaceID, id uint) error {
 	return r.db.Where("workspace_id = ?", workspaceID).Delete(&models.Image{}, id).Error
 }
