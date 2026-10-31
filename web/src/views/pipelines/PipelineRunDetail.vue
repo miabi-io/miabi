@@ -238,7 +238,9 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
       <div>
         <router-link :to="{ name: 'pipeline-runs', params: { id: pipelineId } }" class="back-link">
           <span class="mdi mdi-arrow-left"></span>{{ $t('pipelines.runs') }}</router-link>
-        <h1 v-if="run">Run #{{ run.number }}</h1>
+        <h1 v-if="run">Run #{{ run.number }}
+          <code v-if="run.image_tag" class="run-version" :title="$t('versioning.runVersionTitle')">{{ run.image_tag }}</code>
+        </h1>
         <p v-if="run" class="subtitle">
           <span class="meta-item"><span class="mdi mdi-source-branch"></span> {{ run.trigger }}</span>
           <span class="meta-item"><span class="mdi mdi-timer-outline"></span> {{ runDuration }}</span>
@@ -393,6 +395,10 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
 </template>
 
 <style scoped>
+.run-version {
+  margin-left: 8px; vertical-align: middle; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 500;
+  padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
+}
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 12px; }
 .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .meta-item { display: inline-flex; align-items: center; gap: 4px; }

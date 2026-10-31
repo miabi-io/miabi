@@ -258,6 +258,13 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 		if p.ApplicationID != nil {
 			entry.App = appName[*p.ApplicationID]
 		}
+		if s.Versions != nil {
+			if raw, err := s.Versions.Export(p); err != nil {
+				logger.Warn("bundle: export version policy", "pipeline", p.Name, "error", err)
+			} else {
+				entry.Versioning = raw
+			}
+		}
 		st.Pipelines = append(st.Pipelines, entry)
 		report.Add("pipeline", p.Name, "captured", "")
 	}

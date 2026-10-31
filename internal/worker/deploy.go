@@ -1069,7 +1069,7 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, RuntimeKind: models.RuntimeService,
 		Image: image, ContainerID: serviceID, Active: true,
-		Commit: dep.Commit, ImageID: dep.ImageID,
+		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
 	}
 	if err := h.releases.Create(rel); err != nil {
 		_ = h.fail(dep, fmt.Errorf("create release: %w", err))
@@ -1144,7 +1144,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: false, RuntimeKind: models.RuntimeContainer,
-		Commit: dep.Commit, ImageID: dep.ImageID,
+		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
 	}
 	if err := h.releases.Create(rel); err != nil {
 		_ = h.fail(dep, fmt.Errorf("create canary release: %w", err))
@@ -1624,6 +1624,10 @@ func (h *DeployHandler) deferForRunner(dep *models.Deployment, serverID uint, re
 // registry mirrors the release number the UI shows alongside the immutable build tag. A no-op
 // for external images (only internal build refs carry a digest we pushed) or when distribution is off.
 func (h *DeployHandler) tagReleaseImage(app *models.Application, dep *models.Deployment, version int) {
+	// A versioned build already carries its own tag; a v<release> tag beside v1.4.2 would only confuse.
+	if dep.ImageTag != "" {
+		return
+	}
 	if h.distributor == nil || dep.Image == "" || !h.distributor.IsBuildRef(dep.Image) {
 		return
 	}
@@ -1634,6 +1638,18 @@ func (h *DeployHandler) tagReleaseImage(app *models.Application, dep *models.Dep
 	if err := h.distributor.TagReleaseVersion(context.Background(), app.WorkspaceID, app.Name, digest, version); err != nil {
 		logger.Warn("failed to add release-version tag to image", "app", app.ID, "deployment", dep.ID, "version", version, "error", err)
 	}
+}
+
+// releaseImageTag is the version tag of the image a release runs: the pipeline's, or for a rollback or
+// canary promotion of the same digest, the tag an earlier release of it carried. It is stored on dep too,
+// so tagReleaseImage leaves a versioned image alone.
+func (h *DeployHandler) releaseImageTag(appID uint, dep *models.Deployment, image string) string {
+	if dep.ImageTag == "" && image != "" && h.releases != nil {
+		if tag, err := h.releases.ImageTagByImage(appID, image); err == nil {
+			dep.ImageTag = tag
+		}
+	}
+	return dep.ImageTag
 }
 
 // recordBuiltImage writes provenance for a freshly built git image. Best-effort: a recording
@@ -1879,7 +1895,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: true, RuntimeKind: models.RuntimeContainer,
-		Commit: dep.Commit, ImageID: dep.ImageID,
+		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
 	}
 	if err := h.releases.Create(rel); err != nil {
 		if canary != nil {

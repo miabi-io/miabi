@@ -1,5 +1,5 @@
 import api, { sseUrl } from './client'
-import type { ApiResponse, PageableResponse, PipelineDefinition, PipelineRun, PipelineRunLogHistory } from './types'
+import type { ApiResponse, PageableResponse, PipelineDefinition, PipelineRun, PipelineRunLogHistory, VersionBump, VersionSettings } from './types'
 
 export interface PipelineInput {
   name: string
@@ -14,12 +14,17 @@ export interface PipelineInput {
   branch?: string
   spec: string
   enabled: boolean
+  // How the image repository numbers builds, when it has no policy yet. Create only.
+  versioning?: VersionSettings
 }
 
 export interface TriggerInput {
   commit?: string
   commit_message?: string
   no_cache?: boolean
+  // A one-off version for this run: a bump part, or an exact version (admins only).
+  bump?: VersionBump
+  version?: string
 }
 
 const base = (ws: number) => `/workspaces/${ws}/pipelines`

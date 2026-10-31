@@ -2715,7 +2715,7 @@ async function detachDatabase(d: AppDatabase) {
             <tbody>
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
                 <td>
-                  <span class="cell-title">#{{ d.number }}</span>
+                  <span class="cell-title">#{{ d.number }}</span><code v-if="d.image_tag" class="image-tag" :title="$t('versioning.imageTagTitle')">{{ d.image_tag }}</code>
                   <div v-if="d.error" class="dep-err" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
                 </td>
                 <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
@@ -3174,7 +3174,7 @@ async function detachDatabase(d: AppDatabase) {
           <thead><tr><th>{{ $t('appDetail.version') }}</th><th>{{ $t('appDetail.image') }}</th><th>{{ $t('appDetail.state') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in releases" :key="r.id" class="row-clickable" @click="releaseDetail = r">
-              <td class="cell-title">v{{ r.version }}</td>
+              <td class="cell-title">v{{ r.version }}<code v-if="r.image_tag" class="image-tag" :title="$t('versioning.imageTagTitle')">{{ r.image_tag }}</code></td>
               <td class="text-muted">{{ r.image }}</td>
               <td>
                 <span v-if="r.active" class="badge badge-success badge-dot">{{ $t('appDetail.active') }}</span>
@@ -4315,6 +4315,10 @@ async function detachDatabase(d: AppDatabase) {
 </template>
 
 <style scoped>
+.image-tag {
+  margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+  padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));
+}
 /* ─── GitOps manifest export ─── */
 .manifest-actions {
   display: flex;

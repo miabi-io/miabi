@@ -111,6 +111,8 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.VolumeBackupSchedule{}, "workspace_id = ?", []any{id}},
 			{&models.DNSRecord{}, "domain_id IN (?)", []any{domIDs()}},
 			{&models.PipelineStepRun{}, "pipeline_run_id IN (?)", []any{runIDs()}},
+			{&models.VersionAllocation{}, "policy_id IN (?)", []any{tx.Model(&models.VersionPolicy{}).Select("id").Where("workspace_id = ?", id)}},
+			{&models.VersionPolicy{}, "workspace_id = ?", []any{id}},
 			{&models.PipelineRun{}, "workspace_id = ?", []any{id}},
 			{&models.Image{}, "workspace_id = ?", []any{id}},
 			{&models.StackEnvVar{}, "stack_id IN (?)", []any{stackIDs()}},

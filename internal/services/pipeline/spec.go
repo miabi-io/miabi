@@ -31,6 +31,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"gopkg.in/yaml.v3"
 )
 
@@ -56,6 +57,19 @@ type Spec struct {
 	// may reference workspace secrets as ${{ secrets.NAME }}.
 	Env   map[string]string `yaml:"env,omitempty"`
 	Steps []Step            `yaml:"steps"`
+	// Versioning sets the image repository's version policy from the file. Miabi still holds the counter:
+	// a repository cannot carry state, only the rules.
+	Versioning *versioning.Settings `yaml:"versioning,omitempty"`
+}
+
+// HasBuild reports whether the pipeline builds an image, the only kind of run a version applies to.
+func (s *Spec) HasBuild() bool {
+	for i := range s.Steps {
+		if s.Steps[i].Uses == UsesBuild {
+			return true
+		}
+	}
+	return false
 }
 
 // SpecMeta is the pipeline's identity block.
@@ -197,6 +211,14 @@ func ParseSpec(data []byte) (*Spec, error) {
 		}
 		if err := validBuildPath("context", st.Context); err != nil {
 			return nil, fmt.Errorf("step %q: %w", st.Name, err)
+		}
+	}
+	if s.Versioning != nil {
+		if !s.HasBuild() {
+			return nil, fmt.Errorf("versioning: applies to pipelines with a 'uses: build' step")
+		}
+		if err := versioning.ValidateSettings(s.Versioning); err != nil {
+			return nil, fmt.Errorf("versioning: %w", err)
 		}
 	}
 	return &s, nil

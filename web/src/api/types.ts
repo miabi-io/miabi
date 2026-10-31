@@ -1690,6 +1690,8 @@ export interface Deployment {
   application_id: number
   status: DeploymentStatus
   image: string
+  /** The pipeline build's version tag, e.g. v1.4.2. */
+  image_tag?: string
   trigger: string
   error?: string
   current?: boolean
@@ -1703,6 +1705,8 @@ export interface Release {
   id: number
   version: number
   image: string
+  /** The image's version tag, e.g. v1.4.2; `version` is the release revision. */
+  image_tag?: string
   container_id?: string
   active: boolean
   pinned: boolean
@@ -3183,6 +3187,8 @@ export interface PipelineRunSummary {
   status: PipelineRunStatus
   trigger?: string
   commit?: string
+  /** The version tag the run builds, e.g. v1.4.2; absent without a version policy. */
+  image_tag?: string
   started_at?: string | null
   finished_at?: string | null
   created_at: string
@@ -3266,6 +3272,9 @@ export interface PipelineRun {
   commit?: string
   commit_message?: string
   image_id?: number | null
+  /** The version reserved for this run (1.4.2) and the tag it renders to (v1.4.2). */
+  version?: string
+  image_tag?: string
   error?: string
   // no_cache: the run was asked to ignore the build cache (a one-off override of the spec).
   no_cache?: boolean
@@ -3273,6 +3282,85 @@ export interface PipelineRun {
   finished_at?: string | null
   created_at: string
   steps?: PipelineStepRun[]
+}
+
+// --- Versioning ---
+
+export type VersionScheme = 'semver' | 'calver' | 'run'
+export type VersionBump = 'patch' | 'minor' | 'major'
+export type OtherBranches = 'prerelease' | 'run-tag'
+
+/** How an image repository numbers its builds, as the API and a pipeline's `versioning:` block write it. */
+export interface VersionSettings {
+  scheme: VersionScheme
+  template?: string
+  series?: string
+  bump?: VersionBump
+  start?: string
+  calver_format?: string
+  branches: { release?: string[]; others?: OtherBranches; series?: Record<string, string> }
+  floating_tags?: string[]
+  bump_from_commits?: boolean
+}
+
+export interface VersionPolicy {
+  id: number
+  uid: string
+  workspace_id: number
+  application_id?: number | null
+  pipeline_id?: number | null
+  scheme: VersionScheme
+  template: string
+  series?: string
+  bump: VersionBump
+  start?: string
+  calver_format?: string
+  release_branches?: string[]
+  other_branches: OtherBranches
+  branch_series?: Record<string, string>
+  floating_tags?: string[]
+  bump_from_commits: boolean
+  /** The pipeline whose `versioning:` block owns these settings; empty when the API owns them. */
+  managed_by?: string
+  current?: string
+  owner_kind?: 'application' | 'pipeline'
+  repository?: string
+  /** The tag the next release build gets. */
+  next?: string
+  created_at: string
+  updated_at: string
+}
+
+export type VersionAllocationStatus = 'reserved' | 'published' | 'abandoned'
+
+export interface VersionAllocation {
+  id: number
+  policy_id: number
+  version: string
+  tag: string
+  series?: string
+  branch?: string
+  prerelease: boolean
+  bump?: VersionBump
+  exact?: boolean
+  status: VersionAllocationStatus
+  pipeline_run_id: number
+  run_number?: number
+  pipeline_id?: number
+  digest?: string
+  note?: string
+  created_at: string
+}
+
+/** One upcoming version, as a preview lists it. */
+export interface VersionPlan {
+  version: string
+  tag: string
+  series?: string
+  branch?: string
+  prerelease: boolean
+  bump?: VersionBump
+  note?: string
 }
 
 // --- Built-image catalog ---
@@ -3314,6 +3402,7 @@ export interface WorkspaceRelease {
   application_display_name: string
   version: number
   image: string
+  image_tag?: string
   digest?: string
   commit?: string
   active: boolean

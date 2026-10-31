@@ -25,9 +25,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/declarative"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"github.com/miabi-io/miabi/internal/slug"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -72,6 +74,8 @@ var (
 	// ErrAdoptionUnavailable reports that repository adoption is not wired up
 	// (no git credential service), so nothing can be discovered.
 	ErrAdoptionUnavailable = errors.New("repository pipeline adoption is not available")
+	// ErrInvalidVersioning wraps a version request or policy the versioning rules refuse.
+	ErrInvalidVersioning = errors.New("invalid version request")
 )
 
 // Enqueuer hands a created run to the background worker. It is an interface so
@@ -93,7 +97,12 @@ type Service struct {
 	// run. Both nil-safe — without them a pipeline is manual-only.
 	gitRepos *gitrepo.Service
 	apps     *repositories.ApplicationRepository
+	// versions hands each run its image version; nil leaves every build on run-<number> tags.
+	versions *versioning.Service
 }
+
+// SetVersions wires version policies, so runs that build reserve a version before they are queued.
+func (s *Service) SetVersions(v *versioning.Service) { s.versions = v }
 
 // SetRestriction wires the workspace-restriction check applied to pushed and scheduled runs.
 func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
@@ -133,6 +142,9 @@ type Input struct {
 	SourcePath   string
 	SourceRef    string
 	SourceCommit string
+	// Versioning configures the image repository's policy when the pipeline creates it. Ignored when the
+	// repository already has one, and overridden by a `versioning:` block in the spec.
+	Versioning *versioning.Settings
 }
 
 // Create validates the spec and stores a new pipeline definition.
@@ -173,12 +185,38 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 		Spec: in.Spec, Enabled: in.Enabled != nil && *in.Enabled, WebhookSecret: declarative.RandAlphaNum(40),
 		Source: source, SourcePath: in.SourcePath, SourceRef: in.SourceRef, SourceCommit: in.SourceCommit,
 	}
+	if in.Versioning != nil {
+		if err := versioning.ValidateSettings(in.Versioning); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidVersioning, err)
+		}
+	}
 	if err := s.repo.Create(p); err != nil {
 		return nil, err
 	}
 	s.applySchedule(p)
+	s.syncVersioning(p, spec, in.Versioning, true)
 	s.decorateRepository(p)
 	return p, nil
+}
+
+// syncVersioning keeps the repository's policy in step with the spec: a `versioning:` block owns the
+// settings, and dropping the block hands them back to the API. A new building pipeline gets a policy.
+func (s *Service) syncVersioning(p *models.PipelineDefinition, spec *Spec, settings *versioning.Settings, created bool) {
+	if s.versions == nil || spec == nil {
+		return
+	}
+	if spec.Versioning != nil {
+		if _, err := s.versions.EnsureForPipeline(p, spec.Versioning, true); err != nil {
+			logger.Warn("apply pipeline versioning block failed", "pipeline", p.Name, "error", err)
+		}
+		return
+	}
+	s.versions.Unmanage(p)
+	if created && spec.HasBuild() {
+		if _, err := s.versions.EnsureForPipeline(p, settings, false); err != nil {
+			logger.Warn("create version policy failed", "pipeline", p.Name, "error", err)
+		}
+	}
 }
 
 // Update mutates a pipeline definition.
@@ -248,6 +286,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 		return nil, err
 	}
 	s.applySchedule(p)
+	s.syncVersioning(p, spec, nil, false)
 	s.decorateRepository(p)
 	return p, nil
 }
@@ -378,13 +417,20 @@ func (s *Service) attachLastRuns(defs ...*models.PipelineDefinition) {
 }
 
 func (s *Service) Delete(workspaceID, id uint) error {
-	if _, err := s.Get(workspaceID, id); err != nil {
+	p, err := s.Get(workspaceID, id)
+	if err != nil {
 		return err
 	}
 	if s.scheduler != nil {
 		s.scheduler.Unschedule(id)
 	}
-	return s.repo.Delete(workspaceID, id)
+	if err := s.repo.Delete(workspaceID, id); err != nil {
+		return err
+	}
+	if s.versions != nil {
+		s.versions.PipelineDeleted(p)
+	}
+	return nil
 }
 
 // TriggerInput attributes and contextualizes a run.
@@ -398,6 +444,10 @@ type TriggerInput struct {
 	UserID        *uint
 	APIKeyID      *uint
 	NoCache       bool
+	// Bump and Version override this run's version: a bump part, or an exact version. Manual and API
+	// triggers only; pushes and schedules follow the policy.
+	Bump    models.VersionBump
+	Version string
 }
 
 // Trigger creates a PipelineRun (with its step rows) and enqueues it. The run
@@ -437,18 +487,18 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	if err != nil {
 		return nil, errors.Join(ErrInvalidSpec, err)
 	}
-	number, err := s.repo.NextRunNumber(p.ID)
-	if err != nil {
-		return nil, err
-	}
 	run := &models.PipelineRun{
-		WorkspaceID: workspaceID, PipelineID: p.ID, Number: number,
+		WorkspaceID: workspaceID, PipelineID: p.ID,
 		Status: models.PipelineRunPending, Trigger: in.Trigger,
 		Branch: in.Branch, Commit: in.Commit, CommitMessage: in.CommitMessage,
 		TriggeredByUserID: in.UserID, TriggeredByKeyID: in.APIKeyID,
 		Env: spec.Env, NoCache: in.NoCache,
 	}
-	if err := s.repo.CreateRun(run); err != nil {
+	if err := s.repo.CreateNumberedRun(run); err != nil {
+		return nil, err
+	}
+	if err := s.reserveVersion(run, p, spec, in); err != nil {
+		_ = s.repo.DeleteRun(run.ID)
 		return nil, err
 	}
 	for i, st := range spec.Steps {
@@ -471,6 +521,28 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 		}
 	}
 	return run, nil
+}
+
+// reserveVersion hands a building run its version before it is queued, so the version is fixed (and shown)
+// from the moment the run exists, and two concurrent runs can never build the same one.
+func (s *Service) reserveVersion(run *models.PipelineRun, p *models.PipelineDefinition, spec *Spec, in TriggerInput) error {
+	if s.versions == nil {
+		return nil
+	}
+	if !spec.HasBuild() {
+		if in.Bump != "" || in.Version != "" {
+			return fmt.Errorf("%w: this pipeline builds no image", ErrInvalidVersioning)
+		}
+		return nil
+	}
+	err := s.versions.Reserve(run, p, versioning.Request{Bump: in.Bump, Exact: strings.TrimSpace(in.Version)})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidVersioning, err)
+	}
+	if run.ImageTag == "" {
+		return nil
+	}
+	return s.repo.UpdateRun(run)
 }
 
 // Rerun starts a fresh run of the same pipeline at the ref and commit an earlier run built. The

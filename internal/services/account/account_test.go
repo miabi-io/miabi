@@ -210,6 +210,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		// Templates hang off a (workspace-owned) source, not the workspace directly.
 		"template_sources": "workspace_id", "templates": "source_id",
 		"workspace_keys": "workspace_id", "workspace_sealing_keys": "workspace_id", "workspace_backup_settings": "workspace_id",
+		"version_policies": "workspace_id", "version_allocations": "policy_id",
 	}
 	for tbl, col := range cascadeTables {
 		if err := db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER PRIMARY KEY, %s INTEGER)", tbl, col)).Error; err != nil {

@@ -591,6 +591,7 @@ func runServer(cli *okapicli.CLI) {
 			// both pipelines and git-source deploys. A run with none available waits up to
 			// RunnerWaitTimeout. Wired before the worker starts.
 			pipelineHandler.SetRunnerDispatch(runnerDispatcher, repositories.NewWorkspaceRepository(res.db), cfg.Registry.Host, registryDistributor, cfg.RunnerWaitTimeout)
+			pipelineHandler.SetVersions(newVersionService(res.db, registryDistributor))
 			deployHandler.SetBuildDispatch(runnerDispatcher, cfg.Registry.Host, cfg.RunnerWaitTimeout)
 
 			// Release leases whose deadline passed but whose release defer never ran (runner died or

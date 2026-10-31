@@ -21,7 +21,9 @@ package registryserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/miabi-io/miabi/internal/docker"
 )
@@ -70,6 +72,57 @@ func (s *Service) TagReleaseVersion(ctx context.Context, workspaceID uint, appNa
 	}
 	repo := Namespace(workspaceID) + "/" + appName
 	return s.reg.TagManifest(ctx, repo, digest, fmt.Sprintf("v%d", version))
+}
+
+// ErrNotInternalRepository rejects tagging a repository outside the built-in registry.
+var ErrNotInternalRepository = errors.New("not a repository of the built-in registry")
+
+// storagePath maps a pushed repository (<host>/ws_<id>/<name>) to its path inside the registry.
+func (s *Service) storagePath(repository string) (string, error) {
+	ns, rest, internal := splitInternalRef(s.RegistryHost(), repository)
+	if !internal || ns == "" {
+		return "", fmt.Errorf("%w: %q", ErrNotInternalRepository, repository)
+	}
+	return ns + "/" + rest, nil
+}
+
+// TagImage points tag at an already-pushed digest in a built-in repository, without moving any blobs.
+func (s *Service) TagImage(ctx context.Context, repository, digest, tag string) error {
+	if !s.DistributionEnabled() {
+		return nil
+	}
+	repo, err := s.storagePath(repository)
+	if err != nil {
+		return err
+	}
+	return s.reg.TagManifest(ctx, repo, digest, tag)
+}
+
+// ImageTagDigest resolves a tag of a built-in repository to its digest; found is false when the tag
+// does not exist or distribution is off.
+func (s *Service) ImageTagDigest(ctx context.Context, repository, tag string) (digest string, found bool, err error) {
+	if !s.DistributionEnabled() {
+		return "", false, nil
+	}
+	repo, err := s.storagePath(repository)
+	if err != nil {
+		return "", false, err
+	}
+	tags, err := s.reg.Tags(ctx, repo)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if !slices.Contains(tags, tag) {
+		return "", false, nil
+	}
+	d, err := s.reg.ManifestDigest(ctx, repo, tag)
+	if err != nil {
+		return "", false, err
+	}
+	return d, true, nil
 }
 
 // RegistryHost returns the resolved registry host — the explicit setting, else

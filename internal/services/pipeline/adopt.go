@@ -189,6 +189,10 @@ func (s *Service) SyncFromRepo(ctx context.Context, p *models.PipelineDefinition
 		return false, err
 	}
 	s.applySchedule(p) // an edited `on.schedule` takes effect from this run on
+	// Only the tracked ref's file sets versioning rules; a feature branch must not rewrite main's policy.
+	if spec, err := ParseSpec([]byte(p.Spec)); err == nil && ref == app.GitRef {
+		s.syncVersioning(p, spec, nil, false)
+	}
 	return changed, nil
 }
 

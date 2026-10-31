@@ -36,19 +36,22 @@ func TestApplicationDeleteRemovesJobs(t *testing.T) {
 	}
 	db.Exec("CREATE TABLE applications (id INTEGER PRIMARY KEY, workspace_id INTEGER)")
 	db.Exec("CREATE TABLE application_networks (application_id INTEGER, network_id INTEGER)")
-	for _, tbl := range []string{"app_env_vars", "app_ports", "deployments", "releases", "app_events", "metric_samples", "jobs", "cron_jobs", "job_definitions"} {
+	for _, tbl := range []string{"app_env_vars", "app_ports", "deployments", "releases", "app_events", "metric_samples", "jobs", "cron_jobs", "job_definitions", "version_policies"} {
 		if err := db.Exec(fmt.Sprintf("CREATE TABLE %s (id INTEGER PRIMARY KEY, application_id INTEGER)", tbl)).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
+	db.Exec("CREATE TABLE version_allocations (id INTEGER PRIMARY KEY, policy_id INTEGER)")
 	db.Exec("INSERT INTO applications (id, workspace_id) VALUES (1, 1), (2, 1)")
+	db.Exec("INSERT INTO version_policies (id, application_id) VALUES (10, 1), (20, 2)")
+	db.Exec("INSERT INTO version_allocations (policy_id) VALUES (10), (10), (20)")
 	db.Exec("INSERT INTO cron_jobs (application_id) VALUES (1), (2)")
 	db.Exec("INSERT INTO jobs (application_id) VALUES (1), (1), (2)")
 
 	if err := NewApplicationRepository(db).Delete(1); err != nil {
 		t.Fatal(err)
 	}
-	for tbl, want := range map[string]int64{"cron_jobs": 1, "jobs": 1} {
+	for tbl, want := range map[string]int64{"cron_jobs": 1, "jobs": 1, "version_policies": 1, "version_allocations": 1} {
 		var n int64
 		db.Table(tbl).Count(&n)
 		if n != want {

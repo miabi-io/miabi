@@ -118,6 +118,7 @@ type PipelineRunSummary struct {
 	Status     PipelineRunStatus `json:"status"`
 	Trigger    string            `json:"trigger,omitempty"`
 	Commit     string            `json:"commit,omitempty"`
+	ImageTag   string            `json:"image_tag,omitempty"`
 	StartedAt  *time.Time        `json:"started_at,omitempty"`
 	FinishedAt *time.Time        `json:"finished_at,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
@@ -131,6 +132,7 @@ func (r PipelineRun) Summary() *PipelineRunSummary {
 		Status:     r.Status,
 		Trigger:    r.Trigger,
 		Commit:     r.Commit,
+		ImageTag:   r.ImageTag,
 		StartedAt:  r.StartedAt,
 		FinishedAt: r.FinishedAt,
 		CreatedAt:  r.CreatedAt,
@@ -174,6 +176,10 @@ type PipelineRun struct {
 	TriggeredByUserID *uint `json:"triggered_by_user_id,omitempty"`
 	// ImageID is the artifact the run produced (nil until the build step pushes).
 	ImageID *uint `json:"image_id,omitempty"`
+	// Version is the version reserved for this run by its version policy (e.g. 1.4.2), and ImageTag the
+	// tag it renders to (v1.4.2). Both empty for a run that builds nothing or has no policy.
+	Version  string `json:"version,omitempty"`
+	ImageTag string `json:"image_tag,omitempty"`
 	// RunnerID records which runner executed this run (provenance / "built on
 	// runner X"); nil when it ran on the internal runner.
 	RunnerID *uint  `json:"runner_id,omitempty"`

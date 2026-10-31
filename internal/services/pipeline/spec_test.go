@@ -364,3 +364,27 @@ func TestParseSpecPlatforms(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSpecVersioning(t *testing.T) {
+	const head = "apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata:\n  name: p\n"
+	build := "steps:\n  - name: build\n    uses: build\n"
+
+	s, err := ParseSpec([]byte(head + build + "versioning:\n  series: 2.x.x\n  bump: minor\n  branches:\n    release: [main]\n  floating_tags: [latest]\n"))
+	if err != nil {
+		t.Fatalf("valid block: %v", err)
+	}
+	if s.Versioning == nil || s.Versioning.Series != "2.x.x" || s.Versioning.Bump != "minor" || len(s.Versioning.Branches.Release) != 1 {
+		t.Fatalf("block = %+v", s.Versioning)
+	}
+
+	for name, doc := range map[string]string{
+		"no build step": head + "steps:\n  - name: test\n    image: alpine\n    run: true\n" + "versioning:\n  scheme: semver\n",
+		"bad series":    head + build + "versioning:\n  series: 1.x.3\n",
+		"unknown field": head + build + "versioning:\n  serie: 1.x.x\n",
+		"major on 1.x":  head + build + "versioning:\n  bump: major\n",
+	} {
+		if _, err := ParseSpec([]byte(doc)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

@@ -89,6 +89,7 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	env = appendKV(env, "MIABI_BRANCH", in.Branch)
 	env = appendKV(env, "MIABI_REGISTRY", in.Registry)
 	env = appendKV(env, "MIABI_IMAGE_REPOSITORY", in.Repository)
+	env = append(env, versionEnv(in.Run)...)
 
 	// Pipeline env after the platform context and before the credentials below,
 	// so it can never shadow either.
@@ -147,7 +148,7 @@ func buildConfig(s *models.PipelineStepRun, in JobInputs) *proto.BuildConfig {
 		return nil
 	}
 	cfg := &proto.BuildConfig{
-		Dockerfile: df, Context: buildCtx, BuildArgs: s.BuildArgs,
+		Dockerfile: df, Context: buildCtx, BuildArgs: expandVersionArgs(s.BuildArgs, in.Run),
 		NoCache: noCache, CacheFrom: cacheFrom, CacheTo: cacheTo, Platforms: s.Platforms,
 	}
 	if df == "" {
@@ -166,6 +167,43 @@ func shellCommand(run string) []string {
 		return nil
 	}
 	return []string{"sh", "-c", run}
+}
+
+// versionEnv exposes the run's reserved version, so a build can stamp it into the image. The tag itself
+// is written to the registry only once the run succeeds; within the run, MIABI_IMAGE_DIGEST is the ref.
+func versionEnv(run *models.PipelineRun) []string {
+	if run.Version == "" {
+		return nil
+	}
+	core, pre, _ := strings.Cut(run.Version, "-")
+	env := []string{kv("MIABI_VERSION", run.Version), kv("MIABI_IMAGE_TAG", run.ImageTag)}
+	parts := strings.Split(core, ".")
+	for i, name := range []string{"MIABI_VERSION_MAJOR", "MIABI_VERSION_MINOR", "MIABI_VERSION_PATCH"} {
+		if i < len(parts) {
+			env = append(env, kv(name, parts[i]))
+		}
+	}
+	return appendKV(env, "MIABI_VERSION_PRERELEASE", pre)
+}
+
+// expandVersionArgs substitutes ${MIABI_VERSION}-style references in build-arg values, so a Dockerfile
+// can be handed the run's version. Only the braced version variables expand; anything else is passed on
+// as written, since the runner never expands build args itself.
+func expandVersionArgs(args map[string]string, run *models.PipelineRun) map[string]string {
+	if len(args) == 0 || run == nil || run.Version == "" {
+		return args
+	}
+	pairs := make([]string, 0, 12)
+	for _, e := range versionEnv(run) {
+		k, v, _ := strings.Cut(e, "=")
+		pairs = append(pairs, "${"+k+"}", v)
+	}
+	r := strings.NewReplacer(pairs...)
+	out := make(map[string]string, len(args))
+	for k, v := range args {
+		out[k] = r.Replace(v)
+	}
+	return out
 }
 
 func kv(k, v string) string { return k + "=" + v }

@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // PipelineRepository persists pipeline definitions, runs, and step runs.
@@ -124,13 +125,27 @@ func (r *PipelineRepository) ListEnabled() ([]models.PipelineDefinition, error) 
 	return out, err
 }
 
-// NextRunNumber returns the next per-pipeline run counter.
-func (r *PipelineRepository) NextRunNumber(pipelineID uint) (int, error) {
-	var max struct{ N int }
-	err := r.db.Model(&models.PipelineRun{}).
-		Select("COALESCE(MAX(number),0) AS n").
-		Where("pipeline_id = ?", pipelineID).Scan(&max).Error
-	return max.N + 1, err
+// DeleteRun removes a run that was refused before it was queued.
+func (r *PipelineRepository) DeleteRun(id uint) error {
+	return r.db.Delete(&models.PipelineRun{}, id).Error
+}
+
+// CreateNumberedRun stores a run with the next per-pipeline number. The pipeline row is locked for the
+// count and insert, so two triggers at once cannot both read the same MAX and share a number.
+func (r *PipelineRepository) CreateNumberedRun(run *models.PipelineRun) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var def models.PipelineDefinition
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&def, run.PipelineID).Error; err != nil {
+			return err
+		}
+		var max struct{ N int }
+		if err := tx.Model(&models.PipelineRun{}).Select("COALESCE(MAX(number),0) AS n").
+			Where("pipeline_id = ?", run.PipelineID).Scan(&max).Error; err != nil {
+			return err
+		}
+		run.Number = max.N + 1
+		return tx.Create(run).Error
+	})
 }
 
 func (r *PipelineRepository) FindRun(workspaceID, id uint) (*models.PipelineRun, error) {

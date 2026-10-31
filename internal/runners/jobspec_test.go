@@ -362,3 +362,37 @@ func TestBuildContextAndArgs(t *testing.T) {
 		t.Errorf("a plain build requires runner %q", got)
 	}
 }
+
+func TestBuildJobSpecVersionEnv(t *testing.T) {
+	run := &models.PipelineRun{ID: 1, Number: 3, Version: "1.5.0-feat-login.2", ImageTag: "v1.5.0-feat-login.2"}
+	spec, _ := BuildJobSpec(JobInputs{Run: run})
+	env := envMap(spec.Env)
+	for k, want := range map[string]string{
+		"MIABI_VERSION": "1.5.0-feat-login.2", "MIABI_IMAGE_TAG": "v1.5.0-feat-login.2",
+		"MIABI_VERSION_MAJOR": "1", "MIABI_VERSION_MINOR": "5", "MIABI_VERSION_PATCH": "0",
+		"MIABI_VERSION_PRERELEASE": "feat-login.2",
+	} {
+		if env[k] != want {
+			t.Errorf("%s = %q, want %q", k, env[k], want)
+		}
+	}
+
+	spec, _ = BuildJobSpec(JobInputs{Run: &models.PipelineRun{ID: 2, Number: 4}})
+	if _, ok := envMap(spec.Env)["MIABI_VERSION"]; ok {
+		t.Error("an unversioned run must not expose MIABI_VERSION")
+	}
+}
+
+func TestBuildArgsExpandVersion(t *testing.T) {
+	run := &models.PipelineRun{ID: 1, Number: 2, Version: "2.1.0", ImageTag: "v2.1.0"}
+	steps := []models.PipelineStepRun{{Ordinal: 0, Name: "build", Uses: "build",
+		BuildArgs: map[string]string{"VERSION": "${MIABI_VERSION}", "LABEL": "app-${MIABI_IMAGE_TAG}", "OTHER": "${HOME}"}}}
+	spec, _ := BuildJobSpec(JobInputs{Run: run, Steps: steps})
+	got := spec.Steps[0].Build.BuildArgs
+	if got["VERSION"] != "2.1.0" || got["LABEL"] != "app-v2.1.0" || got["OTHER"] != "${HOME}" {
+		t.Fatalf("build args = %v", got)
+	}
+	if steps[0].BuildArgs["VERSION"] != "${MIABI_VERSION}" {
+		t.Fatal("the run's recorded build args must stay as written")
+	}
+}
