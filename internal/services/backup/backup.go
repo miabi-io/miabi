@@ -704,6 +704,10 @@ func (s *Service) restore(ctx context.Context, inst *models.DatabaseInstance, db
 		mounts = map[string]string{spec.VolumeName: backupMount}
 	}
 
+	if err := dc.PullImage(ctx, image, nil); err != nil {
+		return fmt.Errorf("pull backup image: %w", err)
+	}
+
 	nets, err := ensureDBNetworks(ctx, dc, inst)
 	if err != nil {
 		return err
@@ -716,7 +720,10 @@ func (s *Service) restore(ctx context.Context, inst *models.DatabaseInstance, db
 		Networks: nets,
 		Mounts:   mounts,
 	})
-	if err != nil || exit != 0 {
+	if err != nil {
+		return fmt.Errorf("restore: %w: %s", err, out)
+	}
+	if exit != 0 {
 		return fmt.Errorf("restore exited with code %d: %s", exit, out)
 	}
 	return nil
