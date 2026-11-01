@@ -563,6 +563,7 @@ func (s *Service) GetRun(workspaceID, id uint) (*models.PipelineRun, error) {
 	if err != nil {
 		return nil, ErrRunNotFound
 	}
+	run.Deployment, _ = s.repo.RunDeployment(workspaceID, run.ID)
 	return run, nil
 }
 
@@ -614,8 +615,17 @@ func (s *Service) RepositoryIDByName(workspaceID uint, name string) (uint, error
 	return g.ID, nil
 }
 
+// decorateRepository fills the bound repository's and application's names.
 func (s *Service) decorateRepository(p *models.PipelineDefinition) {
-	if p == nil || p.GitRepositoryID == nil || s.gitRepos == nil {
+	if p == nil {
+		return
+	}
+	if p.ApplicationID != nil && s.apps != nil {
+		if names, err := s.apps.NamesByID(p.WorkspaceID, []uint{*p.ApplicationID}); err == nil {
+			p.ApplicationName = names[*p.ApplicationID]
+		}
+	}
+	if p.GitRepositoryID == nil || s.gitRepos == nil {
 		return
 	}
 	if g, err := s.gitRepos.Get(p.WorkspaceID, *p.GitRepositoryID); err == nil {
@@ -624,6 +634,7 @@ func (s *Service) decorateRepository(p *models.PipelineDefinition) {
 }
 
 func (s *Service) decorateRepositories(workspaceID uint, defs []models.PipelineDefinition) {
+	s.decorateApplications(workspaceID, defs)
 	if s.gitRepos == nil {
 		return
 	}
@@ -648,6 +659,27 @@ func (s *Service) decorateRepositories(workspaceID uint, defs []models.PipelineD
 	for i := range defs {
 		if defs[i].GitRepositoryID != nil {
 			defs[i].GitRepository = byID[*defs[i].GitRepositoryID]
+		}
+	}
+}
+
+func (s *Service) decorateApplications(workspaceID uint, defs []models.PipelineDefinition) {
+	if s.apps == nil {
+		return
+	}
+	var ids []uint
+	for i := range defs {
+		if defs[i].ApplicationID != nil {
+			ids = append(ids, *defs[i].ApplicationID)
+		}
+	}
+	names, err := s.apps.NamesByID(workspaceID, ids)
+	if err != nil {
+		return
+	}
+	for i := range defs {
+		if defs[i].ApplicationID != nil {
+			defs[i].ApplicationName = names[*defs[i].ApplicationID]
 		}
 	}
 }

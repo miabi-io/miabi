@@ -181,10 +181,10 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ r.display_name || r.name }}
+                    <router-link class="cell-title repo-link" :to="{ name: 'git-repository', params: { id: r.id } }">{{ r.display_name || r.name }}
                       <span v-if="managedBy(r) === 'gitops'" class="mdi mdi-source-branch text-muted" :title="$t('gitRepos.gitopsHint')" :aria-label="$t('gitRepos.gitopsHint')"></span>
                       <span v-else-if="managedBy(r) === 'apply'" class="mdi mdi-console text-muted" :title="$t('gitRepos.appliedHint')" :aria-label="$t('gitRepos.appliedHint')"></span>
-                    </span>
+                    </router-link>
                     <!-- The handle is what apps and pipelines reference, so it
                          stays visible even when a display name is set. -->
                     <span class="cell-sub">
@@ -310,6 +310,8 @@ const authTypes: { value: GitAuthType; label: string }[] = [
   .conn-label { display: none; }
 }
 
+.repo-link { color: inherit; text-decoration: none; }
+.repo-link:hover { color: var(--primary-500); }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .mdi-spin { animation: spin 0.8s linear infinite; }

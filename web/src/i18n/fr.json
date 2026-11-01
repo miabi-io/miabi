@@ -743,7 +743,9 @@
       "memory": "{value} Mo",
       "filled": "Une valeur laissée à 0 prend la valeur par défaut du plan ({defaults}) à l’enregistrement.",
       "required": "Ce plan exige une limite CPU et une limite mémoire."
-    }
+    },
+    "pipelineLink": "Pipeline lié à cette application",
+    "morePipelines": "+{count} de plus"
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
@@ -1886,7 +1888,12 @@
     "subtitle": "Dépôts publics ou privés utilisés au moment du build et par GitOps.",
     "username": "Nom d’utilisateur",
     "gitopsHint": "Déclaré par un projet GitOps : modifiez-le ou supprimez-le dans le dépôt de ce projet.",
-    "appliedHint": "Créé depuis un manifeste avec miabi apply"
+    "appliedHint": "Créé depuis un manifeste avec miabi apply",
+    "usedBy": "Utilisé par",
+    "unused": "Aucune application, aucun pipeline ni projet GitOps n’utilise ce dépôt.",
+    "kindApp": "Application",
+    "kindPipeline": "Pipeline",
+    "kindGitops": "Projet GitOps"
   },
   "gitops": {
     "action": {
@@ -1987,7 +1994,8 @@
     "declaredByParent": "déclaré par son projet parent",
     "nestedHint": "Déclaré dans le dépôt d’un autre projet GitOps : modifiez-le ou supprimez-le là-bas.",
     "appliedHint": "Créé depuis un manifeste avec miabi apply",
-    "nameFixed": "Le nom ne peut pas être modifié après la création."
+    "nameFixed": "Le nom ne peut pas être modifié après la création.",
+    "declaredByNamed": "déclaré par {name}"
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alertes et mises à jour de tous vos espaces de travail.",
@@ -2946,7 +2954,9 @@
     "webhookLeadBranch": "Ajoutez ce webhook à votre fournisseur Git et un push vers {branch} lance une exécution de {pipeline}, épinglée au commit poussé.",
     "webhookLoadFailed": "Les détails du webhook n’ont pas pu être chargés.",
     "workspaceSecret": "secret d’espace de travail",
-    "builtForPlatforms": "Plateformes pour lesquelles cette image a été construite, publiées comme une seule image multiplateforme"
+    "builtForPlatforms": "Plateformes pour lesquelles cette image a été construite, publiées comme une seule image multiplateforme",
+    "deploymentNumber": "Déploiement n°{number}",
+    "deploymentLinkTitle": "Ouvrir le déploiement lancé par cette exécution"
   },
   "placement": {
     "anyNodeTheSchedulerDecides": "N’importe quel nœud — l’ordonnanceur décide",

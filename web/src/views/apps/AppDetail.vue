@@ -11,7 +11,6 @@ import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
 import { gitRepositoryApi } from '@/api/gitRepositories'
-import { gitopsApi } from '@/api/gitops'
 import { networkApi } from '@/api/networks'
 import LocationName from '@/components/LocationName.vue'
 import LocationMigrationPanel from '@/components/LocationMigrationPanel.vue'
@@ -706,18 +705,22 @@ const deploying = ref(false)
 // than a deployment.
 const repoPipeline = ref<PipelineDefinition | null>(null)
 const deploysViaPipeline = computed(() => !!repoPipeline.value)
+// Every pipeline bound to the app, linked from the header.
+const appPipelines = ref<PipelineDefinition[]>([])
 
 async function loadRepoPipeline() {
   repoPipeline.value = null
-  if (!wid.value || app.value?.source_type !== 'git') return
+  if (!wid.value) { appPipelines.value = []; return }
   try {
-    // Pipelines are listed workspace-wide; find the repo-owned one bound to this
-    // app. Failure is silent — this only enriches the page.
+    // Pipelines are listed workspace-wide; keep the ones bound to this app. Failure is
+    // silent — this only enriches the page.
     const res = await pipelineApi.list(wid.value, 0, 100)
-    repoPipeline.value =
-      (res.data.data ?? []).find((p) => p.application_id === appId.value && p.source === 'repo' && p.enabled) ?? null
+    appPipelines.value = (res.data.data ?? []).filter((p) => p.application_id === appId.value)
+    if (app.value?.source_type === 'git') {
+      repoPipeline.value = appPipelines.value.find((p) => p.source === 'repo' && p.enabled) ?? null
+    }
   } catch {
-    repoPipeline.value = null
+    appPipelines.value = []
   }
 }
 
@@ -1018,7 +1021,9 @@ async function loadTab() {
       // Show logs immediately: stream the live deployment, else the most recent,
       // unless one is already being followed.
       if (deployments.value.length && streamingId.value === null) {
-        const target = deployments.value.find((d) => d.current) ?? deployments.value[0]
+        // ?deployment= is how a pipeline run links to the deploy it started.
+        const target = deployments.value.find((d) => d.id === Number(route.query.deployment))
+          ?? deployments.value.find((d) => d.current) ?? deployments.value[0]
         streamLogs(target.id)
       }
     }
@@ -1420,13 +1425,6 @@ async function streamLogs(id: number) {
 // | …), from the reserved miabi.io/managed-by metadata.
 const managedBy = computed(() => app.value?.metadata?.['miabi.io/managed-by'] || '')
 const gitopsId = computed(() => Number(managedBy.value === 'gitops' ? app.value?.metadata?.['miabi.io/gitops-source'] : 0) || 0)
-const gitopsName = ref('')
-// The label alone still links to the project, so a failed name lookup is not worth a toast.
-watch(gitopsId, async (id) => {
-  gitopsName.value = ''
-  if (!id || !wid.value) return
-  try { gitopsName.value = (await gitopsApi.get(wid.value, id)).data.data.name } catch { gitopsName.value = '' }
-}, { immediate: true })
 
 // imageManaged is true when the image/tag are owned by an external source of
 // truth — a marketplace template or a GitOps manifest — so editing them in
@@ -2192,7 +2190,8 @@ async function detachDatabase(d: AppDatabase) {
             </div>
             <div class="text-muted text-sm">
               <span class="mdi" :class="app.source_type === 'git' ? 'mdi-git' : 'mdi-docker'"></span>
-              {{ app.image || app.git_repo }}
+              <router-link v-if="app.source_type === 'git' && app.git_repository_id" class="prov-link" :to="{ name: 'git-repository', params: { id: app.git_repository_id } }">{{ app.git_repo }}</router-link>
+              <template v-else>{{ app.image || app.git_repo }}</template>
               <!-- Container apps run on one node; a service app's replicas are spread
                    by the scheduler, so its real placement is shown in the overview. -->
               <template v-if="!isService && app.server_name"> · <span class="mdi mdi-server-network"></span> {{ app.server_name }}</template>
@@ -2207,9 +2206,13 @@ async function detachDatabase(d: AppDatabase) {
                 >{{ template.name }}<template v-if="template.version"> v{{ template.version }}</template></router-link>
               </template>
               <template v-else-if="managedBy === 'gitops'"> · <span class="mdi mdi-source-branch"></span>
-                <router-link class="prov-link" :to="gitopsId ? { name: 'gitops-detail', params: { id: gitopsId } } : { name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ gitopsName || $t('appDetail.gitops') }}</router-link>
+                <router-link class="prov-link" :to="gitopsId ? { name: 'gitops-detail', params: { id: gitopsId } } : { name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ app?.gitops_source_name || $t('appDetail.gitops') }}</router-link>
               </template>
               <template v-else-if="managedBy === 'apply'"> · <span class="mdi mdi-console" :title="$t('appDetail.managedByApply')" :aria-label="$t('appDetail.managedByApply')"></span></template>
+              <template v-for="p in appPipelines.slice(0, 3)" :key="p.id"> · <span class="mdi mdi-pipe"></span>
+                <router-link class="prov-link" :to="{ name: 'pipeline-runs', params: { id: p.id } }" :title="$t('appDetail.pipelineLink')">{{ p.display_name || p.name }}</router-link>
+              </template>
+              <template v-if="appPipelines.length > 3"> · <router-link class="prov-link" :to="{ name: 'pipelines' }">{{ $t('appDetail.morePipelines', { count: appPipelines.length - 3 }) }}</router-link></template>
             </div>
           </div>
         </div>

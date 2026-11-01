@@ -400,6 +400,7 @@ func (d *PipelineDeployer) DeployByDigest(run *models.PipelineRun, appID uint, i
 		Image:         imageRef,
 		ImageID:       run.ImageID,
 		ImageTag:      run.ImageTag,
+		PipelineRunID: &run.ID,
 		RunnerID:      run.RunnerID,
 		Commit:        run.Commit,
 		// The app's configured strategy, not the column default. Leaving it unset meant an app set to

@@ -158,6 +158,21 @@ func (r *PipelineRepository) FindRun(workspaceID, id uint) (*models.PipelineRun,
 	return &run, nil
 }
 
+// RunDeployment returns the newest deployment a run's deploy step created, or nil when it
+// deployed nothing.
+func (r *PipelineRepository) RunDeployment(workspaceID, runID uint) (*models.RunDeployment, error) {
+	var rows []models.RunDeployment
+	err := r.db.Table("deployments").
+		Select("deployments.id, deployments.number, deployments.status, deployments.application_id, applications.name AS application_name").
+		Joins("JOIN applications ON applications.id = deployments.application_id").
+		Where("deployments.pipeline_run_id = ? AND applications.workspace_id = ?", runID, workspaceID).
+		Order("deployments.id DESC").Limit(1).Scan(&rows).Error
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	return &rows[0], nil
+}
+
 // FindRunByID loads a run without workspace scoping (worker use).
 func (r *PipelineRepository) FindRunByID(id uint) (*models.PipelineRun, error) {
 	var run models.PipelineRun

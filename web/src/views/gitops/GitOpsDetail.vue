@@ -41,6 +41,13 @@ const source = ref<GitSource | null>(null)
 // Set when another project declares this one; edits belong in that project's repository.
 const parentId = computed(() =>
   source.value?.metadata?.['miabi.io/managed-by'] === 'gitops' ? source.value.metadata['miabi.io/gitops-source'] : '')
+const parentName = ref('')
+watch(parentId, async (id) => {
+  parentName.value = ''
+  const wid = currentWorkspaceId.value
+  if (!id || !wid) return
+  parentName.value = (await gitopsApi.get(wid, Number(id)).catch(() => null))?.data.data.name ?? ''
+}, { immediate: true })
 const topo = ref<Topology | null>(null)
 const planByKey = ref<Record<string, PlanChange>>({})
 const loading = ref(false)
@@ -620,7 +627,7 @@ const policyFlags = computed(() => {
             <span class="sep">·</span><span class="mono"><span class="mdi mdi-folder-outline"></span>{{ source.path || '.' }}</span>
             <template v-if="parentId"><span class="sep">·</span>
               <router-link class="repo-link" :to="{ name: 'gitops-detail', params: { id: parentId } }" :title="$t('gitops.nestedHint')">
-                <span class="mdi mdi-file-tree-outline"></span>{{ $t('gitops.declaredByParent') }}</router-link>
+                <span class="mdi mdi-file-tree-outline"></span>{{ parentName ? $t('gitops.declaredByNamed', { name: parentName }) : $t('gitops.declaredByParent') }}</router-link>
             </template>
             <span v-else-if="source.metadata?.['miabi.io/managed-by'] === 'apply'" class="mdi mdi-console" :title="$t('gitops.appliedHint')" :aria-label="$t('gitops.appliedHint')"></span>
           </p>
