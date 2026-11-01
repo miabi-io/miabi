@@ -743,7 +743,9 @@
       "memory": "{value} MB",
       "filled": "A value left at 0 is set to the plan's default ({defaults}) when you save.",
       "required": "This plan requires a CPU and a memory limit."
-    }
+    },
+    "pipelineLink": "Pipeline bound to this application",
+    "morePipelines": "+{count} more"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -1886,7 +1888,12 @@
     "subtitle": "Public or private repositories used at build time and by GitOps.",
     "username": "Username",
     "gitopsHint": "Declared by a GitOps project: change or remove it in that project’s repository.",
-    "appliedHint": "Created from a manifest with miabi apply"
+    "appliedHint": "Created from a manifest with miabi apply",
+    "usedBy": "Used by",
+    "unused": "No application, pipeline or GitOps project uses this repository.",
+    "kindApp": "Application",
+    "kindPipeline": "Pipeline",
+    "kindGitops": "GitOps project"
   },
   "gitops": {
     "action": {
@@ -1987,7 +1994,8 @@
     "declaredByParent": "declared by its parent project",
     "nestedHint": "Declared in another GitOps project’s repository: change or remove it there.",
     "appliedHint": "Created from a manifest with miabi apply",
-    "nameFixed": "The name can’t be changed after creation."
+    "nameFixed": "The name can’t be changed after creation.",
+    "declaredByNamed": "declared by {name}"
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alerts and updates across your workspaces.",
@@ -2946,7 +2954,9 @@
     "webhookLeadBranch": "Add this webhook to your Git provider and a push to {branch} starts a run of {pipeline}, pinned to the pushed commit.",
     "webhookLoadFailed": "The webhook details could not be loaded.",
     "workspaceSecret": "workspace secret",
-    "builtForPlatforms": "Platforms this image was built for, pushed as one multi-platform image"
+    "builtForPlatforms": "Platforms this image was built for, pushed as one multi-platform image",
+    "deploymentNumber": "Deployment #{number}",
+    "deploymentLinkTitle": "Open the deployment this run started"
   },
   "placement": {
     "anyNodeTheSchedulerDecides": "Any node — the scheduler decides",

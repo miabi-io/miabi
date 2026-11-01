@@ -10,7 +10,7 @@ import { imageApi } from '@/api/images'
 import { copyText } from '@/utils/clipboard'
 import { relativeTime, formatDuration } from '@/utils/time'
 import { statusMeta } from './status'
-import type { Image, PipelineRun, PipelineRunStatus, PipelineStepLogHistory } from '@/api/types'
+import type { Image, PipelineDefinition, PipelineRun, PipelineRunStatus, PipelineStepLogHistory } from '@/api/types'
 
 const ws = useWorkspaceStore()
 const { t } = useI18n()
@@ -23,6 +23,12 @@ const pipelineId = computed(() => Number(route.params.id))
 const runId = computed(() => Number(route.params.runId))
 const run = ref<PipelineRun | null>(null)
 const image = ref<Image | null>(null)
+const pipeline = ref<PipelineDefinition | null>(null)
+const appLink = computed(() => {
+  const id = run.value?.deployment?.application_id ?? pipeline.value?.application_id
+  if (!id) return null
+  return { id, name: run.value?.deployment?.application_name || pipeline.value?.application_name || `#${id}` }
+})
 const loading = ref(false)
 
 // Logs: `liveLines` is the SSE stream (running run); `historySteps` is the
@@ -75,6 +81,9 @@ async function loadRun() {
   if (!wid || !runId.value) return
   try {
     run.value = (await pipelineApi.run(wid, runId.value)).data.data
+    if (pipeline.value?.id !== pipelineId.value) {
+      pipeline.value = (await pipelineApi.get(wid, pipelineId.value).catch(() => null))?.data.data ?? null
+    }
     await loadImage()
   } catch (e) {
     notify.apiError(e)
@@ -242,6 +251,11 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           <code v-if="run.image_tag" class="run-version" :title="$t('versioning.runVersionTitle')">{{ run.image_tag }}</code>
         </h1>
         <p v-if="run" class="subtitle">
+          <router-link v-if="appLink" class="meta-item meta-link" :to="{ name: 'app-detail', params: { id: appLink.id } }">
+            <span class="mdi mdi-application-outline"></span> {{ appLink.name }}</router-link>
+          <router-link v-if="run.deployment" class="meta-item meta-link" :title="$t('pipelines.deploymentLinkTitle')"
+            :to="{ name: 'app-detail', params: { id: run.deployment.application_id }, query: { tab: 'deployments', deployment: run.deployment.id } }">
+            <span class="mdi mdi-rocket-launch-outline"></span> {{ $t('pipelines.deploymentNumber', { number: run.deployment.number }) }}</router-link>
           <span class="meta-item"><span class="mdi mdi-source-branch"></span> {{ run.trigger }}</span>
           <span class="meta-item"><span class="mdi mdi-timer-outline"></span> {{ runDuration }}</span>
           <span v-if="run.commit" class="meta-item mono" :title="run.commit">
@@ -403,6 +417,8 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
 .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .meta-item { display: inline-flex; align-items: center; gap: 4px; }
 .meta-item .mdi { font-size: 14px; opacity: 0.8; }
+.meta-link { color: inherit; text-decoration: none; }
+.meta-link:hover { color: var(--primary-500); }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .back-link:hover { color: var(--primary-500); }
 .mono { font-family: 'JetBrains Mono', monospace; }

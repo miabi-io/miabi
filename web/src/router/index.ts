@@ -78,6 +78,7 @@ const routes = [
       { path: 'configs', name: 'configs', component: () => import('@/views/configs/Configs.vue'), meta: { title: 'Configs' } },
       { path: 'registries', name: 'registries', component: () => import('@/views/sources/Registries.vue'), meta: { title: 'Registries' } },
       { path: 'git-repositories', name: 'git-repositories', component: () => import('@/views/sources/GitRepositories.vue'), meta: { title: 'Git Repositories' } },
+      { path: 'git-repositories/:id', name: 'git-repository', component: () => import('@/views/sources/GitRepositoryDetail.vue'), meta: { title: 'Git Repository' } },
       { path: 'api-keys', name: 'api-keys', component: () => import('@/views/apikeys/ApiKeys.vue'), meta: { title: 'API Keys' } },
       { path: 'registry', name: 'registry', component: () => import('@/views/registry/Registry.vue'), meta: { title: 'Container Registry' } },
       // The :repo param is a catch-all: an image name may contain slashes.

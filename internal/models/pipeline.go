@@ -65,7 +65,9 @@ type PipelineDefinition struct {
 	GitRepositoryID *uint `json:"git_repository_id,omitempty" gorm:"index"`
 	// GitRepository is the bound repository's name, filled on read.
 	GitRepository string `json:"git_repository,omitempty" gorm:"-"`
-	Branch        string `json:"branch,omitempty"`
+	// ApplicationName is the bound application's name, filled on read.
+	ApplicationName string `json:"application_name,omitempty" gorm:"-"`
+	Branch          string `json:"branch,omitempty"`
 	// Spec is the raw kind: Pipeline YAML (on/steps). Parsed at run time.
 	Spec          string `json:"spec" gorm:"type:text;not null"`
 	Enabled       bool   `json:"enabled" gorm:"not null;default:true"`
@@ -197,6 +199,18 @@ type PipelineRun struct {
 	CreatedAt  time.Time  `json:"created_at"`
 
 	Steps []PipelineStepRun `json:"steps,omitempty" gorm:"foreignKey:PipelineRunID"`
+
+	// Deployment is the deploy this run started, filled on the run detail read.
+	Deployment *RunDeployment `json:"deployment,omitempty" gorm:"-"`
+}
+
+// RunDeployment points a run at the deployment its deploy step created.
+type RunDeployment struct {
+	ID              uint             `json:"id"`
+	Number          int              `json:"number"`
+	Status          DeploymentStatus `json:"status"`
+	ApplicationID   uint             `json:"application_id"`
+	ApplicationName string           `json:"application_name,omitempty"`
 }
 
 // PipelineStepRun is one step within a run, executed in an isolated container.

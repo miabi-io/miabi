@@ -96,6 +96,26 @@ func (r *ApplicationRepository) FindInWorkspace(workspaceID, id uint) (*models.A
 	return &app, nil
 }
 
+// NamesByID maps workspace application ids to their names, for labelling references in lists.
+func (r *ApplicationRepository) NamesByID(workspaceID uint, ids []uint) (map[uint]string, error) {
+	out := make(map[uint]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID   uint
+		Name string
+	}
+	if err := r.db.Model(&models.Application{}).Select("id", "name").
+		Where("workspace_id = ? AND id IN ?", workspaceID, ids).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.ID] = row.Name
+	}
+	return out, nil
+}
+
 // SetStack assigns (or clears, when stackID is nil) an application's stack.
 func (r *ApplicationRepository) SetStack(appID uint, stackID *uint) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", appID).

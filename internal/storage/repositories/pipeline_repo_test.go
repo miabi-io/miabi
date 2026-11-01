@@ -102,3 +102,54 @@ func TestLatestRunByPipelineEmpty(t *testing.T) {
 		t.Errorf("expected empty map, got %d entries", len(latest))
 	}
 }
+
+type appNameRow struct {
+	ID          uint `gorm:"primaryKey"`
+	WorkspaceID uint
+	Name        string
+}
+
+func (appNameRow) TableName() string { return "applications" }
+
+func TestRunDeploymentAndAppNames(t *testing.T) {
+	repo := newPipelineDB(t)
+	if err := repo.db.AutoMigrate(&appNameRow{}, &models.Deployment{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	apps := []appNameRow{{ID: 1, WorkspaceID: 7, Name: "web"}, {ID: 2, WorkspaceID: 8, Name: "other"}}
+	if err := repo.db.Create(&apps).Error; err != nil {
+		t.Fatalf("seed apps: %v", err)
+	}
+	run := uint(42)
+	for _, d := range []models.Deployment{
+		{ApplicationID: 1, Number: 4, PipelineRunID: &run, Status: models.DeploymentFailed},
+		{ApplicationID: 1, Number: 5, PipelineRunID: &run, Status: models.DeploymentSucceeded},
+		{ApplicationID: 1, Number: 6},
+	} {
+		if err := repo.db.Create(&d).Error; err != nil {
+			t.Fatalf("seed deployment: %v", err)
+		}
+	}
+
+	got, err := repo.RunDeployment(7, run)
+	if err != nil || got == nil {
+		t.Fatalf("RunDeployment = %v, %v", got, err)
+	}
+	if got.Number != 5 || got.ApplicationName != "web" || got.Status != models.DeploymentSucceeded {
+		t.Fatalf("RunDeployment = %+v, want #5 of web", got)
+	}
+	if got, _ := repo.RunDeployment(8, run); got != nil {
+		t.Fatalf("another workspace saw %+v", got)
+	}
+	if got, _ := repo.RunDeployment(7, 99); got != nil {
+		t.Fatalf("a run that deployed nothing got %+v", got)
+	}
+
+	names, err := NewApplicationRepository(repo.db).NamesByID(7, []uint{1, 2})
+	if err != nil {
+		t.Fatalf("NamesByID: %v", err)
+	}
+	if len(names) != 1 || names[1] != "web" {
+		t.Fatalf("NamesByID = %v, want only workspace 7's app", names)
+	}
+}

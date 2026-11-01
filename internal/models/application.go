@@ -363,6 +363,9 @@ type Application struct {
 	// ServerName is the display name of the node (transient; populated on read so
 	// the UI can show where the app runs). Empty if the node is unknown.
 	ServerName string `json:"server_name,omitempty" gorm:"-"`
+	// GitOpsSourceName names the GitOps project that manages the app (miabi.io/gitops-source),
+	// filled on the detail read.
+	GitOpsSourceName string `json:"gitops_source_name,omitempty" gorm:"-"`
 	// Nodes is the real per-node replica placement of a cluster (RuntimeService) app. Transient:
 	// populated only on the app-detail read, and only in cluster mode. Empty for container apps,
 	// whose single node is ServerName.
@@ -680,7 +683,8 @@ type Deployment struct {
 	Strategy      DeployStrategy   `json:"strategy" gorm:"not null;default:rolling"` // rollout method for this deploy
 	Commit        string           `json:"commit,omitempty"`
 	ImageID       *uint            `json:"image_id,omitempty"`
-	ImageTag      string           `json:"image_tag,omitempty"` // policy version tag of a pipeline build, e.g. v1.4.2
+	ImageTag      string           `json:"image_tag,omitempty"`                    // policy version tag of a pipeline build, e.g. v1.4.2
+	PipelineRunID *uint            `json:"pipeline_run_id,omitempty" gorm:"index"` // run whose deploy step created it
 	RegistryID    *uint            `json:"registry_id,omitempty"`
 	NoCache       bool             `json:"no_cache,omitempty" gorm:"not null;default:false"`
 	RunnerID      *uint            `json:"runner_id,omitempty"`

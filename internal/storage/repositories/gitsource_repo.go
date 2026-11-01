@@ -45,6 +45,14 @@ func (r *GitSourceRepository) FindInWorkspace(workspaceID, id uint) (*models.Git
 	return &g, nil
 }
 
+// NameInWorkspace returns a project's name, for labelling the resources it manages.
+func (r *GitSourceRepository) NameInWorkspace(workspaceID, id uint) (string, error) {
+	var name string
+	err := r.db.Model(&models.GitSource{}).Select("name").
+		Where("id = ? AND workspace_id = ?", id, workspaceID).Limit(1).Scan(&name).Error
+	return name, err
+}
+
 // FindByID looks a source up without workspace scoping (used by the worker/cron
 // sweep, which iterates across workspaces).
 func (r *GitSourceRepository) FindByID(id uint) (*models.GitSource, error) {

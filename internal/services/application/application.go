@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -198,6 +199,7 @@ type Service struct {
 	nodeGuard     NodeGuard
 	serverInfo    ServerInfo
 	nodeNamer     NodeNamer
+	gitopsNamer   GitOpsNamer
 	workspaces    WorkspaceInfo
 	portBindings  *repositories.PortBindingRepository
 	quota         *quota.Service
@@ -370,6 +372,27 @@ type NodeNamer interface {
 // SetNodeNamer wires the swarm-node-id → name resolver used to annotate a cluster
 // app with where its replicas actually run.
 func (s *Service) SetNodeNamer(n NodeNamer) { s.nodeNamer = n }
+
+// GitOpsNamer resolves a GitOps project id to its name.
+type GitOpsNamer interface {
+	NameInWorkspace(workspaceID, id uint) (string, error)
+}
+
+// SetGitOpsNamer wires the project lookup that names a GitOps-managed app's project.
+func (s *Service) SetGitOpsNamer(n GitOpsNamer) { s.gitopsNamer = n }
+
+func (s *Service) annotateGitOps(app *models.Application) {
+	if s.gitopsNamer == nil || app.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
+		return
+	}
+	id, err := strconv.ParseUint(app.Metadata[models.MetaGitOpsSource], 10, 64)
+	if err != nil {
+		return
+	}
+	if name, err := s.gitopsNamer.NameInWorkspace(app.WorkspaceID, uint(id)); err == nil {
+		app.GitOpsSourceName = name
+	}
+}
 
 // annotateServer fills the transient ServerName from the node record so the UI
 // can show where an app runs. Best-effort: leaves it empty on any error.
@@ -1219,6 +1242,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.Application, error) {
 		return nil, err
 	}
 	s.annotateServer(app)
+	s.annotateGitOps(app)
 	// Detail read: surface where a cluster app's replicas actually run (live Swarm
 	// placement), not just the static placement node. List views skip this.
 	s.annotatePlacement(context.Background(), app)

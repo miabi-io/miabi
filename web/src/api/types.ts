@@ -1492,6 +1492,8 @@ export interface Application {
   workspace_id: number
   server_id?: number
   server_name?: string
+  /** Name of the GitOps project that manages the app; filled on the detail read. */
+  gitops_source_name?: string
   cluster_id?: number
   // Real per-node replica placement for a cluster ("service") app, populated on
   // the app-detail read: where Swarm actually scheduled the running tasks.
@@ -1692,6 +1694,8 @@ export interface Deployment {
   image: string
   /** The pipeline build's version tag, e.g. v1.4.2. */
   image_tag?: string
+  /** The run whose deploy step created this deployment. */
+  pipeline_run_id?: number
   trigger: string
   error?: string
   current?: boolean
@@ -3206,6 +3210,8 @@ export interface PipelineDefinition {
   /** The bound repository's name — the reference format, and what to send back
    *  when updating. Present only on a repository-bound pipeline. */
   git_repository?: string
+  /** The bound application's name, filled on read. */
+  application_name?: string
   /** The resolved numeric binding, for a client that needs to match against a
    *  repository list. Read-only: write `git_repository`. */
   git_repository_id?: number | null
@@ -3282,6 +3288,16 @@ export interface PipelineRun {
   finished_at?: string | null
   created_at: string
   steps?: PipelineStepRun[]
+  /** The deployment this run's deploy step created; filled on the run detail read. */
+  deployment?: RunDeployment
+}
+
+export interface RunDeployment {
+  id: number
+  number: number
+  status: DeploymentStatus
+  application_id: number
+  application_name?: string
 }
 
 // --- Versioning ---

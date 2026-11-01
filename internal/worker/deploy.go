@@ -1070,6 +1070,7 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, RuntimeKind: models.RuntimeService,
 		Image: image, ContainerID: serviceID, Active: true,
 		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
+		PipelineRunID: dep.PipelineRunID,
 	}
 	if err := h.releases.Create(rel); err != nil {
 		_ = h.fail(dep, fmt.Errorf("create release: %w", err))
@@ -1145,6 +1146,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: false, RuntimeKind: models.RuntimeContainer,
 		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
+		PipelineRunID: dep.PipelineRunID,
 	}
 	if err := h.releases.Create(rel); err != nil {
 		_ = h.fail(dep, fmt.Errorf("create canary release: %w", err))
@@ -1896,6 +1898,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: true, RuntimeKind: models.RuntimeContainer,
 		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
+		PipelineRunID: dep.PipelineRunID,
 	}
 	if err := h.releases.Create(rel); err != nil {
 		if canary != nil {

@@ -654,6 +654,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetServerInfo(nodeService)
 	appService.SetNodeNamer(nodeService)       // resolve swarm node ids -> names for cluster placement display
 	appService.SetWorkspaceInfo(workspaceRepo) // gate privileged host mounts
+	appService.SetGitOpsNamer(repositories.NewGitSourceRepository(db))
 	appService.SetQuota(quotaService)
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	// Names the organization a dedicated cluster belongs to, for the console's badge.
