@@ -95,7 +95,6 @@ export const navSections: NavSection[] = [
     items: [
       { key: 'nav.developers.apiKeys', name: 'API Keys', path: '/api-keys', icon: 'mdi-key-outline', requiresWorkspace: true },
       { key: 'nav.developers.containerRegistry', name: 'Container Registry', path: '/registry', icon: 'mdi-cube-outline', requiresWorkspace: true },
-      { key: 'nav.developers.versioning', name: 'Versioning', path: '/versioning', icon: 'mdi-tag-multiple-outline', requiresWorkspace: true },
       { key: 'nav.developers.webhooks', name: 'Webhooks', path: '/webhooks', icon: 'mdi-webhook', requiresWorkspace: true },
       { key: 'nav.developers.generator', name: 'Generator', path: '/generator', icon: 'mdi-auto-fix', requiresWorkspace: true },
       { key: 'nav.developers.apiReference', name: 'API Reference', path: '', icon: 'mdi-book-open-page-variant-outline', external: true, requiresDocs: true },

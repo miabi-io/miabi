@@ -2360,8 +2360,7 @@
       "containerRegistry": "Registre de conteneurs",
       "generator": "Générateur",
       "title": "Développeurs",
-      "webhooks": "Webhooks",
-      "versioning": "Versionnage"
+      "webhooks": "Webhooks"
     },
     "networking": {
       "certificates": "Certificats",

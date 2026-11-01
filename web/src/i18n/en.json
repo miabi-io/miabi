@@ -2360,8 +2360,7 @@
       "containerRegistry": "Container Registry",
       "generator": "Generator",
       "title": "Developers",
-      "webhooks": "Webhooks",
-      "versioning": "Versioning"
+      "webhooks": "Webhooks"
     },
     "networking": {
       "certificates": "Certificates",

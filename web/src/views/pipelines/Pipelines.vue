@@ -3,7 +3,7 @@ import BetaBadge from '@/components/BetaBadge.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { pipelineApi, type PipelineInput } from '@/api/pipelines'
@@ -11,6 +11,7 @@ import { appApi } from '@/api/apps'
 import { gitRepositoryApi } from '@/api/gitRepositories'
 import { versioningApi, defaultSettings } from '@/api/versioning'
 import VersioningSettingsForm from '@/components/VersioningSettingsForm.vue'
+import VersionPolicyList from '@/components/VersionPolicyList.vue'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -25,6 +26,12 @@ const ws = useWorkspaceStore()
 const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
+const route = useRoute()
+
+const tab = computed<'pipelines' | 'versioning'>(() => (route.query.tab === 'versioning' ? 'versioning' : 'pipelines'))
+function setTab(next: 'pipelines' | 'versioning') {
+  router.replace({ query: { ...route.query, tab: next === 'pipelines' ? undefined : next } })
+}
 const { currentWorkspaceId } = storeToRefs(ws)
 
 const items = ref<PipelineDefinition[]>([])
@@ -282,91 +289,99 @@ function openLastRun(p: PipelineDefinition) {
         <h1>{{ $t('pipelines.pipelines') }}<BetaBadge component="pipeline" /></h1>
         <i18n-t keypath="pipelines.subtitle" tag="p" class="subtitle"><template #kind><code>kind: Pipeline</code></template></i18n-t>
       </div>
-      <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
+      <button v-if="ws.canEdit && tab === 'pipelines'" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('pipelines.newPipeline') }}</button>
     </div>
 
-    <div class="card">
-      <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
-      <div v-else-if="items.length === 0" class="empty-state">
-        <span class="mdi mdi-pipe" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>{{ $t('pipelines.noPipelinesYet') }}</h3>
-        <p>{{ $t('pipelines.emptyHint') }}</p>
-        <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('pipelines.createAPipeline') }}</button>
-      </div>
-      <div v-else class="table-wrapper">
-        <table>
-          <thead><tr><th>{{ $t('pipelines.pipeline') }}</th><th>{{ $t('pipelines.source') }}</th><th>{{ $t('jobs.lastRun') }}</th><th>{{ $t('pipelines.state') }}</th><th></th></tr></thead>
-          <tbody>
-            <tr v-for="p in items" :key="p.id">
-              <td>
-                <div class="cell-id">
-                  <span class="avatar avatar-sm"><span class="mdi mdi-pipe" style="font-size: 14px"></span></span>
-                  <span class="cell-text">
-                    <span class="cell-title link" @click="openRuns(p)">
-                      {{ p.name }}
-                      <span v-if="isRepoOwned(p)" class="repo-chip" :title="$t('pipelines.specReadFrom', { path: p.source_path, ref: p.source_ref || $t('pipelines.defaultBranch') })">
-                        <span class="mdi mdi-source-branch"></span>{{ $t('pipelines.fromRepo') }}</span>
-                    </span>
-                    <span class="cell-sub" :title="fmtDateTime(p.created_at)">{{ $t('pipelines.createdAgo', { time: relativeTime(p.created_at) }) }}</span>
-                  </span>
-                </div>
-              </td>
-              <td>
-                <!-- Which source the pipeline clones: an application, a
-                     repository, or nothing (commands only). -->
-                <span v-if="appName(p.application_id)" class="target-chip" :title="$t('pipelines.appSourceNote')">
-                  <span class="mdi mdi-application-outline"></span> {{ appName(p.application_id) }}
-                </span>
-                <span
-                  v-else-if="p.git_repository"
-                  class="target-chip"
-                  :title="`Clones this repository${p.branch ? ' (' + p.branch + ')' : ''} and pushes an image — no deploy target`"
-                >
-                  <span class="mdi mdi-git"></span> {{ repoLabel(p.git_repository) }}
-                  <span v-if="p.branch" class="branch-chip">{{ p.branch }}</span>
-                </span>
-                <span v-else class="cell-sub" :title="$t('pipelines.noSourceNote')">—</span>
-              </td>
-              <td>
-                <button v-if="p.last_run" class="last-run" :title="`Run #${p.last_run.number} · open`" @click="openLastRun(p)">
-                  <span class="badge" :class="statusMeta(p.last_run.status).badge">
-                    <span class="mdi" :class="statusMeta(p.last_run.status).icon"></span> {{ statusMeta(p.last_run.status).label }}
-                  </span>
-                  <code v-if="p.last_run.image_tag" class="last-run-tag">{{ p.last_run.image_tag }}</code>
-                  <span class="last-run-time">{{ relativeTime(p.last_run.started_at || p.last_run.created_at) }}</span>
-                </button>
-                <span v-else class="cell-sub">{{ $t('pipelines.neverRun') }}</span>
-              </td>
-              <td>
-                <span class="badge" :class="p.enabled ? 'badge-success' : 'badge-neutral'">{{ p.enabled ? 'enabled' : 'disabled' }}</span>
-              </td>
-              <td class="text-right table-actions">
-                <button class="btn-icon btn-icon-muted" :title="$t('pipelines.viewRuns')" :aria-label="$t('pipelines.viewRuns')" @click="openRuns(p)"><span class="mdi mdi-history"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('jobs.runNow')" :aria-label="$t('jobs.runNow')" :disabled="triggering === p.id || !p.enabled" @click="trigger(p)">
-                  <span class="mdi" :class="triggering === p.id ? 'mdi-loading mdi-spin' : 'mdi-play'"></span>
-                </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('pipelines.pushWebhook')" :aria-label="$t('pipelines.pushWebhook')" @click="webhookFor = p">
-                  <span class="mdi mdi-webhook"></span>
-                </button>
-                <button
-                  v-if="ws.canEdit"
-                  class="btn-icon btn-icon-muted"
-                  :title="isRepoOwned(p) ? $t('pipelines.viewManaged') : $t('action.edit')"
-                  :aria-label="isRepoOwned(p) ? $t('pipelines.view') : $t('action.edit')"
-                  @click="openEdit(p)"
-                >
-                  <span class="mdi" :class="isRepoOwned(p) ? 'mdi-eye-outline' : 'mdi-pencil-outline'"></span>
-                </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = p"><span class="mdi mdi-delete-outline"></span></button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <div class="tabs">
+      <button class="tab" :class="{ active: tab === 'pipelines' }" @click="setTab('pipelines')">{{ $t('pipelines.pipelines') }}</button>
+      <button class="tab" :class="{ active: tab === 'versioning' }" @click="setTab('versioning')">{{ $t('versioning.title') }}</button>
     </div>
 
-    <Pagination :pageable="pageable" @page="goToPage" />
+    <VersionPolicyList v-if="tab === 'versioning'" />
+    <template v-else>
+      <div class="card">
+        <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
+        <div v-else-if="items.length === 0" class="empty-state">
+          <span class="mdi mdi-pipe" style="font-size: 44px; color: var(--text-muted)"></span>
+          <h3>{{ $t('pipelines.noPipelinesYet') }}</h3>
+          <p>{{ $t('pipelines.emptyHint') }}</p>
+          <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="openCreate">{{ $t('pipelines.createAPipeline') }}</button>
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>{{ $t('pipelines.pipeline') }}</th><th>{{ $t('pipelines.source') }}</th><th>{{ $t('jobs.lastRun') }}</th><th>{{ $t('pipelines.state') }}</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="p in items" :key="p.id">
+                <td>
+                  <div class="cell-id">
+                    <span class="avatar avatar-sm"><span class="mdi mdi-pipe" style="font-size: 14px"></span></span>
+                    <span class="cell-text">
+                      <span class="cell-title link" @click="openRuns(p)">
+                        {{ p.name }}
+                        <span v-if="isRepoOwned(p)" class="repo-chip" :title="$t('pipelines.specReadFrom', { path: p.source_path, ref: p.source_ref || $t('pipelines.defaultBranch') })">
+                          <span class="mdi mdi-source-branch"></span>{{ $t('pipelines.fromRepo') }}</span>
+                      </span>
+                      <span class="cell-sub" :title="fmtDateTime(p.created_at)">{{ $t('pipelines.createdAgo', { time: relativeTime(p.created_at) }) }}</span>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <!-- Which source the pipeline clones: an application, a
+                       repository, or nothing (commands only). -->
+                  <span v-if="appName(p.application_id)" class="target-chip" :title="$t('pipelines.appSourceNote')">
+                    <span class="mdi mdi-application-outline"></span> {{ appName(p.application_id) }}
+                  </span>
+                  <span
+                    v-else-if="p.git_repository"
+                    class="target-chip"
+                    :title="`Clones this repository${p.branch ? ' (' + p.branch + ')' : ''} and pushes an image — no deploy target`"
+                  >
+                    <span class="mdi mdi-git"></span> {{ repoLabel(p.git_repository) }}
+                    <span v-if="p.branch" class="branch-chip">{{ p.branch }}</span>
+                  </span>
+                  <span v-else class="cell-sub" :title="$t('pipelines.noSourceNote')">—</span>
+                </td>
+                <td>
+                  <button v-if="p.last_run" class="last-run" :title="`Run #${p.last_run.number} · open`" @click="openLastRun(p)">
+                    <span class="badge" :class="statusMeta(p.last_run.status).badge">
+                      <span class="mdi" :class="statusMeta(p.last_run.status).icon"></span> {{ statusMeta(p.last_run.status).label }}
+                    </span>
+                    <code v-if="p.last_run.image_tag" class="last-run-tag">{{ p.last_run.image_tag }}</code>
+                    <span class="last-run-time">{{ relativeTime(p.last_run.started_at || p.last_run.created_at) }}</span>
+                  </button>
+                  <span v-else class="cell-sub">{{ $t('pipelines.neverRun') }}</span>
+                </td>
+                <td>
+                  <span class="badge" :class="p.enabled ? 'badge-success' : 'badge-neutral'">{{ p.enabled ? 'enabled' : 'disabled' }}</span>
+                </td>
+                <td class="text-right table-actions">
+                  <button class="btn-icon btn-icon-muted" :title="$t('pipelines.viewRuns')" :aria-label="$t('pipelines.viewRuns')" @click="openRuns(p)"><span class="mdi mdi-history"></span></button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('jobs.runNow')" :aria-label="$t('jobs.runNow')" :disabled="triggering === p.id || !p.enabled" @click="trigger(p)">
+                    <span class="mdi" :class="triggering === p.id ? 'mdi-loading mdi-spin' : 'mdi-play'"></span>
+                  </button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('pipelines.pushWebhook')" :aria-label="$t('pipelines.pushWebhook')" @click="webhookFor = p">
+                    <span class="mdi mdi-webhook"></span>
+                  </button>
+                  <button
+                    v-if="ws.canEdit"
+                    class="btn-icon btn-icon-muted"
+                    :title="isRepoOwned(p) ? $t('pipelines.viewManaged') : $t('action.edit')"
+                    :aria-label="isRepoOwned(p) ? $t('pipelines.view') : $t('action.edit')"
+                    @click="openEdit(p)"
+                  >
+                    <span class="mdi" :class="isRepoOwned(p) ? 'mdi-eye-outline' : 'mdi-pencil-outline'"></span>
+                  </button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = p"><span class="mdi mdi-delete-outline"></span></button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Pagination :pageable="pageable" @page="goToPage" />
+    </template>
 
     <Teleport to="body">
       <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
@@ -465,7 +480,7 @@ function openLastRun(p: PipelineDefinition) {
               </p>
             </div>
             <div v-if="showVersioning" class="versioning-section">
-              <h4><span class="mdi mdi-tag-multiple-outline"></span>{{ $t('versioning.imageVersions') }}</h4>
+              <h4><span class="mdi mdi-numeric"></span>{{ $t('versioning.imageVersions') }}</h4>
               <p v-if="sharedPolicy" class="form-hint">
                 <i18n-t keypath="versioning.sharedPolicy" tag="span">
                   <template #app>{{ appName(form.application_id) }}</template>
