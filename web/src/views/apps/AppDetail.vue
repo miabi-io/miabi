@@ -11,6 +11,7 @@ import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
 import { gitRepositoryApi } from '@/api/gitRepositories'
+import { gitopsApi } from '@/api/gitops'
 import { networkApi } from '@/api/networks'
 import LocationName from '@/components/LocationName.vue'
 import LocationMigrationPanel from '@/components/LocationMigrationPanel.vue'
@@ -1418,6 +1419,14 @@ async function streamLogs(id: number) {
 // managedBy records how the app came to exist ('marketplace' | 'gitops' | 'user'
 // | …), from the reserved miabi.io/managed-by metadata.
 const managedBy = computed(() => app.value?.metadata?.['miabi.io/managed-by'] || '')
+const gitopsId = computed(() => Number(managedBy.value === 'gitops' ? app.value?.metadata?.['miabi.io/gitops-source'] : 0) || 0)
+const gitopsName = ref('')
+// The label alone still links to the project, so a failed name lookup is not worth a toast.
+watch(gitopsId, async (id) => {
+  gitopsName.value = ''
+  if (!id || !wid.value) return
+  try { gitopsName.value = (await gitopsApi.get(wid.value, id)).data.data.name } catch { gitopsName.value = '' }
+}, { immediate: true })
 
 // imageManaged is true when the image/tag are owned by an external source of
 // truth — a marketplace template or a GitOps manifest — so editing them in
@@ -2198,7 +2207,7 @@ async function detachDatabase(d: AppDatabase) {
                 >{{ template.name }}<template v-if="template.version"> v{{ template.version }}</template></router-link>
               </template>
               <template v-else-if="managedBy === 'gitops'"> · <span class="mdi mdi-source-branch"></span>
-                <router-link class="prov-link" :to="{ name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ $t('appDetail.gitops') }}</router-link>
+                <router-link class="prov-link" :to="gitopsId ? { name: 'gitops-detail', params: { id: gitopsId } } : { name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ gitopsName || $t('appDetail.gitops') }}</router-link>
               </template>
               <template v-else-if="managedBy === 'apply'"> · <span class="mdi mdi-console" :title="$t('appDetail.managedByApply')" :aria-label="$t('appDetail.managedByApply')"></span></template>
             </div>

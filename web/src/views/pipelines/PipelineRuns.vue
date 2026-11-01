@@ -15,6 +15,7 @@ import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import RunVersionModal from './RunVersionModal.vue'
 import VersionPolicyPanel from '@/components/VersionPolicyPanel.vue'
 import { versioningApi } from '@/api/versioning'
+import { appApi } from '@/api/apps'
 import type { PipelineDefinition, PipelineRun, PipelineRunEvent, VersionPolicy } from '@/api/types'
 
 const ws = useWorkspaceStore()
@@ -34,6 +35,7 @@ const triggering = ref(false)
 const showWebhook = ref(false)
 const showRunVersion = ref(false)
 const policy = ref<VersionPolicy | null>(null)
+const appName = ref('')
 const now = ref(Date.now())
 
 // The tab lives in the query so the header's next-tag chip and shared links can open it directly.
@@ -70,6 +72,10 @@ async function loadPipeline() {
   } catch (e) {
     notify.apiError(e)
   }
+  const appId = pipeline.value?.application_id
+  if (appId && !appName.value) {
+    try { appName.value = (await appApi.get(wid, appId)).data.data.name } catch { appName.value = '' }
+  }
   // No policy is the ordinary case for a pipeline that builds nothing, not an error.
   try {
     policy.value = (await versioningApi.forPipeline(wid, pipelineId.value)).data.data
@@ -83,7 +89,7 @@ function runStarted(run: PipelineRun) {
   loadPipeline()
 }
 loadPipeline()
-watch([currentWorkspaceId, pipelineId], () => { loadPipeline(); goToPage(0) })
+watch([currentWorkspaceId, pipelineId], () => { appName.value = ''; loadPipeline(); goToPage(0) })
 
 // noCache is the one-off "rebuild everything" run: it overrides the spec's cache
 // setting for this run alone, so nothing in the repository has to change.
@@ -156,6 +162,10 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <p class="subtitle">
+          <template v-if="pipeline?.application_id">
+            <router-link class="app-link" :to="{ name: 'app-detail', params: { id: pipeline.application_id } }">
+              <span class="mdi mdi-application-outline"></span>{{ appName || `#${pipeline.application_id}` }}</router-link> ·
+          </template>
           {{ $t('pipelines.runHistory') }}
           <span v-if="pageable.total_elements"> · {{ $t('pipelines.runCount', pageable.total_elements) }}</span>
           <span v-if="pipeline?.last_run" :title="pipeline.last_run.started_at ? fmtDateTime(pipeline.last_run.started_at) : ''">
@@ -254,6 +264,8 @@ onBeforeUnmount(() => {
 }
 .next-tag:hover { color: var(--primary-500); }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.app-link { color: var(--text-secondary, var(--text-muted)); text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+.app-link:hover { color: var(--primary-500); }
 .back-link { font-size: 13px; color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .back-link:hover { color: var(--primary-500); }
 .mono { font-family: 'JetBrains Mono', monospace; }
