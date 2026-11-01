@@ -13,6 +13,7 @@ import { fmtDateTime } from '@/utils/datetime'
 import { statusMeta } from './status'
 import PipelineWebhookModal from './PipelineWebhookModal.vue'
 import RunVersionModal from './RunVersionModal.vue'
+import VersionPolicyPanel from '@/components/VersionPolicyPanel.vue'
 import { versioningApi } from '@/api/versioning'
 import type { PipelineDefinition, PipelineRun, PipelineRunEvent, VersionPolicy } from '@/api/types'
 
@@ -34,6 +35,16 @@ const showWebhook = ref(false)
 const showRunVersion = ref(false)
 const policy = ref<VersionPolicy | null>(null)
 const now = ref(Date.now())
+
+// The tab lives in the query so the header's next-tag chip and shared links can open it directly.
+const tab = computed<'runs' | 'versioning'>(() => (route.query.tab === 'versioning' && policy.value ? 'versioning' : 'runs'))
+function setTab(next: 'runs' | 'versioning') {
+  router.replace({ query: { ...route.query, tab: next === 'runs' ? undefined : next } })
+}
+function policyDeleted() {
+  policy.value = null
+  setTab('runs')
+}
 
 const { pageable, goToPage } = usePagination(async (page) => {
   const wid = currentWorkspaceId.value
@@ -153,8 +164,8 @@ onBeforeUnmount(() => {
         </p>
       </div>
       <div class="header-actions">
-        <router-link v-if="policy" :to="{ name: 'version-policy', params: { uid: policy.uid } }" class="next-tag" :title="$t('versioning.nextTagTitle')">
-          <span class="mdi mdi-tag-outline"></span>{{ policy.next || 'run-N' }}</router-link>
+        <button v-if="policy" type="button" class="next-tag" :title="$t('versioning.nextTagTitle')" @click="setTab('versioning')">
+          <span class="mdi mdi-tag-outline"></span>{{ policy.next || 'run-N' }}</button>
         <button v-if="ws.canEdit && pipeline?.enabled && policy && policy.scheme !== 'run'" class="btn btn-secondary" :disabled="triggering" @click="showRunVersion = true">
           <span class="mdi mdi-tag-arrow-up-outline"></span>{{ $t('versioning.runWithVersion') }}</button>
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="showWebhook = true">
@@ -175,48 +186,57 @@ onBeforeUnmount(() => {
     <PipelineWebhookModal :open="showWebhook" :pipeline="pipeline" @close="showWebhook = false" />
     <RunVersionModal :pipeline="showRunVersion ? pipeline : null" :policy="policy" @close="showRunVersion = false" @started="runStarted" />
 
-    <div class="card">
-      <div v-if="loading && runs.length === 0" class="card-body"><span class="spinner"></span></div>
-      <div v-else-if="runs.length === 0" class="empty-state">
-        <span class="mdi mdi-history" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>{{ $t('pipelines.noRunsYet') }}</h3>
-        <p>{{ $t('pipelines.triggerThisPipelineToSee') }}</p>
-        <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger()">{{ $t('jobs.runNow') }}</button>
-      </div>
-      <div v-else class="table-wrapper">
-        <table>
-          <thead><tr><th>{{ $t('pipelines.run') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('pipelines.commit') }}</th><th>{{ $t('pipelines.trigger') }}</th><th>{{ $t('pipelines.duration') }}</th><th>{{ $t('pipelines.started') }}</th></tr></thead>
-          <tbody>
-            <tr v-for="r in runs" :key="r.id" class="row-link" :class="`rail-${statusMeta(r.status).badge}`" @click="openRun(r)">
-              <td class="cell-title">
-                #{{ r.number }}
-                <code v-if="r.image_tag" class="run-tag" :class="{ dim: r.status === 'failed' || r.status === 'canceled' }">{{ r.image_tag }}</code>
-                <span v-if="r.no_cache" class="badge badge-neutral no-cache" :title="$t('pipelines.builtWithoutCache')">{{ $t('pipelines.noCache') }}</span>
-              </td>
-              <td>
-                <span class="badge" :class="statusMeta(r.status).badge">
-                  <span class="mdi" :class="statusMeta(r.status).icon"></span> {{ statusMeta(r.status).label }}
-                </span>
-              </td>
-              <td>
-                <div v-if="r.commit" class="commit-cell">
-                  <span class="mono commit-sha">{{ r.commit.slice(0, 7) }}</span>
-                  <span v-if="r.commit_message" class="commit-msg">{{ r.commit_message }}</span>
-                </div>
-                <span v-else class="cell-sub">—</span>
-              </td>
-              <td class="cell-sub">{{ r.trigger }}</td>
-              <td class="cell-sub">{{ formatDuration(r.started_at, r.finished_at, now, r.created_at, isTerminal(r.status)) }}</td>
-              <td class="cell-sub" :title="r.started_at ? new Date(r.started_at).toLocaleString() : ''">
-                {{ relativeTime(r.started_at, now) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <div v-if="policy" class="tabs">
+      <button class="tab" :class="{ active: tab === 'runs' }" @click="setTab('runs')">{{ $t('pipelines.runs') }}</button>
+      <button class="tab" :class="{ active: tab === 'versioning' }" @click="setTab('versioning')">{{ $t('versioning.title') }}</button>
     </div>
 
-    <Pagination :pageable="pageable" @page="goToPage" />
+    <VersionPolicyPanel v-if="policy && tab === 'versioning'" :uid="policy.uid" @loaded="policy = $event" @deleted="policyDeleted" />
+
+    <template v-else>
+      <div class="card">
+        <div v-if="loading && runs.length === 0" class="card-body"><span class="spinner"></span></div>
+        <div v-else-if="runs.length === 0" class="empty-state">
+          <span class="mdi mdi-history" style="font-size: 44px; color: var(--text-muted)"></span>
+          <h3>{{ $t('pipelines.noRunsYet') }}</h3>
+          <p>{{ $t('pipelines.triggerThisPipelineToSee') }}</p>
+          <button v-if="ws.canEdit && pipeline?.enabled" class="btn btn-primary mt-4" :disabled="triggering" @click="trigger()">{{ $t('jobs.runNow') }}</button>
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>{{ $t('pipelines.run') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('pipelines.commit') }}</th><th>{{ $t('pipelines.trigger') }}</th><th>{{ $t('pipelines.duration') }}</th><th>{{ $t('pipelines.started') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="r in runs" :key="r.id" class="row-link" :class="`rail-${statusMeta(r.status).badge}`" @click="openRun(r)">
+                <td class="cell-title">
+                  #{{ r.number }}
+                  <code v-if="r.image_tag" class="run-tag" :class="{ dim: r.status === 'failed' || r.status === 'canceled' }">{{ r.image_tag }}</code>
+                  <span v-if="r.no_cache" class="badge badge-neutral no-cache" :title="$t('pipelines.builtWithoutCache')">{{ $t('pipelines.noCache') }}</span>
+                </td>
+                <td>
+                  <span class="badge" :class="statusMeta(r.status).badge">
+                    <span class="mdi" :class="statusMeta(r.status).icon"></span> {{ statusMeta(r.status).label }}
+                  </span>
+                </td>
+                <td>
+                  <div v-if="r.commit" class="commit-cell">
+                    <span class="mono commit-sha">{{ r.commit.slice(0, 7) }}</span>
+                    <span v-if="r.commit_message" class="commit-msg">{{ r.commit_message }}</span>
+                  </div>
+                  <span v-else class="cell-sub">—</span>
+                </td>
+                <td class="cell-sub">{{ r.trigger }}</td>
+                <td class="cell-sub">{{ formatDuration(r.started_at, r.finished_at, now, r.created_at, isTerminal(r.status)) }}</td>
+                <td class="cell-sub" :title="r.started_at ? new Date(r.started_at).toLocaleString() : ''">
+                  {{ relativeTime(r.started_at, now) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Pagination :pageable="pageable" @page="goToPage" />
+    </template>
   </div>
 </template>
 
@@ -230,6 +250,7 @@ onBeforeUnmount(() => {
 .next-tag {
   display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
   color: var(--text-secondary, var(--text-muted)); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px dashed var(--border);
+  background: none; cursor: pointer;
 }
 .next-tag:hover { color: var(--primary-500); }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }

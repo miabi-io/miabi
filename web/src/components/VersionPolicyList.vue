@@ -78,19 +78,16 @@ function open(p: VersionPolicy) { router.push({ name: 'version-policy', params: 
 
 <template>
   <div>
-    <div class="page-header">
-      <div>
-        <h1>{{ $t('versioning.title') }}</h1>
-        <p class="subtitle">{{ $t('versioning.subtitle') }}</p>
-      </div>
-      <button v-if="ws.isWorkspaceAdmin && uncovered.length" class="btn btn-primary" @click="openCreate">
+    <div class="toolbar">
+      <p class="subtitle">{{ $t('versioning.subtitle') }}</p>
+      <button v-if="ws.isWorkspaceAdmin && uncovered.length" class="btn btn-secondary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('versioning.enable') }}</button>
     </div>
 
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
-        <span class="mdi mdi-tag-multiple-outline" style="font-size: 44px; color: var(--text-muted)"></span>
+        <span class="mdi mdi-numeric" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('versioning.emptyTitle') }}</h3>
         <p>{{ $t('versioning.emptyHint') }}</p>
         <button v-if="ws.isWorkspaceAdmin && uncovered.length" class="btn btn-primary mt-4" @click="openCreate">{{ $t('versioning.enable') }}</button>
@@ -153,7 +150,8 @@ function open(p: VersionPolicy) { router.push({ name: 'version-policy', params: 
 </template>
 
 <style scoped>
-.subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.subtitle { font-size: 13px; color: var(--text-muted); margin: 0; }
 .row-link { cursor: pointer; }
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .tag { font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12)); }
