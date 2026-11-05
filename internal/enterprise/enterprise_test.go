@@ -75,3 +75,16 @@ func TestGate_Community(t *testing.T) {
 		t.Fatalf("edition = %s, want community", e.Entitlements().Edition)
 	}
 }
+
+// TestUnknownSigningKey: a stored license signed by a key this build does not trust
+// grants nothing, and says why instead of passing for Community.
+func TestUnknownSigningKey(t *testing.T) {
+	e := &impl{unknownKID: "miabi-209901"}
+	if e.Has(FlagSSOSAML) {
+		t.Fatal("an untrusted key must not grant features")
+	}
+	ent := e.Entitlements()
+	if ent.State != StateUnknownSigningKey || ent.SigningKey != "miabi-209901" {
+		t.Fatalf("entitlements = %+v", ent)
+	}
+}

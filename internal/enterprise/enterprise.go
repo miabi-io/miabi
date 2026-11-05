@@ -30,16 +30,19 @@ import (
 	"gorm.io/gorm"
 )
 
-var embeddedPublicKey string
+// embeddedKeyring is the customer portal's keyring export for Miabi (base64 JSON), set at link
+// time with -ldflags "-X github.com/miabi-io/miabi/internal/enterprise.embeddedKeyring=<base64>".
+var embeddedKeyring string
 
 // New constructs the real EE implementation: it loads any installed license from the database,
 // falling back to MIABI_LICENSE_FILE for air-gapped installs. A license bound to a different
 // instance grants no features. An empty instanceURL disables the URL check; install_id always applies.
 func New(db *gorm.DB, licenseFile string, instanceURL string, installID string) EE {
-	pub := strings.TrimSpace(embeddedPublicKey)
-	e := &impl{db: db, pub: pub, instanceURL: instanceURL, installID: installID}
-	if pub == "" {
-		logger.Warn("enterprise: no license public key configured; licenses cannot be verified")
+	e := &impl{db: db, instanceURL: instanceURL, installID: installID}
+	if ring, err := license.ParseKeyring(embeddedKeyring); err != nil || ring.Product != license.Product {
+		logger.Warn("enterprise: no license keyring configured; licenses cannot be verified")
+	} else {
+		e.ring = &ring
 	}
 	if err := e.load(); err != nil {
 		logger.Warn("enterprise: failed to load installed license", "error", err)
@@ -57,13 +60,14 @@ func New(db *gorm.DB, licenseFile string, instanceURL string, installID string) 
 
 type impl struct {
 	db           *gorm.DB
-	pub          string
-	instanceURL  string // this deployment's public URL (for the URL binding)
-	installID    string // this deployment's stable Install ID (for the install-id binding)
+	ring         *license.Keyring // nil ⇒ this build cannot verify licenses
+	instanceURL  string           // this deployment's public URL (for the URL binding)
+	installID    string           // this deployment's stable Install ID (for the install-id binding)
 	mu           sync.RWMutex
 	claims       *license.Claims   // nil ⇒ community
 	bindMismatch bool              // claims valid but bound to a different instance ⇒ deny
 	bindReason   string            // which binding failed (BindingError*), for display
+	unknownKID   string            // the stored license is signed by this key, which the build does not trust
 	saml         SAMLProvider      // nil until InitSSO + sso_saml entitled
 	scim         SCIMProvider      // nil until InitSSO
 	ldap         LDAPAuthenticator // nil until InitSSO
@@ -213,8 +217,10 @@ func (e *impl) LDAP() LDAPAuthenticator {
 }
 
 // load reads the active license row and re-verifies its signed token. A row that
-// fails verification (tampered DB, rotated key) is ignored, falling back to
-// community — the signed token is authoritative, not the cached columns.
+// fails verification (tampered DB) is ignored, falling back to community — the
+// signed token is authoritative, not the cached columns. A license signed by a key
+// this build does not trust is reported, not silently dropped: the fix is to
+// upgrade Miabi, not to buy another license.
 func (e *impl) load() error {
 	var row models.License
 	if err := e.db.Order("id DESC").First(&row).Error; err != nil {
@@ -223,7 +229,18 @@ func (e *impl) load() error {
 		}
 		return err
 	}
-	c, err := license.Verify(e.pub, row.Token)
+	if e.ring == nil {
+		return nil
+	}
+	c, err := license.Verify(*e.ring, row.Token)
+	if errors.Is(err, license.ErrUnknownKey) {
+		kid := license.KeyID(row.Token)
+		logger.Warn("enterprise: stored license is signed by a key this build does not trust; upgrade Miabi", "kid", kid)
+		e.mu.Lock()
+		e.unknownKID = kid
+		e.mu.Unlock()
+		return nil
+	}
 	if err != nil {
 		logger.Warn("enterprise: stored license failed verification; reverting to community", "error", err)
 		return nil
@@ -291,6 +308,13 @@ func (e *impl) Entitlements() Entitlements {
 	}
 	// A license bound to a different instance grants nothing: report the mismatch
 	// state (keeping edition/tier/install_id/url for display) and drop flags.
+	e.mu.RLock()
+	unknownKID := e.unknownKID
+	e.mu.RUnlock()
+	if unknownKID != "" {
+		ent.State = StateUnknownSigningKey
+		ent.SigningKey = unknownKID
+	}
 	if mm, reason := e.mismatched(); mm {
 		ent.State = StateBindingMismatch
 		ent.BindingError = reason
@@ -354,10 +378,13 @@ func (e *impl) RequireMutable(flag string) error {
 // Install verifies the token against the public key and persists it as the
 // single active license, replacing any prior row.
 func (e *impl) Install(_ context.Context, token string, requestHost string) (Entitlements, error) {
-	if e.pub == "" {
-		return Entitlements{}, errors.New("no license public key configured")
+	if e.ring == nil {
+		return Entitlements{}, errors.New("this build has no license keyring, so it cannot verify licenses")
 	}
-	c, err := license.Verify(e.pub, strings.TrimSpace(token))
+	c, err := license.Verify(*e.ring, strings.TrimSpace(token))
+	if errors.Is(err, license.ErrUnknownKey) {
+		return Entitlements{}, ErrLicenseUnknownKey
+	}
 	if err != nil {
 		return Entitlements{}, err
 	}
@@ -388,6 +415,7 @@ func (e *impl) Install(_ context.Context, token string, requestHost string) (Ent
 	e.claims = &c
 	e.bindMismatch = !ok
 	e.bindReason = reason
+	e.unknownKID = ""
 	e.mu.Unlock()
 	return e.Entitlements(), nil
 }
@@ -400,6 +428,7 @@ func (e *impl) Remove(_ context.Context) error {
 	e.claims = nil
 	e.bindMismatch = false
 	e.bindReason = ""
+	e.unknownKID = ""
 	e.mu.Unlock()
 	return nil
 }

@@ -71,7 +71,7 @@ jobs:
             VERSION=${{ env.VERSION }}
             COMMIT=${{ env.COMMIT }}
             GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            LICENSE_KEYRING=${{ vars.LICENSE_KEYRING }}
           tags: |
             miabi/miabi:nightly-rootless
 
@@ -86,7 +86,7 @@ jobs:
             VERSION=${{ env.VERSION }}
             COMMIT=${{ env.COMMIT }}
             GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            LICENSE_KEYRING=${{ vars.LICENSE_KEYRING }}
           tags: |
             miabi/miabi:nightly
 

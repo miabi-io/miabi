@@ -1,21 +1,12 @@
-// Copyright (c) 2026 Jonas Kaninda.
+// Copyright (c) 2026 Jonas Kaninda. All rights reserved.
 //
-// This file is part of Miabi.
+// This file is part of Miabi Enterprise Edition.
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This file is licensed under the Miabi Enterprise License, not the GNU Affero
+// General Public License. You may use it only with a valid Miabi Enterprise
+// subscription and under the terms in internal/enterprise/LICENSE.md.
 //
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-//
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
 package license
 
@@ -24,29 +15,50 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
-func generateKey() (publicKey, privateKey string, err error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return "", "", err
-	}
-	return base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(priv), nil
+type testKey struct {
+	kid  string
+	pub  ed25519.PublicKey
+	priv ed25519.PrivateKey
 }
 
-func sign(privateKeyB64 string, c Claims) (string, error) {
-	raw, err := base64.StdEncoding.DecodeString(privateKeyB64)
-	if err != nil || len(raw) != ed25519.PrivateKeySize {
-		return "", ErrBadKey
+func newKey(t *testing.T, kid string) testKey {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return testKey{kid, pub, priv}
+}
+
+func sign(t *testing.T, product string, k testKey, c Claims) string {
+	t.Helper()
+	c.Product = product
 	payload, err := json.Marshal(c)
 	if err != nil {
-		return "", err
+		t.Fatal(err)
 	}
-	body := tokenPrefix + "." + b64.EncodeToString(payload)
-	return body + "." + b64.EncodeToString(ed25519.Sign(ed25519.PrivateKey(raw), []byte(body))), nil
+	body := product + "-v1." + k.kid + "." + b64.EncodeToString(payload)
+	return body + "." + b64.EncodeToString(ed25519.Sign(k.priv, []byte(body)))
+}
+
+func keyring(t *testing.T, product string, keys ...testKey) Keyring {
+	t.Helper()
+	doc := map[string]any{"product": product, "keys": map[string]string{}}
+	for _, k := range keys {
+		doc["keys"].(map[string]string)[k.kid] = base64.StdEncoding.EncodeToString(k.pub)
+	}
+	raw, _ := json.Marshal(doc)
+	ring, err := ParseKeyring(base64.StdEncoding.EncodeToString(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ring
 }
 
 func sampleClaims(now time.Time) Claims {
@@ -60,16 +72,12 @@ func sampleClaims(now time.Time) Claims {
 }
 
 func TestSignVerifyRoundTrip(t *testing.T) {
-	pub, priv, err := generateKey()
-	if err != nil {
-		t.Fatalf("generateKey: %v", err)
+	k := newKey(t, "miabi-202611")
+	tok := sign(t, Product, k, sampleClaims(time.Now()))
+	if KeyID(tok) != "miabi-202611" {
+		t.Fatalf("KeyID = %q", KeyID(tok))
 	}
-	now := time.Now()
-	tok, err := sign(priv, sampleClaims(now))
-	if err != nil {
-		t.Fatalf("sign: %v", err)
-	}
-	got, err := Verify(pub, tok)
+	got, err := Verify(keyring(t, Product, k), tok)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -78,31 +86,68 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRotation: a build trusting old and new keys verifies licenses signed by either.
+func TestRotation(t *testing.T) {
+	old, next := newKey(t, "miabi-2026"), newKey(t, "miabi-2027")
+	ring := keyring(t, Product, old, next)
+	for _, k := range []testKey{old, next} {
+		if _, err := Verify(ring, sign(t, Product, k, sampleClaims(time.Now()))); err != nil {
+			t.Fatalf("%s: %v", k.kid, err)
+		}
+	}
+	if _, err := Verify(keyring(t, Product, old), sign(t, Product, next, sampleClaims(time.Now()))); !errors.Is(err, ErrUnknownKey) {
+		t.Fatalf("a key the build does not hold: err = %v", err)
+	}
+}
+
 func TestVerifyTamperFails(t *testing.T) {
-	pub, priv, _ := generateKey()
-	tok, _ := sign(priv, sampleClaims(time.Now()))
+	k := newKey(t, "k1")
+	tok := sign(t, Product, k, sampleClaims(time.Now()))
 	b := []byte(tok)
-	mid := len(b) / 2
-	b[mid] ^= 0x01
-	if _, err := Verify(pub, string(b)); err == nil {
+	b[len(b)/2] ^= 0x01
+	if _, err := Verify(keyring(t, Product, k), string(b)); err == nil {
 		t.Fatal("expected verification to fail on a tampered token")
 	}
 }
 
 func TestVerifyWrongKeyFails(t *testing.T) {
-	_, priv, _ := generateKey()
-	otherPub, _, _ := generateKey()
-	tok, _ := sign(priv, sampleClaims(time.Now()))
-	if _, err := Verify(otherPub, tok); err != ErrBadSignature {
+	k, other := newKey(t, "k1"), newKey(t, "k1")
+	tok := sign(t, Product, k, sampleClaims(time.Now()))
+	if _, err := Verify(keyring(t, Product, other), tok); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("expected ErrBadSignature, got %v", err)
+	}
+	k2 := newKey(t, "k2")
+	parts := strings.Split(tok, ".")
+	swapped := strings.Join([]string{parts[0], "k2", parts[2], parts[3]}, ".")
+	if _, err := Verify(keyring(t, Product, k, k2), swapped); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("swapped kid: err = %v", err)
+	}
+}
+
+func TestVerifyOtherProduct(t *testing.T) {
+	k := newKey(t, "k1")
+	posta := sign(t, "posta", k, sampleClaims(time.Now()))
+	if _, err := Verify(keyring(t, Product, k), posta); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("posta token: err = %v", err)
+	}
+	if _, err := Verify(keyring(t, "posta", k), sign(t, Product, k, sampleClaims(time.Now()))); !errors.Is(err, ErrWrongProduct) {
+		t.Fatalf("posta keyring: err = %v", err)
 	}
 }
 
 func TestVerifyMalformed(t *testing.T) {
-	pub, _, _ := generateKey()
-	for _, tok := range []string{"", "nope", "miabi-v1.onlytwo", "wrong-prefix.a.b"} {
-		if _, err := Verify(pub, tok); err == nil {
-			t.Fatalf("expected error for %q", tok)
+	ring := keyring(t, Product, newKey(t, "k1"))
+	for _, tok := range []string{"", "nope", "miabi-v1.onlytwo", "miabi-v1.a.b", "wrong-prefix.k1.a.b"} {
+		if _, err := Verify(ring, tok); !errors.Is(err, ErrMalformed) {
+			t.Fatalf("%q: err = %v", tok, err)
+		}
+	}
+}
+
+func TestParseKeyring(t *testing.T) {
+	for _, raw := range []string{"", "not base64!", `{"product":"miabi","keys":{}}`, `{"product":"miabi","keys":{"k":"c2hvcnQ="}}`} {
+		if _, err := ParseKeyring(raw); !errors.Is(err, ErrBadKeyring) {
+			t.Fatalf("%q: err = %v", raw, err)
 		}
 	}
 }

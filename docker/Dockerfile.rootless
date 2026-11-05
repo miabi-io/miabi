@@ -40,12 +40,12 @@ ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
 ARG GO_TAGS="enterprise"
-ARG LICENSE_PUBLIC_KEY=""
+ARG LICENSE_KEYRING=""
 # The Goma Gateway release to provision, from versions.miabi.io; empty keeps the build's fallback.
 ARG GOMA_VERSION=""
 # CGO disabled → a static binary that runs on any runtime base as-is.
 RUN CGO_ENABLED=0 go build -tags "${GO_TAGS}" \
-    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/config.BuildDate=${BUILD_DATE} -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey=${LICENSE_PUBLIC_KEY} -X github.com/miabi-io/miabi/pkg/bundled.gatewayVersion=${GOMA_VERSION}" \
+    -ldflags "-s -w -X github.com/miabi-io/miabi/internal/config.Version=${VERSION} -X github.com/miabi-io/miabi/internal/config.CommitID=${COMMIT} -X github.com/miabi-io/miabi/internal/config.BuildDate=${BUILD_DATE} -X github.com/miabi-io/miabi/internal/enterprise.embeddedKeyring=${LICENSE_KEYRING} -X github.com/miabi-io/miabi/pkg/bundled.gatewayVersion=${GOMA_VERSION}" \
     -o /out/miabi ./cmd/miabi
 
 FROM alpine:3.24

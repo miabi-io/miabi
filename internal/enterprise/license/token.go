@@ -1,25 +1,21 @@
-// Copyright (c) 2026 Jonas Kaninda.
+// Copyright (c) 2026 Jonas Kaninda. All rights reserved.
 //
-// This file is part of Miabi.
+// This file is part of Miabi Enterprise Edition.
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This file is licensed under the Miabi Enterprise License, not the GNU Affero
+// General Public License. You may use it only with a valid Miabi Enterprise
+// subscription and under the terms in internal/enterprise/LICENSE.md.
 //
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-//
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package license implements Miabi's offline, signed commercial license token: an Ed25519-signed
-// claims blob verified against a public key embedded in the binary, so verification works
-// air-gapped. It is pure (no DB, no build tag); a CE binary simply never imports it.
+// Package license verifies Miabi's offline, signed commercial license token: an Ed25519-signed
+// claims blob verified against a keyring of public keys embedded in the binary, so verification
+// works air-gapped. It is pure (no DB, no build tag).
+//
+// The wire format is "miabi-v1.<kid>.<base64url(claims)>.<base64url(signature)>". The signature
+// covers everything before the last dot, so a swapped kid breaks it, and the kid picks the key
+// from the keyring, so a signing key can rotate without breaking installed licenses. It matches
+// the customer portal's pkg/license, which signs; keep the two in step.
 package license
 
 import (
@@ -32,9 +28,11 @@ import (
 	"time"
 )
 
-// tokenPrefix versions the wire format and is part of the signed message, so a
-// token issued for one format can never be replayed under another.
-const tokenPrefix = "miabi-v1"
+// Product is the token prefix and product claim Miabi accepts; Version is the format.
+const (
+	Product = "miabi"
+	Version = "v1"
+)
 
 type State string
 
@@ -48,18 +46,22 @@ const (
 var (
 	ErrMalformed    = errors.New("license: malformed token")
 	ErrBadSignature = errors.New("license: signature verification failed")
-	ErrBadKey       = errors.New("license: invalid key")
+	ErrUnknownKey   = errors.New("license: signed by a key this build does not trust")
+	ErrWrongProduct = errors.New("license: issued for another product")
+	ErrBadKeyring   = errors.New("license: invalid keyring")
 )
 
 type Claims struct {
+	Product   string         `json:"product"`
 	LicenseID string         `json:"license_id"`
 	Customer  string         `json:"customer"`
 	Edition   string         `json:"edition"`        // "enterprise"
 	Tier      string         `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
 	InstallID string         `json:"install_id,omitempty"`
 	URL       string         `json:"url,omitempty"`
-	Flags     []string       `json:"flags"`
-	Limits    map[string]int `json:"limits"`
+	Flags     []string       `json:"flags,omitempty"`
+	Limits    map[string]int `json:"limits,omitempty"`
+	Trial     bool           `json:"trial,omitempty"`
 	NotBefore time.Time      `json:"not_before"`
 	NotAfter  time.Time      `json:"not_after"`
 	GraceDays int            `json:"grace_days"`
@@ -68,37 +70,92 @@ type Claims struct {
 
 var b64 = base64.RawURLEncoding
 
-// Verify checks the token's signature against publicKeyB64 and returns its
-// claims.
-func Verify(publicKeyB64, token string) (Claims, error) {
-	var c Claims
-	pubRaw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(publicKeyB64))
-	if err != nil || len(pubRaw) != ed25519.PublicKeySize {
-		return c, ErrBadKey
+// Keyring holds the public keys this build trusts, by key id.
+type Keyring struct {
+	Product string
+	Keys    map[string]ed25519.PublicKey
+}
+
+type keyringDoc struct {
+	Product string            `json:"product"`
+	Keys    map[string]string `json:"keys"`
+}
+
+func ParseKeyring(raw string) (Keyring, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return Keyring{}, ErrBadKeyring
 	}
+	data := []byte(raw)
+	if !strings.HasPrefix(raw, "{") {
+		decoded, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return Keyring{}, ErrBadKeyring
+		}
+		data = decoded
+	}
+	var doc keyringDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return Keyring{}, ErrBadKeyring
+	}
+	ring := Keyring{Product: doc.Product, Keys: map[string]ed25519.PublicKey{}}
+	for kid, pub := range doc.Keys {
+		key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(pub))
+		if err != nil || len(key) != ed25519.PublicKeySize {
+			return Keyring{}, fmt.Errorf("%w: key %q", ErrBadKeyring, kid)
+		}
+		ring.Keys[kid] = ed25519.PublicKey(key)
+	}
+	if ring.Product == "" || len(ring.Keys) == 0 {
+		return Keyring{}, ErrBadKeyring
+	}
+	return ring, nil
+}
+
+// KeyID returns the kid a token names, without verifying anything.
+func KeyID(token string) string {
 	parts := strings.Split(strings.TrimSpace(token), ".")
-	if len(parts) != 3 || parts[0] != tokenPrefix {
+	if len(parts) != 4 {
+		return ""
+	}
+	return parts[1]
+}
+
+// Verify checks a token against the keyring and returns its claims: the prefix, then the key id,
+// then the signature, then the product claim.
+func Verify(ring Keyring, token string) (Claims, error) {
+	var c Claims
+	parts := strings.Split(strings.TrimSpace(token), ".")
+	if len(parts) != 4 || parts[0] != Product+"-"+Version || parts[1] == "" {
 		return c, ErrMalformed
 	}
-	payload, err := b64.DecodeString(parts[1])
+	if ring.Product != Product {
+		return c, ErrWrongProduct
+	}
+	key, ok := ring.Keys[parts[1]]
+	if !ok {
+		return c, ErrUnknownKey
+	}
+	payload, err := b64.DecodeString(parts[2])
 	if err != nil {
 		return c, ErrMalformed
 	}
-	sig, err := b64.DecodeString(parts[2])
+	sig, err := b64.DecodeString(parts[3])
 	if err != nil {
 		return c, ErrMalformed
 	}
-	body := parts[0] + "." + parts[1]
-	if !ed25519.Verify(ed25519.PublicKey(pubRaw), []byte(body), sig) {
+	if !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]+"."+parts[2]), sig) {
 		return c, ErrBadSignature
 	}
 	if err := json.Unmarshal(payload, &c); err != nil {
-		return c, fmt.Errorf("license: bad claims: %w", err)
+		return c, fmt.Errorf("%w: bad claims", ErrMalformed)
+	}
+	if c.Product != Product {
+		return c, ErrWrongProduct
 	}
 	return c, nil
 }
 
-// Snapshot is the resolved view of a license at a point in time.
 type Snapshot struct {
 	State     State
 	Edition   string
