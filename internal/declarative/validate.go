@@ -221,7 +221,9 @@ func (r *Resource) validate() error {
 		return r.validateJob()
 	case KindSealedSecret:
 		return r.validateSealedSecret()
-	case KindVolume, KindStack, KindSecret, KindProject:
+	case KindStack:
+		return r.validateStack()
+	case KindVolume, KindSecret, KindProject:
 		return nil
 	default:
 		return fmt.Errorf("unknown kind %q", r.Kind)
@@ -552,6 +554,19 @@ func (r *Resource) validateApplication() error {
 		}
 		if a.Resources.GPU < 0 || a.Resources.GPU > 64 {
 			return fmt.Errorf("application %q: invalid gpu %d (must be 0-64)", r.Metadata.Name, a.Resources.GPU)
+		}
+	}
+	return nil
+}
+
+func (r *Resource) validateStack() error {
+	st := r.Stack
+	if st == nil {
+		return nil
+	}
+	for _, k := range st.SecretEnv {
+		if _, ok := st.Env[k]; !ok {
+			return fmt.Errorf("stack %q: secretEnv %q is not declared in env", r.Metadata.Name, k)
 		}
 	}
 	return nil

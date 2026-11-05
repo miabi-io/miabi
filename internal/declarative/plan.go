@@ -319,6 +319,15 @@ func diffFields(actual, desired Resource) []FieldDiff {
 			delete(av, f)
 		}
 	}
+	// A stack's shared env is compared only when the manifest states it, so variables set in the console
+	// survive a manifest that predates them.
+	if desired.Stack != nil && desired.Stack.Env == nil {
+		for f := range av {
+			if strings.HasPrefix(f, "env.") {
+				delete(av, f)
+			}
+		}
+	}
 	keys := map[string]bool{}
 	for k := range av {
 		keys[k] = true
@@ -701,6 +710,17 @@ func specFields(r Resource) map[string]string {
 		f["description"] = r.Stack.Description
 		if loc := r.Stack.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		secret := map[string]bool{}
+		for _, k := range r.Stack.SecretEnv {
+			secret[k] = true
+		}
+		for k, v := range r.Stack.Env {
+			if secret[k] {
+				f["env."+k] = "(secret)" // never surface secret values in a plan
+				continue
+			}
+			f["env."+k] = v
 		}
 	case r.Domain != nil:
 		f["tls"] = r.Domain.TLS

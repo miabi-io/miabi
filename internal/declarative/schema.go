@@ -359,7 +359,9 @@ type ResourceSpec struct {
 type StackSpec struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	// Placement is where the stack is created. Member applications that name no location follow it.
-	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	Placement *PlacementSpec    `yaml:"placement,omitempty" json:"placement,omitempty"`
+	Env       map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
 }
 
 // DatabaseSpec requests a logical database on a DatabaseInstance.
