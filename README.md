@@ -252,7 +252,10 @@ All four projects are self-hosted, open source, and deploy from Git or a Docker 
 | Zero-downtime deployments | ✅ | Limited | Limited | Limited |
 | Built-in CI/CD pipelines | ✅ | ❌ | ❌ | ❌ |
 | GitOps (no extra controller) | ✅ | ❌ | ❌ | ❌ |
+| Declarative manifests (`miabi apply`) | ✅ | ❌ | ❌ | ❌ |
 | Built-in container registry | ✅ | ❌ | ❌ | ❌ |
+| Secret vault (references, rotation redeploys apps) | ✅ | Partial | Partial | ❌ |
+| Sealed secrets (encrypted, safe to commit to Git) | ✅ | ❌ | ❌ | ❌ |
 | Built-in analytics (privacy-first) | ✅ | ❌ | ❌ | ❌ |
 | Audit logs | ✅ | ❌ | ❌ | ❌ |
 | OpenAPI-documented REST API | ✅ | ❌ | Partial | Limited |
@@ -260,8 +263,11 @@ All four projects are self-hosted, open source, and deploy from Git or a Docker 
 | Terraform provider | ✅ | ❌ | ❌ | ❌ |
 | Multi-node deployments | ✅ | Partial | Partial | Partial |
 | Multiple clusters & regions | ✅ | ❌ | ❌ | ❌ |
+| Live migration between locations (app, volumes & databases, near-zero downtime) | ✅ (Enterprise) | ❌ | ❌ | ❌ |
 | Docker import (adopt existing containers) | ✅ | ❌ | ❌ | ❌ |
 | Scheduled backups | ✅ | Partial | Partial | ❌ |
+| Portable workspace backups (whole workspace, encrypted, restore anywhere) | ✅ | ❌ | ❌ | ❌ |
+| Workspace migration to another install, with data | ✅ | ❌ | ❌ | ❌ |
 | SAML / LDAP | ✅ (Enterprise) | ❌ | ❌ | ❌ |
 
 > Compiled from each project's public documentation. These projects move fast — if something here is out of date, please [open a PR](https://github.com/miabi-io/miabi/pulls) and we'll correct it.
