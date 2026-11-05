@@ -96,7 +96,7 @@
           "type": "string"
         },
         "secretEnv": {
-          "description": "keys stored encrypted; a secret reference needs none",
+          "description": "keys stored encrypted; vault references need none, apply-resolved credentials are added",
           "items": {
             "type": "string"
           },
@@ -972,7 +972,7 @@
           "description": "Placement is where the stack is created. Member applications that name no location follow it."
         },
         "secretEnv": {
-          "description": "keys stored encrypted; a secret reference needs none",
+          "description": "keys stored encrypted; vault references need none, apply-resolved credentials are added",
           "items": {
             "type": "string"
           },
