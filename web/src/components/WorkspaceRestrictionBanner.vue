@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
@@ -33,7 +33,18 @@ const body = computed(() => {
   return parts.join(' ')
 })
 
-const canUnfreeze = computed(() => restriction.value === 'frozen' && ws.isWorkspaceOwner)
+// With migration switched off the unfreeze route is gone; a platform admin lifts the freeze instead.
+const migrationOn = ref(false)
+watch(restriction, async (r) => {
+  if (r !== 'frozen') return
+  try {
+    migrationOn.value = (await migrationApi.status()).data.data.enabled
+  } catch {
+    migrationOn.value = false
+  }
+}, { immediate: true })
+
+const canUnfreeze = computed(() => restriction.value === 'frozen' && ws.isWorkspaceOwner && migrationOn.value)
 const confirmOpen = ref(false)
 const busy = ref(false)
 

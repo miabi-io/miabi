@@ -1,3 +1,4 @@
+import axios, { type AxiosResponse } from 'axios'
 import api from './client'
 import type { ApiResponse } from './types'
 import type { BundleRun } from './portableBackup'
@@ -111,8 +112,16 @@ export function trimSource(s: MigrationSource): MigrationSource {
 }
 
 export const migrationApi = {
-  status() {
-    return api.get<ApiResponse<MigrationStatus>>('/migrations/status')
+  // With MIABI_MIGRATION_ENABLED unset the server registers no migration route at all, so a 404 is "off".
+  async status(): Promise<AxiosResponse<ApiResponse<MigrationStatus>>> {
+    try {
+      return await api.get<ApiResponse<MigrationStatus>>('/migrations/status')
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) {
+        return { data: { success: true, data: { enabled: false } } } as AxiosResponse<ApiResponse<MigrationStatus>>
+      }
+      throw e
+    }
   },
 
   workspace(ws: number) {
