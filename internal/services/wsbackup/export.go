@@ -22,6 +22,7 @@ package wsbackup
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -126,6 +127,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 
 	s.phase(b, models.BundlePhaseVolumes)
 	info.Artifacts = append(info.Artifacts, s.exportVolumes(ctx, b, cfg, prefix, passphrase, report)...)
+	sizeArtifacts(ctx, store, info.Artifacts)
 
 	s.phase(b, models.BundlePhaseUpload)
 	stateKey := wsbundle.StateObject(prefix, b.Ref, info.Encrypted)
@@ -251,6 +253,34 @@ func (s *Service) exportVolumes(ctx context.Context, b *models.WorkspaceBundle, 
 		out = append(out, art)
 	}
 	return out
+}
+
+// objectLister is the part of blob.Store that sizeArtifacts needs.
+type objectLister interface {
+	List(ctx context.Context, prefix string) ([]blob.Object, error)
+}
+
+// sizeArtifacts reads from the bucket the size of each captured artifact whose helper did not report one
+// (volume-bkup prints only the archive name), so the run and the index count what was really written.
+func sizeArtifacts(ctx context.Context, store objectLister, arts []wsbundle.Artifact) {
+	listed := map[string][]blob.Object{}
+	for i := range arts {
+		a := &arts[i]
+		if !a.OK() || a.SizeBytes > 0 {
+			continue
+		}
+		objs, ok := listed[a.Path]
+		if !ok {
+			objs, _ = store.List(ctx, a.Path)
+			listed[a.Path] = objs
+		}
+		for _, o := range objs {
+			if o.Key == a.File || strings.HasSuffix(o.Key, "/"+a.File) {
+				a.SizeBytes = o.Size
+				break
+			}
+		}
+	}
 }
 
 func withPath(cfg *backup.S3Config, path string) *backup.S3Config {

@@ -168,6 +168,7 @@ function statusClass(status: string): string {
       return 'badge-success'
     case 'failed':
       return 'badge-danger'
+    case 'partial':
     case 'running':
     case 'pending':
       return 'badge-warning'

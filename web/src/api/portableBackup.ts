@@ -52,7 +52,7 @@ export interface BundleRun {
   target_workspace_id?: number
   kind: 'export' | 'restore'
   ref: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'partial' | 'failed'
   phase?: string
   trigger?: string
   restore_data: boolean
