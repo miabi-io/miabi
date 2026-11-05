@@ -853,10 +853,33 @@ func rawConsumerApp(all []declarative.Resource, dep string) string {
 			}
 		}
 	}
+	// Connection details declared once on a stack are shared by its members, so no single app's env names
+	// the database. The stack's first member in the bundle owns the link then, as the marketplace's primary
+	// does; otherwise moving them onto the stack would silently unlink the database.
+	for i := range all {
+		st := all[i].Stack
+		if st == nil || !referencesToken(st.Env, token) {
+			continue
+		}
+		for j := range all {
+			if a := all[j].Application; a != nil && a.Stack == all[i].Metadata.Name {
+				return all[j].Metadata.Name
+			}
+		}
+	}
 	if apps == 1 {
 		return sole
 	}
 	return ""
+}
+
+func referencesToken(env map[string]string, token string) bool {
+	for _, v := range env {
+		if strings.Contains(v, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // Teardown deletes every resource owned by a single GitOps source — those tagged with its
@@ -956,6 +979,9 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 		case res.Application != nil && len(res.Application.Env) > 0:
 			res.Application.Env = r.RenderEnvLenient(res.Metadata.Name, res.Application.Env)
 			desired.Add(res) // write back the rendered copy
+		case res.Stack != nil && len(res.Stack.Env) > 0:
+			res.Stack.Env = r.RenderEnvLenient(res.Metadata.Name, res.Stack.Env)
+			desired.Add(res)
 		case res.Registry != nil:
 			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
 			desired.Add(res)
@@ -1165,6 +1191,30 @@ func refsOf(spec *declarative.ApplicationSpec) specRefs {
 		return specRefs{}
 	}
 	return specRefs{apps: envRefs(spec.Env, appRefPattern), dbs: envRefs(spec.Env, dbRefPattern)}
+}
+
+// withStackRefs adds what the app's stack env addresses, since a member receives that env too. Only a stack
+// declared in the bundle is read; one set up in the console has no references for apply to place by.
+func (r specRefs) withStackRefs(spec *declarative.ApplicationSpec, set *declarative.ResourceSet) specRefs {
+	if spec == nil || spec.Stack == "" || set == nil {
+		return r
+	}
+	st, ok := set.Get(string(declarative.KindStack) + "/" + spec.Stack)
+	if !ok || st.Stack == nil {
+		return r
+	}
+	for _, m := range []struct {
+		into    *map[string]bool
+		pattern *regexp.Regexp
+	}{{&r.apps, appRefPattern}, {&r.dbs, dbRefPattern}} {
+		for name := range envRefs(st.Stack.Env, m.pattern) {
+			if *m.into == nil {
+				*m.into = map[string]bool{}
+			}
+			(*m.into)[name] = true
+		}
+	}
+	return r
 }
 
 // checkAppRefPlacement refuses an application or database reference that cannot resolve at runtime:
@@ -1766,10 +1816,12 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	}
 
 	for i := range stacks {
+		spec := &declarative.StackSpec{Description: stacks[i].Description, Placement: locationSpec(s.locationName(stacks[i].ClusterID))}
+		spec.Env, spec.SecretEnv = s.stackEnvOf(workspaceID, stacks[i].ID)
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindStack,
 			Metadata: metaA(stacks[i].UID, stacks[i].Name, stacks[i].Metadata, stacks[i].Annotations),
-			Stack:    &declarative.StackSpec{Description: stacks[i].Description, Placement: locationSpec(s.locationName(stacks[i].ClusterID))},
+			Stack:    spec,
 		})
 	}
 
@@ -2105,7 +2157,7 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 	case declarative.KindDatabase:
 		return s.applyDatabase(ctx, workspaceID, ch, desired)
 	case declarative.KindStack:
-		return s.applyStack(ctx, workspaceID, ch, desired)
+		return s.applyStack(ctx, workspaceID, ch, desired, set)
 	case declarative.KindSecret:
 		return s.applySecret(workspaceID, ch, desired)
 	case declarative.KindSealedSecret:
@@ -2178,21 +2230,31 @@ func (s *Service) findDomain(workspaceID uint, name string) (*models.Domain, err
 	return nil, fmt.Errorf("domain %q not found", name)
 }
 
-func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
+	if ch.Action != declarative.ActionDelete {
+		// Databases rank with stacks but sort before them, so {{ .databases.x.host }} is live here even on a
+		// first apply. The plan-time render was lenient and may have left templates behind.
+		if err := s.renderStackEnv(workspaceID, desired.Stack, set); err != nil {
+			return fmt.Errorf("%w: stack %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
+	}
 	switch ch.Action {
 	case declarative.ActionCreate:
 		target, err := s.place(ctx, workspaceID, ch, desired.Stack.Location(), true)
 		if err != nil {
 			return err
 		}
-		_, err = s.stacks.Create(ctx, workspaceID, stack.Input{
+		st, err := s.stacks.Create(ctx, workspaceID, stack.Input{
 			Name:        ch.Name,
 			Description: desired.Stack.Description,
 			ClusterID:   target.ClusterID,
 			Metadata:    tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx))),
 			Annotations: desired.Metadata.Annotations,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
 	case declarative.ActionUpdate:
 		if err := refuseMove(ch); err != nil {
 			return err
@@ -2202,10 +2264,12 @@ func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarati
 			return err
 		}
 		desc := desired.Stack.Description
-		_, err = s.stacks.Update(workspaceID, st.ID, stack.UpdateInput{
+		if _, err := s.stacks.Update(workspaceID, st.ID, stack.UpdateInput{
 			Description: &desc, Annotations: desired.Metadata.Annotations,
-		})
-		return err
+		}); err != nil {
+			return err
+		}
+		return s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
 	case declarative.ActionDelete:
 		st, err := s.findStack(workspaceID, ch.Name)
 		if err != nil {
@@ -2765,7 +2829,7 @@ func (s *Service) deleteInstance(ctx context.Context, inst *models.DatabaseInsta
 
 func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	spec := desired.Application
-	refs := refsOf(spec)
+	refs := refsOf(spec).withStackRefs(spec, set)
 	// Resolve env templates now: databases declared in the same bundle run before applications (plan order),
 	// so {{ .databases.x.host }} references are live by this point even on a first apply. The plan-time render
 	// was lenient and may have left them as templates.
@@ -3176,6 +3240,91 @@ func (s *Service) reconcileEnv(appID uint, spec *declarative.ApplicationSpec) er
 		}
 	}
 	return nil
+}
+
+// renderStackEnv resolves a stack's shared env templates at execution time, strictly, like renderAppEnv.
+func (s *Service) renderStackEnv(workspaceID uint, spec *declarative.StackSpec, set *declarative.ResourceSet) error {
+	if spec == nil || len(spec.Env) == 0 {
+		return nil
+	}
+	r := declarative.NewRenderer(declarative.RenderContext{
+		Databases: s.databaseViews(workspaceID),
+		Secrets:   s.secretViews(workspaceID),
+		Apps:      s.appViews(workspaceID, set),
+	})
+	rendered, err := r.RenderEnv("stack", spec.Env)
+	if err != nil {
+		return err
+	}
+	spec.Env = rendered
+	return nil
+}
+
+// reconcileStackEnv converges a stack's shared env to the manifest: it sets each declared variable that
+// differs and removes the ones no longer declared. A manifest silent about env leaves the stack's variables
+// alone. Every write flags the members already deployed for redeploy, as a console edit does, so a variable
+// that already holds its value is not rewritten.
+func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative.StackSpec) error {
+	if spec == nil || spec.Env == nil {
+		return nil
+	}
+	secret := map[string]bool{}
+	for _, k := range spec.SecretEnv {
+		secret[k] = true
+	}
+	current, err := s.stacks.ListEnvVars(workspaceID, stackID)
+	if err != nil {
+		return fmt.Errorf("list stack env: %w", err)
+	}
+	live := make(map[string]models.StackEnvVar, len(current))
+	for _, ev := range current {
+		live[ev.Key] = ev
+	}
+	for k, v := range spec.Env {
+		if ev, ok := live[k]; ok && ev.IsSecret == secret[k] {
+			value := ev.Value
+			if ev.IsSecret {
+				// Listed masked; compare against the stored plaintext.
+				if value, err = s.stacks.RevealEnvVar(workspaceID, stackID, k); err != nil {
+					value = ""
+				}
+			}
+			if value == v {
+				continue
+			}
+		}
+		if _, err := s.stacks.SetEnvVar(workspaceID, stackID, k, v, secret[k]); err != nil {
+			return fmt.Errorf("set stack env %s: %w", k, err)
+		}
+	}
+	for _, ev := range current {
+		if _, keep := spec.Env[ev.Key]; !keep {
+			if _, err := s.stacks.DeleteEnvVar(workspaceID, stackID, ev.Key); err != nil {
+				return fmt.Errorf("unset stack env %s: %w", ev.Key, err)
+			}
+		}
+	}
+	return nil
+}
+
+// stackEnvOf reads a live stack's shared env for the snapshot, secret values blanked as an app's are: the
+// diff masks them, so only their presence and secrecy are compared.
+func (s *Service) stackEnvOf(workspaceID, stackID uint) (map[string]string, []string) {
+	vars, err := s.stacks.ListEnvVars(workspaceID, stackID)
+	if err != nil || len(vars) == 0 {
+		return nil, nil
+	}
+	env := make(map[string]string, len(vars))
+	var secretEnv []string
+	for _, v := range vars {
+		if v.IsSecret {
+			secretEnv = append(secretEnv, v.Key)
+			env[v.Key] = ""
+			continue
+		}
+		env[v.Key] = v.Value
+	}
+	return env, secretEnv
 }
 
 // reconcileMounts converges the app's volume mounts to the manifest: it attaches or re-paths each declared

@@ -60,6 +60,10 @@ func (s *ResourceSet) References() []Reference {
 			for k, v := range r.Application.Env {
 				out = append(out, refsIn(fmt.Sprintf("application %q env %s", r.Metadata.Name, k), v, actionPattern)...)
 			}
+		case r.Stack != nil:
+			for k, v := range r.Stack.Env {
+				out = append(out, refsIn(fmt.Sprintf("stack %q env %s", r.Metadata.Name, k), v, actionPattern)...)
+			}
 		case r.Registry != nil:
 			out = append(out, refsIn(fmt.Sprintf("registry %q password", r.Metadata.Name), r.Registry.Password, actionPattern)...)
 		case r.Middleware != nil:
