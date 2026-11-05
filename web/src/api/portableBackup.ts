@@ -46,11 +46,24 @@ export interface BundleReportItem {
   detail?: string
 }
 
+export interface BundleMigration {
+  freeze?: boolean
+  source_url?: string
+  source_version?: string
+  insecure_tls?: boolean
+  remote_export_id?: number
+  rehearse?: boolean
+  retire_source?: boolean
+  source_retired?: boolean
+  source_unfrozen?: boolean
+  batch_id?: string
+}
+
 export interface BundleRun {
   id: number
   workspace_id: number
   target_workspace_id?: number
-  kind: 'export' | 'restore'
+  kind: 'export' | 'restore' | 'migration_import' | 'migration_export'
   ref: string
   status: 'pending' | 'running' | 'completed' | 'partial' | 'failed'
   phase?: string
@@ -63,6 +76,8 @@ export interface BundleRun {
   artifacts: number
   size_bytes: number
   report?: { items?: BundleReportItem[]; notes?: string[] }
+  migration?: BundleMigration
+  expires_at?: string
   error?: string
   started_at?: string
   finished_at?: string

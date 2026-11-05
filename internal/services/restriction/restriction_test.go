@@ -81,13 +81,19 @@ func (f *fakeRepo) ListRestrictionsDue(now time.Time) ([]models.Workspace, error
 }
 
 type fakeWorkloads struct {
-	stopped int
-	started []*models.FrozenResources
+	stopped     int
+	appsStopped int
+	started     []*models.FrozenResources
 }
 
 func (f *fakeWorkloads) StopWorkspace(context.Context, uint) (account.StopResult, models.FrozenResources) {
 	f.stopped++
 	return account.StopResult{Apps: 1, Databases: 1}, models.FrozenResources{Apps: []uint{7}, Databases: []uint{9}}
+}
+
+func (f *fakeWorkloads) StopWorkspaceApps(context.Context, uint) (account.StopResult, models.FrozenResources) {
+	f.appsStopped++
+	return account.StopResult{Apps: 1}, models.FrozenResources{Apps: []uint{7}, Databases: []uint{}}
 }
 
 func (f *fakeWorkloads) StartWorkspace(_ context.Context, _ uint, only *models.FrozenResources) (account.StartResult, error) {
@@ -245,5 +251,54 @@ func TestBillingRestriction(t *testing.T) {
 	}
 	if err := s.Allowed(2, ActionWrite); !errors.As(err, &re) || re.Billing || re.Code() != "WORKSPACE_READ_ONLY" {
 		t.Errorf("admin hold: %v", err)
+	}
+}
+
+// A migration freeze stops only the apps (the databases still have to be exported), refuses everything,
+// and an admin restriction cannot be laid over it, which would lose the record of what it stopped.
+func TestFreezeStopsAppsOnlyAndUnfreezeRestarts(t *testing.T) {
+	s, repo, wl := newTest()
+	ctx := context.Background()
+	if err := s.Freeze(ctx, 1, 5, "moving to new.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if wl.appsStopped != 1 || wl.stopped != 0 {
+		t.Fatalf("freeze stopped apps %d times, everything %d times; want apps only", wl.appsStopped, wl.stopped)
+	}
+	for _, a := range []Action{ActionWrite, ActionDeploy, ActionRun} {
+		var re *Error
+		if err := s.Allowed(1, a); !errors.As(err, &re) || re.Code() != "WORKSPACE_FROZEN" {
+			t.Errorf("frozen action %d: %v", a, err)
+		}
+	}
+	if _, err := s.Set(ctx, 1, 5, SetInput{State: models.WorkspaceRestrictionSuspended}); !errors.Is(err, ErrFrozen) {
+		t.Errorf("admin restriction over a freeze: %v, want ErrFrozen", err)
+	}
+	if err := s.Freeze(ctx, 1, 5, "retired"); err != nil || repo.ws[1].RestrictionReason != "retired" {
+		t.Errorf("re-freeze should only reword: err %v reason %q", err, repo.ws[1].RestrictionReason)
+	}
+	if err := s.Unfreeze(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if repo.ws[1].Restriction != models.WorkspaceRestrictionNone || len(wl.started) != 1 {
+		t.Fatalf("unfreeze: restriction %q, restarts %d", repo.ws[1].Restriction, len(wl.started))
+	}
+	if err := s.Allowed(1, ActionWrite); err != nil {
+		t.Fatalf("after unfreeze: %v", err)
+	}
+}
+
+// Unfreeze only ever undoes a freeze; an admin's restriction stays.
+func TestUnfreezeLeavesAdminRestriction(t *testing.T) {
+	s, repo, _ := newTest()
+	ctx := context.Background()
+	if _, err := s.Set(ctx, 1, 5, SetInput{State: models.WorkspaceRestrictionReadOnly}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Freeze(ctx, 1, 5, "x"); !errors.Is(err, ErrRestricted) {
+		t.Errorf("freeze over an admin restriction: %v", err)
+	}
+	if err := s.Unfreeze(ctx, 1); err != nil || repo.ws[1].Restriction != models.WorkspaceRestrictionReadOnly {
+		t.Errorf("unfreeze touched an admin restriction: %v %q", err, repo.ws[1].Restriction)
 	}
 }

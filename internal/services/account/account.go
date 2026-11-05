@@ -200,6 +200,16 @@ func (s *Service) StopOwned(ctx context.Context, userID uint) StopResult {
 // StopWorkspace stops every running app and database instance of one workspace and returns what it
 // stopped, so StartWorkspace can bring back exactly that.
 func (s *Service) StopWorkspace(ctx context.Context, wsID uint) (StopResult, models.FrozenResources) {
+	return s.stopWorkspace(ctx, wsID, true)
+}
+
+// StopWorkspaceApps is StopWorkspace for the apps only: a migration freeze keeps the databases up so
+// they can still be exported.
+func (s *Service) StopWorkspaceApps(ctx context.Context, wsID uint) (StopResult, models.FrozenResources) {
+	return s.stopWorkspace(ctx, wsID, false)
+}
+
+func (s *Service) stopWorkspace(ctx context.Context, wsID uint, databases bool) (StopResult, models.FrozenResources) {
 	var res StopResult
 	frozen := models.FrozenResources{Apps: []uint{}, Databases: []uint{}}
 	apps, _ := s.apps.ListByWorkspace(wsID)
@@ -213,6 +223,9 @@ func (s *Service) StopWorkspace(ctx context.Context, wsID uint) (StopResult, mod
 		}
 		res.Apps++
 		frozen.Apps = append(frozen.Apps, apps[i].ID)
+	}
+	if !databases {
+		return res, frozen
 	}
 	insts, _ := s.dbs.ListByWorkspace(wsID)
 	for i := range insts {

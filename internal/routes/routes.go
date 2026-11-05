@@ -206,6 +206,7 @@ type routerHandlers struct {
 	workspaceKeys   *handlers.WorkspaceKeysHandler
 	volumeBackup    *handlers.VolumeBackupHandler
 	workspaceBundle *handlers.WorkspaceBundleHandler
+	wsMigration     *handlers.MigrationHandler
 	migration       *handlers.LocationMigrationHandler
 	monitoring      *handlers.MonitoringHandler
 	analytics       *handlers.AnalyticsHandler
@@ -1345,8 +1346,17 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		InstallID:   installID,
 		Version:     config.Version,
 		Placer:      placementService,
+		Freezer:     restrictionService,
+		PublicURL:   cfg.DeploymentURL(),
 	})
 	wsBundleService.SetEnqueuer(producer) // export/restore runs on the worker
+	if cfg.MigrationEnabled && cronManager != nil {
+		if err := cronManager.RegisterTask("migration-export-sweep", 0, "Purge migration exports nobody collected in time", "*/30 * * * *", func() error {
+			return wsBundleService.SweepMigrationExports(context.Background())
+		}); err != nil {
+			logger.Error("failed to register migration export sweep", "error", err)
+		}
+	}
 
 	// Live location migration (EE): moves an app with its volumes and databases to another location,
 	// streaming the data engine to engine through the control plane.
@@ -1521,30 +1531,34 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			workspaceKeys:   handlers.NewWorkspaceKeysHandler(workspaceKeysService, sealingService, auditLogger),
 			volumeBackup:    handlers.NewVolumeBackupHandler(volumeBackupService, volumeRepo, volumeBackupRepo, cronManager, ee, auditLogger),
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
-			migration:       handlers.NewLocationMigrationHandler(migrationService, userRepo, ee, auditLogger),
-			monitoring:      handlers.NewMonitoringHandler(monitoringService),
-			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second), appRepo),
-			inbox:           handlers.NewNotificationInboxHandler(inboxRepo, bus, announcementService),
-			alerts:          handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
-			marketplace:     handlers.NewMarketplaceHandler(marketplaceService, auditLogger),
-			registry:        handlers.NewRegistryHandler(registryService, auditLogger),
-			gitRepo:         handlers.NewGitRepositoryHandler(gitRepoService, auditLogger),
-			gitInspect:      handlers.NewGitInspectHandler(gitRepoService),
-			apply:           handlers.NewApplyHandler(applyService, appService, placer, auditLogger),
-			gitops:          handlers.NewGitOpsHandler(gitopsService, auditLogger),
-			pipeline:        handlers.NewPipelineHandler(pipelineService, bus, auditLogger),
-			versioning:      handlers.NewVersioningHandler(versionService, pipelineService, auditLogger),
-			image:           handlers.NewImageHandler(imageService, dockerClient, auditLogger),
-			environment:     handlers.NewEnvironmentHandler(environmentService, auditLogger),
-			release:         handlers.NewReleaseHandler(releaseService, auditLogger),
-			events:          handlers.NewEventsHandler(eventsService, bus, appService, databaseService, monitoringService),
-			webhook:         handlers.NewWebhookHandler(webhookService, auditLogger),
-			notification:    handlers.NewNotificationHandler(notificationService, auditLogger),
-			node:            handlers.NewNodeHandler(nodeService, nodeManager, nodeGateway, dockerImportService, housekeepingService, clusterService, imageResolver, cfg.ControlURL, auditLogger, bus, cfg.HostProcPath),
-			cluster:         handlers.NewClusterHandler(clusterService, nodeService, auditLogger),
-			provider:        handlers.NewProviderHandler(nodeService, routeService),
-			runner:          handlers.NewRunnerHandler(runnerService, auditLogger),
-			runnerGateway:   handlers.NewRunnerGatewayHandler(runnerService, runnerManager),
+			wsMigration: handlers.NewMigrationHandler(handlers.MigrationHandlerDeps{
+				Svc: wsBundleService, Keys: apiKeyService, KeyRepo: apiKeyRepo, Workspaces: workspaceRepo, Users: userRepo,
+				Audit: auditLogger, Enabled: cfg.MigrationEnabled, PublicURL: cfg.DeploymentURL(), InstallID: installID, Version: config.Version,
+			}),
+			migration:     handlers.NewLocationMigrationHandler(migrationService, userRepo, ee, auditLogger),
+			monitoring:    handlers.NewMonitoringHandler(monitoringService),
+			analytics:     handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second), appRepo),
+			inbox:         handlers.NewNotificationInboxHandler(inboxRepo, bus, announcementService),
+			alerts:        handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
+			marketplace:   handlers.NewMarketplaceHandler(marketplaceService, auditLogger),
+			registry:      handlers.NewRegistryHandler(registryService, auditLogger),
+			gitRepo:       handlers.NewGitRepositoryHandler(gitRepoService, auditLogger),
+			gitInspect:    handlers.NewGitInspectHandler(gitRepoService),
+			apply:         handlers.NewApplyHandler(applyService, appService, placer, auditLogger),
+			gitops:        handlers.NewGitOpsHandler(gitopsService, auditLogger),
+			pipeline:      handlers.NewPipelineHandler(pipelineService, bus, auditLogger),
+			versioning:    handlers.NewVersioningHandler(versionService, pipelineService, auditLogger),
+			image:         handlers.NewImageHandler(imageService, dockerClient, auditLogger),
+			environment:   handlers.NewEnvironmentHandler(environmentService, auditLogger),
+			release:       handlers.NewReleaseHandler(releaseService, auditLogger),
+			events:        handlers.NewEventsHandler(eventsService, bus, appService, databaseService, monitoringService),
+			webhook:       handlers.NewWebhookHandler(webhookService, auditLogger),
+			notification:  handlers.NewNotificationHandler(notificationService, auditLogger),
+			node:          handlers.NewNodeHandler(nodeService, nodeManager, nodeGateway, dockerImportService, housekeepingService, clusterService, imageResolver, cfg.ControlURL, auditLogger, bus, cfg.HostProcPath),
+			cluster:       handlers.NewClusterHandler(clusterService, nodeService, auditLogger),
+			provider:      handlers.NewProviderHandler(nodeService, routeService),
+			runner:        handlers.NewRunnerHandler(runnerService, auditLogger),
+			runnerGateway: handlers.NewRunnerGatewayHandler(runnerService, runnerManager),
 
 			adminUser:           handlers.NewAdminUserHandler(db, userRepo, sessionRepo, workspaceRepo, auditRepo, sessionStore, auditLogger, accountService, cfg.DeletionGraceDays),
 			adminWorkspace:      handlers.NewAdminWorkspaceHandler(db, workspaceRepo, auditLogger),
@@ -1554,7 +1568,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminMetrics:        handlers.NewAdminMetricsHandler(db, dockerClient, redisClient, time.Now()),
 			adminEvent:          handlers.NewAdminEventHandler(auditRepo, userRepo, bus, ee),
 			adminSetting:        handlers.NewAdminSettingHandler(settingRepo, settingsProvider, auditLogger),
-			adminInfo:           handlers.NewAdminInfoHandler(cfg.BillingAPIEnabled, ee),
+			adminInfo:           handlers.NewAdminInfoHandler(cfg.BillingAPIEnabled, ee, cfg.MigrationEnabled),
 			adminBilling:        handlers.NewAdminBillingHandler(billingService, cfg.BillingAPIEnabled, ee, auditLogger),
 			billing:             handlers.NewBillingHandler(billingService, auditLogger),
 			adminBranding:       handlers.NewAdminBrandingHandler(brandingService, ee, auditLogger),
@@ -1920,6 +1934,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.workspaceBackupSettingsRoutes()...)
 	r.register(r.workspaceKeysRoutes()...)
 	r.register(r.workspaceBundleRoutes()...)
+	r.register(r.migrationRoutes()...)
 	r.register(r.locationMigrationRoutes()...)
 	r.register(r.monitoringRoutes()...)
 	r.register(r.marketplaceRoutes()...)
@@ -1946,6 +1961,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.agentRoutes()...)
 	r.register(r.providerRoutes()...)
 	r.register(r.adminRoutes()...)
+	r.h.billing.SetMigration(r.h.wsMigration)
 	r.register(r.billingRoutes()...)
 	r.register(r.registryServerRoutes()...)
 	r.register(r.oauthPublicRoutes()...)

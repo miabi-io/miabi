@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/billing"
 )
 
@@ -246,6 +247,38 @@ func (r *Router) billingRoutes() []okapi.RouteDefinition {
 			Description: "Immediate and irreversible: confirm must repeat the workspace handle. The last workspace of an active account cannot be deleted (409 BILLING_LAST_WORKSPACE).",
 			Request:     &handlers.BillingDeleteWorkspaceRequest{},
 			Response:    &dto.Response[billing.Account]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/accounts/{external_id}/workspaces/{workspace}/migration/start",
+			Group:       g,
+			Middlewares: billingKey,
+			Handler:     okapi.H(r.h.billing.MigrationStart),
+			Summary:     "Start moving one of the account's workspaces to another Miabi",
+			Description: "Held by the account's owner. Returns the migration code the other Miabi imports with: single use, expiring (24 hours by default). Needs MIABI_MIGRATION_ENABLED (403 MIGRATION_DISABLED).",
+			Request:     &handlers.BillingMigrationStartRequest{},
+			Response:    &dto.Response[handlers.MigrationStarted]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/accounts/{external_id}/workspaces/import",
+			Group:       g,
+			Middlewares: billingKey,
+			Handler:     okapi.H(r.h.billing.MigrationImport),
+			Summary:     "Migrate a workspace from another Miabi into a new workspace billed to the account",
+			Description: "Refused past max_workspaces (409 BILLING_WORKSPACE_LIMIT) before anything is created. Needs MIABI_MIGRATION_ENABLED. Follow it with GET /billing/migrations/{id}.",
+			Request:     &handlers.BillingMigrationImportRequest{},
+			Response:    &dto.Response[handlers.BillingMigrationImport]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/migrations/{id}",
+			Group:       g,
+			Middlewares: billingKey,
+			Handler:     okapi.H(r.h.billing.MigrationRun),
+			Summary:     "A migration's progress and report",
+			Request:     &handlers.BillingMigrationRunRef{},
+			Response:    &dto.Response[models.WorkspaceBundle]{},
 		},
 		{
 			Method:      http.MethodGet,

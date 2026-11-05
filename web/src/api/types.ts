@@ -736,7 +736,7 @@ export interface AdminWorkspaceDetail {
    * location list is ignored (it would intersect to nothing) and the console shows it locked.
    */
   placement_pinned?: boolean
-  /** A platform admin's hold: '' none, read_only, or suspended. */
+  /** A hold: '' none, read_only or suspended (an admin's), or frozen (a migration's). */
   restriction?: WorkspaceRestriction
   restriction_reason?: string
   restriction_until?: string | null
@@ -1090,7 +1090,7 @@ export interface Workspace {
   system?: boolean
   /** The requesting user's role in this workspace (from the list endpoint). */
   role?: WorkspaceRole
-  /** A platform admin's hold: '' none, read_only, or suspended. */
+  /** A hold: '' none, read_only or suspended (an admin's), or frozen (a migration's). */
   restriction?: WorkspaceRestriction
   restriction_reason?: string
   restriction_until?: string | null
@@ -1098,7 +1098,7 @@ export interface Workspace {
   created_at?: string
 }
 
-export type WorkspaceRestriction = '' | 'read_only' | 'suspended'
+export type WorkspaceRestriction = '' | 'read_only' | 'suspended' | 'frozen'
 
 
 export interface Registry {
@@ -3838,6 +3838,7 @@ export type BillingAPIState = 'off' | 'unlicensed' | 'on'
 
 export interface AdminInfo {
   billing_api: BillingAPIState
+  migration_enabled: boolean
 }
 
 export interface BillingConnection {

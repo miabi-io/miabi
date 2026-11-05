@@ -180,21 +180,30 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 		return nil
 	}
 
+	s.restoreFrom(ctx, b, state, info, bucketSource{cfg: cfg, passphrase: passphrase}, nil)
+	return nil
+}
+
+// restoreFrom rebuilds b's target workspace from state, reading its data through src. report, when given,
+// is extended rather than started afresh, so a migration's transfer items come first. It records the
+// outcome on b and returns the run for a caller that has more to report.
+func (s *Service) restoreFrom(ctx context.Context, b *models.WorkspaceBundle, state *wsbundle.State, info *wsbundle.Info, src artifactSource, report *models.BundleReport) *restoreRun {
 	target := b.TargetWorkspaceID
 	if target == 0 {
 		target = b.WorkspaceID
 	}
-	r := &restoreRun{
-		svc: s, bundle: b, target: target, state: state, info: info,
-		cfg: cfg, passphrase: passphrase, report: &models.BundleReport{},
+	if report == nil {
+		report = &models.BundleReport{}
 	}
+	r := &restoreRun{svc: s, bundle: b, target: target, state: state, info: info, src: src, report: report}
 	if s.Placer != nil {
 		// Resolved before anything is created: a workspace with no usable location would otherwise restore
 		// half its resources before the first one failed to place.
 		at, err := s.Placer.Place(placement.Request{WorkspaceID: target})
 		if err != nil {
+			b.Report = *r.report
 			s.fail(b, fmt.Errorf("no location to restore into: %w", err))
-			return nil
+			return r
 		}
 		r.at = at
 	}
@@ -225,22 +234,57 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 		// keeping them is the point, but a run reported as successful when a
 		// database did not restore is how an operator finds out too late.
 		s.partial(b, fmt.Errorf("%d of %d resources could not be restored", len(fails), len(r.report.Items)))
-		return nil
+		return r
 	}
 	s.finish(b)
-	return nil
+	return r
+}
+
+// artifactSource is where a restore's dumps and archives come from: the bundle's bucket, or the install
+// a migration pulls from.
+type artifactSource interface {
+	restoreDatabase(ctx context.Context, r *restoreRun, art wsbundle.Artifact, inst *models.DatabaseInstance, db *models.Database) error
+	restoreVolume(ctx context.Context, r *restoreRun, art wsbundle.Artifact, vol *models.Volume) error
+}
+
+// bucketSource reads a bundle's artifacts from its S3 bucket.
+type bucketSource struct {
+	cfg        *backup.S3Config
+	passphrase string
+}
+
+// passphraseFor is the passphrase an artifact was written with: none for a cleartext one, even when
+// the workspace has a passphrase now.
+func (b bucketSource) passphraseFor(art wsbundle.Artifact) string {
+	if !art.Encrypted {
+		return ""
+	}
+	return b.passphrase
+}
+
+func (b bucketSource) restoreDatabase(ctx context.Context, r *restoreRun, art wsbundle.Artifact, inst *models.DatabaseInstance, db *models.Database) error {
+	return r.svc.Backup.Restore(ctx, inst, db, backup.RestoreSpec{
+		Filename:      art.File,
+		Destination:   "s3",
+		S3:            withPath(b.cfg, art.Path),
+		S3Path:        art.Path,
+		GPGPassphrase: b.passphraseFor(art),
+	})
+}
+
+func (b bucketSource) restoreVolume(ctx context.Context, r *restoreRun, art wsbundle.Artifact, vol *models.Volume) error {
+	return r.svc.restoreVolumeArchive(ctx, vol, b.cfg, art.Path, art.File, b.passphraseFor(art))
 }
 
 type restoreRun struct {
-	svc        *Service
-	bundle     *models.WorkspaceBundle
-	target     uint
-	state      *wsbundle.State
-	info       *wsbundle.Info
-	cfg        *backup.S3Config
-	passphrase string
-	report     *models.BundleReport
-	restored   int
+	svc      *Service
+	bundle   *models.WorkspaceBundle
+	target   uint
+	state    *wsbundle.State
+	info     *wsbundle.Info
+	src      artifactSource
+	report   *models.BundleReport
+	restored int
 	// at is where every restored resource lands: the target workspace's location, on one node, so apps can
 	// mount the volumes and reach the databases restored with them.
 	at placement.Result
@@ -1073,15 +1117,6 @@ func (r *restoreRun) applyMembers() {
 	}
 }
 
-// passphraseFor is the passphrase an artifact was written with: none for a cleartext one, even when the
-// workspace now has a passphrase set.
-func (r *restoreRun) passphraseFor(art wsbundle.Artifact) string {
-	if !art.Encrypted {
-		return ""
-	}
-	return r.passphrase
-}
-
 func (r *restoreRun) restoreDatabases(ctx context.Context) {
 	for _, art := range r.info.BySubject(wsbundle.SubjectDatabase) {
 		name := art.Instance + "/" + art.Database
@@ -1118,14 +1153,7 @@ func (r *restoreRun) restoreDatabases(ctx context.Context) {
 			r.add("database-data", name, "failed", err.Error())
 			continue
 		}
-		err = r.svc.Backup.Restore(ctx, inst, target, backup.RestoreSpec{
-			Filename:      art.File,
-			Destination:   "s3",
-			S3:            withPath(r.cfg, art.Path),
-			S3Path:        art.Path,
-			GPGPassphrase: r.passphraseFor(art),
-		})
-		if err != nil {
+		if err := r.src.restoreDatabase(ctx, r, art, inst, target); err != nil {
 			r.add("database-data", name, "failed", err.Error())
 			continue
 		}
@@ -1146,7 +1174,7 @@ func (r *restoreRun) restoreVolumes(ctx context.Context) {
 			r.add("volume-data", art.Volume, "skipped", "the volume was not restored")
 			continue
 		}
-		if err := r.svc.restoreVolumeArchive(ctx, vol, r.cfg, art.Path, art.File, r.passphraseFor(art)); err != nil {
+		if err := r.src.restoreVolume(ctx, r, art, vol); err != nil {
 			r.add("volume-data", art.Volume, "failed", err.Error())
 			continue
 		}

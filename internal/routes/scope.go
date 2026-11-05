@@ -31,6 +31,9 @@ func scopeFor(method, path string) string {
 	if strings.HasPrefix(path, middlewares.BillingPathPrefix) {
 		return models.ScopeBilling
 	}
+	if strings.HasPrefix(path, middlewares.MigrationPathPrefix) {
+		return models.ScopeMigration
+	}
 	segs := segments(path)
 	if s := adminScope(method, path, segs); s != "" {
 		return s

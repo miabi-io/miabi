@@ -147,3 +147,15 @@ func TestScopeFor_Billing(t *testing.T) {
 		t.Error("a path merely starting with billing is classified as billing")
 	}
 }
+
+// The source tree answers only migration keys, whatever the method.
+func TestScopeFor_MigrationTree(t *testing.T) {
+	for _, m := range []string{"GET", "POST", "DELETE"} {
+		if got := scopeFor(m, "/api/v1/migration/workspaces/{workspace}/exports"); got != models.ScopeMigration {
+			t.Errorf("%s migration tree scope = %q", m, got)
+		}
+	}
+	if got := scopeFor("POST", "/api/v1/migrations"); got == models.ScopeMigration {
+		t.Error("the import endpoint must not take a migration key")
+	}
+}

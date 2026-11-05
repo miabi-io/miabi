@@ -29,6 +29,10 @@ const (
 	BundleExport WorkspaceBundleKind = "export"
 	// BundleRestore rebuilds a workspace from one.
 	BundleRestore WorkspaceBundleKind = "restore"
+	// BundleMigrationExport stages a workspace on this install for another install to pull.
+	BundleMigrationExport WorkspaceBundleKind = "migration_export"
+	// BundleMigrationImport pulls a workspace from another install and restores it here.
+	BundleMigrationImport WorkspaceBundleKind = "migration_import"
 )
 
 // Bundle phases, in the order a run passes through them. They are display state,
@@ -39,6 +43,8 @@ const (
 	BundlePhaseDatabases = "databases" // dumping / restoring managed databases
 	BundlePhaseVolumes   = "volumes"   // archiving / restoring volumes
 	BundlePhaseUpload    = "upload"    // sealing and writing the state + info files
+	BundlePhaseFreeze    = "freeze"    // a migration export stopping the source's apps
+	BundlePhaseTransfer  = "transfer"  // a migration import waiting on, then reading, the source's export
 	BundlePhaseDone      = "done"
 )
 
@@ -84,6 +90,13 @@ type WorkspaceBundle struct {
 	// unverified domains) — so it is persisted rather than logged and lost.
 	Report BundleReport `json:"report,omitempty" gorm:"serializer:json"`
 
+	// Migration carries a migration run's details; nil on a bucket export or restore.
+	Migration *BundleMigration `json:"migration,omitempty" gorm:"serializer:json"`
+	// SecretEnc is encrypted: an export's state document, or an import's key to the source.
+	SecretEnc string `json:"-" gorm:"type:text"`
+	// ExpiresAt is when a migration export's staged data is purged if nothing has collected it.
+	ExpiresAt *time.Time `json:"expires_at,omitempty" gorm:"index"`
+
 	Logs       string     `json:"logs,omitempty" gorm:"type:text"`
 	Error      string     `json:"error,omitempty" gorm:"type:text"`
 	CreatedBy  *uint      `json:"created_by,omitempty"`
@@ -124,4 +137,53 @@ func (r *BundleReport) Failures() []BundleReportItem {
 		}
 	}
 	return out
+}
+
+// BundleMigration is what a migration run needs beyond a bucket run. The source fills the export
+// fields, the target the import fields.
+type BundleMigration struct {
+	// Export side.
+	KeyID    uint                `json:"key_id,omitempty"`
+	Freeze   bool                `json:"freeze,omitempty"`
+	Data     bool                `json:"data,omitempty"`
+	Schema   int                 `json:"schema,omitempty"`
+	Manifest []MigrationArtifact `json:"manifest,omitempty"`
+	Purged   bool                `json:"purged,omitempty"`
+	// Completed is set when the importer reports success; ImportedBy is the install it named.
+	Completed  bool   `json:"completed,omitempty"`
+	ImportedBy string `json:"imported_by,omitempty"`
+
+	// Import side.
+	SourceURL      string `json:"source_url,omitempty"`
+	SourceVersion  string `json:"source_version,omitempty"`
+	InsecureTLS    bool   `json:"insecure_tls,omitempty"`
+	RemoteExportID uint   `json:"remote_export_id,omitempty"`
+	Rehearse       bool   `json:"rehearse,omitempty"`
+	RetireSource   bool   `json:"retire_source,omitempty"`
+	SourceRetired  bool   `json:"source_retired,omitempty"`
+	SourceUnfrozen bool   `json:"source_unfrozen,omitempty"`
+	BatchID        string `json:"batch_id,omitempty"`
+}
+
+// MigrationArtifact is one staged file of a migration export, served to the target by index.
+type MigrationArtifact struct {
+	Subject  string `json:"subject"` // database | volume
+	Instance string `json:"instance,omitempty"`
+	Database string `json:"database,omitempty"`
+	Engine   string `json:"engine,omitempty"`
+	Volume   string `json:"volume,omitempty"`
+	File     string `json:"file"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256,omitempty"`
+	Error    string `json:"error,omitempty"`
+	// Where it is staged on the source: a Docker volume on a node. Left out of Public.
+	ServerID     uint   `json:"server_id,omitempty"`
+	DockerVolume string `json:"docker_volume,omitempty"`
+	BackupID     uint   `json:"backup_id,omitempty"`
+}
+
+// Public is the artifact as the target sees it, without where the source staged it.
+func (a MigrationArtifact) Public() MigrationArtifact {
+	a.ServerID, a.DockerVolume, a.BackupID = 0, "", 0
+	return a
 }

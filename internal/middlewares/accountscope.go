@@ -46,6 +46,11 @@ func workspaceKeyAllowed(workspaceParam, method, path string) bool {
 	if strings.TrimSpace(workspaceParam) != "" {
 		return true
 	}
+	// The migration tree admits only migration keys, which are workspace-bound by design; its
+	// handlers check the binding against the workspace each call names.
+	if strings.HasPrefix(path, MigrationPathPrefix) {
+		return true
+	}
 	return method == http.MethodGet && accountReadable[reducePath(path)]
 }
 

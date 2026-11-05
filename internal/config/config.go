@@ -65,7 +65,10 @@ type Config struct {
 	AdminPassword        string
 	PasswordResetEnabled bool
 
-	OpenAPIDocs          bool
+	OpenAPIDocs bool
+	// MigrationEnabled is MIABI_MIGRATION_ENABLED: workspaces may move to and from other installs. It
+	// opens nothing by itself: a workspace is exported only while its owner has a migration started.
+	MigrationEnabled     bool
 	BillingAPIEnabled    bool
 	BillingHardAfterDays int
 	// BillingConnectionLocked keeps the console connection from being removed from inside Miabi.
@@ -633,6 +636,7 @@ func New() *Config {
 		AdminPassword:           goutils.Env("MIABI_ADMIN_PASSWORD", defaultAdminPassword),
 		PasswordResetEnabled:    goutils.EnvBool("MIABI_PASSWORD_RESET_ENABLED", true),
 		OpenAPIDocs:             goutils.EnvBool("MIABI_OPENAPI_DOCS", true),
+		MigrationEnabled:        goutils.EnvBool("MIABI_MIGRATION_ENABLED", false),
 		BillingAPIEnabled:       goutils.EnvBool("MIABI_BILLING_API_ENABLED", false),
 		BillingHardAfterDays:    goutils.EnvInt("MIABI_BILLING_HARD_AFTER_DAYS", 14),
 		BillingConnectionLocked: goutils.EnvBool("MIABI_BILLING_CONNECTION_LOCKED", false),

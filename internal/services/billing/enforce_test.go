@@ -44,6 +44,10 @@ func (w *countingWorkloads) StopWorkspace(context.Context, uint) (account.StopRe
 	return account.StopResult{}, models.FrozenResources{}
 }
 
+func (w *countingWorkloads) StopWorkspaceApps(context.Context, uint) (account.StopResult, models.FrozenResources) {
+	return account.StopResult{}, models.FrozenResources{}
+}
+
 func (w *countingWorkloads) StartWorkspace(context.Context, uint, *models.FrozenResources) (account.StartResult, error) {
 	w.started++
 	return account.StartResult{}, nil

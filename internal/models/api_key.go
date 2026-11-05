@@ -35,13 +35,17 @@ const (
 	// the enrolment, never by users) and "*" does not imply it: an ordinary all-powerful key must
 	// not be able to suspend every customer.
 	ScopeBilling = "billing"
+	// ScopeMigration lets another install pull one workspace (or, for a platform admin's key, any)
+	// with every secret value in it. Minted by its own action, never chosen, and implied by nothing.
+	ScopeMigration = "migration"
 )
 
 // API key purposes: what a key may be presented to.
 const (
-	KeyPurposeGeneral  = "general"
-	KeyPurposeRegistry = "registry"
-	KeyPurposeBilling  = "billing"
+	KeyPurposeGeneral   = "general"
+	KeyPurposeRegistry  = "registry"
+	KeyPurposeBilling   = "billing"
+	KeyPurposeMigration = "migration"
 )
 
 // ValidScopes is the set of scopes accepted on API-key creation.
@@ -67,7 +71,8 @@ var scopeImplies = map[string]map[string]bool{
 	ScopeDeploy: {ScopeDeploy: true, ScopeRead: true},
 	ScopeRead:   {ScopeRead: true},
 	// Only a billing key satisfies the billing scope; nothing else implies it.
-	ScopeBilling: {ScopeBilling: true},
+	ScopeBilling:   {ScopeBilling: true},
+	ScopeMigration: {ScopeMigration: true},
 }
 
 // ScopeSatisfies reports whether a key granting these scopes may perform an operation that
@@ -97,8 +102,11 @@ func (k *APIKey) Purpose() string {
 		return KeyPurposeGeneral
 	}
 	for _, s := range k.Scopes {
-		if s == ScopeBilling {
+		switch s {
+		case ScopeBilling:
 			return KeyPurposeBilling
+		case ScopeMigration:
+			return KeyPurposeMigration
 		}
 	}
 	for _, s := range k.Scopes {

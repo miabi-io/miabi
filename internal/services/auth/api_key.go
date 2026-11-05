@@ -129,6 +129,28 @@ func (s *APIKeyService) CreateBilling(userID uint, name string, allowedIPs []str
 	return plaintext, key, nil
 }
 
+// CreateMigration mints a migration key: scope migration only, bound to one workspace (or, for a
+// platform admin's instance key, to none), and always expiring. Like a billing key it bypasses
+// NormalizeScopes, because users can never pick that scope.
+func (s *APIKeyService) CreateMigration(userID uint, workspaceID *uint, name string, expiresAt time.Time) (plaintext string, key *models.APIKey, err error) {
+	raw, _ := generateToken()
+	plaintext = keyPrefix + raw
+	exp := expiresAt
+	key = &models.APIKey{
+		UserID:      userID,
+		WorkspaceID: workspaceID,
+		Name:        name,
+		KeyHash:     hashToken(plaintext),
+		KeyPrefix:   plaintext[:prefixLen],
+		Scopes:      []string{models.ScopeMigration},
+		ExpiresAt:   &exp,
+	}
+	if err := s.keys.Create(key); err != nil {
+		return "", nil, err
+	}
+	return plaintext, key, nil
+}
+
 // CreateEphemeral mints a short-lived, machine-minted API key for a runner job: workspace-scoped, bound
 // to one application, expiring at the job deadline, and marked Ephemeral so it is hidden from the UI and
 // excluded from the MaxAPIKeys quota. No quota check — job credentials never count against a plan.

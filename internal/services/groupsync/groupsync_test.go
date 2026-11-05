@@ -82,7 +82,7 @@ func (f *fakeWS) ListManagedBy(user uint, manager string) ([]models.WorkspaceMem
 
 type fakeUsers struct{ admins int64 }
 
-func (f *fakeUsers) Update(*models.User) error { return nil }
+func (f *fakeUsers) Update(*models.User) error                    { return nil }
 func (f *fakeUsers) CountByRole(models.SystemRole) (int64, error) { return f.admins, nil }
 
 const user = uint(10)
