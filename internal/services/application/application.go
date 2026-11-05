@@ -208,6 +208,7 @@ type Service struct {
 	pipelines     Pipelines
 	imageGuard    ImageGuard
 	configs       ConfigReader
+	stackEnv      StackEnvReader
 }
 
 // ConfigReader reads a mounted config's files, for the secret-reference scan.
@@ -323,6 +324,15 @@ func (s *Service) SetImageGuard(g ImageGuard) { s.imageGuard = g }
 // SetConfigs supplies the config reader used to spot secrets referenced from a
 // mounted file rather than from env.
 func (s *Service) SetConfigs(c ConfigReader) { s.configs = c }
+
+// StackEnvReader lists a stack's shared env, for the secret-reference scan.
+type StackEnvReader interface {
+	ListByStack(stackID uint) ([]models.StackEnvVar, error)
+}
+
+// SetStackEnv supplies the stack env reader used to spot secrets an app
+// inherits from its stack rather than declares itself.
+func (s *Service) SetStackEnv(r StackEnvReader) { s.stackEnv = r }
 
 func (s *Service) checkImage(workspaceID uint, image, tag string) error {
 	if s.imageGuard == nil || strings.TrimSpace(image) == "" {
@@ -1304,21 +1314,37 @@ func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models
 	if err != nil {
 		return nil, err
 	}
+	stacks := map[uint][]models.StackEnvVar{}
 	out := make([]models.Application, 0)
 	for i := range apps {
-		if s.appReferencesSecret(&apps[i], name) {
+		if s.appReferencesSecret(&apps[i], name, stacks) {
 			out = append(out, apps[i])
 		}
 	}
 	return out, nil
 }
 
-// appReferencesSecret covers both routes a secret reaches an app: an env value,
-// and a mounted config whose files reference it.
-func (s *Service) appReferencesSecret(app *models.Application, name string) bool {
+// appReferencesSecret covers every route a secret reaches an app: its own env, the shared env of its stack,
+// and a mounted config whose files reference it. stacks caches each stack's env across one scan.
+func (s *Service) appReferencesSecret(app *models.Application, name string, stacks map[uint][]models.StackEnvVar) bool {
+	own := make(map[string]bool, len(app.EnvVars))
 	for _, ev := range app.EnvVars {
-		if secret.ReferencesSecret(ev.Value, name) {
+		own[ev.Key] = true
+		if envReferencesSecret(ev.Value, ev.IsSecret, name) {
 			return true
+		}
+	}
+	if app.StackID != nil && s.stackEnv != nil {
+		shared, ok := stacks[*app.StackID]
+		if !ok {
+			shared, _ = s.stackEnv.ListByStack(*app.StackID)
+			stacks[*app.StackID] = shared
+		}
+		for _, ev := range shared {
+			// An app-level variable of the same key wins at deploy, so the stack's is inert here.
+			if !own[ev.Key] && envReferencesSecret(ev.Value, ev.IsSecret, name) {
+				return true
+			}
 		}
 	}
 	if s.configs == nil {
@@ -1343,6 +1369,19 @@ func (s *Service) appReferencesSecret(app *models.Application, name string) bool
 		}
 	}
 	return false
+}
+
+// envReferencesSecret reports whether an env value references the named secret. A secret-flagged value is
+// stored encrypted, and a manifest may still mark a pure reference secret, so it is read decrypted.
+func envReferencesSecret(value string, isSecret bool, name string) bool {
+	if isSecret {
+		dec, err := crypto.Decrypt(value)
+		if err != nil {
+			return false
+		}
+		value = dec
+	}
+	return secret.ReferencesSecret(value, name)
 }
 
 // AppsMountingConfig lists the apps whose mounts reference a config, which drives

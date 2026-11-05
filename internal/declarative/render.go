@@ -156,6 +156,27 @@ var (
 	actionPattern = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 )
 
+// pureSecretAction matches an action that is exactly one secret reference, and runtimeSecretRef the vault's
+// own `${{ secrets.NAME }}` form; both are deferred in env. A piped or wrapped secret cannot be, as the
+// worker only substitutes, so it keeps resolving at apply.
+var (
+	pureSecretAction = regexp.MustCompile(`^\{\{(-?\s*)\.secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})(\s*-?)\}\}$`)
+	runtimeSecretRef = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
+)
+
+// deferSecrets rewrites env secret references into calls to `secretRef`, which emits the runtime reference
+// the worker resolves at deploy, so the stored env points at the vault and follows its rotations.
+func deferSecrets(s string) string {
+	s = runtimeSecretRef.ReplaceAllString(s, `{{ secretRef "$1" }}`)
+	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
+		m := pureSecretAction.FindStringSubmatch(action)
+		if m == nil {
+			return action
+		}
+		return `{{` + m[1] + `secretRef "` + m[2] + `"` + m[3] + `}}`
+	})
+}
+
 // expandRefs rewrites dotted collection accessors into calls to the strict `ref` function. That
 // is what lets a reference name contain a hyphen: Go templates cannot access ".databases.shop-db"
 // but `(ref "databases" "shop-db" "uri")` resolves it. Non-hyphenated refs rewrite identically.
@@ -259,14 +280,24 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	return "", fmt.Errorf("unknown reference collection %q", coll)
 }
 
+// secretRef is the deferred form of a secret reference: it checks the secret exists, so a typo still fails
+// the apply rather than the deploy, but emits the runtime reference instead of the value.
+func (r *Renderer) secretRef(name string) (string, error) {
+	if _, ok := r.ctx.Secrets[name]; !ok {
+		return "", fmt.Errorf("unknown secret %q", name)
+	}
+	return "${{ secrets." + name + " }}", nil
+}
+
 // funcs returns the template functions for one render: the static helpers plus
-// the context-bound `ref`.
+// the context-bound `ref` and `secretRef`.
 func (r *Renderer) funcs() template.FuncMap {
-	fm := make(template.FuncMap, len(funcMap)+1)
+	fm := make(template.FuncMap, len(funcMap)+2)
 	for k, v := range funcMap {
 		fm[k] = v
 	}
 	fm["ref"] = r.ref
+	fm["secretRef"] = r.secretRef
 	return fm
 }
 
@@ -316,11 +347,12 @@ func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters
 	return out, nil
 }
 
-// RenderEnv interpolates every value of an env map.
+// RenderEnv interpolates every value of an env map. A secret reference is kept as a `${{ secrets.NAME }}`
+// pointer for the worker to resolve at deploy, never stored as its value.
 func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]string, error) {
 	out := make(map[string]string, len(env))
 	for k, v := range env {
-		rv, err := r.RenderString(scope+".env."+k, v)
+		rv, err := r.RenderString(scope+".env."+k, deferSecrets(v))
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +367,7 @@ func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]st
 func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[string]string {
 	out := make(map[string]string, len(env))
 	for k, v := range env {
-		if rv, err := r.RenderString(scope+".env."+k, v); err == nil {
+		if rv, err := r.RenderString(scope+".env."+k, deferSecrets(v)); err == nil {
 			out[k] = rv
 		} else {
 			out[k] = v

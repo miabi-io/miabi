@@ -822,6 +822,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	configService := configsvc.NewService(repositories.NewConfigRepository(db))
 	configService.SetConsumers(appService)
 	appService.SetConfigs(configService)
+	appService.SetStackEnv(stackEnvRepo)
 	housekeepingService.SetConfigs(configService)
 	databaseService.SetSecrets(secretService)
 
