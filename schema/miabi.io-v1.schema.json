@@ -963,7 +963,6 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Env is shared by every member application, injected on its next deploy; a member's own variable with the same key wins. Values interpolate like application env. Omitted, the stack keeps the shared variables it has, so ones set in the console are not undone; stated, even empty, it converges.",
           "type": "object"
         },
         "placement": {

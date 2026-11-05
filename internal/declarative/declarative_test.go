@@ -620,8 +620,50 @@ func TestRenderInterpolatesContext(t *testing.T) {
 	if env["DATABASE_URL"] != "postgres://u:p@mb-db-1/app" {
 		t.Errorf("DATABASE_URL = %q", env["DATABASE_URL"])
 	}
-	if env["SECRET_KEY"] != "s3cret" {
+	if env["SECRET_KEY"] != "${{ secrets.app_key }}" {
 		t.Errorf("SECRET_KEY = %q", env["SECRET_KEY"])
+	}
+}
+
+// Env keeps a secret as a runtime reference so the worker resolves it at deploy and rotation reaches the
+// app. Only a wrapped secret, which the worker cannot substitute, still renders its value at apply.
+func TestRenderEnvDefersSecrets(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{
+		Databases: map[string]d.ConnView{"pg": {Host: "mb-pg"}},
+		Secrets:   map[string]string{"jwt": "s3cret", "db-pw": "pw"},
+	})
+	env, err := r.RenderEnv("web", map[string]string{
+		"PURE":    "{{ .secrets.jwt }}",
+		"TRIM":    "  {{- .secrets.jwt -}}  ",
+		"RUNTIME": "${{secrets.jwt}}",
+		"MIXED":   "postgres://app:{{ .secrets.db-pw }}@{{ .databases.pg.host }}/app",
+		"PIPED":   "{{ .secrets.jwt | upper }}",
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want := map[string]string{
+		"PURE":    "${{ secrets.jwt }}",
+		"TRIM":    "${{ secrets.jwt }}",
+		"RUNTIME": "${{ secrets.jwt }}",
+		"MIXED":   "postgres://app:${{ secrets.db-pw }}@mb-pg/app",
+		"PIPED":   "S3CRET",
+	}
+	for k, w := range want {
+		if env[k] != w {
+			t.Errorf("%s = %q, want %q", k, env[k], w)
+		}
+	}
+	for _, v := range []string{"{{ .secrets.nope }}", "${{ secrets.nope }}"} {
+		if _, err := r.RenderEnv("web", map[string]string{"K": v}); err == nil {
+			t.Errorf("%q: an unknown secret must still fail the apply", v)
+		}
+	}
+	if out := r.RenderEnvLenient("web", map[string]string{"K": "{{ .secrets.later }}"}); out["K"] != "{{ .secrets.later }}" {
+		t.Errorf("lenient: a not-yet-created secret should stay a template, got %q", out["K"])
+	}
+	if got, _ := r.RenderString("registry.x.password", "{{ .secrets.jwt }}"); got != "s3cret" {
+		t.Errorf("outside env a secret still renders its value, got %q", got)
 	}
 }
 
