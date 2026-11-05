@@ -273,6 +273,17 @@ func (r *Router) billingRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[handlers.BillingMigrationImport]{},
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        "/accounts/{external_id}/workspaces/{workspace}/migration/unfreeze",
+			Group:       g,
+			Middlewares: billingKey,
+			Handler:     okapi.H(r.h.billing.MigrationUnfreeze),
+			Disabled:    !r.cfg.MigrationEnabled,
+			Summary:     "Roll a move back on the source: unfreeze the account's workspace",
+			Description: "Its apps start again and it accepts changes. A workspace not frozen by a migration is left as it is.",
+			Request:     &handlers.BillingWorkspaceMigrationRef{},
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        "/migrations/{id}",
 			Group:       g,
