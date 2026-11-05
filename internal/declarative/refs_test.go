@@ -87,7 +87,7 @@ func TestReferencesFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(refStrings(set.References()), " ")
-	want := ".applications.api.url .databases.shop-db.uri .secrets.admin-hash .secrets.api-key .secrets.ghcr-token"
+	want := ".applications.api.url .databases.shop-db.uri .secrets.admin-hash .secrets.api-key .secrets.ghcr-token .secrets.runtime-only"
 	if got != want {
 		t.Errorf("references = %s\nwant          %s", got, want)
 	}
@@ -132,6 +132,20 @@ func TestCheckReferencesFlagsTypo(t *testing.T) {
 	err := checkBundle(t, envApp(`    DB_PASS: "{{ .secrets.db-pasword }}"`+"\n"), known(nil, []string{"db-password"}, nil))
 	if err == nil || !strings.Contains(err.Error(), `unknown secret "db-pasword"`) || !strings.Contains(err.Error(), `application "web" env DB_PASS`) {
 		t.Errorf("error = %v, want the unknown secret and where it is used", err)
+	}
+}
+
+// Env resolves the runtime form at apply too, so its typo must fail the dry run like the template form's.
+func TestCheckReferencesFlagsRuntimeSecretTypo(t *testing.T) {
+	env := `    DB_PASS: "postgres://app:${{ secrets.db-pasword }}@db/app"
+    OK: "${{secrets.db-password}}"
+`
+	err := checkBundle(t, envApp(env), known(nil, []string{"db-password"}, nil))
+	if err == nil || !strings.Contains(err.Error(), `unknown secret "db-pasword"`) || !strings.Contains(err.Error(), `application "web" env DB_PASS`) {
+		t.Errorf("error = %v, want the unknown secret and where it is used", err)
+	}
+	if strings.Contains(err.Error(), "env OK") {
+		t.Errorf("a known runtime reference was flagged: %v", err)
 	}
 }
 
