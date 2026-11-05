@@ -49,10 +49,10 @@ sits in.
 ## Miabi Enterprise — Commercial License
 
 Enterprise features are available under a commercial **Miabi Enterprise License**
-(Enterprise Edition). The Enterprise files are the sources under
-[`internal/enterprise/`](./internal/enterprise) that are built with the
-`enterprise` build tag. They are **not** AGPL and require a valid commercial
-license to use; the full terms are defined in
+(Enterprise Edition). The Enterprise files are everything under
+[`internal/enterprise/`](./internal/enterprise), and any other file carrying
+the Miabi Enterprise License header. They are **not** AGPL and require a valid
+commercial license to use; the full terms are defined in
 [`internal/enterprise/LICENSE.md`](./internal/enterprise/LICENSE.md).
 
 ## Dual licensing & the AGPL + Enterprise combination
@@ -89,10 +89,9 @@ machine-readable:
 
 `LicenseRef-Miabi-Enterprise` is the custom (non-SPDX-registered) Miabi Enterprise
 License whose full text lives in
-[`internal/enterprise/LICENSE.md`](./internal/enterprise/LICENSE.md). Only the
-files built with the `enterprise` tag carry it (the SAML, LDAP/AD, and SCIM
-providers plus the license-verifying `enterprise.go`); everything under `pkg/` is
-Apache-2.0, and everything else is AGPL-3.0-or-later. The community stub
-(`ce_stub.go`), the shared `EE` interface (`ee.go`), and the always-compiled
-license-token verification (`internal/enterprise/license/`) ship in the
-open-source build and are AGPL-3.0-or-later.
+[`internal/enterprise/LICENSE.md`](./internal/enterprise/LICENSE.md). Every file
+under `internal/enterprise/` carries it, including the community stub
+(`ce_stub.go`), the shared `EE` interface (`ee.go`) and the license-token
+verification (`internal/enterprise/license/`) that are also compiled into a
+build without the `enterprise` tag. Everything under `pkg/` is Apache-2.0, and
+everything else is AGPL-3.0-or-later.

@@ -1,21 +1,12 @@
-// Copyright (c) 2026 Jonas Kaninda.
+// Copyright (c) 2026 Jonas Kaninda. All rights reserved.
 //
-// This file is part of Miabi.
+// This file is part of Miabi Enterprise Edition.
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// This file is licensed under the Miabi Enterprise License, not the GNU Affero
+// General Public License. You may use it only with a valid Miabi Enterprise
+// subscription and under the terms in internal/enterprise/LICENSE.md.
 //
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-//
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
 // Package enterprise is the commercial-edition seam: one interface, EE, gating licensed features.
 // Community links a deny-all stub; the Enterprise build links the license-verifying one. The HTTP
@@ -246,18 +237,20 @@ const CommunityStorageClassLimit = 2
 // Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
 type Entitlements struct {
-	Edition      string          `json:"edition"`
-	Tier         string          `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
-	InstallID    string          `json:"install_id,omitempty"`
-	URL          string          `json:"url,omitempty"`
-	BindingError string          `json:"binding_error,omitempty"`
-	State        string          `json:"state"`
-	Customer     string          `json:"customer,omitempty"`
-	LicenseID    string          `json:"license_id,omitempty"`
-	Flags        map[string]bool `json:"flags"`
-	Limits       map[string]int  `json:"limits"`
-	NotAfter     *time.Time      `json:"not_after,omitempty"`
-	GraceEnds    *time.Time      `json:"grace_ends,omitempty"`
+	Edition      string `json:"edition"`
+	Tier         string `json:"tier,omitempty"` // commercial plan label (professional|business|enterprise)
+	InstallID    string `json:"install_id,omitempty"`
+	URL          string `json:"url,omitempty"`
+	BindingError string `json:"binding_error,omitempty"`
+	// SigningKey names the untrusted key when State is StateUnknownSigningKey.
+	SigningKey string          `json:"signing_key,omitempty"`
+	State      string          `json:"state"`
+	Customer   string          `json:"customer,omitempty"`
+	LicenseID  string          `json:"license_id,omitempty"`
+	Flags      map[string]bool `json:"flags"`
+	Limits     map[string]int  `json:"limits"`
+	NotAfter   *time.Time      `json:"not_after,omitempty"`
+	GraceEnds  *time.Time      `json:"grace_ends,omitempty"`
 }
 
 func (e Entitlements) NodeLimit() int {
@@ -462,7 +455,12 @@ var (
 	ErrRunnerLimitReached     = &gateError{code: "RUNNER_LIMIT_REACHED", msg: "the platform-shared runner limit for your edition has been reached; upgrade your license to add more", status: 402}
 	ErrStorageClassLimit      = &gateError{code: "STORAGE_CLASS_LIMIT_REACHED", msg: "the storage-class limit for your edition has been reached; upgrade your license to add more disks", status: 402}
 	ErrLicenseBindingMismatch = &gateError{code: "LICENSE_BINDING_MISMATCH", msg: "this license is bound to a different deployment (Install ID or URL)", status: 402}
+	ErrLicenseUnknownKey      = &gateError{code: "LICENSE_UNKNOWN_KEY", msg: "this license is signed by a key this version of Miabi does not trust; upgrade Miabi or download the license again", status: 402}
 )
+
+// StateUnknownSigningKey is the Entitlements.State when the installed license is signed by a key
+// missing from this build's keyring, so no features are granted until Miabi is upgraded.
+const StateUnknownSigningKey = "unknown_signing_key"
 
 // StateBindingMismatch is the Entitlements.State when the license is valid and signed but bound to
 // a different instance than this one, so no features are granted. It is surfaced with the bound

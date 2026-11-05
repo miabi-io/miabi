@@ -33,6 +33,7 @@ const stateLabel: Record<string, string> = {
   degraded: 'Expired · read-only',
   none: 'No license',
   binding_mismatch: 'Wrong instance',
+  unknown_signing_key: 'Needs a newer Miabi',
 }
 
 const stateClass = computed(() => {
@@ -43,6 +44,7 @@ const stateClass = computed(() => {
       return 'badge-warning'
     case 'degraded':
     case 'binding_mismatch':
+    case 'unknown_signing_key':
       return 'badge-danger'
     default:
       return 'badge-neutral'
@@ -108,6 +110,13 @@ const alerts = computed<Alert[]>(() => {
             body: `It is bound to ${v.url}, but this instance runs on a different URL. Enterprise features are off until you install a license for this deployment.`,
           },
     )
+  } else if (state.value === 'unknown_signing_key') {
+    out.push({
+      kind: 'danger',
+      icon: 'mdi-key-alert',
+      title: 'This license needs a newer Miabi',
+      body: `It is signed by key ${v.signing_key}, which this version of Miabi does not know. Enterprise features are off until you upgrade Miabi.`,
+    })
   } else if (state.value === 'degraded') {
     out.push({
       kind: 'danger',
@@ -521,7 +530,8 @@ async function remove() {
 .status-icon.is-valid { background: var(--success-50); color: var(--success-600); }
 .status-icon.is-grace { background: var(--warning-50); color: var(--warning-600); }
 .status-icon.is-degraded,
-.status-icon.is-binding_mismatch { background: var(--danger-50); color: var(--danger-600); }
+.status-icon.is-binding_mismatch,
+.status-icon.is-unknown_signing_key { background: var(--danger-50); color: var(--danger-600); }
 .status-text { min-width: 0; }
 .edition { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .edition-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-transform: capitalize; }

@@ -2,10 +2,9 @@
 
 Copyright (c) 2026 Jonas Kaninda. All rights reserved.
 
-This license governs the Miabi Enterprise Edition: the source files under
-`internal/enterprise/` that are built with the `enterprise` build tag, and any
-other file that carries the **"Miabi Enterprise License"** header (collectively,
-the **"Enterprise Software"**).
+This license governs the Miabi Enterprise Edition: every source file under
+`internal/enterprise/`, and any other file that carries the **"Miabi Enterprise
+License"** header (collectively, the **"Enterprise Software"**).
 
 The Enterprise Software is **not** covered by the GNU Affero General Public
 License v3.0-or-later ("AGPL-3.0-or-later") that applies to the Miabi Community

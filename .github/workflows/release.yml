@@ -71,7 +71,7 @@ jobs:
           # Baked into the downloadable binaries so a license can unlock
           # Enterprise features. Empty is a harmless no-op — the binary still
           # runs as free Community until a valid license is installed.
-          LICENSE_PUBLIC_KEY: ${{ vars.LICENSE_PUBLIC_KEY }}
+          LICENSE_KEYRING: ${{ vars.LICENSE_KEYRING }}
 
   # One edition. Built with `-tags enterprise`, the image runs as free Community
   # until a license is installed, so the frictionless path is: pull `latest`, add
@@ -125,7 +125,7 @@ jobs:
             COMMIT=${{ env.COMMIT }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            LICENSE_KEYRING=${{ vars.LICENSE_KEYRING }}
             GOMA_VERSION=${{ env.GOMA_VERSION }}
           tags: |
             miabi/miabi:${{ env.VERSION }}-rootless
@@ -145,7 +145,7 @@ jobs:
             COMMIT=${{ env.COMMIT }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
-            LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            LICENSE_KEYRING=${{ vars.LICENSE_KEYRING }}
             GOMA_VERSION=${{ env.GOMA_VERSION }}
           tags: |
             miabi/miabi:${{ env.VERSION }}

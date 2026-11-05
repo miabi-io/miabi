@@ -3490,7 +3490,7 @@ export interface ResourcePolicy {
 // --- Commercial license (Enterprise) ---
 
 export type LicenseEdition = 'community' | 'enterprise'
-export type LicenseState = 'valid' | 'grace' | 'degraded' | 'none' | 'binding_mismatch'
+export type LicenseState = 'valid' | 'grace' | 'degraded' | 'none' | 'binding_mismatch' | 'unknown_signing_key'
 
 export interface LicenseEntitlements {
   edition: LicenseEdition
@@ -3498,6 +3498,7 @@ export interface LicenseEntitlements {
   install_id?: string // Install ID the license is bound to (empty = not bound)
   url?: string // deployment URL the license is bound to (empty = not bound)
   binding_error?: 'install_id' | 'url' // which binding failed, when state is binding_mismatch
+  signing_key?: string // the untrusted key id, when state is unknown_signing_key
   state: LicenseState
   customer?: string
   license_id?: string
