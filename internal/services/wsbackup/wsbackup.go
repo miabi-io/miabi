@@ -330,7 +330,7 @@ func (s *Service) Run(ctx context.Context, id uint) error {
 	if err != nil {
 		return fmt.Errorf("bundle run %d not found: %w", id, err)
 	}
-	if b.Status == models.BackupCompleted || b.Status == models.BackupFailed {
+	if b.Status == models.BackupCompleted || b.Status == models.BackupFailed || b.Status == models.BackupPartial {
 		return nil // already processed
 	}
 	now := time.Now()
@@ -360,6 +360,19 @@ func (s *Service) finish(b *models.WorkspaceBundle) {
 	_ = s.Repo.Update(b)
 	logger.Info("workspace bundle "+string(b.Kind)+" completed",
 		"workspace", b.WorkspaceID, "ref", b.Ref, "artifacts", b.Artifacts)
+}
+
+// partial marks a restore that brought back some resources but not all. Those that came back are real
+// and are kept, so the run is neither a success nor a failure.
+func (s *Service) partial(b *models.WorkspaceBundle, cause error) {
+	fin := time.Now()
+	b.Phase = models.BundlePhaseDone
+	b.Status = models.BackupPartial
+	b.Error = cause.Error()
+	b.FinishedAt = &fin
+	_ = s.Repo.Update(b)
+	logger.Warn("workspace bundle "+string(b.Kind)+" partially completed",
+		"workspace", b.WorkspaceID, "ref", b.Ref, "error", cause)
 }
 
 // fail marks a run failed and returns it.

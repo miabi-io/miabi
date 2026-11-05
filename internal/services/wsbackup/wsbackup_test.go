@@ -20,11 +20,14 @@
 package wsbackup
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/storage/blob"
+	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
 // Each subject writes under its own path, and pointing one at a path must never
@@ -160,6 +163,7 @@ func TestRestoreStepsRunInDependencyOrder(t *testing.T) {
 		{"volumes", "apps", "an app's mounts name volumes"},
 		{"stacks", "apps", "an app names its stack"},
 		{"credentials", "apps", "an app names its registry and git credentials"},
+		{"secrets", "credentials", "a registry or git credential may reference a vault secret"},
 		{"databases", "database-links", "a link attaches a database that must exist"},
 		{"apps", "database-links", "a link attaches to an application"},
 		{"apps", "routing", "a route names its application"},
@@ -190,5 +194,36 @@ func TestTailBoundsHelperOutput(t *testing.T) {
 	got := tail(long)
 	if len(got) > 2100 || !strings.HasPrefix(got, "…") {
 		t.Fatalf("tail did not bound the output: %d bytes", len(got))
+	}
+}
+
+type fakeLister map[string][]blob.Object
+
+func (f fakeLister) List(_ context.Context, prefix string) ([]blob.Object, error) {
+	return f[prefix], nil
+}
+
+// volume-bkup prints only the archive's name, so a volume's size has to come from the bucket, or a run
+// that moved gigabytes reports the size of its state file.
+func TestSizeArtifactsFillsWhatHelpersDidNotReport(t *testing.T) {
+	store := fakeLister{"b/vols": {
+		{Key: "b/vols/data_1.tar.gz.meta.json", Size: 5},
+		{Key: "b/vols/data_1.tar.gz", Size: 3013037},
+		{Key: "b/vols/data_10.tar.gz", Size: 9},
+	}}
+	arts := []wsbundle.Artifact{
+		{Subject: wsbundle.SubjectVolume, Path: "b/vols", File: "data_1.tar.gz"},
+		{Subject: wsbundle.SubjectDatabase, Path: "b/dbs", File: "shop.sql.gz", SizeBytes: 386},
+		{Subject: wsbundle.SubjectVolume, Path: "b/vols", Error: "archive failed"},
+	}
+	sizeArtifacts(context.Background(), store, arts)
+	if arts[0].SizeBytes != 3013037 {
+		t.Errorf("volume size = %d, want the archive's object size", arts[0].SizeBytes)
+	}
+	if arts[1].SizeBytes != 386 {
+		t.Errorf("a size the helper reported was overwritten: %d", arts[1].SizeBytes)
+	}
+	if arts[2].SizeBytes != 0 {
+		t.Errorf("a failed artifact was sized: %d", arts[2].SizeBytes)
 	}
 }

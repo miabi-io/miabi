@@ -33,6 +33,8 @@ const (
 	BackupRunning   BackupStatus = "running"
 	BackupCompleted BackupStatus = "completed"
 	BackupFailed    BackupStatus = "failed"
+	// BackupPartial is a workspace bundle restore that brought back some resources but not all.
+	BackupPartial BackupStatus = "partial"
 )
 
 // Backup is a single backup run of a managed database.

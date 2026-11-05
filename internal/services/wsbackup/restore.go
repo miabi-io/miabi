@@ -224,8 +224,7 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 		// Partial is the honest outcome: the resources that came back are real and
 		// keeping them is the point, but a run reported as successful when a
 		// database did not restore is how an operator finds out too late.
-		b.Error = fmt.Sprintf("%d of %d resources could not be restored", len(fails), len(r.report.Items))
-		s.fail(b, errors.New(b.Error))
+		s.partial(b, fmt.Errorf("%d of %d resources could not be restored", len(fails), len(r.report.Items)))
 		return nil
 	}
 	s.finish(b)
@@ -287,9 +286,10 @@ func (r *restoreRun) steps() []restoreStep {
 	return []restoreStep{
 		// Before secrets: a restored GitOps source re-applies sealed values, which must open on the target.
 		{"sealing-keys", func(context.Context) { r.applySealingKeys() }},
+		// Before credentials: a registry or Git credential may name a vault secret instead of holding its token.
+		{"secrets", func(context.Context) { r.applySecrets() }},
 		{"credentials", func(context.Context) { r.applyCredentials() }},
 		{"networks", r.applyNetworks},
-		{"secrets", func(context.Context) { r.applySecrets() }},
 		// Before apps: an app's mounts reference configs by name, and the mount can
 		// only be rebuilt once the config it points at exists.
 		{"configs", func(context.Context) { r.applyConfigs() }},
