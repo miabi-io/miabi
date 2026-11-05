@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -42,6 +43,8 @@ type ConnView struct {
 	ReadOnlyUser     string
 	ReadOnlyPassword string
 	ReadOnlyURI      string
+	PasswordSecret   string
+	URISecret        string
 }
 
 // fields is the view's {{ .databases.<name>.<field> }} map.
@@ -92,6 +95,10 @@ type RenderContext struct {
 // Renderer interpolates manifest strings against a RenderContext.
 type Renderer struct {
 	ctx RenderContext
+	// cur is the env key being rendered, and credential the keys whose value resolved a credential (a
+	// secret or a database password or URI) rather than deferring it; see CredentialKeys.
+	cur        string
+	credential map[string]bool
 }
 
 // NewRenderer builds a renderer (nil maps are tolerated).
@@ -156,24 +163,33 @@ var (
 	actionPattern = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 )
 
-// pureSecretAction matches an action that is exactly one secret reference, and runtimeSecretRef the vault's
-// own `${{ secrets.NAME }}` form; both are deferred in env. A piped or wrapped secret cannot be, as the
-// worker only substitutes, so it keeps resolving at apply.
+// pureSecretAction matches an action that is exactly one secret reference, pureDatabaseAction one database
+// password or URI, and runtimeSecretRef the vault's own `${{ secrets.NAME }}` form; all are deferred in env.
+// A piped or wrapped reference cannot be, as the worker only substitutes, so it keeps resolving at apply.
 var (
-	pureSecretAction = regexp.MustCompile(`^\{\{(-?\s*)\.secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})(\s*-?)\}\}$`)
-	runtimeSecretRef = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
+	pureSecretAction   = regexp.MustCompile(`^\{\{(-?\s*)\.secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})(\s*-?)\}\}$`)
+	pureDatabaseAction = regexp.MustCompile(`^\{\{(-?\s*)\.databases\.([A-Za-z0-9_-]+)(?:\.(password|uri|url))?(\s*-?)\}\}$`)
+	runtimeSecretRef   = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
 )
+
+// credentialFields are the database fields whose value is a credential.
+var credentialFields = map[string]bool{
+	"password": true, "uri": true, "url": true,
+	"readonly_password": true, "readonly_uri": true, "readonly_url": true,
+}
 
 // deferSecrets rewrites env secret references into calls to `secretRef`, which emits the runtime reference
 // the worker resolves at deploy, so the stored env points at the vault and follows its rotations.
 func deferSecrets(s string) string {
 	s = runtimeSecretRef.ReplaceAllString(s, `{{ secretRef "$1" }}`)
 	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
-		m := pureSecretAction.FindStringSubmatch(action)
-		if m == nil {
-			return action
+		if m := pureSecretAction.FindStringSubmatch(action); m != nil {
+			return `{{` + m[1] + `secretRef "` + m[2] + `"` + m[3] + `}}`
 		}
-		return `{{` + m[1] + `secretRef "` + m[2] + `"` + m[3] + `}}`
+		if m := pureDatabaseAction.FindStringSubmatch(action); m != nil {
+			return `{{` + m[1] + `databaseSecretRef "` + m[2] + `" "` + m[3] + `"` + m[4] + `}}`
+		}
+		return action
 	})
 }
 
@@ -228,6 +244,9 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	field := ""
 	if len(keys) > 1 {
 		field = keys[1]
+	}
+	if coll == "secrets" || (coll == "databases" && (field == "" || credentialFields[field])) {
+		r.markCredential()
 	}
 	switch coll {
 	case "inputs":
@@ -289,15 +308,53 @@ func (r *Renderer) secretRef(name string) (string, error) {
 	return "${{ secrets." + name + " }}", nil
 }
 
+// databaseSecretRef defers a database's password or URI to its managed vault secret. A database without
+// one, or whose secret is not in the vault yet, renders the value instead, as before.
+func (r *Renderer) databaseSecretRef(name, field string) (string, error) {
+	c, ok := r.ctx.Databases[name]
+	if !ok {
+		return "", fmt.Errorf("unknown database %q", name)
+	}
+	secret := c.URISecret
+	if field == "password" {
+		secret = c.PasswordSecret
+	}
+	if _, inVault := r.ctx.Secrets[secret]; secret != "" && inVault {
+		return "${{ secrets." + secret + " }}", nil
+	}
+	if field == "" {
+		return r.ref("databases", name)
+	}
+	return r.ref("databases", name, field)
+}
+
+func (r *Renderer) markCredential() {
+	if r.cur != "" && r.credential != nil {
+		r.credential[r.cur] = true
+	}
+}
+
+// CredentialKeys lists the env keys of the last RenderEnv or RenderEnvLenient whose value resolved a
+// credential at apply instead of deferring it. They must be stored encrypted, whatever secretEnv says.
+func (r *Renderer) CredentialKeys() []string {
+	out := make([]string, 0, len(r.credential))
+	for k := range r.credential {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // funcs returns the template functions for one render: the static helpers plus
-// the context-bound `ref` and `secretRef`.
+// the context-bound `ref`, `secretRef` and `databaseSecretRef`.
 func (r *Renderer) funcs() template.FuncMap {
-	fm := make(template.FuncMap, len(funcMap)+2)
+	fm := make(template.FuncMap, len(funcMap)+3)
 	for k, v := range funcMap {
 		fm[k] = v
 	}
 	fm["ref"] = r.ref
 	fm["secretRef"] = r.secretRef
+	fm["databaseSecretRef"] = r.databaseSecretRef
 	return fm
 }
 
@@ -347,11 +404,14 @@ func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters
 	return out, nil
 }
 
-// RenderEnv interpolates every value of an env map. A secret reference is kept as a `${{ secrets.NAME }}`
-// pointer for the worker to resolve at deploy, never stored as its value.
+// RenderEnv interpolates every value of an env map. A secret, or a database password or URI, is kept as a
+// `${{ secrets.NAME }}` pointer for the worker to resolve at deploy, never stored as its value.
 func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]string, error) {
+	r.credential = map[string]bool{}
+	defer func() { r.cur = "" }()
 	out := make(map[string]string, len(env))
 	for k, v := range env {
+		r.cur = k
 		rv, err := r.RenderString(scope+".env."+k, deferSecrets(v))
 		if err != nil {
 			return nil, err
@@ -365,11 +425,16 @@ func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]st
 // yet is left as its original template instead of failing. Used for plan/diff, where a
 // not-yet-created dependency must not abort the plan; apply re-renders strictly.
 func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[string]string {
+	r.credential = map[string]bool{}
+	defer func() { r.cur = "" }()
 	out := make(map[string]string, len(env))
 	for k, v := range env {
+		r.cur = k
 		if rv, err := r.RenderString(scope+".env."+k, deferSecrets(v)); err == nil {
 			out[k] = rv
 		} else {
+			// Left as its template, so it holds no credential yet.
+			delete(r.credential, k)
 			out[k] = v
 		}
 	}

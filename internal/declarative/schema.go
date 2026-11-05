@@ -155,7 +155,7 @@ type ApplicationSpec struct {
 	Command   []string          `yaml:"command,omitempty" json:"command,omitempty"`
 	Ports     []PortSpec        `yaml:"ports,omitempty" json:"ports,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; a secret reference needs none
+	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; vault references need none, apply-resolved credentials are added
 	Mounts    []MountSpec       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
 	Resources *ResourceSpec     `yaml:"resources,omitempty" json:"resources,omitempty"`
 	// Placement is where the app runs: the location it is created in and, for a service, the nodes Swarm
@@ -362,7 +362,7 @@ type StackSpec struct {
 	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 	// Env is shared by every member application, injected on its next deploy; a member's own variable with the same key wins. Values interpolate like application env.
 	Env       map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; a secret reference needs none
+	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; vault references need none, apply-resolved credentials are added
 }
 
 // DatabaseSpec requests a logical database on a DatabaseInstance.

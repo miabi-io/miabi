@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -802,5 +803,67 @@ func TestBuildPlanUIDMatchIsRenameSafe(t *testing.T) {
 	c2, _, del2, _ := d.BuildPlan(desiredNoUID, actual, d.PlanOptions{Prune: true}).Counts()
 	if c2 != 1 || del2 != 1 {
 		t.Errorf("name-only rename should be create+delete; got create=%d delete=%d", c2, del2)
+	}
+}
+
+// A database password or URI in env points at the database's managed vault secret, like a secret
+// reference, so the credential is never stored in the app and a restore resolves it to the target's.
+func TestRenderEnvDefersDatabaseCredentials(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{
+		Databases: map[string]d.ConnView{
+			"pg": {Host: "mb-pg", Password: "pw", URI: "postgres://u:pw@mb-pg/app", ReadOnlyPassword: "ro",
+				PasswordSecret: "db_pg_app_password", URISecret: "db_pg_app_url"},
+			"legacy": {Host: "mb-old", Password: "pw2", URI: "postgres://u:pw2@mb-old/app",
+				PasswordSecret: "db_legacy_password", URISecret: "db_legacy_url"},
+		},
+		Secrets: map[string]string{"db_pg_app_password": "pw", "db_pg_app_url": "postgres://u:pw@mb-pg/app", "key": "k"},
+	})
+	env, err := r.RenderEnv("web", map[string]string{
+		"PASS":     "{{ .databases.pg.password }}",
+		"URL":      "{{ .databases.pg.url }}",
+		"BARE":     "{{ .databases.pg }}",
+		"JDBC":     "jdbc:{{ .databases.pg.uri }}?ssl=true",
+		"HOST":     "{{ .databases.pg.host }}",
+		"RO":       "{{ .databases.pg.readonly_password }}",
+		"PIPED":    "{{ .databases.pg.password | base64 }}",
+		"NOVAULT":  "{{ .databases.legacy.password }}",
+		"SECRET":   "{{ .secrets.key | upper }}",
+		"DEFERRED": "{{ .secrets.key }}",
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want := map[string]string{
+		"PASS":     "${{ secrets.db_pg_app_password }}",
+		"URL":      "${{ secrets.db_pg_app_url }}",
+		"BARE":     "${{ secrets.db_pg_app_url }}",
+		"JDBC":     "jdbc:${{ secrets.db_pg_app_url }}?ssl=true",
+		"HOST":     "mb-pg",
+		"RO":       "ro",
+		"PIPED":    "cHc=",
+		"NOVAULT":  "pw2",
+		"SECRET":   "K",
+		"DEFERRED": "${{ secrets.key }}",
+	}
+	for k, w := range want {
+		if env[k] != w {
+			t.Errorf("%s = %q, want %q", k, env[k], w)
+		}
+	}
+	// Every key whose credential was rendered as its value has to be stored encrypted.
+	if got := strings.Join(r.CredentialKeys(), " "); got != "NOVAULT PIPED RO SECRET" {
+		t.Errorf("credential keys = %q, want NOVAULT PIPED RO SECRET", got)
+	}
+}
+
+// The plan pass leaves an unresolvable value as its template, which holds no credential to protect.
+func TestRenderEnvLenientCredentialKeysSkipUnrendered(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{Secrets: map[string]string{"key": "k"}})
+	r.RenderEnvLenient("web", map[string]string{
+		"OK":      "{{ .secrets.key | upper }}",
+		"PENDING": "{{ .secrets.key | upper }}{{ .databases.later.host }}",
+	})
+	if got := strings.Join(r.CredentialKeys(), " "); got != "OK" {
+		t.Errorf("credential keys = %q, want OK only", got)
 	}
 }

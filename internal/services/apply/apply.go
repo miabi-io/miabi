@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -978,9 +979,11 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 		switch {
 		case res.Application != nil && len(res.Application.Env) > 0:
 			res.Application.Env = r.RenderEnvLenient(res.Metadata.Name, res.Application.Env)
+			res.Application.SecretEnv = withKeys(res.Application.SecretEnv, r.CredentialKeys())
 			desired.Add(res) // write back the rendered copy
 		case res.Stack != nil && len(res.Stack.Env) > 0:
 			res.Stack.Env = r.RenderEnvLenient(res.Metadata.Name, res.Stack.Env)
+			res.Stack.SecretEnv = withKeys(res.Stack.SecretEnv, r.CredentialKeys())
 			desired.Add(res)
 		case res.Registry != nil:
 			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
@@ -1173,7 +1176,19 @@ func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSp
 		return err
 	}
 	spec.Env = rendered
+	spec.SecretEnv = withKeys(spec.SecretEnv, r.CredentialKeys())
 	return nil
+}
+
+// withKeys adds the keys a render resolved a credential into, so they are stored encrypted (and masked
+// in the plan) even when the manifest's secretEnv leaves them out.
+func withKeys(secretEnv, keys []string) []string {
+	for _, k := range keys {
+		if !slices.Contains(secretEnv, k) {
+			secretEnv = append(secretEnv, k)
+		}
+	}
+	return secretEnv
 }
 
 // appRefPattern finds the applications this spec's env addresses. It runs on the RAW env, so it has
@@ -1401,7 +1416,9 @@ func (s *Service) databaseViews(workspaceID uint) map[string]declarative.ConnVie
 			if cErr != nil {
 				continue
 			}
-			out[declName] = connView(conn)
+			v := connView(conn)
+			v.PasswordSecret, v.URISecret = database.PasswordSecretName(inst, &dbs[i]), database.URLSecretName(inst, &dbs[i])
+			out[declName] = v
 			claimed[inst.ID] = true
 		}
 	}
@@ -1430,7 +1447,9 @@ func (s *Service) appConnection(workspaceID uint, inst *models.DatabaseInstance)
 	if inst.SupportsLogicalDatabases() {
 		if dbs, err := s.dbs.ListDatabases(workspaceID, inst.ID); err == nil && len(dbs) > 0 {
 			if conn, cErr := s.dbs.DatabaseConnection(inst, &dbs[0]); cErr == nil {
-				return connView(conn), nil
+				v := connView(conn)
+				v.PasswordSecret, v.URISecret = database.PasswordSecretName(inst, &dbs[0]), database.URLSecretName(inst, &dbs[0])
+				return v, nil
 			}
 		}
 	}
@@ -1438,7 +1457,9 @@ func (s *Service) appConnection(workspaceID uint, inst *models.DatabaseInstance)
 	if err != nil {
 		return declarative.ConnView{}, err
 	}
-	return connView(conn), nil
+	v := connView(conn)
+	v.PasswordSecret, v.URISecret = database.InstancePasswordSecretName(inst), database.InstanceURLSecretName(inst)
+	return v, nil
 }
 
 // readOnlySpec reports whether a logical database has a read-only user, for the snapshot.
@@ -3257,6 +3278,7 @@ func (s *Service) renderStackEnv(workspaceID uint, spec *declarative.StackSpec, 
 		return err
 	}
 	spec.Env = rendered
+	spec.SecretEnv = withKeys(spec.SecretEnv, r.CredentialKeys())
 	return nil
 }
 
