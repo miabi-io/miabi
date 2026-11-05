@@ -154,7 +154,7 @@ func (c *migrationClient) do(ctx context.Context, method, path string, body any,
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSourceUnreachable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if resp.StatusCode >= 300 {
 		return remoteError(resp.StatusCode, raw)
@@ -219,7 +219,7 @@ func (c *migrationClient) state(ctx context.Context, ws string, id uint) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSourceUnreachable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
 	if err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (c *migrationClient) fetchFrom(ctx context.Context, path string, offset int
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSourceUnreachable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch {
 	case resp.StatusCode == http.StatusPartialContent:
 	case resp.StatusCode == http.StatusOK && offset > 0:
