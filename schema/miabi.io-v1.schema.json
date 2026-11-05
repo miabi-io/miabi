@@ -963,6 +963,7 @@
           "additionalProperties": {
             "type": "string"
           },
+          "description": "Env is shared by every member application, injected on its next deploy; a member's own variable with the same key wins. Values interpolate like application env.",
           "type": "object"
         },
         "placement": {
