@@ -28,6 +28,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
+	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
@@ -503,6 +504,13 @@ func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report 
 				ReadOnlyUser: d.ReadOnlyUsername != ""}
 			if d.ApplicationID != nil {
 				ld.App = appName[*d.ApplicationID]
+				ld.AttachOnly = s.attachOnly(inst, d)
+			}
+			if conn, err := s.Database.DatabaseConnection(inst, d); err == nil {
+				ld.Source = &wsbundle.Connection{
+					Host: conn.Host, User: conn.Username, Password: conn.Password, URI: conn.URI,
+					ReadOnlyUser: conn.ReadOnlyUsername, ReadOnlyPassword: conn.ReadOnlyPassword, ReadOnlyURI: conn.ReadOnlyURI,
+				}
 			}
 			entry.Databases = append(entry.Databases, ld)
 		}
@@ -518,6 +526,29 @@ func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report 
 		st.Databases = append(st.Databases, entry)
 	}
 	return nil
+}
+
+// attachOnly reports whether a database is attached to its app without having injected connection env.
+// A recorded injection settles it; a link made before injections were recorded counts as injected only
+// if the app still holds every default variable.
+func (s *Service) attachOnly(inst *models.DatabaseInstance, d *models.Database) bool {
+	if len(d.EnvVars) > 0 {
+		return false
+	}
+	vars, err := s.App.ListEnvVars(*d.ApplicationID)
+	if err != nil {
+		return false
+	}
+	have := make(map[string]bool, len(vars))
+	for _, v := range vars {
+		have[v.Key] = true
+	}
+	for _, k := range database.EnvKeys(inst.Engine, d.EnvPrefix, d.EnvMap) {
+		if !have[k] {
+			return true
+		}
+	}
+	return false
 }
 
 // collectApps carries the workloads: their spec, their environment (secret values

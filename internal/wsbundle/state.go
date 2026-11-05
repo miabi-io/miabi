@@ -35,7 +35,8 @@ import (
 //	3  healthcheck_type "none" disables the image's own HEALTHCHECK; before, it kept it ("image")
 //	4  adds sealing keys, and the sealed-value fingerprint on secrets
 //	5  adds a pipeline's version policy and the latest version of each series
-const StateSchema = 5
+//	6  adds a logical database's source connection and its attach-only flag
+const StateSchema = 6
 
 // HealthcheckNoneDisables is the first schema whose "none" healthcheck disables the image's own check.
 const HealthcheckNoneDisables = 3
@@ -355,6 +356,23 @@ type LogicalDatabase struct {
 	// ReadOnlyUser recreates the database's read-only user on restore (with new credentials, like
 	// the owner's: credentials never travel).
 	ReadOnlyUser bool `json:"readonly_user,omitempty"`
+	// AttachOnly marks an attachment that injected no env (apply and marketplace attach this way), so
+	// restore does not add connection variables the app never had.
+	AttachOnly bool `json:"attach_only,omitempty"`
+	// Source is the connection on the install that wrote the bundle. Restore rewrites any env or config
+	// value carrying it, such as an apply-rendered {{ .databases.x.uri }}, to the target's connection.
+	Source *Connection `json:"source,omitempty"`
+}
+
+// Connection is a logical database's connection details as the source install saw them.
+type Connection struct {
+	Host             string `json:"host,omitempty"`
+	User             string `json:"user,omitempty"`
+	Password         string `json:"password,omitempty"`
+	URI              string `json:"uri,omitempty"`
+	ReadOnlyUser     string `json:"readonly_user,omitempty"`
+	ReadOnlyPassword string `json:"readonly_password,omitempty"`
+	ReadOnlyURI      string `json:"readonly_uri,omitempty"`
 }
 
 // Application is a workload's full spec.

@@ -192,7 +192,7 @@ func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsb
 		return err
 	}
 	for _, e := range a.Env {
-		if err := r.svc.App.SetEnvVar(app.ID, e.Key, e.Value, e.IsSecret); err != nil {
+		if err := r.svc.App.SetEnvVar(app.ID, e.Key, r.rewrite(e.Value), e.IsSecret); err != nil {
 			logger.Warn("bundle: could not restore env var", "app", app.Name, "key", e.Key, "error", err)
 		}
 	}
