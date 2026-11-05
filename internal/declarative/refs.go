@@ -50,19 +50,19 @@ var (
 	applicationRefFields = []string{"host", "port", "scheme", "url", "alias"}
 )
 
-// References lists the references in every value apply renders: application env, registry passwords,
-// middleware rules and config files (under their own delimiters).
+// References lists the references in every value apply renders: application and stack env, registry
+// passwords, middleware rules and config files (under their own delimiters).
 func (s *ResourceSet) References() []Reference {
 	var out []Reference
 	for _, r := range s.All() {
 		switch {
 		case r.Application != nil:
 			for k, v := range r.Application.Env {
-				out = append(out, refsIn(fmt.Sprintf("application %q env %s", r.Metadata.Name, k), v, actionPattern)...)
+				out = append(out, envRefs(fmt.Sprintf("application %q env %s", r.Metadata.Name, k), v)...)
 			}
 		case r.Stack != nil:
 			for k, v := range r.Stack.Env {
-				out = append(out, refsIn(fmt.Sprintf("stack %q env %s", r.Metadata.Name, k), v, actionPattern)...)
+				out = append(out, envRefs(fmt.Sprintf("stack %q env %s", r.Metadata.Name, k), v)...)
 			}
 		case r.Registry != nil:
 			out = append(out, refsIn(fmt.Sprintf("registry %q password", r.Metadata.Name), r.Registry.Password, actionPattern)...)
@@ -103,6 +103,16 @@ func ruleRefs(where string, v any) []Reference {
 		return out
 	}
 	return nil
+}
+
+// envRefs adds the runtime `${{ secrets.NAME }}` form, which env also checks at apply (see deferSecrets),
+// so a typo in either spelling fails the dry run rather than the apply.
+func envRefs(where, s string) []Reference {
+	out := refsIn(where, s, actionPattern)
+	for _, m := range runtimeSecretRef.FindAllStringSubmatch(s, -1) {
+		out = append(out, Reference{Where: where, Collection: "secrets", Name: m[1]})
+	}
+	return out
 }
 
 func refsIn(where, s string, action *regexp.Regexp) []Reference {
