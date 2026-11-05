@@ -125,6 +125,12 @@ func restrictionExempt(method, path string) bool {
 		return true
 	case method == http.MethodPost && (strings.HasSuffix(path, "/stop") || strings.HasSuffix(path, "/export") || strings.HasSuffix(path, "/leave")):
 		return true
+	// Unfreezing only ever lifts a migration's freeze, and a migration key takes data out; a frozen
+	// workspace needs both to roll back or to retry its move.
+	case method == http.MethodPost && strings.HasSuffix(path, "/migration/unfreeze"):
+		return true
+	case strings.Contains(path, "/migration-keys"):
+		return true
 	}
 	return false
 }

@@ -80,8 +80,10 @@ onMounted(() => {
   <div>
     <div class="page-header">
       <h1>{{ $t('workspaces.workspaces') }}</h1>
-      <button v-if="auth.canCreateWorkspace" class="btn btn-primary" @click="openCreate">
-        <span class="mdi mdi-plus"></span>{{ $t('workspaces.newWorkspace') }}</button>
+      <div v-if="auth.canCreateWorkspace" class="page-header-actions">
+        <button class="btn btn-primary" @click="openCreate">
+          <span class="mdi mdi-plus"></span>{{ $t('workspaces.newWorkspace') }}</button>
+      </div>
       <a v-else-if="auth.consoleCreateUrl" class="btn btn-primary" :href="auth.consoleCreateUrl" target="_blank" rel="noopener">
         <span class="mdi mdi-open-in-new"></span>{{ $t('switcher.createInConsole') }}</a>
     </div>
@@ -169,6 +171,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.page-header-actions {
+  display: flex;
+  gap: 8px;
+}
 .ws-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

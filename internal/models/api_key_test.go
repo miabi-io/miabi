@@ -36,6 +36,8 @@ func TestPurpose(t *testing.T) {
 		{[]string{ScopeRegistryWrite, ScopeRead}, KeyPurposeGeneral}, // mixed → general access too
 		{[]string{ScopeBilling}, KeyPurposeBilling},
 		{[]string{ScopeBilling, ScopeAll}, KeyPurposeBilling}, // billing wins: such a key stays confined
+		{[]string{ScopeMigration}, KeyPurposeMigration},
+		{[]string{ScopeMigration, ScopeAll}, KeyPurposeMigration},
 	}
 	for _, tc := range cases {
 		k := &APIKey{Scopes: tc.scopes}
@@ -59,5 +61,21 @@ func TestBillingScopeNotImplied(t *testing.T) {
 	}
 	if ValidScopes[ScopeBilling] {
 		t.Error("users can create billing keys")
+	}
+}
+
+// A migration key hands over every secret of a workspace, which no other key can read, so nothing
+// implies it and it implies nothing.
+func TestMigrationScopeNotImplied(t *testing.T) {
+	for _, g := range [][]string{{ScopeAll}, {ScopeAdmin}, {ScopeWrite}, {ScopeBilling}, nil} {
+		if ScopeSatisfies(g, ScopeMigration) {
+			t.Errorf("%v satisfies the migration scope", g)
+		}
+	}
+	if !ScopeSatisfies([]string{ScopeMigration}, ScopeMigration) || ScopeSatisfies([]string{ScopeMigration}, ScopeRead) {
+		t.Error("a migration key satisfies exactly the migration scope")
+	}
+	if ValidScopes[ScopeMigration] {
+		t.Error("users can pick the migration scope")
 	}
 }

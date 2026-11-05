@@ -134,7 +134,11 @@ type Deps struct {
 	Images      ImageResolver
 	// Placer puts the restored resources in a location the target workspace may use. Nil places
 	// everything on the control-plane node, as before locations existed.
-	Placer    Placer
+	Placer Placer
+	// Freezer stops a migrating workspace's apps and refuses changes; nil disables the freeze option.
+	Freezer Freezer
+	// PublicURL is this install's address, named to a source when a migration retires it.
+	PublicURL string
 	InstallID string
 	Version   string
 }
@@ -341,6 +345,10 @@ func (s *Service) Run(ctx context.Context, id uint) error {
 	switch b.Kind {
 	case models.BundleRestore:
 		return s.runRestore(ctx, b)
+	case models.BundleMigrationExport:
+		return s.runMigrationExport(ctx, b)
+	case models.BundleMigrationImport:
+		return s.runMigrationImport(ctx, b)
 	default:
 		return s.runExport(ctx, b)
 	}

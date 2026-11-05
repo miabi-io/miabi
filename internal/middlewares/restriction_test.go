@@ -40,6 +40,9 @@ func TestRestrictionExempt(t *testing.T) {
 		{http.MethodDelete, "/api/v1/workspaces/acme/apps/web", false},
 		{http.MethodPost, "/api/v1/workspaces/acme/apps/web/start", false},
 		{http.MethodPatch, "/api/v1/workspaces/acme/members/12", false},
+		{http.MethodPost, "/api/v1/workspaces/acme/migration/unfreeze", true},
+		{http.MethodPost, "/api/v1/workspaces/acme/migration-keys", true},
+		{http.MethodDelete, "/api/v1/workspaces/acme/migration-keys/3", true},
 	} {
 		if got := restrictionExempt(tt.method, tt.path); got != tt.want {
 			t.Errorf("%s %s = %v, want %v", tt.method, tt.path, got, tt.want)

@@ -86,6 +86,8 @@ func TestWorkspaceBoundKeyCannotLeaveItsWorkspace(t *testing.T) {
 		{"its own workspace", "acme", "GET", "/api/v1/workspaces/acme/volumes", true},
 		{"a write in its workspace", "acme", "POST", "/api/v1/workspaces/acme/applications", true},
 		{"another workspace, caught by WorkspaceScope", "other", "GET", "/api/v1/workspaces/other/volumes", true},
+		{"a migration key listing what it opens", "", "GET", "/api/v1/migration/workspaces", true},
+		{"the import endpoint is not the migration tree", "", "POST", "/api/v1/migrations", false},
 
 		// Identity reads stay open so a CI script can find out who it is.
 		{"who am i", "", "GET", "/api/v1/me", true},

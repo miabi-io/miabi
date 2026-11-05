@@ -223,6 +223,10 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 		if !strings.HasPrefix(c.Request().URL.Path, BillingPathPrefix) {
 			return c.AbortForbidden("this API key is limited to the Billing API")
 		}
+	case models.KeyPurposeMigration:
+		if !strings.HasPrefix(c.Request().URL.Path, MigrationPathPrefix) {
+			return c.AbortForbidden("this API key is limited to migrating a workspace")
+		}
 	}
 	c.Set(CtxAPIKeyPurpose, key.Purpose())
 

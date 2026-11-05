@@ -17,7 +17,10 @@ import WorkspaceRolesPanel from '@/components/WorkspaceRolesPanel.vue'
 import ServiceAccountsPanel from '@/components/ServiceAccountsPanel.vue'
 import PortableBackupPanel from '@/components/PortableBackupPanel.vue'
 import WorkspaceKeysPanel from '@/components/WorkspaceKeysPanel.vue'
+import MigrationOutboundPanel from '@/components/MigrationOutboundPanel.vue'
+import { migrationApi, type MigrationStatus } from '@/api/workspaceMigration'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { useAuthStore } from '@/stores/auth'
 import Sparkline from '@/components/Sparkline.vue'
 import { copyText } from '@/utils/clipboard'
 import { workspaceTrait } from '@/data/workspaceTrait'
@@ -27,9 +30,10 @@ const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
+const auth = useAuthStore()
 
 const roles: WorkspaceRole[] = ['owner', 'admin', 'developer', 'viewer']
-type Tab = 'settings' | 'members' | 'service-accounts' | 'roles' | 'usage' | 'backup' | 'portability' | 'encryption' | 'notifications'
+type Tab = 'settings' | 'members' | 'service-accounts' | 'roles' | 'usage' | 'backup' | 'portability' | 'migration' | 'encryption' | 'notifications'
 const allTabs: { id: Tab; label: string; icon: string; admin?: boolean }[] = [
   { id: 'settings', label: 'wsSettings.tab.general', icon: 'mdi-cog-outline' },
   { id: 'members', label: 'wsSettings.tab.members', icon: 'mdi-account-group-outline' },
@@ -38,6 +42,7 @@ const allTabs: { id: Tab; label: string; icon: string; admin?: boolean }[] = [
   { id: 'usage', label: 'wsSettings.tab.usage', icon: 'mdi-gauge' },
   { id: 'backup', label: 'wsSettings.tab.backup', icon: 'mdi-cloud-upload-outline' },
   { id: 'portability', label: 'wsSettings.tab.portability', icon: 'mdi-package-variant-closed' },
+  { id: 'migration', label: 'wsSettings.tab.migration', icon: 'mdi-transfer', admin: true },
   { id: 'encryption', label: 'wsSettings.tab.encryption', icon: 'mdi-key-chain-variant', admin: true },
   { id: 'notifications', label: 'wsSettings.tab.notifications', icon: 'mdi-bell-outline' },
 ]
@@ -547,6 +552,16 @@ async function copyToken() {
   else notify.error(t('notify.workspaceSettings.copyFailedSelectAndCopy'))
 }
 
+const migrationStatus = ref<MigrationStatus | null>(null)
+async function loadMigrationStatus() {
+  if (migrationStatus.value) return
+  try {
+    migrationStatus.value = (await migrationApi.status()).data.data
+  } catch (e) {
+    notify.apiError(e)
+  }
+}
+
 function loadTab(tab: Tab) {
   // Only the usage tab needs the live stream; tear it down when leaving.
   if (tab !== 'usage') stopLiveStream()
@@ -556,6 +571,7 @@ function loadTab(tab: Tab) {
   else if (tab === 'members') loadMembers()
   else if (tab === 'usage') { loadUsage(); startLiveStream() }
   else if (tab === 'backup') loadBackup()
+  else if (tab === 'migration') loadMigrationStatus()
 }
 
 onMounted(async () => {
@@ -1110,6 +1126,38 @@ watch(activeTab, (t) => loadTab(t))
         </div>
       </div>
       <PortableBackupPanel v-else :ws-id="wsId" :can-restore="myRole === 'owner'" />
+    </template>
+
+    <template v-else-if="activeTab === 'migration' && isAdmin">
+      <div v-if="migrationStatus && !migrationStatus.enabled" class="card">
+        <div class="card-body">
+          <div class="app-banner app-banner--info">
+            <span class="mdi mdi-information-outline app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">{{ $t('wsMigration.disabledTitle') }}</p>
+              <p class="app-banner-text">{{ $t('wsMigration.disabledHint') }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template v-else-if="migrationStatus">
+        <MigrationOutboundPanel v-if="isOwner" :key="wsId" :ws-id="wsId" />
+        <div v-else class="card">
+          <div class="card-header"><h2>{{ $t('wsMigration.moveTitle') }}</h2></div>
+          <div class="card-body">
+            <p class="text-muted text-sm">{{ $t('wsMigration.ownerOnly') }}</p>
+          </div>
+        </div>
+        <div class="card" style="margin-top: 16px">
+          <div class="card-header"><h2>{{ $t('wsMigration.bringTitle') }}</h2></div>
+          <div class="card-body">
+            <p class="text-muted text-sm" style="margin-top: 0">{{ $t('wsMigration.bringHint') }}</p>
+            <RouterLink v-if="auth.canCreateWorkspace" to="/workspaces/import" class="btn btn-secondary">
+              <span class="mdi mdi-import"></span>{{ $t('switcher.import') }}</RouterLink>
+            <p v-else class="text-muted text-sm">{{ $t('wsMigration.cannotCreate') }}</p>
+          </div>
+        </div>
+      </template>
     </template>
 
     <WorkspaceKeysPanel v-else-if="activeTab === 'encryption' && isAdmin" :ws-id="wsId" :ws-name="form.displayName" />

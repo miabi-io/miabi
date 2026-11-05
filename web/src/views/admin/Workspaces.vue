@@ -10,6 +10,7 @@ import Pagination from '@/components/Pagination.vue'
 import { useI18n } from 'vue-i18n'
 import type { AdminWorkspace } from '@/api/types'
 import { workspaceTrait } from '@/data/workspaceTrait'
+import { restrictionBadge } from '@/utils/restriction'
 
 const notify = useNotificationStore()
 const router = useRouter()
@@ -161,9 +162,7 @@ onBeforeUnmount(() => {
                       <span v-if="traitOf(w)" class="badge" :class="traitOf(w)!.badgeClass"
                         :title="traitOf(w)!.title">{{ traitOf(w)!.label }}</span>
                       <span v-if="w.restriction" class="badge"
-                        :class="w.restriction === 'suspended' ? 'badge-danger' : 'badge-warning'">{{
-                          t(w.restriction === 'suspended' ? 'operator.restriction.badgeSuspended' : 'operator.restriction.badgeReadOnly')
-                        }}</span>
+                        :class="restrictionBadge(w.restriction).cls">{{ t(restrictionBadge(w.restriction).label) }}</span>
                     </span>
                     <span class="cell-sub">{{ w.name }}</span>
                   </span>

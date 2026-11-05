@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -489,6 +490,18 @@ func uploadName(orig string) string {
 // restores the database from it (force drops & recreates first). The temp
 // artifact is removed afterward (best-effort).
 func (s *Service) RestoreUpload(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, origName string, content io.Reader, size int64, force bool) error {
+	return s.restoreStream(ctx, inst, db, uploadName(origName), content, size, force)
+}
+
+// RestoreFile is RestoreUpload for a dump the platform itself produced, such as one pulled from
+// another install by a migration: its name is kept, so the tool reads its format from the extension.
+func (s *Service) RestoreFile(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, file string, content io.Reader, size int64) error {
+	b := make([]byte, 4)
+	_, _ = crand.Read(b)
+	return s.restoreStream(ctx, inst, db, "mb-mig-"+hex.EncodeToString(b)+"-"+filepath.Base(file), content, size, false)
+}
+
+func (s *Service) restoreStream(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, name string, content io.Reader, size int64, force bool) error {
 	if _, ok := s.bkupImage(inst.Engine); !ok {
 		return ErrUnsupportedEngine
 	}
@@ -504,7 +517,6 @@ func (s *Service) RestoreUpload(ctx context.Context, inst *models.DatabaseInstan
 	if err := dc.PullImage(ctx, helper, nil); err != nil {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
-	name := uploadName(origName)
 	if err := dc.CopyToVolume(ctx, volume, helper, name, content, size); err != nil {
 		return fmt.Errorf("upload dump: %w", err)
 	}

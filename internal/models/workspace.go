@@ -113,6 +113,9 @@ const (
 	WorkspaceRestrictionReadOnly WorkspaceRestriction = "read_only"
 	// WorkspaceRestrictionSuspended is read-only with apps and databases stopped and CronJobs paused.
 	WorkspaceRestrictionSuspended WorkspaceRestriction = "suspended"
+	// WorkspaceRestrictionFrozen is set by a migration: writes refused and apps stopped, while the
+	// databases keep running so they can be exported. Only a migration sets or lifts it.
+	WorkspaceRestrictionFrozen WorkspaceRestriction = "frozen"
 )
 
 // Valid reports whether r is a restriction an admin can set.

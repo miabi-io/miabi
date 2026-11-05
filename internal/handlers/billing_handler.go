@@ -36,8 +36,9 @@ import (
 
 // BillingHandler serves the Billing API (/api/v1/billing) to a billing key.
 type BillingHandler struct {
-	svc   *billing.Service
-	audit *audit.Logger
+	svc       *billing.Service
+	audit     *audit.Logger
+	migration *MigrationHandler
 }
 
 // BillingPlan is the contract's Plan.
@@ -448,22 +449,25 @@ type AdminInfo struct {
 	// BillingAPI is "off" (MIABI_BILLING_API_ENABLED unset), "unlicensed" (on, but the licence
 	// lacks billing) or "on".
 	BillingAPI string `json:"billing_api" enum:"off,unlicensed,on"`
+	// MigrationEnabled is MIABI_MIGRATION_ENABLED: workspaces may move to and from other installs.
+	MigrationEnabled bool `json:"migration_enabled"`
 }
 
 // AdminInfoHandler serves GET /api/v1/admin/info.
 type AdminInfoHandler struct {
 	billingEnabled bool
 	ee             enterprise.EE
+	migration      bool
 }
 
 // NewAdminInfoHandler builds the handler.
-func NewAdminInfoHandler(billingEnabled bool, ee enterprise.EE) *AdminInfoHandler {
-	return &AdminInfoHandler{billingEnabled: billingEnabled, ee: ee}
+func NewAdminInfoHandler(billingEnabled bool, ee enterprise.EE, migration bool) *AdminInfoHandler {
+	return &AdminInfoHandler{billingEnabled: billingEnabled, ee: ee, migration: migration}
 }
 
 // Get reports the shared admin information.
 func (h *AdminInfoHandler) Get(c *okapi.Context) error {
-	return ok(c, AdminInfo{BillingAPI: BillingAPIState(h.billingEnabled, h.ee)})
+	return ok(c, AdminInfo{BillingAPI: BillingAPIState(h.billingEnabled, h.ee), MigrationEnabled: h.migration})
 }
 
 // BillingAPIState combines the boot switch and the licence.

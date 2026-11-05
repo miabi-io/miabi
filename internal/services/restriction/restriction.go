@@ -57,8 +57,15 @@ type Error struct {
 
 func (e *Error) Error() string {
 	what := "read-only"
-	if e.State == models.WorkspaceRestrictionSuspended {
+	switch e.State {
+	case models.WorkspaceRestrictionSuspended:
 		what = "suspended"
+	case models.WorkspaceRestrictionFrozen:
+		msg := "this workspace is frozen for a migration"
+		if e.Reason != "" {
+			msg += ": " + e.Reason
+		}
+		return msg
 	}
 	by := " by the platform administrator"
 	if e.Billing {
@@ -76,8 +83,11 @@ func (e *Error) Code() string {
 	if e.Billing {
 		return "BILLING_RESTRICTED"
 	}
-	if e.State == models.WorkspaceRestrictionSuspended {
+	switch e.State {
+	case models.WorkspaceRestrictionSuspended:
 		return "WORKSPACE_SUSPENDED"
+	case models.WorkspaceRestrictionFrozen:
+		return "WORKSPACE_FROZEN"
 	}
 	return "WORKSPACE_READ_ONLY"
 }
@@ -87,6 +97,8 @@ var (
 	ErrInvalidState = errors.New("state must be read_only or suspended")
 	ErrSystem       = errors.New("the platform's system workspace cannot be restricted")
 	ErrUntilPast    = errors.New("until must be in the future")
+	ErrFrozen       = errors.New("this workspace is frozen for a migration: unfreeze it, or lift the restriction, first")
+	ErrRestricted   = errors.New("this workspace is already restricted by the platform administrator")
 )
 
 // Repo is the workspace storage the service needs.
@@ -99,6 +111,7 @@ type Repo interface {
 // Workloads stops and starts a workspace's apps and databases (*account.Service).
 type Workloads interface {
 	StopWorkspace(ctx context.Context, wsID uint) (account.StopResult, models.FrozenResources)
+	StopWorkspaceApps(ctx context.Context, wsID uint) (account.StopResult, models.FrozenResources)
 	StartWorkspace(ctx context.Context, wsID uint, only *models.FrozenResources) (account.StartResult, error)
 }
 
@@ -185,7 +198,7 @@ func (s *Service) Allowed(wsID uint, a Action) error {
 		if a == ActionRun {
 			return nil
 		}
-	case models.WorkspaceRestrictionSuspended:
+	case models.WorkspaceRestrictionSuspended, models.WorkspaceRestrictionFrozen:
 	default:
 		return nil
 	}
@@ -215,6 +228,9 @@ func (s *Service) Set(ctx context.Context, wsID, actorID uint, in SetInput) (*mo
 	}
 	if ws.System {
 		return nil, ErrSystem
+	}
+	if ws.Restriction == models.WorkspaceRestrictionFrozen {
+		return nil, ErrFrozen
 	}
 	fields := map[string]any{
 		"restriction": in.State, "restriction_reason": strings.TrimSpace(in.Reason), "restriction_until": in.Until,
@@ -258,13 +274,73 @@ func (s *Service) Lift(ctx context.Context, wsID uint) (*models.Workspace, error
 		return nil, err
 	}
 	s.forget(wsID)
-	if ws.Restriction == models.WorkspaceRestrictionSuspended {
+	if ws.Restriction == models.WorkspaceRestrictionSuspended || ws.Restriction == models.WorkspaceRestrictionFrozen {
 		if err := s.restart(ctx, ws); err != nil {
 			return nil, err
 		}
 	}
 	s.notify(ctx, wsID)
 	return s.repo.FindByID(wsID)
+}
+
+// Freeze stops a workspace's apps and refuses changes for the duration of a migration, keeping its
+// databases up so they can be exported. Freezing a frozen workspace only updates the reason.
+func (s *Service) Freeze(ctx context.Context, wsID, actorID uint, reason string) error {
+	ws, err := s.repo.FindByID(wsID)
+	if err != nil {
+		return err
+	}
+	if ws.System {
+		return ErrSystem
+	}
+	switch ws.Restriction {
+	case models.WorkspaceRestrictionFrozen:
+		return s.SetFrozenReason(wsID, reason)
+	case models.WorkspaceRestrictionNone:
+	default:
+		return ErrRestricted
+	}
+	if err := s.repo.SetRestriction(wsID, map[string]any{
+		"restriction": models.WorkspaceRestrictionFrozen, "restriction_reason": strings.TrimSpace(reason),
+		"restriction_until": nil, "restricted_at": s.now().UTC(), "restricted_by": actorID,
+	}); err != nil {
+		return err
+	}
+	s.forget(wsID)
+	res, frozen := s.workloads.StopWorkspaceApps(ctx, wsID)
+	raw, err := json.Marshal(frozen)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.SetRestriction(wsID, map[string]any{"frozen_resources": string(raw)}); err != nil {
+		return err
+	}
+	logger.Info("workspace frozen for a migration", "workspace", wsID, "apps", res.Apps)
+	s.notify(ctx, wsID)
+	return nil
+}
+
+// SetFrozenReason rewords a migration freeze, such as when the workspace is retired after a move.
+func (s *Service) SetFrozenReason(wsID uint, reason string) error {
+	if err := s.repo.SetRestriction(wsID, map[string]any{"restriction_reason": strings.TrimSpace(reason)}); err != nil {
+		return err
+	}
+	s.forget(wsID)
+	return nil
+}
+
+// Unfreeze lifts a migration freeze and restarts the apps it stopped. A workspace that is not frozen
+// is left as it is, so a restriction set by an administrator is never lifted this way.
+func (s *Service) Unfreeze(ctx context.Context, wsID uint) error {
+	ws, err := s.repo.FindByID(wsID)
+	if err != nil {
+		return err
+	}
+	if ws.Restriction != models.WorkspaceRestrictionFrozen {
+		return nil
+	}
+	_, err = s.Lift(ctx, wsID)
+	return err
 }
 
 func (s *Service) restart(ctx context.Context, ws *models.Workspace) error {

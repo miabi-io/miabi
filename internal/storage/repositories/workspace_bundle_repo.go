@@ -20,6 +20,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -77,6 +79,43 @@ func (r *WorkspaceBundleRepository) HasActive(workspaceID uint) (bool, error) {
 func (r *WorkspaceBundleRepository) ListByWorkspace(workspaceID uint, limit int) ([]models.WorkspaceBundle, error) {
 	var out []models.WorkspaceBundle
 	q := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return out, q.Find(&out).Error
+}
+
+// ListExpiredMigrationExports returns migration exports past their expiry whose staged data is still
+// held. Purged ones are filtered after loading: the flag lives in a JSON column.
+func (r *WorkspaceBundleRepository) ListExpiredMigrationExports(now time.Time) ([]models.WorkspaceBundle, error) {
+	var rows []models.WorkspaceBundle
+	if err := r.db.Where("kind = ? AND expires_at IS NOT NULL AND expires_at < ?", models.BundleMigrationExport, now).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := rows[:0]
+	for _, b := range rows {
+		if b.Migration != nil && !b.Migration.Purged {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+// ListByKindForUser returns the runs of one kind a user started, most recent first.
+func (r *WorkspaceBundleRepository) ListByKindForUser(kind models.WorkspaceBundleKind, userID uint, limit int) ([]models.WorkspaceBundle, error) {
+	var out []models.WorkspaceBundle
+	q := r.db.Where("kind = ? AND created_by = ?", kind, userID).Order("created_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return out, q.Find(&out).Error
+}
+
+// ListByKind returns every run of one kind, most recent first, for platform admins.
+func (r *WorkspaceBundleRepository) ListByKind(kind models.WorkspaceBundleKind, limit int) ([]models.WorkspaceBundle, error) {
+	var out []models.WorkspaceBundle
+	q := r.db.Where("kind = ?", kind).Order("created_at DESC")
 	if limit > 0 {
 		q = q.Limit(limit)
 	}

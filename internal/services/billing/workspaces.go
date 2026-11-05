@@ -383,3 +383,29 @@ func (s *Service) AccountUsage(externalID string) (*Usage, error) {
 	}
 	return out, nil
 }
+
+// MigrationAccount resolves what a migration call of the Billing API acts for: the account's owner, who
+// holds the key or owns the imported workspace, and, when ref is given, one of the account's workspaces.
+// Without ref it checks the account may take one more workspace, before an import creates it.
+func (s *Service) MigrationAccount(externalID, ref string) (ownerID, wsID uint, err error) {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		a, err := lockAccount(tx, externalID)
+		if err != nil {
+			return err
+		}
+		if a.Status == models.BillingAccountCanceled {
+			return ErrAccountCanceled
+		}
+		ownerID = a.OwnerUserID
+		if strings.TrimSpace(ref) == "" {
+			return checkLimit(tx, a)
+		}
+		ws, err := accountWorkspace(tx, a, ref)
+		if err != nil {
+			return err
+		}
+		wsID = ws.ID
+		return nil
+	})
+	return ownerID, wsID, err
+}

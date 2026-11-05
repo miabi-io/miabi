@@ -9,6 +9,7 @@ import { useEntitlement } from '@/composables/useEntitlement'
 import { useI18n } from 'vue-i18n'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { workspaceTrait } from '@/data/workspaceTrait'
+import { restrictionBadge } from '@/utils/restriction'
 import { adminRunnerApi, type Runner } from '@/api/runners'
 import type { AdminWorkspaceDetail, AdminEvent, AdminWorkspaceMember, Cluster, DatabaseSize, Plan, WorkspaceQuotaOverride } from '@/api/types'
 
@@ -504,8 +505,7 @@ function eventSeverity(e: AdminEvent): string {
         <div class="card-body">
           <p class="text-muted restriction-hint">{{ t('operator.restriction.cardHint') }}</p>
           <div v-if="ws.restriction" class="restriction-current">
-            <span class="badge" :class="ws.restriction === 'suspended' ? 'badge-danger' : 'badge-warning'">{{
-              t(ws.restriction === 'suspended' ? 'operator.restriction.badgeSuspended' : 'operator.restriction.badgeReadOnly') }}</span>
+            <span class="badge" :class="restrictionBadge(ws.restriction).cls">{{ t(restrictionBadge(ws.restriction).label) }}</span>
             <span v-if="ws.restricted_at" class="text-muted">{{ t('operator.restriction.since', { date: d(new Date(ws.restricted_at), 'datetime') }) }}</span>
             <span v-if="ws.restriction_reason">{{ t('operator.restriction.reason', { reason: ws.restriction_reason }) }}</span>
             <span v-if="ws.restriction_until" class="text-muted">{{ t('operator.restriction.until', { date: d(new Date(ws.restriction_until), 'date') }) }}</span>
@@ -513,7 +513,8 @@ function eventSeverity(e: AdminEvent): string {
               {{ t('operator.restriction.lift') }}</button>
           </div>
           <p v-else class="text-muted">{{ t('operator.restriction.none') }}</p>
-          <form class="restriction-form" @submit.prevent="openRestrict">
+          <p v-if="ws.restriction === 'frozen'" class="text-muted restriction-hint">{{ t('operator.restriction.frozenAdminHint') }}</p>
+          <form v-else class="restriction-form" @submit.prevent="openRestrict">
             <div class="form-group">
               <label class="form-label" for="r-state">{{ t('operator.restriction.state') }}</label>
               <select id="r-state" v-model="restrictForm.state" class="form-select">

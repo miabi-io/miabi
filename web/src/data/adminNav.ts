@@ -69,6 +69,7 @@ export const adminNavSections: NavSection[] = [
       { key: 'adminNav.platform.branding', name: 'Branding', path: '/admin/branding', icon: 'mdi-palette-outline' },
       { key: 'adminNav.platform.deploymentConfig', name: 'Deployment Config', path: '/admin/deployment-config', icon: 'mdi-package-variant-closed' },
       { key: 'adminNav.platform.platformBackup', name: 'Platform Backup', path: '/admin/platform-backup', icon: 'mdi-cloud-upload-outline' },
+      { key: 'adminNav.platform.migration', name: 'Migration', path: '/admin/migration', icon: 'mdi-transfer' },
     ],
   },
   {

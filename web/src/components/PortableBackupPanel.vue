@@ -12,6 +12,7 @@ import { portableBackupApi, type BundleInfo, type BundleRun } from '@/api/portab
 import { useNotificationStore } from '@/stores/notification'
 import { fmtSize } from '@/utils/format'
 import { relativeTime } from '@/utils/time'
+import { bundleStatusClass as statusClass, reportActionClass as actionClass, bundleKindLabel } from '@/utils/bundleRun'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
 
@@ -162,32 +163,6 @@ async function showRun(r: BundleRun) {
   }
 }
 
-function statusClass(status: string): string {
-  switch (status) {
-    case 'completed':
-      return 'badge-success'
-    case 'failed':
-      return 'badge-danger'
-    case 'partial':
-    case 'running':
-    case 'pending':
-      return 'badge-warning'
-    default:
-      return 'badge-neutral'
-  }
-}
-
-function actionClass(action: string): string {
-  switch (action) {
-    case 'failed':
-      return 'badge-danger'
-    case 'skipped':
-      return 'badge-warning'
-    default:
-      return 'badge-success'
-  }
-}
-
 function bundleSize(b: BundleInfo): number {
   return b.artifacts.reduce((sum, a) => sum + (a.size_bytes ?? 0), 0)
 }
@@ -229,7 +204,7 @@ function failedArtifacts(b: BundleInfo): number {
         </div>
         <div v-if="activeRun" class="card-body">
           <div class="progress-row">
-            <span class="badge badge-warning">{{ activeRun.kind }}</span>
+            <span class="badge badge-warning">{{ $t(bundleKindLabel(activeRun.kind)) }}</span>
             <span class="mono">{{ activeRun.ref }}</span>
             <span class="text-muted text-sm">{{ activeRun.phase || activeRun.status }}…</span>
           </div>
@@ -312,7 +287,7 @@ function failedArtifacts(b: BundleInfo): number {
             </thead>
             <tbody>
               <tr v-for="r in runs" :key="r.id">
-                <td><span class="badge badge-neutral">{{ r.kind }}</span></td>
+                <td><span class="badge badge-neutral">{{ $t(bundleKindLabel(r.kind)) }}</span></td>
                 <td class="mono text-sm">{{ r.ref }}</td>
                 <td>
                   <span class="badge" :class="statusClass(r.status)">{{ r.status }}</span>
@@ -378,7 +353,7 @@ function failedArtifacts(b: BundleInfo): number {
     <Teleport to="body">
       <AppModal v-if="openRun" max-width="820px" @close="openRun = null">
         <div class="modal-header">
-          <h3>{{ openRun.kind === 'export' ? 'Export' : 'Restore' }} report</h3>
+          <h3>{{ $t('wsMigration.reportTitle', { kind: $t(bundleKindLabel(openRun.kind)) }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="openRun = null">
             <span class="mdi mdi-close"></span>
           </button>

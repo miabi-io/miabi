@@ -94,3 +94,16 @@ func (r *APIKeyRepository) Delete(id uint) error {
 func (r *APIKeyRepository) TouchLastUsed(id uint) error {
 	return r.db.Model(&models.APIKey{}).Where("id = ?", id).Update("last_used_at", gorm.Expr("NOW()")).Error
 }
+
+// ListByScope returns the keys holding scope, bound to workspaceID, or to no workspace when it is nil,
+// newest first. Scopes are a JSON column, so the match is on the quoted name.
+func (r *APIKeyRepository) ListByScope(scope string, workspaceID *uint) ([]models.APIKey, error) {
+	var out []models.APIKey
+	q := r.db.Where("scopes LIKE ?", `%"`+scope+`"%`)
+	if workspaceID != nil {
+		q = q.Where("workspace_id = ?", *workspaceID)
+	} else {
+		q = q.Where("workspace_id IS NULL")
+	}
+	return out, q.Order("created_at DESC").Find(&out).Error
+}
