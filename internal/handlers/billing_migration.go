@@ -126,3 +126,28 @@ func billingCoded(err error) error {
 	}
 	return billing.NewCodedError(http.StatusBadRequest, "MIGRATION_REFUSED", err.Error())
 }
+
+// BillingWorkspaceMigrationRef names an account's workspace for a migration call.
+type BillingWorkspaceMigrationRef struct {
+	ExternalID string `path:"external_id" required:"true"`
+	Workspace  string `path:"workspace" required:"true" doc:"Workspace uid or handle"`
+}
+
+// MigrationUnfreeze rolls a move back on the source: the workspace's apps start again and it accepts
+// changes. A workspace that is not frozen by a migration is left as it is.
+func (h *BillingHandler) MigrationUnfreeze(c *okapi.Context, req *BillingWorkspaceMigrationRef) error {
+	return h.write(c, struct{}{}, func() (any, error) {
+		if h.migration == nil || !h.migration.enabled {
+			return nil, billing.NewCodedError(http.StatusForbidden, errMigrationOff.code, errMigrationOff.msg)
+		}
+		_, wsID, err := h.svc.MigrationAccount(req.ExternalID, req.Workspace)
+		if err != nil {
+			return nil, err
+		}
+		if err := h.migration.svc.UnfreezeMigration(c.Request().Context(), wsID); err != nil {
+			return nil, err
+		}
+		h.record(c, "billing.workspace.migration_unfreeze", req.ExternalID, map[string]any{"workspace": req.Workspace})
+		return map[string]any{"unfrozen": true}, nil
+	})
+}
