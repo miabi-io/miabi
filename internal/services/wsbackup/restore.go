@@ -254,6 +254,9 @@ type restoreRun struct {
 	// createdApps are the apps this run created, in bundle order — the only ones
 	// it may deploy.
 	createdApps []string
+	// conn rewrites source database connection values to the target's; nil until mapConnections runs.
+	conn      *strings.Replacer
+	rewritten int
 }
 
 func (r *restoreRun) add(kind, name, action, detail string) {
@@ -290,12 +293,15 @@ func (r *restoreRun) steps() []restoreStep {
 		{"secrets", func(context.Context) { r.applySecrets() }},
 		{"credentials", func(context.Context) { r.applyCredentials() }},
 		{"networks", r.applyNetworks},
+		{"volumes", r.applyVolumes},
+		{"databases", r.applyDatabases},
+		// After databases, before anything storing env or files: values rendered from a source database
+		// are rewritten to the target's as configs, stacks and apps are written.
+		{"connections", func(context.Context) { r.mapConnections() }},
 		// Before apps: an app's mounts reference configs by name, and the mount can
 		// only be rebuilt once the config it points at exists.
 		{"configs", func(context.Context) { r.applyConfigs() }},
-		{"volumes", r.applyVolumes},
 		{"stacks", r.applyStacks},
-		{"databases", r.applyDatabases},
 		{"domains", func(context.Context) { r.applyDomains() }},
 		{"certificates", func(context.Context) { r.applyCertificates() }},
 		{"apps", r.applyApps},
@@ -539,7 +545,7 @@ func (r *restoreRun) applyConfigs() {
 		}
 		_, err := r.svc.Config.Create(r.target, configsvc.Input{
 			Name: cfg.Name, DisplayName: cfg.DisplayName, Description: cfg.Description,
-			Data: cfg.Data, Mode: cfg.Mode, Sensitive: cfg.Sensitive, Delimiters: cfg.Delimiters,
+			Data: r.rewriteData(cfg.Data), Mode: cfg.Mode, Sensitive: cfg.Sensitive, Delimiters: cfg.Delimiters,
 		}, r.bundle.CreatedBy)
 		if err != nil {
 			r.add("config", cfg.Name, "failed", err.Error())
@@ -605,7 +611,7 @@ func (r *restoreRun) applyStacks(ctx context.Context) {
 			continue
 		}
 		for _, e := range k.Env {
-			if _, err := r.svc.Stack.SetEnvVar(r.target, created.ID, e.Key, e.Value, e.IsSecret); err != nil {
+			if _, err := r.svc.Stack.SetEnvVar(r.target, created.ID, e.Key, r.rewrite(e.Value), e.IsSecret); err != nil {
 				logger.Warn("bundle: could not restore stack env", "stack", k.Name, "key", e.Key, "error", err)
 			}
 		}
@@ -735,6 +741,12 @@ func (r *restoreRun) applyDatabaseLinks() {
 			}
 			appID := r.appIDs[ld.App]
 			if appID == 0 {
+				continue
+			}
+			if ld.AttachOnly {
+				if _, err := r.svc.Database.AttachToApp(r.target, db.ID, appID, database.EnvLink{}); err != nil {
+					r.add("database", d.Name+"/"+ld.Name, "failed", "could not attach to "+ld.App+": "+err.Error())
+				}
 				continue
 			}
 			env := r.envLink(inst, d.Name+"/"+ld.Name, ld.EnvPrefix, ld.EnvMap)
@@ -1162,6 +1174,7 @@ func (r *restoreRun) deploy() {
 // deliverable of the run: the difference between "it restored" and "it is
 // serving" is DNS, certificates and tokens, none of which a bundle can carry.
 func (r *restoreRun) closingNotes() {
+	r.connectionNote()
 	if len(r.state.Domains) > 0 {
 		r.report.Note("Domains were restored unverified. Point DNS at this platform and verify each domain before its routes serve traffic.")
 	}

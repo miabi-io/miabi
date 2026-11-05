@@ -26,6 +26,7 @@ import (
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/storage/blob"
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
@@ -171,6 +172,10 @@ func TestRestoreStepsRunInDependencyOrder(t *testing.T) {
 		{"secrets", "apps", "an app's environment may reference a vault secret"},
 		{"sealing-keys", "secrets", "a sealed secret's fingerprint is only meaningful once its key is here"},
 		{"configs", "apps", "an app's mounts name configs, which must exist to attach"},
+		{"databases", "connections", "the target's connections exist only once its databases do"},
+		{"connections", "configs", "a config file may hold a source database's connection"},
+		{"connections", "stacks", "a stack's shared env may hold a source database's connection"},
+		{"connections", "apps", "an app's env may hold a source database's connection"},
 		{"delivery", "members", "delivery is the last thing that creates resources"},
 	}
 	for _, c := range constraints {
@@ -225,5 +230,50 @@ func TestSizeArtifactsFillsWhatHelpersDidNotReport(t *testing.T) {
 	}
 	if arts[2].SizeBytes != 0 {
 		t.Errorf("a failed artifact was sized: %d", arts[2].SizeBytes)
+	}
+}
+
+// A value apply rendered from {{ .databases.x.* }} carries the source's host, user and password. Left as is, a
+// migrated app points at a database on the old install.
+func TestConnectionRewritePointsValuesAtTheTarget(t *testing.T) {
+	src := wsbundle.Connection{
+		Host: "mb-db-old-72", User: "u_ebf59e9f", Password: "oldpassword123",
+		URI: "postgres://u_ebf59e9f:oldpassword123@mb-db-old-72:5432/shop",
+	}
+	dst := database.ConnectionInfo{
+		Host: "mb-db-new-73", Port: 5432, Username: "u_abbcf4a2", Password: "newpassword456",
+		URI: "postgres://u_abbcf4a2:newpassword456@mb-db-new-73:5432/shop",
+	}
+	r := &restoreRun{conn: newRewriter(connectionPairs(src, dst))}
+	cases := map[string]string{
+		src.URI:                    dst.URI,
+		"jdbc:" + src.URI + "?ssl": "jdbc:" + dst.URI + "?ssl",
+		"mb-db-old-72":             "mb-db-new-73",
+		"u_ebf59e9f":               "u_abbcf4a2",
+		"oldpassword123":           "newpassword456",
+		"shop":                     "shop",
+		"${{ secrets.key }}":       "${{ secrets.key }}",
+	}
+	for in, want := range cases {
+		if got := r.rewrite(in); got != want {
+			t.Errorf("rewrite(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if r.rewritten != 5 {
+		t.Errorf("rewritten = %d, want the 5 values that changed", r.rewritten)
+	}
+}
+
+// A short or empty source value would match inside unrelated text, and an equal one needs no rewrite.
+func TestConnectionPairsSkipsUnsafeValues(t *testing.T) {
+	pairs := connectionPairs(
+		wsbundle.Connection{Host: "db", User: "same-user", Password: ""},
+		database.ConnectionInfo{Host: "mb-db-new", Username: "same-user", Password: "x"},
+	)
+	if len(pairs) != 0 {
+		t.Errorf("pairs = %q, want none", pairs)
+	}
+	if newRewriter(nil) != nil {
+		t.Error("an empty rewrite should be nil, leaving values untouched")
 	}
 }
