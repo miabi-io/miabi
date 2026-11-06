@@ -389,6 +389,9 @@ If Miabi is useful to you, starring the repo genuinely helps other people find i
 
 The reusable packages under `pkg/` are the importable half of the project (`pkg/stack` is the host installer and lifecycle engine the CLI drives), so embedding them carries no AGPL obligation — nothing under `pkg/` depends on AGPL-licensed code.
 
-Enterprise features are built with the `enterprise` tag and require a valid commercial license.[LICENSING.md](./LICENSING.md) has the full breakdown.
+Enterprise features are built with the `enterprise` tag and require a valid commercial license. [LICENSING.md](./LICENSING.md) has the full breakdown.
+
+Miabi's code is open source. Its name is not.
+The Miabi name and logos are not covered by these licenses.
 
 Copyright © 2026 Jonas Kaninda
