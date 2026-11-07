@@ -10,7 +10,7 @@ import SaveAsSecret from '@/components/SaveAsSecret.vue'
 import { secretApi, type SecretInput, type SecretOwnership } from '@/api/secrets'
 import type { Secret } from '@/api/types'
 import { usePagination } from '@/composables/usePagination'
-import { copyText } from '@/utils/clipboard'
+import { copyText, copyLoaded } from '@/utils/clipboard'
 import { relativeTime } from '@/utils/time'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -105,44 +105,80 @@ async function save() {
   finally { saving.value = false }
 }
 
-// --- Reveal ---
-const revealed = ref<{ name: string; value: string } | null>(null)
+const REVEAL_SECONDS = 30
+const revealed = ref<{ id: number; value: string } | null>(null)
 const revealingId = ref<number | null>(null)
-async function reveal(s: Secret) {
+const copyingId = ref<number | null>(null)
+const copiedId = ref<number | null>(null)
+let hideTimer: ReturnType<typeof setTimeout> | undefined
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
+
+function isRevealed(s: Secret) {
+  return revealed.value?.id === s.id
+}
+function hideValue() {
+  if (hideTimer) clearTimeout(hideTimer)
+  revealed.value = null
+}
+async function fetchValue(s: Secret): Promise<string> {
   const id = currentWorkspaceId.value
-  if (!id) return
-
-  if (revealed.value?.name === s.name) {
-    revealed.value = null
-    return
-  }
-
+  if (!id) throw new Error('no workspace')
+  return (await secretApi.reveal(id, s.id)).data.data?.value ?? ''
+}
+async function toggleReveal(s: Secret) {
+  if (isRevealed(s)) { hideValue(); return }
   revealingId.value = s.id
   try {
-    const v = (await secretApi.reveal(id, s.id)).data.data
-    revealed.value = { name: s.name, value: v?.value ?? '' }
+    const value = await fetchValue(s)
+    revealed.value = { id: s.id, value }
+    if (hideTimer) clearTimeout(hideTimer)
+    hideTimer = setTimeout(hideValue, REVEAL_SECONDS * 1000)
   } catch (e) {
-    notify.apiError(e, 'Only admins can reveal a secret')
+    notify.apiError(e, t('secrets.adminOnly'))
   } finally {
     revealingId.value = null
   }
 }
-// --- Delete ---
+// Copies straight from the API so the value never has to be put on screen.
+async function copyValue(s: Secret) {
+  if (copyingId.value) return
+  const cached = isRevealed(s) ? revealed.value!.value : null
+  copyingId.value = s.id
+  try {
+    const ok = await copyLoaded(() => (cached !== null ? Promise.resolve(cached) : fetchValue(s)))
+    if (!ok) { notify.error(t('notify.common.copyFailedSelectAndCopy')); return }
+    notify.success(t('notify.secrets.valueCopied'))
+    copiedId.value = s.id
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copiedId.value = null }, 1500)
+  } catch (e) {
+    notify.apiError(e, t('secrets.adminOnly'))
+  } finally {
+    copyingId.value = null
+  }
+}
+onBeforeUnmount(() => {
+  if (hideTimer) clearTimeout(hideTimer)
+  if (copiedTimer) clearTimeout(copiedTimer)
+})
+
 const toDelete = ref<Secret | null>(null)
 const deleting = ref(false)
 const showDetails = ref(false)
 const selectedSecret = ref<Secret | null>(null)
 
 function openDetails(s: Secret) {
+  if (!isRevealed(s)) hideValue()
   selectedSecret.value = s
-  if (revealed.value?.name !== s.name) {
-    revealed.value = null
-  }
   showDetails.value = true
 }
 function closeDetails() {
   showDetails.value = false
-  revealed.value = null
+  hideValue()
+}
+function editFromDetails(s: Secret) {
+  closeDetails()
+  openEdit(s)
 }
 async function confirmDelete() {
   const id = currentWorkspaceId.value
@@ -272,6 +308,13 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
                 <td class="cell-sub">v{{ s.version }}</td>
                 <td class="text-right">
                   <div class="table-actions">
+                    <button v-if="ws.isWorkspaceAdmin" type="button" class="btn-icon btn-icon-muted"
+                      :title="$t('secrets.copyValue')" :aria-label="$t('secrets.copyValue')"
+                      :disabled="copyingId === s.id" @click.stop="copyValue(s)">
+                      <span v-if="copyingId === s.id" class="mdi mdi-loading mdi-spin"></span>
+                      <span v-else-if="copiedId === s.id" class="mdi mdi-check copied-icon"></span>
+                      <span v-else class="mdi mdi-key-chain-variant"></span>
+                    </button>
                     <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.viewDetails')"
                       :aria-label="$t('secrets.viewDetails')" @click.stop="openDetails(s)"><span
                         class="mdi mdi-eye-outline"></span></button>
@@ -393,7 +436,8 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             <label class="form-label">{{ $t('apps.form.name') }}</label>
             <div class="code-box">
               <code>{{ selectedSecret.name }}</code>
-              <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyKey')" @click="copy(selectedSecret.name)">
+              <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyKey')"
+                :aria-label="$t('secrets.copyKey')" @click="copy(selectedSecret.name)">
                 <span class="mdi mdi-content-copy"></span>
               </button>
             </div>
@@ -404,7 +448,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             <div class="code-box">
               <code>{{ reference(selectedSecret) }}</code>
               <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyReference')"
-                @click="copy(reference(selectedSecret))">
+                :aria-label="$t('secrets.copyReference')" @click="copy(reference(selectedSecret))">
                 <span class="mdi mdi-content-copy"></span>
               </button>
             </div>
@@ -412,23 +456,29 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
 
           <div class="detail-group">
             <label class="form-label">{{ $t('secrets.value') }}</label>
-            <div class="code-box code-box-block">
-              <code class="secret-text">{{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}</code>
-              <div class="code-actions">
-                <button v-if="ws.isWorkspaceAdmin" type="button" class="btn-icon btn-icon-muted"
-                  :title="$t('secrets.revealValue')" :aria-label="$t('secrets.revealValue')"
-                  :disabled="revealingId === selectedSecret.id" @click="reveal(selectedSecret)">
+            <div class="code-box code-box-block" :class="{ 'is-masked': !isRevealed(selectedSecret) }">
+              <code v-if="isRevealed(selectedSecret)" class="secret-text">{{ revealed?.value }}</code>
+              <code v-else class="secret-text secret-mask" aria-hidden="true">••••••••••••••••</code>
+              <div v-if="ws.isWorkspaceAdmin" class="code-actions">
+                <button type="button" class="btn-icon btn-icon-muted"
+                  :title="isRevealed(selectedSecret) ? $t('secrets.hideValue') : $t('secrets.revealValue')"
+                  :aria-label="isRevealed(selectedSecret) ? $t('secrets.hideValue') : $t('secrets.revealValue')"
+                  :aria-pressed="isRevealed(selectedSecret)"
+                  :disabled="revealingId === selectedSecret.id" @click="toggleReveal(selectedSecret)">
                   <span v-if="revealingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
-                  <span v-else class="mdi"
-                    :class="revealed?.name === selectedSecret.name ? 'mdi-eye-off' : 'mdi-eye'"></span>
+                  <span v-else class="mdi" :class="isRevealed(selectedSecret) ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
                 </button>
-
-                <button v-if="revealed?.name === selectedSecret.name" type="button" class="btn-icon btn-icon-muted"
-                  :title="$t('routes.copyValue')" @click="copy(revealed.value)">
-                  <span class="mdi mdi-content-copy"></span>
+                <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copyValue')"
+                  :aria-label="$t('secrets.copyValue')" :disabled="copyingId === selectedSecret.id"
+                  @click="copyValue(selectedSecret)">
+                  <span v-if="copyingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
+                  <span v-else-if="copiedId === selectedSecret.id" class="mdi mdi-check copied-icon"></span>
+                  <span v-else class="mdi mdi-content-copy"></span>
                 </button>
               </div>
             </div>
+            <p v-if="!ws.isWorkspaceAdmin" class="form-hint"><span class="mdi mdi-shield-lock-outline"></span> {{ $t('secrets.adminOnly') }}</p>
+            <p v-else-if="isRevealed(selectedSecret)" class="form-hint">{{ $t('secrets.autoHideHint', { seconds: REVEAL_SECONDS }) }}</p>
           </div>
 
           <div class="detail-group">
@@ -452,7 +502,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="closeDetails">{{ $t('shell.close') }}</button>
           <button v-if="editable(selectedSecret)" type="button" class="btn btn-primary"
-            @click="openEdit(selectedSecret); closeDetails()">
+            @click="editFromDetails(selectedSecret)">
             <span class="mdi mdi-pencil"></span>{{ $t('action.edit') }}</button>
         </div>
       </AppModal>
@@ -668,5 +718,20 @@ code {
   align-items: center;
   gap: 4px;
   margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.code-box-block.is-masked {
+  align-items: center;
+}
+
+.secret-mask {
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+.copied-icon {
+  color: var(--success, #16a34a);
 }
 </style>

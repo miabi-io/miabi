@@ -2719,7 +2719,8 @@
       "created": "Secret créé",
       "deleted": "Secret supprimé",
       "namedCreated": "Secret « {name} » créé.",
-      "updated": "Secret mis à jour"
+      "updated": "Secret mis à jour",
+      "valueCopied": "Valeur du secret copiée"
     },
     "security": {
       "codesRegenerated": "Codes de récupération régénérés",
@@ -3595,7 +3596,11 @@
     "sealedEditText": "Enregistrer une nouvelle valeur ici le descelle, et la source Git qui le possède remet la valeur scellée à sa prochaine synchronisation. Pour la modifier durablement, scellez la nouvelle valeur et commitez-la :",
     "sealedEditDescriptionOnly": "Modifier uniquement la description le garde scellé.",
     "managedTitle": "Géré par une base de données",
-    "managedDetails": "Créé avec sa base de données, qui en gère la rotation et la suppression : il ne peut pas être modifié ici."
+    "managedDetails": "Créé avec sa base de données, qui en gère la rotation et la suppression : il ne peut pas être modifié ici.",
+    "copyValue": "Copier la valeur",
+    "hideValue": "Masquer la valeur",
+    "adminOnly": "Seuls les administrateurs de l’espace de travail peuvent révéler ou copier la valeur.",
+    "autoHideHint": "Masquée à nouveau après {seconds} secondes."
   },
   "security": {
     "codesRemaining": "Aucun code de récupération restant. | {n} code de récupération restant. | {n} codes de récupération restants.",
