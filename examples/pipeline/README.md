@@ -436,6 +436,53 @@ A direct deploy takes the same override: `miabi apps deploy web --no-cache`, or
 
 ---
 
+## Versioning
+
+A `versioning:` block gives every run a version, reserved when the run is
+triggered, so concurrent runs never share one:
+
+```yaml
+versioning:
+  scheme: semver          # or calver, run
+  series: 0.x.x           # versions this pipeline releases
+  start: 0.0.3            # the first one
+  bump: patch             # per run on a release branch
+  branches:
+    release: [main]       # other branches get prereleases: 0.0.4-feature-x.1
+  floating_tags: [latest] # build pipelines only, see below
+```
+
+Every step receives it in its environment: `MIABI_VERSION` (`0.0.3`),
+`MIABI_IMAGE_TAG` (`v0.0.3`, from `template`, default `v{version}`), and
+`MIABI_VERSION_MAJOR`, `_MINOR`, `_PATCH` and `_PRERELEASE` (left out for a
+release). A `uses: build` step can use them in `build-args` as
+`${MIABI_IMAGE_TAG}`. A pipeline's versions and their outcome below are listed on
+its **Versioning** tab.
+
+| | The version is kept when | Given back when |
+|---|---|---|
+| **With a `uses: build` step** | the run succeeds with an image: Miabi tags it in its registry, moves the floating tags | the run fails, or succeeds without an image |
+| **Without one** | the run succeeds | the run fails |
+
+A pipeline **without a build step** is versioned only by its `versioning:` block
+(versioning settings sent over the API alone are ignored for it), so a policy
+left from an earlier build step never hands out numbers to a test-only pipeline.
+It is the way to version images a pipeline builds and pushes itself, for
+example with Kaniko to another registry:
+
+```yaml
+  - name: image
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    run: >-
+      /kaniko/executor --context "$MIABI_WORKDIR"
+      --destination "registry.example.com/acme/api:$MIABI_IMAGE_TAG"
+```
+
+`floating_tags` move tags in Miabi's registry, so they need a `uses: build`
+step. And Miabi can check that a version is not already tagged only in its own
+registry: for images pushed elsewhere, the one guard is that Miabi never hands
+out the same version twice, so let only this pipeline release in that series.
+
 ## What you get back
 
 Every run records the resolved commit and, after a `uses: build` step, the image

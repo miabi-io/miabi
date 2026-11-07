@@ -354,3 +354,47 @@ func TestFloatingTagLeavesForeignTagAlone(t *testing.T) {
 		t.Fatal("still foreign: must not move")
 	}
 }
+
+func TestSettleWithoutBuildStep(t *testing.T) {
+	svc, runs, reg := newTestService(t)
+	def := appPipeline()
+	if _, err := svc.EnsureForPipeline(def, &Settings{Series: "0.x.x", Start: "0.0.3"}, true); err != nil {
+		t.Fatal(err)
+	}
+	step := func(run *models.PipelineRun, uses string) {
+		t.Helper()
+		if err := runs.CreateStep(&models.PipelineStepRun{PipelineRunID: run.ID, Ordinal: 0, Name: "s", Uses: uses}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first := newRun(t, runs, 1)
+	step(first, "")
+	if err := svc.Reserve(first, def, Request{}); err != nil || first.ImageTag != "v0.0.3" {
+		t.Fatalf("reserve = %q, %v", first.ImageTag, err)
+	}
+	first.Status = models.PipelineRunSucceeded
+	svc.Settle(context.Background(), first, "", "", func(string) {})
+	a, err := svc.repo.FindAllocationByRun(first.ID)
+	if err != nil || a.Status != models.AllocationPublished || a.Digest != "" {
+		t.Fatalf("allocation = %+v, %v", a, err)
+	}
+	if len(reg.tags) != 0 {
+		t.Fatalf("tags = %v, want none without an image", reg.tags)
+	}
+	if p, _ := svc.ForPipeline(def); p.Current != "0.0.3" {
+		t.Fatalf("current = %q, want 0.0.3", p.Current)
+	}
+
+	built := newRun(t, runs, 2)
+	step(built, "build")
+	_ = svc.Reserve(built, def, Request{})
+	built.Status = models.PipelineRunSucceeded
+	svc.Settle(context.Background(), built, "", "", func(string) {})
+	again := newRun(t, runs, 3)
+	step(again, "")
+	_ = svc.Reserve(again, def, Request{})
+	if built.ImageTag != "v0.0.4" || again.ImageTag != "v0.0.4" {
+		t.Fatalf("built %q, again %q: a build without an image must release its version", built.ImageTag, again.ImageTag)
+	}
+}

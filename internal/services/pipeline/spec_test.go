@@ -371,11 +371,16 @@ func TestParseSpecVersioning(t *testing.T) {
 		t.Fatalf("block = %+v", s.Versioning)
 	}
 
+	noBuild, err := ParseSpec([]byte(head + "steps:\n  - name: publish\n    image: alpine\n    run: true\n" + "versioning:\n  series: 0.x.x\n  start: 0.0.3\n"))
+	if err != nil || noBuild.Versioning == nil || noBuild.HasBuild() {
+		t.Fatalf("a build-less pipeline may declare versioning: %+v %v", noBuild, err)
+	}
+
 	for name, doc := range map[string]string{
-		"no build step": head + "steps:\n  - name: test\n    image: alpine\n    run: true\n" + "versioning:\n  scheme: semver\n",
-		"bad series":    head + build + "versioning:\n  series: 1.x.3\n",
-		"unknown field": head + build + "versioning:\n  serie: 1.x.x\n",
-		"major on 1.x":  head + build + "versioning:\n  bump: major\n",
+		"floating tags without a build": head + "steps:\n  - name: test\n    image: alpine\n    run: true\n" + "versioning:\n  floating_tags: [latest]\n",
+		"bad series":                    head + build + "versioning:\n  series: 1.x.3\n",
+		"unknown field":                 head + build + "versioning:\n  serie: 1.x.x\n",
+		"major on 1.x":                  head + build + "versioning:\n  bump: major\n",
 	} {
 		if _, err := ParseSpec([]byte(doc)); err == nil {
 			t.Errorf("%s: expected an error", name)

@@ -471,9 +471,10 @@ func (s *Service) reserveVersion(run *models.PipelineRun, p *models.PipelineDefi
 	if s.versions == nil {
 		return nil
 	}
-	if !spec.HasBuild() {
+	// A build-less pipeline is versioned only by its own block, so a policy left from an earlier build step stays idle.
+	if !spec.HasBuild() && spec.Versioning == nil {
 		if in.Bump != "" || in.Version != "" {
-			return fmt.Errorf("%w: this pipeline builds no image", ErrInvalidVersioning)
+			return fmt.Errorf("%w: this pipeline has no 'versioning:' block and builds no image", ErrInvalidVersioning)
 		}
 		return nil
 	}
