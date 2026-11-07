@@ -215,6 +215,12 @@ func (r *PipelineRepository) ListRuns(workspaceID, pipelineID uint, limit int) (
 	return out, err
 }
 
+func (r *PipelineRepository) RunBuilds(runID uint) (bool, error) {
+	var n int64
+	err := r.db.Model(&models.PipelineStepRun{}).Where("pipeline_run_id = ? AND uses = ?", runID, "build").Count(&n).Error
+	return n > 0, err
+}
+
 func (r *PipelineRepository) CreateStep(s *models.PipelineStepRun) error { return r.db.Create(s).Error }
 func (r *PipelineRepository) UpdateStep(s *models.PipelineStepRun) error { return r.db.Save(s).Error }
 

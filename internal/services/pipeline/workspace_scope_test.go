@@ -31,6 +31,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/miabi-io/miabi/internal/services/versioning"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -151,5 +152,12 @@ func TestBindingCheckFailsClosedWhenUnwired(t *testing.T) {
 	}
 	if err := s.checkBindingsInWorkspace(1, nil, &id); !errors.Is(err, ErrRepositoriesUnavailable) {
 		t.Fatalf("repo: err = %v", err)
+	}
+}
+
+func TestCreateIgnoresAPIVersioningWithoutBuild(t *testing.T) {
+	s, _ := scopeTestService(t)
+	if _, err := s.Create(1, Input{Name: "nobuild", Spec: commandOnlySpec, Versioning: &versioning.Settings{}}); err != nil {
+		t.Fatalf("the create form sends settings for every pipeline; a build-less one ignores them: %v", err)
 	}
 }

@@ -54,7 +54,6 @@ type Spec struct {
 	Versioning *versioning.Settings `yaml:"versioning,omitempty"`
 }
 
-// HasBuild reports whether the pipeline builds an image, the only kind of run a version applies to.
 func (s *Spec) HasBuild() bool {
 	for i := range s.Steps {
 		if s.Steps[i].Uses == UsesBuild {
@@ -196,8 +195,9 @@ func ParseSpec(data []byte) (*Spec, error) {
 		}
 	}
 	if s.Versioning != nil {
-		if !s.HasBuild() {
-			return nil, fmt.Errorf("versioning: applies to pipelines with a 'uses: build' step")
+		// Floating tags move tags in Miabi's registry, which a build-less pipeline never pushes to.
+		if !s.HasBuild() && len(s.Versioning.FloatingTags) > 0 {
+			return nil, fmt.Errorf("versioning: floating_tags move image tags and need a 'uses: build' step")
 		}
 		if err := versioning.ValidateSettings(s.Versioning); err != nil {
 			return nil, fmt.Errorf("versioning: %w", err)

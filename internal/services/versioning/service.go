@@ -276,7 +276,7 @@ func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, r
 	if err != nil || a.Status != models.AllocationReserved {
 		return
 	}
-	if run.Status != models.PipelineRunSucceeded || digest == "" {
+	if run.Status != models.PipelineRunSucceeded || (digest == "" && s.expectsImage(run)) {
 		deleted, err := s.repo.Release(a, IsHead, "run "+string(run.Status))
 		switch {
 		case err != nil:
@@ -294,7 +294,7 @@ func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, r
 		return
 	}
 	a.Digest = digest
-	if s.registry != nil && repository != "" {
+	if s.registry != nil && repository != "" && digest != "" {
 		if err := s.registry.TagImage(ctx, repository, digest, a.Tag); err != nil {
 			a.Note = "registry tag failed: " + err.Error()
 			log("WARN: could not tag " + repository + ":" + a.Tag + ": " + err.Error())
@@ -310,6 +310,9 @@ func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, r
 		logger.Warn("publish version failed", "run", run.ID, "version", a.Version, "error", err)
 		return
 	}
+	if digest == "" {
+		log("version " + a.Tag + " published")
+	}
 	if s.images != nil && run.ImageID != nil {
 		if err := s.images.SetTag(*run.ImageID, a.Tag); err != nil {
 			logger.Warn("label image with version failed", "image", *run.ImageID, "error", err)
@@ -318,6 +321,23 @@ func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, r
 	if !a.Prerelease && isReleaseBranch(policy, a.Branch) {
 		s.moveFloating(ctx, policy, a, repository, log)
 	}
+}
+
+// A run whose steps cannot be read counts as building, so its version is released rather than published blind.
+func (s *Service) expectsImage(run *models.PipelineRun) bool {
+	if len(run.Steps) > 0 {
+		for _, st := range run.Steps {
+			if st.Uses == "build" {
+				return true
+			}
+		}
+		return false
+	}
+	if s.pipelines == nil {
+		return true
+	}
+	builds, err := s.pipelines.RunBuilds(run.ID)
+	return err != nil || builds
 }
 
 // Moves a floating tag only to the newest version it covers, so a 1.x hotfix never drags latest back from 2.0.
