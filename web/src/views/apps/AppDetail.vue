@@ -38,7 +38,7 @@ import AppAccessPanel from '@/components/AppAccessPanel.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, WorkspacePortPolicy, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog, RuntimeKind, RuntimePreflight } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
-import { copyText } from '@/utils/clipboard'
+import { copyText, copyLoaded } from '@/utils/clipboard'
 import { envFields, linksWholeInstance, prefixedName, sanitizePrefix, type DBEnvField } from '@/utils/dbEnv'
 
 // Built here so `}}` doesn't break the template's mustache parser.
@@ -314,6 +314,9 @@ function depStatusClass(s: string): string {
 const envVars = ref<AppEnvVar[]>([])
 const revealedEnv = ref<Record<string, string>>({}) // key -> revealed secret value
 const revealingEnv = ref('') // key with a reveal request in flight
+const copyingEnv = ref('')
+const REVEAL_SECONDS = 30
+const envHideTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const showEnvModal = ref(false)
 const editingEnvKey = ref<string | null>(null)
 const envForm = ref({ key: '', value: '', secret: false })
@@ -943,7 +946,7 @@ async function loadTab() {
         streamLogs(target.id)
       }
     }
-    else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; revealedEnv.value = {} }
+    else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; hideAllEnv() }
     else if (tab.value === 'routes') appRoutes.value = (await routeApi.listByApp(wid.value, appId.value)).data.data ?? []
     else if (tab.value === 'ports') { loadPortPolicy(); appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? [] }
     else if (tab.value === 'volumes') { volumes.value = (await volumeApi.list(wid.value)).data.data ?? []; await loadHostPresets() }
@@ -1477,15 +1480,23 @@ async function delEnv(e: AppEnvVar) {
   loadApp() // refresh the "redeploy required" header badge
 }
 
-// Copy an env value to the clipboard (non-secret, or an already-revealed secret).
+// Secrets copy straight from the reveal endpoint so the value never has to be shown.
 async function copyEnvValue(e: AppEnvVar) {
-  const value = e.is_secret ? revealedEnv.value[e.key] : e.value
-  if (value === undefined) return
+  if (copyingEnv.value === e.key || !wid.value) return
+  const workspaceId = wid.value
+  const cached = e.is_secret ? revealedEnv.value[e.key] : e.value
+  copyingEnv.value = e.key
   try {
-    await navigator.clipboard.writeText(value)
+    const ok = await copyLoaded(async () =>
+      cached ?? (await appApi.revealEnvVar(workspaceId, appId.value, e.key)).data.data.value)
+    if (!ok) { notify.error(t('notify.common.copyFailedSelectAndCopy')); return }
     copiedEnvKey.value = e.key
     setTimeout(() => { if (copiedEnvKey.value === e.key) copiedEnvKey.value = '' }, 1500)
-  } catch (err) { notify.apiError(err, 'Failed to copy') }
+  } catch (err) {
+    notify.apiError(err, t('secrets.adminOnly'))
+  } finally {
+    copyingEnv.value = ''
+  }
 }
 
 // --- Custom container labels (Traefik &c.) ---
@@ -1524,21 +1535,33 @@ async function delLabel(key: string) {
   } catch (e) { notify.apiError(e) }
 }
 
+function hideEnv(key: string) {
+  clearTimeout(envHideTimers.get(key))
+  envHideTimers.delete(key)
+  if (revealedEnv.value[key] === undefined) return
+  const next = { ...revealedEnv.value }
+  delete next[key]
+  revealedEnv.value = next
+}
+function hideAllEnv() {
+  envHideTimers.forEach((h) => clearTimeout(h))
+  envHideTimers.clear()
+  revealedEnv.value = {}
+}
+onBeforeUnmount(hideAllEnv)
+
 // Fetches the decrypted value on demand (admin only, audited server-side).
 async function toggleReveal(e: AppEnvVar) {
-  if (revealedEnv.value[e.key] !== undefined) {
-    const next = { ...revealedEnv.value }
-    delete next[e.key]
-    revealedEnv.value = next
-    return
-  }
+  if (revealedEnv.value[e.key] !== undefined) { hideEnv(e.key); return }
   if (!wid.value) return
   revealingEnv.value = e.key
   try {
     const value = (await appApi.revealEnvVar(wid.value, appId.value, e.key)).data.data.value
     revealedEnv.value = { ...revealedEnv.value, [e.key]: value }
+    clearTimeout(envHideTimers.get(e.key))
+    envHideTimers.set(e.key, setTimeout(() => hideEnv(e.key), REVEAL_SECONDS * 1000))
   } catch (err) {
-    notify.apiError(err, 'Failed to reveal value')
+    notify.apiError(err, t('secrets.adminOnly'))
   } finally {
     revealingEnv.value = ''
   }
@@ -2666,20 +2689,27 @@ async function detachDatabase(d: AppDatabase) {
               </td>
               <td class="text-muted env-value-cell">
                 <template v-if="e.is_secret">
-                  <code v-if="revealedEnv[e.key] !== undefined" class="env-revealed">{{ revealedEnv[e.key] }}</code>
-                  <span v-else class="env-mask" :aria-label="$t('stacks.hiddenSecretValue')">••••••••••••</span>
+                  <code v-if="revealedEnv[e.key] !== undefined" class="env-revealed"
+                    :title="$t('secrets.autoHideHint', { seconds: REVEAL_SECONDS })">{{ revealedEnv[e.key] }}</code>
+                  <span v-else class="env-mask" :aria-label="$t('stacks.hiddenSecretValue')"
+                    :title="ws.isWorkspaceAdmin ? undefined : $t('secrets.adminOnly')">••••••••••••</span>
                 </template>
                 <code v-else class="env-revealed">{{ e.value }}</code>
               </td>
               <td class="text-right env-actions">
+                <button v-if="e.is_secret && ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted"
+                  :title="$t(revealedEnv[e.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')"
+                  :aria-label="$t(revealedEnv[e.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')"
+                  :aria-pressed="revealedEnv[e.key] !== undefined"
+                  :disabled="revealingEnv === e.key" @click="toggleReveal(e)"><span class="mdi" :class="revealingEnv === e.key ? 'mdi-loading mdi-spin' : (revealedEnv[e.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span></button>
                 <button
-                  v-if="!e.is_secret || revealedEnv[e.key] !== undefined"
+                  v-if="!e.is_secret || ws.isWorkspaceAdmin"
                   class="btn-icon btn-icon-muted"
                   :title="$t(copiedEnvKey === e.key ? 'notify.common.copied' : 'appDetail.copyValue')"
-                  :aria-label="copiedEnvKey === e.key ? 'Copied' : 'Copy value'"
+                  :aria-label="$t(copiedEnvKey === e.key ? 'notify.common.copied' : 'appDetail.copyValue')"
+                  :disabled="copyingEnv === e.key"
                   @click="copyEnvValue(e)"
-                ><span class="mdi" :class="copiedEnvKey === e.key ? 'mdi-check text-success' : 'mdi-content-copy'"></span></button>
-                <button v-if="e.is_secret && ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t(revealedEnv[e.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')" :aria-label="revealedEnv[e.key] !== undefined ? 'Hide value' : 'Reveal value'" :disabled="revealingEnv === e.key" @click="toggleReveal(e)"><span class="mdi" :class="revealingEnv === e.key ? 'mdi-loading mdi-spin' : (revealedEnv[e.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span></button>
+                ><span class="mdi" :class="copyingEnv === e.key ? 'mdi-loading mdi-spin' : (copiedEnvKey === e.key ? 'mdi-check text-success' : 'mdi-content-copy')"></span></button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEnvEdit(e)"><span class="mdi mdi-pencil-outline"></span></button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="delEnv(e)"><span class="mdi mdi-delete-outline"></span></button>
               </td>

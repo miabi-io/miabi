@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -12,6 +12,7 @@ import MetadataCard from '@/components/MetadataCard.vue'
 import EnvVarModal from '@/components/EnvVarModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
+import { copyLoaded } from '@/utils/clipboard'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +42,10 @@ const savingEnv = ref(false)
 // Revealed secret values, keyed by variable name; mirrors the per-app reveal.
 const revealedEnv = ref<Record<string, string>>({})
 const revealingEnv = ref('')
+const copyingEnv = ref('')
+const copiedEnvKey = ref('')
+const REVEAL_SECONDS = 30
+const envHideTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const showEnvImport = ref(false)
 const envImport = ref({ content: '', secret: false })
 const importingEnv = ref(false)
@@ -70,7 +75,7 @@ async function load(silent = false) {
     stack.value = (await stackApi.get(wid.value, stackId.value)).data.data
     allApps.value = (await appApi.list(wid.value)).data.data ?? []
     envVars.value = (await stackApi.envVars(wid.value, stackId.value)).data.data ?? []
-    if (!silent) revealedEnv.value = {}
+    if (!silent) hideAllEnv()
     events.value = (await stackApi.events(wid.value, stackId.value)).data.data ?? []
   } catch (e) {
     if (!silent) notify.apiError(e)
@@ -246,22 +251,53 @@ async function saveEnv(v: { key: string; value: string; secret: boolean }) {
   }
 }
 
+function hideEnv(key: string) {
+  clearTimeout(envHideTimers.get(key))
+  envHideTimers.delete(key)
+  if (revealedEnv.value[key] === undefined) return
+  const next = { ...revealedEnv.value }
+  delete next[key]
+  revealedEnv.value = next
+}
+function hideAllEnv() {
+  envHideTimers.forEach((h) => clearTimeout(h))
+  envHideTimers.clear()
+  revealedEnv.value = {}
+}
+onBeforeUnmount(hideAllEnv)
+
 async function toggleReveal(v: StackEnvVar) {
-  if (revealedEnv.value[v.key] !== undefined) {
-    const next = { ...revealedEnv.value }
-    delete next[v.key]
-    revealedEnv.value = next
-    return
-  }
+  if (revealedEnv.value[v.key] !== undefined) { hideEnv(v.key); return }
   if (!wid.value) return
   revealingEnv.value = v.key
   try {
     const value = (await stackApi.revealEnvVar(wid.value, stackId.value, v.key)).data.data.value
     revealedEnv.value = { ...revealedEnv.value, [v.key]: value }
+    clearTimeout(envHideTimers.get(v.key))
+    envHideTimers.set(v.key, setTimeout(() => hideEnv(v.key), REVEAL_SECONDS * 1000))
   } catch (err) {
-    notify.apiError(err, 'Failed to reveal value')
+    notify.apiError(err, t('secrets.adminOnly'))
   } finally {
     revealingEnv.value = ''
+  }
+}
+
+// Secrets copy straight from the reveal endpoint so the value never has to be shown.
+async function copyEnvValue(v: StackEnvVar) {
+  if (copyingEnv.value === v.key || !wid.value) return
+  const workspaceId = wid.value
+  const cached = v.is_secret ? revealedEnv.value[v.key] : v.value
+  copyingEnv.value = v.key
+  try {
+    const ok = await copyLoaded(async () =>
+      cached ?? (await stackApi.revealEnvVar(workspaceId, stackId.value, v.key)).data.data.value)
+    if (!ok) { notify.error(t('notify.common.copyFailedSelectAndCopy')); return }
+    copiedEnvKey.value = v.key
+    setTimeout(() => { if (copiedEnvKey.value === v.key) copiedEnvKey.value = '' }, 1500)
+  } catch (err) {
+    notify.apiError(err, t('secrets.adminOnly'))
+  } finally {
+    copyingEnv.value = ''
   }
 }
 
@@ -466,21 +502,34 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
               </td>
               <td class="cell-sub" style="font-family: monospace">
                 <template v-if="v.is_secret">
-                  <code v-if="revealedEnv[v.key] !== undefined">{{ revealedEnv[v.key] }}</code>
-                  <span v-else :aria-label="$t('stacks.hiddenSecretValue')">••••••••</span>
+                  <code v-if="revealedEnv[v.key] !== undefined"
+                    :title="$t('secrets.autoHideHint', { seconds: REVEAL_SECONDS })">{{ revealedEnv[v.key] }}</code>
+                  <span v-else class="env-mask" :aria-label="$t('stacks.hiddenSecretValue')"
+                    :title="ws.isWorkspaceAdmin ? undefined : $t('secrets.adminOnly')">••••••••</span>
                 </template>
                 <code v-else>{{ v.value }}</code>
               </td>
-              <td class="text-right">
+              <td class="text-right" style="white-space: nowrap">
                 <button
                   v-if="v.is_secret && ws.isWorkspaceAdmin"
                   class="btn-icon btn-icon-muted"
-                  :title="revealedEnv[v.key] !== undefined ? 'Hide value' : 'Reveal value'"
-                  :aria-label="revealedEnv[v.key] !== undefined ? 'Hide value' : 'Reveal value'"
+                  :title="$t(revealedEnv[v.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')"
+                  :aria-label="$t(revealedEnv[v.key] !== undefined ? 'appDetail.hideValue' : 'appDetail.revealValue')"
+                  :aria-pressed="revealedEnv[v.key] !== undefined"
                   :disabled="revealingEnv === v.key"
                   @click="toggleReveal(v)"
                 >
                   <span class="mdi" :class="revealingEnv === v.key ? 'mdi-loading mdi-spin' : (revealedEnv[v.key] !== undefined ? 'mdi-eye-off-outline' : 'mdi-eye-outline')"></span>
+                </button>
+                <button
+                  v-if="!v.is_secret || ws.isWorkspaceAdmin"
+                  class="btn-icon btn-icon-muted"
+                  :title="$t(copiedEnvKey === v.key ? 'notify.common.copied' : 'appDetail.copyValue')"
+                  :aria-label="$t(copiedEnvKey === v.key ? 'notify.common.copied' : 'appDetail.copyValue')"
+                  :disabled="copyingEnv === v.key"
+                  @click="copyEnvValue(v)"
+                >
+                  <span class="mdi" :class="copyingEnv === v.key ? 'mdi-loading mdi-spin' : (copiedEnvKey === v.key ? 'mdi-check text-success' : 'mdi-content-copy')"></span>
                 </button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEnvEdit(v)"><span class="mdi mdi-pencil-outline"></span></button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="deleteEnv(v.key)"><span class="mdi mdi-delete-outline"></span></button>
@@ -665,6 +714,8 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
 }
 
 .text-muted { color: var(--text-muted); }
+.text-success { color: var(--success-500, #22c55e); }
+.env-mask { letter-spacing: 2px; color: var(--text-muted); user-select: none; }
 .header-divider { width: 1px; height: 22px; background: var(--border-secondary); margin: 0 4px; }
 .form-hint code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; }
 code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
