@@ -28,8 +28,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// cloneOf creates a repository on defaultBranch plus the given extra branches, one commit each, and
-// returns a fresh clone of it with the commit every branch points at.
 func cloneOf(t *testing.T, defaultBranch string, extra ...string) (*git.Repository, map[string]plumbing.Hash) {
 	t.Helper()
 	dir := t.TempDir()
@@ -85,8 +83,7 @@ func TestCheckoutRefNonDefaultBranch(t *testing.T) {
 	}
 }
 
-// A source saved without a ref is stored as "main"; on a master-only repository it keeps syncing the
-// default branch, as it always has.
+// A source saved without a ref is stored as "main"; on a master-only repo it must keep syncing the default branch.
 func TestCheckoutRefMainFallsBackWithoutMain(t *testing.T) {
 	repo, heads := cloneOf(t, "master")
 	if err := checkoutRef(repo, "main"); err != nil {

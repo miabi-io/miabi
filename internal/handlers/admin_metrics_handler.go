@@ -35,8 +35,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// SubnetPoolStater reports network subnet-pool utilization. Satisfied by
-// *netalloc.Service; injected so the admin dashboard can show it.
 type SubnetPoolStater interface {
 	Stats() (used int, total int)
 }
@@ -77,15 +75,12 @@ type PlatformMetrics struct {
 	TotalRoutes       int64 `json:"total_routes"`
 	ActiveSessions    int64 `json:"active_sessions"`
 
-	// Nodes online (the local node, or a connected agent) and offline (an agent that dropped); the rest are
-	// swarm members Miabi reaches without an agent.
-	OnlineNodes   int64 `json:"online_nodes"`
-	OfflineNodes  int64 `json:"offline_nodes"`
-	CordonedNodes int64 `json:"cordoned_nodes"`
-	TotalClusters int64 `json:"total_clusters"`
-	SwarmClusters int64 `json:"swarm_clusters"`
-	// ClustersAwaitingGateway counts clusters whose node was converted from port-forward and whose gateway
-	// nobody has confirmed yet.
+	// The rest are swarm members Miabi reaches without an agent.
+	OnlineNodes             int64 `json:"online_nodes"`
+	OfflineNodes            int64 `json:"offline_nodes"`
+	CordonedNodes           int64 `json:"cordoned_nodes"`
+	TotalClusters           int64 `json:"total_clusters"`
+	SwarmClusters           int64 `json:"swarm_clusters"`
 	ClustersAwaitingGateway int64 `json:"clusters_awaiting_gateway"`
 
 	RunningContainers int `json:"running_containers"`
@@ -94,8 +89,6 @@ type PlatformMetrics struct {
 	ConnectedWorkers int          `json:"connected_workers"`
 	Workers          []WorkerInfo `json:"workers"`
 
-	// Build runners, split by scope (platform-shared vs workspace-owned) with the
-	// online subset of each.
 	SharedRunners          int64 `json:"shared_runners"`
 	SharedRunnersOnline    int64 `json:"shared_runners_online"`
 	WorkspaceRunners       int64 `json:"workspace_runners"`
@@ -114,8 +107,7 @@ type PlatformMetrics struct {
 	BuildDate   string            `json:"build_date,omitempty"`
 	NetworkPool *NetworkPoolStats `json:"network_pool,omitempty"`
 
-	// Fleet is node CPU/memory capacity against what workloads have reserved; nil when per-node
-	// clients are not wired.
+	// Fleet is nil when per-node clients are not wired.
 	Fleet *FleetCapacity `json:"fleet,omitempty"`
 	// StorageClasses aggregates the operator's registered disks.
 	StorageClasses StorageClassStats `json:"storage_classes"`
@@ -231,9 +223,7 @@ func (h *AdminMetricsHandler) collect(ctx context.Context) PlatformMetrics {
 	return pm
 }
 
-// collectWorkers lists the connected asynq worker servers via the inspector. The control-plane
-// server runs an embedded worker and standalone workers share the same Redis. Returns an empty
-// slice when the inspector is unavailable.
+// Standalone workers share the embedded worker's Redis; empty when the inspector is unavailable.
 func (h *AdminMetricsHandler) collectWorkers() []WorkerInfo {
 	if h.inspector == nil {
 		return nil

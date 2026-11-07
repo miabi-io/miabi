@@ -28,9 +28,7 @@ const (
 	LDAPTLSLDAPS    = "ldaps"    // implicit TLS (usually port 636)
 )
 
-// LDAPConfig is an LDAP / Active Directory connection for an organization. Migrated in every
-// build but only read by the enterprise LDAP authenticator and admin handler (gated on
-// sso_ldap); empty in Community. Mirrors SAMLConfig's per-org shape.
+// LDAPConfig is migrated in every build but only read by the enterprise LDAP code (sso_ldap); empty in Community.
 type LDAPConfig struct {
 	ID             uint  `json:"id" gorm:"primaryKey"`
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
@@ -45,11 +43,9 @@ type LDAPConfig struct {
 	InsecureSkipTLS bool   `json:"insecure_skip_tls" gorm:"not null;default:false"`
 	TimeoutSeconds  int    `json:"timeout_seconds" gorm:"not null;default:10"`
 
-	// Bind — the service account used to search for the user entry before
-	// re-binding as the user to verify the password.
+	// Service account used to search for the user entry before re-binding as the user.
 	BindDN string `json:"bind_dn"`
-	// BindPasswordEnc is the service-account password, encrypted at rest (crypto
-	// package). Never serialized; BindPasswordSet exposes only whether it is set.
+	// Never serialized; BindPasswordSet exposes only whether it is set.
 	BindPasswordEnc string `json:"-" gorm:"type:text"`
 
 	UserBaseDN   string `json:"user_base_dn"`
@@ -71,20 +67,14 @@ type LDAPConfig struct {
 	// Mappings are loaded on demand (not embedded in list responses).
 	Mappings []LDAPGroupMapping `json:"mappings,omitempty" gorm:"foreignKey:LDAPConfigID"`
 
-	// BindPasswordSet is a read-only flag for the API (whether a service-account
-	// password is stored) so the secret itself is never exposed. Not persisted;
-	// populated by the repository on read.
 	BindPasswordSet bool `json:"bind_password_set" gorm:"-"`
 }
 
-// LDAPGroupMapping maps a directory group to Miabi access, reconciled on every login:
-// SystemAdmin grants the platform-admin role, a WorkspaceID + WorkspaceRole grants
-// membership. A mapping with neither is a no-op, kept for documentation.
+// LDAPGroupMapping is reconciled on every login; a mapping granting neither admin nor membership is a no-op.
 type LDAPGroupMapping struct {
 	ID           uint `json:"id" gorm:"primaryKey"`
 	LDAPConfigID uint `json:"ldap_config_id" gorm:"index;not null"`
-	// GroupDN is matched (case-insensitively) against the user's resolved group
-	// DNs; a bare CN is also accepted for convenience.
+	// Matched case-insensitively against resolved group DNs; a bare CN is also accepted.
 	GroupDN     string `json:"group_dn" gorm:"not null"`
 	SystemAdmin bool   `json:"system_admin" gorm:"not null;default:false"`
 	// WorkspaceID + WorkspaceRole grant workspace membership (nil = no grant).

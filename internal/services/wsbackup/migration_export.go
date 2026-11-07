@@ -56,8 +56,7 @@ type Freezer interface {
 
 // MigrationExportInput is what an importing install asks of the source.
 type MigrationExportInput struct {
-	// Freeze stops the workspace's apps and refuses changes before anything is collected, so the copy
-	// is consistent. The workspace stays frozen until it is retired or unfrozen.
+	// Freezing before collection keeps the copy consistent; it stays frozen until retired or unfrozen.
 	Freeze bool
 	// Data dumps the databases and archives the volumes; without it only the configuration travels.
 	Data bool
@@ -329,8 +328,7 @@ func readyExport(b *models.WorkspaceBundle) error {
 	return nil
 }
 
-// PurgeMigrationExport removes an export's staged dumps and archives and forgets its state. The
-// importing install calls it once it has what it needs; the sweep catches the ones it never collects.
+// The sweep catches exports the importing install never collects.
 func (s *Service) PurgeMigrationExport(ctx context.Context, b *models.WorkspaceBundle) error {
 	if b.Migration == nil || b.Migration.Purged {
 		return nil
@@ -369,8 +367,7 @@ func (s *Service) purgeStaged(ctx context.Context, b *models.WorkspaceBundle) {
 	}
 }
 
-// SweepMigrationExports purges exports nobody collected in time. It never unfreezes: whether the
-// workspace moved is the owner's call, not a timer's.
+// It never unfreezes: whether the workspace moved is the owner's call, not a timer's.
 func (s *Service) SweepMigrationExports(ctx context.Context) error {
 	due, err := s.Repo.ListExpiredMigrationExports(time.Now())
 	if err != nil {
@@ -385,8 +382,7 @@ func (s *Service) SweepMigrationExports(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// RetireMigrationExport records that the workspace now lives on another install. It stays frozen, with
-// the reason naming where it went, until its owner deletes or unfreezes it.
+// It stays frozen, with the reason naming where it went, until its owner deletes or unfreezes it.
 func (s *Service) RetireMigrationExport(b *models.WorkspaceBundle, target string) error {
 	if s.Freezer == nil {
 		return errors.New("this install cannot freeze a workspace")
@@ -440,8 +436,6 @@ func (s *Service) CompleteMigrationExport(b *models.WorkspaceBundle, target stri
 	return s.Repo.Update(b)
 }
 
-// MigrationExports lists a workspace's migration exports, most recent first; all of the install's when
-// workspaceID is 0.
 func (s *Service) MigrationExports(workspaceID uint, limit int) ([]models.WorkspaceBundle, error) {
 	if workspaceID == 0 {
 		return s.Repo.ListByKind(models.BundleMigrationExport, limit)

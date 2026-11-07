@@ -11,8 +11,7 @@ const { currentWorkspaceId } = storeToRefs(ws)
 type TabKey = 'mine' | 'platform'
 const tab = ref<TabKey>('mine')
 
-// Platform runners are read-only here (managed by admins in the shared pool);
-// only list() is ever called, since the panel renders with can-edit=false.
+// The panel renders with can-edit=false, so only list() is ever called.
 const readOnly = (): never => {
   throw new Error('platform runners are read-only')
 }

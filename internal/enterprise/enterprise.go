@@ -30,13 +30,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// embeddedKeyring is the customer portal's keyring export for Miabi (base64 JSON), set at link
-// time with -ldflags "-X github.com/miabi-io/miabi/internal/enterprise.embeddedKeyring=<base64>".
+// Set at link time via -ldflags "-X github.com/miabi-io/miabi/internal/enterprise.embeddedKeyring=<base64>".
 var embeddedKeyring string
 
-// New constructs the real EE implementation: it loads any installed license from the database,
-// falling back to MIABI_LICENSE_FILE for air-gapped installs. A license bound to a different
-// instance grants no features. An empty instanceURL disables the URL check; install_id always applies.
+// New falls back to MIABI_LICENSE_FILE; an empty instanceURL disables the URL check, install_id always applies.
 func New(db *gorm.DB, licenseFile string, instanceURL string, installID string) EE {
 	e := &impl{db: db, instanceURL: instanceURL, installID: installID}
 	if ring, err := license.ParseKeyring(embeddedKeyring); err != nil || ring.Product != license.Product {
@@ -73,9 +70,7 @@ type impl struct {
 	ldap         LDAPAuthenticator // nil until InitSSO
 }
 
-// bindingResult reports whether the license's bindings all match this deployment and, if not,
-// which failed. Bindings are conjunctive. install_id is an exact match and always enforced (the
-// strong, primary binding); url matches the configured instance URL or the request host.
+// Bindings are conjunctive; install_id is always enforced, url matches the instance URL or the request host.
 func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, reason string) {
 	if c == nil {
 		return true, ""
@@ -93,9 +88,7 @@ func (e *impl) bindingResult(c *license.Claims, requestHost string) (ok bool, re
 	return true, ""
 }
 
-// urlAllowed reports whether a license bound to licenseURL is allowed given the deployment's known
-// host identities. An empty licenseURL is unlimited and empty candidates are ignored; if no
-// candidate host is known the check fails open, so a legitimate install is never bricked.
+// Fails open when no candidate host is known, so a legitimate install is never bricked.
 func urlAllowed(licenseURL string, candidates ...string) bool {
 	want := normalizeHost(licenseURL)
 	if want == "" {
@@ -115,8 +108,6 @@ func urlAllowed(licenseURL string, candidates ...string) bool {
 	return !known // unknown host → fail open; known but unmatched → deny
 }
 
-// normalizeHost reduces a deployment URL to its lowercased hostname so the
-// binding matches regardless of scheme, port, path, or a trailing slash.
 func normalizeHost(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	if s == "" {
@@ -131,9 +122,7 @@ func normalizeHost(raw string) string {
 	return s
 }
 
-// InitSSO constructs the SAML provider when the license entitles it. The handler
-// re-checks the entitlement per request, so a later degrade disables it without
-// a restart.
+// The handler re-checks the entitlement per request, so a later degrade disables it without a restart.
 func (e *impl) InitSSO(deps SSODeps) {
 	db, _ := deps.DB.(*gorm.DB)
 	if db == nil {
@@ -172,8 +161,7 @@ func (e *impl) InitSSO(deps SSODeps) {
 	e.mu.Unlock()
 }
 
-// ldapAdapter bridges the enterprise/sso/ldap provider (which uses its own types
-// to avoid importing this package) to the enterprise.LDAPAuthenticator interface.
+// The provider uses its own types to avoid importing this package.
 type ldapAdapter struct{ p *eldap.Provider }
 
 func (a *ldapAdapter) Authenticate(ctx context.Context, username, password string) (LDAPIdentity, error) {
@@ -216,11 +204,7 @@ func (e *impl) LDAP() LDAPAuthenticator {
 	return e.ldap
 }
 
-// load reads the active license row and re-verifies its signed token. A row that
-// fails verification (tampered DB) is ignored, falling back to community — the
-// signed token is authoritative, not the cached columns. A license signed by a key
-// this build does not trust is reported, not silently dropped: the fix is to
-// upgrade Miabi, not to buy another license.
+// The signed token is authoritative over cached columns; an untrusted signing key is reported, not dropped.
 func (e *impl) load() error {
 	var row models.License
 	if err := e.db.Order("id DESC").First(&row).Error; err != nil {
@@ -278,8 +262,6 @@ func (e *impl) snapshot() license.Snapshot {
 	return license.Evaluate(*c, time.Now())
 }
 
-// mismatched reports whether the installed license is bound to a different
-// instance than this one (so no features are granted), plus the failed binding.
 func (e *impl) mismatched() (bool, string) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -306,8 +288,7 @@ func (e *impl) Entitlements() Entitlements {
 		na, ge := s.NotAfter, s.GraceEnds
 		ent.NotAfter, ent.GraceEnds = &na, &ge
 	}
-	// A license bound to a different instance grants nothing: report the mismatch
-	// state (keeping edition/tier/install_id/url for display) and drop flags.
+	// Keep edition/tier/install_id/url for display but drop flags.
 	e.mu.RLock()
 	unknownKID := e.unknownKID
 	e.mu.RUnlock()
@@ -330,9 +311,7 @@ func (e *impl) Entitlements() Entitlements {
 	return ent
 }
 
-// Has reports whether an entitled flag may be used at runtime: true in every
-// non-community state (including degraded, which keeps features running). A
-// license bound to a different instance grants nothing.
+// Has stays true when degraded, which keeps features running.
 func (e *impl) Has(flag string) bool {
 	if mm, _ := e.mismatched(); mm {
 		return false
@@ -341,8 +320,7 @@ func (e *impl) Has(flag string) bool {
 	return s.State != license.StateNone && s.Flags[flag]
 }
 
-// Mutable additionally requires the license not be degraded: configuration of a
-// paid feature is frozen once past grace.
+// Configuration of a paid feature is frozen once past grace.
 func (e *impl) Mutable(flag string) bool {
 	if mm, _ := e.mismatched(); mm {
 		return false
@@ -375,8 +353,6 @@ func (e *impl) RequireMutable(flag string) error {
 	return nil
 }
 
-// Install verifies the token against the public key and persists it as the
-// single active license, replacing any prior row.
 func (e *impl) Install(_ context.Context, token string, requestHost string) (Entitlements, error) {
 	if e.ring == nil {
 		return Entitlements{}, errors.New("this build has no license keyring, so it cannot verify licenses")
@@ -388,9 +364,7 @@ func (e *impl) Install(_ context.Context, token string, requestHost string) (Ent
 	if err != nil {
 		return Entitlements{}, err
 	}
-	// Reject a license bound to a different deployment at install time. The URL binding is matched
-	// against both the configured instance URL and the live request host, so you cannot install a
-	// license for another deployment even when the instance URL is unset.
+	// Matched against the instance URL and the request host, so another deployment's license can't be installed.
 	if ok, _ := e.bindingResult(&c, requestHost); !ok {
 		return Entitlements{}, ErrLicenseBindingMismatch
 	}
@@ -407,9 +381,7 @@ func (e *impl) Install(_ context.Context, token string, requestHost string) (Ent
 	if err != nil {
 		return Entitlements{}, err
 	}
-	// Ongoing enforcement has no request host (there is none at boot), so reflect
-	// that rule now too — a license validated only against the request host but a
-	// mismatching configured URL surfaces the misconfig.
+	// Ongoing enforcement has no request host, so a mismatching configured URL surfaces now.
 	ok, reason := e.bindingResult(&c, "")
 	e.mu.Lock()
 	e.claims = &c

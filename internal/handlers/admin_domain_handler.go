@@ -35,9 +35,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdminDomainHandler exposes platform-wide domain administration: a searchable
-// list of every workspace's domains, a detail view with the routes that depend on
-// each domain, and manual (or forced) ownership validation.
 type AdminDomainHandler struct {
 	db      *gorm.DB
 	domains *repositories.DomainRepository
@@ -75,13 +72,10 @@ type AdminDomainRoute struct {
 	Enabled      bool               `json:"enabled"`
 }
 
-// AdminDomainDetail enriches a domain with its workspace, challenge instructions,
-// dependent routes, and recent activity for the admin detail page.
 type AdminDomainDetail struct {
 	models.Domain
 	WorkspaceName string `json:"workspace_name"`
-	// WorkspacePrivileged means the owning workspace may expose routes under this
-	// domain even before it is verified (a ban still blocks them).
+	// WorkspacePrivileged allows routes before verification; a ban still blocks them.
 	WorkspacePrivileged bool               `json:"workspace_privileged"`
 	ChallengeHost       string             `json:"challenge_host"`
 	ChallengeValue      string             `json:"challenge_value"`
@@ -90,8 +84,6 @@ type AdminDomainDetail struct {
 	RecentEvents        []models.AuditLog  `json:"recent_events"`
 }
 
-// List returns every workspace's domains, filterable by search, status, and
-// workspace.
 func (h *AdminDomainHandler) List(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	var wsFilter *uint
@@ -117,8 +109,6 @@ func (h *AdminDomainHandler) List(c *okapi.Context) error {
 	return paginated(c, out, total, page, size)
 }
 
-// Get returns a single domain with its workspace, dependent routes, and recent
-// activity.
 func (h *AdminDomainHandler) Get(c *okapi.Context) error {
 	id, err := adminDomainID(c)
 	if err != nil {
@@ -220,8 +210,6 @@ type BanDomainRequest struct {
 	} `json:"body"`
 }
 
-// Ban blocks a domain platform-wide: its routes are forced offline and it can no
-// longer be verified.
 func (h *AdminDomainHandler) Ban(c *okapi.Context, req *BanDomainRequest) error {
 	id, err := adminDomainID(c)
 	if err != nil {
@@ -257,8 +245,6 @@ func (h *AdminDomainHandler) Unban(c *okapi.Context) error {
 	return ok(c, d)
 }
 
-// dependentRoutes returns the workspace routes whose hosts fall under the domain,
-// with their current config-sync status.
 func (h *AdminDomainHandler) dependentRoutes(d *models.Domain) []AdminDomainRoute {
 	routes, err := h.routes.ListByWorkspace(d.WorkspaceID)
 	if err != nil {

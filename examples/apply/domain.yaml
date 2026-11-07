@@ -1,23 +1,5 @@
-# Declaratively owning a domain and exposing an application under it.
-#
-# Two related kinds:
-#   • Domain — an owned hostname/zone you control. Its metadata.name is the real
-#     FQDN. It records the default TLS policy and (optionally) wildcard coverage.
-#     DNS-ownership verification (publishing the TXT token) is a runtime action,
-#     so an applied domain starts unverified.
-#   • Route  — an HTTP routing rule (host/path → app:port + TLS). Routes are what
-#     actually expose an app; they bind hostnames that live under your domains.
-#
-# Goma Gateway terminates TLS and (for `tls: acme`) obtains/renews the Let's
-# Encrypt certificate; Miabi only declares the desired state.
-#
-# Apply with the declarative apply API (or GitOps):
-#   POST /api/v1/workspaces/{ws}/apply
-#   { "manifests": "<this file>", "dry_run": true }   # preview the plan
-#   { "manifests": "<this file>" }                     # converge
+# Domain declares an owned zone and its TLS policy; Route exposes an app on a host under it.
 
-# The owned apex zone, covering the apex and (wildcard) every subdomain, with
-# Let's Encrypt as the default certificate policy.
 apiVersion: miabi.io/v1
 kind: Domain
 metadata: { name: shop.example.com }
@@ -67,10 +49,7 @@ spec:
   port: 8080
   tls: acme
 ---
-# A domain served with a stored certificate. Import the cert/key out of band (the
-# certificate API or the console) — a private key does not belong in a manifest —
-# then name it here. `tls: custom` without a certificate serves no TLS at all, so
-# the two are required together.
+# Import the cert/key out of band, never in a manifest; `tls: custom` without a certificate serves no TLS.
 apiVersion: miabi.io/v1
 kind: Route
 metadata: { name: shop-custom-cert }
@@ -81,11 +60,7 @@ spec:
   tls: custom
   certificate: shop-wildcard
 ---
-# Gateway-level switches. exploitProtection blocks common injection/traversal
-# signatures before the backend sees them. maintenance parks the route: the
-# gateway answers every request itself, so the app can be migrated behind a
-# deliberate 503. Remove the block (or set enabled: false) to resume traffic —
-# a manifest is the desired state, so an apply un-parks a hand-parked route.
+# maintenance makes the gateway answer with a 503; an apply un-parks a hand-parked route.
 apiVersion: miabi.io/v1
 kind: Route
 metadata: { name: shop-admin }

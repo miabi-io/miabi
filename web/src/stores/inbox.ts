@@ -2,14 +2,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { inboxApi, type InboxNotification } from '@/api/inbox'
 
-// Per-user notification inbox: unread badge + recent items, kept live over SSE.
-// The stream is a nudge to refetch (Postgres is the source of truth), so the wire
-// stays tiny and reconnection is trivial.
+// The stream only nudges a refetch (Postgres is the source of truth), so the wire stays tiny.
 export const useInboxStore = defineStore('inbox', () => {
   const unread = ref(0)
   const items = ref<InboxNotification[]>([])
-  // banners are the pinned, undismissed notices rendered above the page rather
-  // than behind the bell — currently platform announcements.
   const banners = ref<InboxNotification[]>([])
   const loading = ref(false)
   let es: EventSource | null = null
@@ -42,8 +38,7 @@ export const useInboxStore = defineStore('inbox', () => {
     }
   }
 
-  // Coalesce bursts of SSE nudges (a crash-loop resolve touches many rows) into a
-  // single refetch.
+  // A crash-loop resolve touches many rows, so bursts coalesce into one refetch.
   function scheduleRefetch() {
     if (refetchTimer) return
     refetchTimer = setTimeout(() => {
@@ -83,9 +78,7 @@ export const useInboxStore = defineStore('inbox', () => {
     await loadUnread()
   }
 
-  // dismiss drops a notice from the banner for this user only. It is removed
-  // locally first: the row stays in the inbox, so a refetch would bring it back
-  // into the list but never into the banner.
+  // Removed locally first: a refetch brings it back into the inbox but never into the banner.
   async function dismiss(ids: number[]) {
     if (!ids.length) return
     banners.value = banners.value.filter((n) => !ids.includes(n.id))

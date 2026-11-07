@@ -134,8 +134,6 @@ func TestHasRuntime(t *testing.T) {
 }
 
 func TestPreflight_NoGPUIsNoop(t *testing.T) {
-	// An app requesting no GPU must pass preflight even with GPU support off and no
-	// quota wired.
 	s := &Service{cfg: Config{Enabled: false}}
 	if err := s.Preflight(&models.Application{GPUCount: 0}); err != nil {
 		t.Errorf("no-gpu preflight should be a no-op, got %v", err)

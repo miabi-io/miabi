@@ -25,9 +25,7 @@ import (
 	"time"
 )
 
-// A recovery point must outlive the request that asked for it. Tenant capture used to run inline in the
-// HTTP handler's context, so the moment that request ended every artifact still in flight died with
-// "context canceled". CreateSet and RetrySet now detach, which is what this pins.
+// Capture must outlive the HTTP request, or in-flight artifacts die with "context canceled".
 func TestWithoutCancelSurvivesTheRequest(t *testing.T) {
 	req, cancel := context.WithCancel(context.Background())
 	work := context.WithoutCancel(req)
@@ -49,8 +47,7 @@ func TestWithoutCancelSurvivesTheRequest(t *testing.T) {
 	}
 }
 
-// A deadline on the request must not travel either: an artifact that takes longer
-// than the HTTP timeout is normal, not a failure.
+// An artifact taking longer than the HTTP timeout is normal, not a failure.
 func TestWithoutCancelDropsTheDeadline(t *testing.T) {
 	req, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()

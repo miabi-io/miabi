@@ -274,9 +274,7 @@ func TestPlacementHonorsThePlanLocations(t *testing.T) {
 	}
 }
 
-// A cordoned node is refused wherever it would host the workload — the standalone default cluster
-// (the control plane's own node) and a standalone cluster's single node alike. A swarm cluster's
-// manager is exempt: it is only the engine a service create is issued through.
+// A swarm manager is exempt: it is only the engine a service create is issued through.
 func TestPlacementRefusesACordonedHostNode(t *testing.T) {
 	s, db := newPlacement(t, map[uint]bool{10: true, 11: true})
 
@@ -311,8 +309,7 @@ func (f fakeOrgs) OrganizationOfWorkspace(id uint) uint { return f.ofWorkspace[i
 func (f fakeOrgs) OwnsClusters(orgID uint) bool         { return f.owners[orgID] }
 func (f fakeOrgs) OrganizationLabel(orgID uint) string  { return fmt.Sprintf("org-%d", orgID) }
 
-// A cluster dedicated to an organization is invisible to every other tenant, and an organization that
-// owns one is CONFINED to it — a dedicated tenant must never quietly land on shared hardware.
+// A dedicated tenant must never quietly land on shared hardware.
 func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 	s, db := newPlacement(t, map[uint]bool{10: true, 11: true, 20: true})
 	acme := uint(7)
@@ -340,8 +337,7 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 		t.Errorf("acme with no location named: %+v (%v), want its own cluster 3, never a shared fallback", got, err)
 	}
 
-	// Another tenant cannot reach it, by name or through the location list. Naming it reads as "no
-	// such location" rather than "forbidden", so a stranger cannot confirm the name exists.
+	// Reads as "no such location", not "forbidden", so a stranger cannot confirm the name exists.
 	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu"}); !errors.Is(err, ErrLocationNotFound) {
 		t.Errorf("outsider naming a dedicated cluster: err = %v, want ErrLocationNotFound", err)
 	}
@@ -363,10 +359,7 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 		t.Errorf("colocation into another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
 	}
 
-	// Confinement binds the WORKSPACE, not the caller: a platform admin deploying into workspace 6
-	// still cannot put it in Acme's cluster, and still cannot take workspace 5 off Acme's.
-	// An admin already lists every cluster, so hiding it from them buys nothing: they get the
-	// accurate refusal instead.
+	// Confinement binds the workspace even for admins; admins already see all clusters, so they get the accurate refusal.
 	if _, err := s.Place(Request{WorkspaceID: 6, Location: "gpu", Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
 		t.Errorf("admin placing an outsider in a dedicated cluster: err = %v, want ErrLocationNotAllowed", err)
 	}
@@ -380,8 +373,6 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 	if _, err := s.Place(Request{WorkspaceID: 6, ServerID: 20, Admin: true}); !errors.Is(err, ErrLocationNotAllowed) {
 		t.Errorf("admin pinning a node in another organization's cluster: err = %v, want ErrLocationNotAllowed", err)
 	}
-	// The admin's own locations view is unchanged for an unconfined workspace: restricted clusters
-	// stay visible to them.
 	locs6, err := s.Locations(6, true)
 	if err != nil {
 		t.Fatal(err)
@@ -393,9 +384,7 @@ func TestPlacementIsolatesOrganizationClusters(t *testing.T) {
 	}
 }
 
-// A confined tenant whose own locations are all cordoned gets an error naming the organization:
-// "no location is available" would send the operator to the workspace's plan instead of to the
-// organization's clusters, which is where the problem is.
+// "No location is available" would send the operator to the plan instead of the org's clusters.
 func TestConfinedDeadEndNamesTheOrganization(t *testing.T) {
 	s, db := newPlacement(t, map[uint]bool{})
 	acme := uint(7)
@@ -499,8 +488,7 @@ func TestNodeConstraint(t *testing.T) {
 	}
 }
 
-// The control-plane node may carry cluster id 0. The organization check must resolve it to the default
-// cluster, or a pin or colocation onto that node skips it.
+// The control-plane node may carry cluster id 0; it must resolve to the default cluster or the check is skipped.
 func TestOrganizationCheckCoversTheControlPlaneNode(t *testing.T) {
 	s, db := newPlacement(t, map[uint]bool{})
 	db.Model(&serverTable{}).Where("id = ?", 1).Update("cluster_id", 0)
@@ -516,8 +504,7 @@ func TestOrganizationCheckCoversTheControlPlaneNode(t *testing.T) {
 	}
 }
 
-// Following an existing resource while naming a location must not confirm that another organization's
-// location exists: it reads as no such location, exactly like naming it directly.
+// Colocation naming a location must not confirm another org's location exists.
 func TestColocationDoesNotConfirmForeignLocations(t *testing.T) {
 	s, db := newPlacement(t, map[uint]bool{})
 	db.Model(&clusterTable{}).Where("id = ?", 3).Updates(map[string]any{"organization_id": 7, "visibility": "organization"})

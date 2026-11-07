@@ -154,8 +154,7 @@ describe('generatePassword', () => {
         if (DIGITS.includes(c)) positions[i]++
       })
     }
-    // Every position should see a digit at a comparable rate; a clustered
-    // implementation puts them all at index 0.
+    // A clustered implementation would put every digit at index 0.
     const avg = positions.reduce((a, b) => a + b, 0) / length
     for (const p of positions) expect(Math.abs(p - avg) / avg).toBeLessThan(0.35)
   })

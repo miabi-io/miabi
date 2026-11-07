@@ -63,8 +63,6 @@ func (r *CertificateRepository) FindByName(workspaceID uint, name string) (*mode
 	return &c, nil
 }
 
-// ListManagedExpiring returns ACME-managed, auto-renew certificates whose NotAfter
-// falls before the cutoff (across workspaces) — used by the renewal cron.
 func (r *CertificateRepository) ListManagedExpiring(cutoff time.Time) ([]models.Certificate, error) {
 	var certs []models.Certificate
 	err := r.db.Where("source = ? AND auto_renew = ? AND not_after < ?", models.CertSourceACME, true, cutoff).
@@ -83,16 +81,12 @@ func (r *CertificateRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Certificate{}, id).Error
 }
 
-// ListExpiringBefore returns certificates whose NotAfter falls before the cutoff
-// (across all workspaces) — used by the expiry-monitor cron.
 func (r *CertificateRepository) ListExpiringBefore(cutoff time.Time) ([]models.Certificate, error) {
 	var certs []models.Certificate
 	err := r.db.Where("not_after < ?", cutoff).Order("not_after ASC").Find(&certs).Error
 	return certs, err
 }
 
-// ListByStatus returns certificates in a given status (e.g. "failed") across all
-// workspaces — used by the alerting scanner.
 func (r *CertificateRepository) ListByStatus(status string) ([]models.Certificate, error) {
 	var certs []models.Certificate
 	err := r.db.Where("status = ?", status).Order("updated_at DESC").Find(&certs).Error

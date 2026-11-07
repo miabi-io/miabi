@@ -38,18 +38,14 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SecretResolver is the worker's window onto the vault: it substitutes `${{ secrets.NAME }}`
-// references in env values and resolves the secret behind a stored credential, which may itself be a
-// reference. Implemented by the secret service; optional (nil leaves references untouched).
+// Optional; nil leaves references untouched.
 type SecretResolver interface {
 	ResolveAll(workspaceID uint, env []string) ([]string, error)
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 	ValueByName(workspaceID uint, name string) (string, bool)
 }
 
-// credentialSecret resolves the secret behind a stored credential — its own encrypted value, or the
-// workspace Secret it references. A credential that references the vault with no resolver wired is
-// an error, not a silent anonymous pull, which would surface later as an opaque "manifest unknown".
+// A vault reference with no resolver errors rather than pulling anonymously and failing as "manifest unknown".
 func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (string, error) {
 	if b.secrets == nil {
 		if ref != "" {
@@ -63,27 +59,21 @@ func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (st
 	return b.secrets.CredentialSecret(workspaceID, enc, ref)
 }
 
-// Security is the resolved container hardening for a workspace's application and job containers. The
-// zero value means no restriction — run as the image's default user. User and Restricted are
-// independent: an app may pin its own user under the default profile, and the restricted profile
-// hardens the container whichever non-root user it ends up running as.
+// User and Restricted are independent: the profile hardens the container whichever non-root user it runs as.
 type Security struct {
 	User            string // "uid:gid" the container runs as; "" = image default
 	NoNewPrivileges bool
 	CapDrop         []string
-	// CapAdd and Devices are the app's own grants; the profile above is the
-	// workspace's. One is additive, the other subtractive.
+	// CapAdd/Devices are the app's additive grants; the workspace profile is subtractive.
 	CapAdd  []string
 	Devices []string
 	// ReadOnlyRootfs is the app's own. The app's hardening also joins NoNewPrivileges and CapDrop.
 	ReadOnlyRootfs bool
-	// Restricted marks the "restricted" security profile as in force for this workload — the
-	// non-root mandate, not merely the presence of a user.
+	// Restricted marks the non-root mandate, not merely the presence of a user.
 	Restricted bool
 }
 
-// HasUser reports whether the container runs as a pinned account rather than the
-// image's own — the trigger for making its managed volumes writable by that user.
+// HasUser triggers making the managed volumes writable by the pinned account.
 func (s Security) HasUser() bool { return s.User != "" }
 
 func (s Security) applyTo(spec *docker.RunSpec) {
@@ -95,9 +85,7 @@ func (s Security) applyTo(spec *docker.RunSpec) {
 	spec.ReadOnlyRootfs = s.ReadOnlyRootfs
 }
 
-// SecurityResolver resolves the security profile for a workspace's app/job containers. Optional
-// (nil = no restriction). officialTemplate marks an app created from an official marketplace
-// template, which a plan may exempt from the restricted UID so it keeps the image's own user.
+// A plan may exempt official-template apps from the restricted UID so they keep the image's own user.
 type SecurityResolver interface {
 	ContainerSecurity(workspaceID uint, officialTemplate bool) Security
 }
@@ -113,30 +101,21 @@ func (f SecurityFunc) ContainerSecurity(id uint, officialTemplate bool) Security
 	return f(id, officialTemplate)
 }
 
-// runtimeBuilder assembles the runtime substrate (env, networks, mounts, limits) a container runs
-// with in an application's context. Shared by the deploy pipeline and one-off Jobs, so a Job's
-// environment can never drift from the real deploy.
+// Shared by deploys and one-off Jobs so a Job's environment can never drift from the real deploy.
 type runtimeBuilder struct {
 	stackEnv *repositories.StackEnvVarRepository
 	routes   *repositories.RouteRepository
 	secrets  SecretResolver
-	// security resolves the restricted-profile hardening for a workspace; nil =
-	// no restriction. securityInitImage is the tiny image used to chown a
-	// restricted app's managed volumes to the platform UID.
+	// securityInitImage chowns a restricted app's managed volumes to the platform UID.
 	security          SecurityResolver
 	securityInitImage string
-	// alloc carves a pool subnet when recreating a workspace network on a node so
-	// remote nodes get the same subnet as the control plane (nil = Docker default).
+	// Remote nodes get the same subnet as the control plane; nil = Docker default.
 	alloc *netalloc.Service
-	// cluster reports whether the manager is a swarm manager. In cluster mode a
-	// routed app also joins the shared ingress overlay, so the central gateway can
-	// reach it on any node without a published host port (nil = never cluster).
+	// In cluster mode routed apps join the ingress overlay so the gateway reaches them without a host port.
 	cluster ClusterCap
-	// configs projects config mounts into the files a container is started with;
 	// nil in processes that never deploy.
 	configs ConfigProjector
-	// grants re-checks an app's grants at deploy: a workspace can lose its
-	// privileged flag and never be written to again. Nil = no re-check.
+	// A workspace can lose its privileged flag and never be written to again; nil = no re-check.
 	grants GrantGuard
 }
 
@@ -156,8 +135,6 @@ func (f GrantGuardFunc) GrantAllowed(workspaceID uint, tier models.CapabilityTie
 	return f(workspaceID, tier)
 }
 
-// ConfigProjector resolves a workspace config and expands a mount into files.
-// Implemented by services/config.
 type ConfigProjector interface {
 	Get(workspaceID, id uint) (*models.Config, error)
 	Project(cfg *models.Config, mount models.AppMount) ([]config.ProjectedFile, error)
@@ -173,8 +150,6 @@ type ClusterCap interface {
 	ServiceEndpointMode(clusterID uint) models.ServiceEndpointMode
 }
 
-// SetCluster wires swarm detection (nil-safe). Shared by the deploy and job
-// handlers (both embed *runtimeBuilder).
 func (b *runtimeBuilder) SetCluster(c ClusterCap) { b.cluster = c }
 
 // SetConfigs supplies the projector that turns config mounts into files.
@@ -184,12 +159,8 @@ func (b *runtimeBuilder) isSwarm(clusterID uint) bool {
 	return b.cluster != nil && b.cluster.IsSwarm(clusterID)
 }
 
-// SetAllocator wires the subnet allocator used when recreating networks on a
-// node (nil-safe). Shared by the deploy and job handlers.
 func (b *runtimeBuilder) SetAllocator(a *netalloc.Service) { b.alloc = a }
 
-// SetSecurity wires the container security resolver and the volume-chown init
-// image. Shared by the deploy and job handlers (both embed *runtimeBuilder).
 func (b *runtimeBuilder) SetSecurity(r SecurityResolver, initImage string) {
 	b.security = r
 	b.securityInitImage = initImage
@@ -199,8 +170,7 @@ func (b *runtimeBuilder) containerSecurity(app *models.Application) Security {
 	return b.containerSecurityFor(app, app.OfficialTemplate)
 }
 
-// containerSecurityFor resolves the profile with an explicit official-template claim, so a caller
-// running something other than the template's own image can decline the exemption.
+// A caller running something other than the template's own image can decline the exemption.
 func (b *runtimeBuilder) containerSecurityFor(app *models.Application, officialTemplate bool) Security {
 	if b.security == nil {
 		return Security{}
@@ -208,14 +178,10 @@ func (b *runtimeBuilder) containerSecurityFor(app *models.Application, officialT
 	return b.security.ContainerSecurity(app.WorkspaceID, officialTemplate)
 }
 
-// ErrRunAsUserForbidden refuses a workload whose pinned run-as user would escape the restricted
-// profile's non-root mandate. The write-time validators reject this up front; this is the deploy-time
-// backstop for a workload configured before the policy tightened.
+// Deploy-time backstop for workloads configured before the policy tightened.
 var ErrRunAsUserForbidden = errors.New("the restricted security profile requires a non-root numeric uid")
 
-// withRunAsUser pins the container to a caller-chosen account. Under the restricted profile the
-// choice replaces the platform UID but must still be verifiably non-root, so the hardening contract
-// holds; the profile's other guarantees (no-new-privileges, dropped caps) are untouched either way.
+// Under the restricted profile the chosen user replaces the platform UID but must still be non-root.
 func (s Security) withRunAsUser(runAsUser string) (Security, error) {
 	v, err := models.NormalizeRunAsUser(runAsUser)
 	if err != nil {
@@ -234,16 +200,11 @@ func (s Security) withRunAsUser(runAsUser string) (Security, error) {
 // SetGrantGuard wires the deploy-time re-check of capability and device grants.
 func (b *runtimeBuilder) SetGrantGuard(g GrantGuard) { b.grants = g }
 
-// workloadSecurity resolves the hardening a container runs with: the workspace's
-// profile, with the app's own run-as user, grants and hardening layered on top.
 func (b *runtimeBuilder) workloadSecurity(app *models.Application, runAsUser string) (Security, error) {
 	return b.workloadSecurityFor(app, runAsUser, app.OfficialTemplate)
 }
 
-// workloadSecurityFor is workloadSecurity with the official-template claim supplied. A job that runs
-// its OWN image is not running the template's image, so it must not inherit the exemption that image
-// was granted — otherwise "official template + job with an arbitrary image" runs as root on a
-// workspace whose profile forbids it.
+// A job running its own image must not inherit the template image's exemption, or it could run as root.
 func (b *runtimeBuilder) workloadSecurityFor(app *models.Application, runAsUser string, officialTemplate bool) (Security, error) {
 	sec, err := b.containerSecurityFor(app, officialTemplate).withRunAsUser(runAsUser)
 	if err != nil {
@@ -255,8 +216,7 @@ func (b *runtimeBuilder) workloadSecurityFor(app *models.Application, runAsUser 
 	return sec.withHardening(app), nil
 }
 
-// withHardening layers the app's own hardening over the profile's. Both only take privileges away, so they
-// combine rather than one replacing the other.
+// Both only take privileges away, so they combine rather than one replacing the other.
 func (s Security) withHardening(app *models.Application) Security {
 	s.NoNewPrivileges = s.NoNewPrivileges || app.NoNewPrivileges
 	s.ReadOnlyRootfs = app.ReadOnlyRootFilesystem
@@ -282,8 +242,7 @@ func containsString(list []string, v string) bool {
 	return false
 }
 
-// withGrants applies the app's grants, refusing if the workspace no longer
-// qualifies: a grant that outlived its authorisation stops the deploy.
+// A grant that outlived its authorisation stops the deploy.
 func (b *runtimeBuilder) withGrants(sec Security, app *models.Application) (Security, error) {
 	if len(app.AddCapabilities) == 0 && len(app.Devices) == 0 {
 		return sec, nil
@@ -305,10 +264,7 @@ func (b *runtimeBuilder) withGrants(sec Security, app *models.Application) (Secu
 	return sec, nil
 }
 
-// prepareVolumeOwnership makes an app's managed volumes writable by the user the container is pinned
-// to — the restricted profile's UID or the app's own. Docker seeds an empty volume with the image's
-// content AND ownership on first mount, so the chown runs with the app image itself; images without a
-// shell fall back to the busybox init image.
+// Docker seeds an empty volume with the image's content and ownership, so the chown runs with the app image.
 func (b *runtimeBuilder) prepareVolumeOwnership(ctx context.Context, eng docker.Client, sec Security, image string, mounts map[string]string) error {
 	if !sec.HasUser() || len(mounts) == 0 {
 		return nil
@@ -319,14 +275,12 @@ func (b *runtimeBuilder) prepareVolumeOwnership(ctx context.Context, eng docker.
 	}
 	chown := append([]string{"chown", "-R", sec.User}, paths...)
 
-	// Preferred: chown with the app image, so the volume is seeded from the correct image before
-	// ownership is fixed. The image is already present — the deploy or job pulled it before this step.
+	// The chown runs with the app image so the volume is seeded from it before ownership is fixed.
 	if image != "" {
 		if exit, out, err := eng.RunOneShot(ctx, docker.RunSpec{Image: image, Entrypoint: chown, Mounts: mounts}); err == nil && exit == 0 {
 			return nil
 		} else {
-			// The app-image mount has still seeded the volume; it just couldn't chown (no chown binary). Fall
-			// through to the busybox init image to fix ownership.
+			// The app-image mount has still seeded the volume; only the chown failed.
 			logger.Debug("volume ownership: app-image chown unavailable, using init image",
 				"image", image, "exit", exit, "error", err, "output", strings.TrimSpace(out))
 		}
@@ -347,9 +301,6 @@ func (b *runtimeBuilder) prepareVolumeOwnership(ctx context.Context, eng docker.
 	return nil
 }
 
-// RuntimeContext is the substrate common to any container run in an app's environment: resolved env,
-// the networks to join (already ensured on the node), volume mounts and resource limits. Callers
-// layer run-specific concerns — image, command, ports, aliases, healthcheck, labels — on top.
 type RuntimeContext struct {
 	Env         []string
 	Networks    []string
@@ -360,22 +311,16 @@ type RuntimeContext struct {
 	NanoCPUs    int64
 }
 
-// buildRuntimeContext ensures the app's networks exist on the node (gateway + workspace + stack) and
-// returns the env, networks, mounts and limits common to any container run for the app. eng must be
-// the Docker client for the app's node.
+// eng must be the Docker client for the app's node.
 func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Client, app *models.Application) (RuntimeContext, error) {
 	if err := b.syncNetworks(ctx, eng, app); err != nil {
 		return RuntimeContext{}, err
 	}
-	// Join the shared reverse-proxy network only while the app is exposed by a route — apps with no route
-	// stay off it, for less surface and cleaner isolation. Adding or removing a route later reconciles a
-	// running container live.
+	// Only route-exposed apps join the shared proxy network; route changes reconcile running containers live.
 	var networks []string
 	if b.appHasRoutes(app.ID) {
 		networks = append(networks, node.AppNetwork)
-		// In cluster mode the central gateway reaches a routed app over the shared ingress overlay instead of
-		// a published host port, so the app joins that overlay too. Only the globally-unique upstream alias is
-		// registered — never app.Name, which is workspace-scoped. The overlay itself is owned by services/cluster.
+		// Only the globally-unique upstream alias is registered on the overlay, never the workspace-scoped app.Name.
 		if b.isSwarm(app.ClusterID) {
 			networks = append(networks, node.IngressOverlay)
 		}
@@ -383,8 +328,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	for _, n := range app.Networks {
 		networks = append(networks, n.DockerName)
 	}
-	// Join the stack network too, so siblings resolve by service name. Unlike the deploy pipeline, callers
-	// do not register the app's own alias here — a one-off Job must not impersonate the service.
+	// The app's own alias is not registered here: a one-off Job must not impersonate the service.
 	if app.Stack != nil && app.Stack.DockerNetwork != "" {
 		if _, err := eng.EnsureNetwork(ctx, app.Stack.DockerNetwork); err == nil {
 			networks = append(networks, app.Stack.DockerNetwork)
@@ -393,8 +337,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	mounts := make(map[string]string, len(app.Mounts))
 	var binds []docker.BindMount
 	for _, m := range app.Mounts {
-		// Privileged host binds carry a preset key; resolve the source path from
-		// the server-owned allow-list (never from stored/client input).
+		// Resolve the source path from the server-owned allow-list, never from stored or client input.
 		if m.HostPreset != "" {
 			p, ok := hostmount.Get(m.HostPreset)
 			if !ok {
@@ -407,8 +350,6 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 			binds = append(binds, docker.BindMount{Source: p.Source, Target: target, ReadOnly: m.ReadOnly && p.AllowReadOnly})
 			continue
 		}
-		// A host-path volume binds an operator-managed path (under /mnt/*) directly,
-		// rather than mounting a Docker named volume.
 		if m.HostPath != "" {
 			binds = append(binds, docker.BindMount{Source: m.HostPath, Target: m.Path, ReadOnly: m.ReadOnly})
 			continue
@@ -437,11 +378,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	}, nil
 }
 
-// projectConfigs expands the app's config mounts into the files to materialize.
-// A mount whose config has been deleted is skipped rather than failing the
-// deploy: the delete guard already prevents it, so this is belt and braces.
-// configResolver reads a config's references against the vault first, then the
-// app's resolved env, so a value moved into the vault needs no config edit.
+// Vault first, then the app's env, so a value moved into the vault needs no config edit.
 func (b *runtimeBuilder) configResolver(app *models.Application, env []string) config.Resolver {
 	values := make(map[string]string, len(env))
 	for _, entry := range env {
@@ -487,8 +424,6 @@ func (b *runtimeBuilder) projectConfigs(app *models.Application, r config.Resolv
 	return out, nil
 }
 
-// appHasRoutes reports whether the app is exposed by at least one route, and so should join the shared
-// reverse-proxy network. Defaults to false when the route repository is unwired.
 func (b *runtimeBuilder) appHasRoutes(appID uint) bool {
 	if b.routes == nil {
 		return false
@@ -497,12 +432,8 @@ func (b *runtimeBuilder) appHasRoutes(appID uint) bool {
 	return err == nil && n > 0
 }
 
-// syncNetworks makes sure the networks an app joins exist on the node it runs on. Workspace networks
-// are created on the control-plane engine, so a remote node won't have them yet; recreate any missing
-// ones there before the container starts. Idempotent on the local node.
+// Workspace networks are created on the control plane, so a remote node may lack them until recreated here.
 func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, app *models.Application) error {
-	// The shared gateway network is a plain bridge; EnsureNetwork creates it if
-	// missing.
 	if _, err := eng.EnsureNetwork(ctx, node.AppNetwork); err != nil {
 		return fmt.Errorf("ensure gateway network: %w", err)
 	}
@@ -521,9 +452,7 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 		if have[n.DockerName] {
 			continue
 		}
-		// An overlay is swarm-scoped: created once on the manager, and Docker materializes it on this node the
-		// moment a container attaches. A worker cannot create one and must not try, so there is nothing to do
-		// — the network simply won't be listed until the first attachment.
+		// An overlay is swarm-scoped: a worker cannot create one, and Docker materializes it on first attachment.
 		if b.cluster != nil && b.cluster.WorkspaceOverlay(app.ClusterID, n) {
 			if err := b.cluster.EnsureWorkspaceOverlay(ctx, app.ClusterID, n); err != nil {
 				return err
@@ -548,9 +477,7 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 	return nil
 }
 
-// buildEnv assembles KEY=VALUE pairs, decrypting secret values and resolving `${{ secrets.NAME }}`
-// vault references. Stack-level shared vars come first, then the app's own, so an app-level key
-// overrides the stack default. An unknown secret reference fails the build rather than injecting blank.
+// App-level keys override stack defaults; an unknown secret reference fails rather than injecting blank.
 func (b *runtimeBuilder) buildEnv(app *models.Application) ([]string, error) {
 	merged := map[string]string{}
 	var order []string
@@ -589,10 +516,7 @@ func decryptIfSecret(value string, isSecret bool) string {
 	return value
 }
 
-// publishConfigs materializes an app's config mounts as docker config objects and
-// returns the attachments for its service spec. Object names embed the file
-// digest, so a content change creates a new object and the service update swaps
-// it — a rolling restart for free, since docker configs are immutable.
+// Object names embed the file digest, so a content change swaps the immutable config and rolls the service.
 func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, app *models.Application, workspaceScope string, env []string) ([]docker.ServiceConfig, error) {
 	if b.configs == nil {
 		return nil, nil
@@ -630,8 +554,7 @@ func (b *runtimeBuilder) publishConfigs(ctx context.Context, eng docker.Client, 
 	return out, nil
 }
 
-// parseFileMode turns an octal mode string into the bits docker wants; an
-// unparseable value falls back to 0644 rather than failing a deploy.
+// An unparseable mode falls back to 0644 rather than failing a deploy.
 func parseFileMode(mode string) uint32 {
 	if mode == "" {
 		return 0o644

@@ -35,8 +35,7 @@ type WorkspaceStorage struct {
 	VolumeCount   int64      `json:"volume_count"`
 }
 
-// WorkspaceStorage sums the workspace's volumes from cached columns (no live
-// disk walk). Computed in Go, not SUM/MIN SQL, to behave the same on sqlite.
+// Computed in Go, not SUM/MIN SQL, to behave the same on sqlite.
 func (s *Service) WorkspaceStorage(workspaceID uint) (*WorkspaceStorage, error) {
 	vols, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -62,9 +61,7 @@ func (s *Service) WorkspaceStorage(workspaceID uint) (*WorkspaceStorage, error) 
 	return out, nil
 }
 
-// MeasureUsage is the storage sweep: one `docker system df` per node (never per
-// read), joined back to Volume rows by Docker name. Best-effort — an unreachable
-// node keeps its prior measurement and the sweep always returns nil for cron.
+// One docker system df per node; an unreachable node keeps its prior measurement and cron always gets nil.
 func (s *Service) MeasureUsage(ctx context.Context) error {
 	serverIDs, err := s.repo.ServerIDsWithVolumes()
 	if err != nil {
@@ -98,9 +95,7 @@ func (s *Service) MeasureUsage(ctx context.Context) error {
 	return nil
 }
 
-// measureClassUsage sizes the volumes on operator-managed storage classes. `docker system df` sizes
-// a bind-backed volume's mountpoint stub rather than the data behind the bind, so those volumes are
-// measured with one du per class instead, overwriting whatever the df pass recorded for them.
+// docker system df sizes a bind-backed volume's stub, not its data, so class volumes are measured with du.
 func (s *Service) measureClassUsage(ctx context.Context) int {
 	if s.classes == nil {
 		return 0

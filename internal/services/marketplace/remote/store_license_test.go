@@ -37,8 +37,7 @@ func licensed() fakeEE {
 
 const officialURL = "https://marketplace.miabi.io"
 
-// Unlicensed, a custom marketplace is refused — but the install keeps a working
-// catalog rather than losing its marketplace, so it falls back to official.
+// An unlicensed custom marketplace falls back to official rather than losing the catalog.
 func TestCustomMarketplaceRequiresLicense(t *testing.T) {
 	s := New("https://templates.acme.internal", nil)
 	s.SetEntitlements(fakeEE{}, officialURL)
@@ -66,8 +65,7 @@ func TestCustomMarketplaceAllowedWhenLicensed(t *testing.T) {
 	}
 }
 
-// The official catalog and the air-gap kill switch are not paid configurations
-// and must never be gated.
+// The official catalog and the air-gap kill switch must never be gated.
 func TestOfficialAndDisabledAreNotGated(t *testing.T) {
 	official := New(officialURL, nil)
 	official.SetEntitlements(fakeEE{}, officialURL)
@@ -92,8 +90,6 @@ func TestOfficialAndDisabledAreNotGated(t *testing.T) {
 	}
 }
 
-// A license installed at runtime takes effect on the next sync, without a
-// restart — and a lapse returns the install to the official catalog the same way.
 func TestMarketplaceLicenseChangeTakesEffectWithoutRestart(t *testing.T) {
 	const custom = "https://templates.acme.internal"
 	s := New(custom, nil)
@@ -114,8 +110,6 @@ func TestMarketplaceLicenseChangeTakesEffectWithoutRestart(t *testing.T) {
 	}
 }
 
-// Falling back must not keep serving the custom catalog's templates: they came
-// from a marketplace this install may no longer sync from.
 func TestFallbackDiscardsTheCustomCatalog(t *testing.T) {
 	srv, _ := exportServer(t, `"v1"`, false)
 	s := New(srv.URL, nil)
@@ -137,8 +131,7 @@ func TestFallbackDiscardsTheCustomCatalog(t *testing.T) {
 	}
 }
 
-// A bundle cached from one marketplace must never be loaded for another, or a
-// restart after a lapse would serve the custom catalog from Redis.
+// Otherwise a restart after a lapse would serve the custom catalog from Redis.
 func TestCachedBundleIsScopedToItsSource(t *testing.T) {
 	srv, _ := exportServer(t, `"v1"`, false)
 	cache := &memCache{}

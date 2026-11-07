@@ -62,9 +62,7 @@ func (clusterServerRow) TableName() string { return "servers" }
 
 var clusterSettingKeys = []string{"cluster_name", "cluster_agent_token_hash"}
 
-// clustersStep introduces clusters on an existing install. The default
-// cluster takes the control-plane host and its swarm members; every other node becomes its own standalone
-// cluster, so gateways, DNS targets and Swarm objects stay exactly as they were. Safe to re-run.
+// Every non-default node becomes its own standalone cluster so gateways, DNS and Swarm objects stay put.
 func clustersStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable(&clusterRow{}) || !db.Migrator().HasColumn(&clusterServerRow{}, "cluster_id") {
 		return nil
@@ -152,8 +150,7 @@ func createStandaloneCluster(tx *gorm.DB, srv clusterServerRow) error {
 	return tx.Model(&clusterServerRow{}).Where("id = ?", srv.ID).Update("cluster_id", c.ID).Error
 }
 
-// backfillStackClusters puts a stack in its members' cluster. A stack whose members already span
-// clusters cannot live in one, so it goes to the default cluster and is logged for the admin.
+// A stack whose members span clusters goes to the default cluster and is logged for the admin.
 func backfillStackClusters(tx *gorm.DB, defaultID uint) error {
 	var stacks []struct {
 		ID   uint

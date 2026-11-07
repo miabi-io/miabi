@@ -48,8 +48,6 @@ func TestLibsqlEngineSpec(t *testing.T) {
 }
 
 func TestLibsqlLogicalClassification(t *testing.T) {
-	// libSQL hosts a single database: users can't create more (SupportsLogical
-	// false), but backups/injection hang off its implicit record (UsesRecord true).
 	if models.EngineSupportsLogicalDatabases(models.DBEngineLibSQL) {
 		t.Error("libsql should not support user-managed logical databases")
 	}
@@ -144,8 +142,7 @@ func TestLibsqlUpgradePathInPlace(t *testing.T) {
 }
 
 func TestLibsqlRecreateDatabaseNoop(t *testing.T) {
-	// Force-restore on libSQL has no DDL to run; it must not error (and must not
-	// touch the repo, which is nil here).
+	// Force restore on libSQL has no DDL and must not touch the repo, which is nil here.
 	svc := &Service{}
 	inst := &models.DatabaseInstance{Engine: models.DBEngineLibSQL}
 	if err := svc.RecreateDatabase(context.Background(), inst, &models.Database{}); err != nil {

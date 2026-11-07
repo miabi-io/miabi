@@ -28,9 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A passphrase supplied through the environment is the operator saying "encrypt with this". Requiring a
-// second variable to act on it would leave artifacts in the clear on a deployment that plainly asked
-// otherwise — and leave the identity envelope unsealed, which is what makes a fresh-host restore possible.
+// An env passphrase means "encrypt with this", and also seals the identity envelope for fresh-host restores.
 func TestPassphraseImpliesEncryptionAndIdentity(t *testing.T) {
 	s := &Service{env: config.PlatformBackupConfig{Passphrase: "correct-horse-9!"}}
 	st := &models.PlatformBackupSettings{}
@@ -50,9 +48,7 @@ func TestPassphraseImpliesEncryptionAndIdentity(t *testing.T) {
 	}
 }
 
-// An explicit variable still wins over the implication, so an operator can
-// supply a passphrase for the identity envelope while leaving the dumps
-// unencrypted.
+// An explicit variable wins, so the envelope can use a passphrase while dumps stay unencrypted.
 func TestExplicitEncryptOverridesTheImplication(t *testing.T) {
 	s := &Service{env: config.PlatformBackupConfig{
 		Passphrase: "correct-horse-9!",
@@ -70,8 +66,7 @@ func TestExplicitEncryptOverridesTheImplication(t *testing.T) {
 	}
 }
 
-// Whatever the environment decides must be reported as locked, or the UI offers
-// an edit that is silently discarded.
+// Env-decided settings must be reported locked, or the UI offers an edit that is silently discarded.
 func TestEnvLockedReportsImpliedEncryption(t *testing.T) {
 	s := &Service{env: config.PlatformBackupConfig{Passphrase: "correct-horse-9!"}}
 	locked := s.envLockedFields()
@@ -87,8 +82,6 @@ func TestEnvLockedReportsImpliedEncryption(t *testing.T) {
 	}
 }
 
-// With no environment at all, the stored row is authoritative and nothing is
-// locked.
 func TestNoEnvLeavesSettingsAlone(t *testing.T) {
 	s := &Service{}
 	st := &models.PlatformBackupSettings{S3Bucket: "from-the-ui", EncryptBackups: false}
@@ -102,9 +95,7 @@ func TestNoEnvLeavesSettingsAlone(t *testing.T) {
 	}
 }
 
-// A passphrase is optional. Backing up an unencrypted platform is a legitimate
-// choice — a private bucket, a lab, a first run before key custody is arranged —
-// and refusing it would mean no backup at all, which is strictly worse.
+// Unencrypted backups are legitimate; refusing them would mean no backup at all.
 func TestNoPassphraseLeavesEncryptionOff(t *testing.T) {
 	s := &Service{env: config.PlatformBackupConfig{
 		S3Bucket:    "b",
@@ -135,9 +126,7 @@ func TestNoPassphraseLeavesEncryptionOff(t *testing.T) {
 	}
 }
 
-// Tenant artifacts are ENQUEUED by the API server and RUN by the worker, so a composition root that wires
-// the tenant source in one process and not the other produces artifacts that queue perfectly and then fail
-// with a message about a setting that does not exist. The error must name the real cause.
+// Enqueued by the API server but run by the worker, so a missing tenant source must be reported as a wiring fault.
 func TestTenantSourceMissingIsReportedAsAWiringFault(t *testing.T) {
 	s := &Service{} // no tenant source, as an unwired worker would be
 

@@ -27,17 +27,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Counter holds the alert engine's hot state — windowed signal counts for crash-loop detection and
-// per-key notify cooldowns. Backed by Redis so it is correct across control-plane replicas and
-// survives a worker restart; an in-memory implementation backs the tests.
+// Counter is Redis-backed so it is correct across control-plane replicas and survives a worker restart.
 type Counter interface {
-	// Incr adds 1 to the window counter for key and returns the new value. The
-	// window TTL is set on first increment (fixed window).
+	// Fixed window: the TTL is set on first increment.
 	Incr(ctx context.Context, key string, window time.Duration) (int64, error)
 	// Reset clears a key (e.g. when its condition resolves).
 	Reset(ctx context.Context, key string) error
-	// AllowNotify reports whether a notification for key may be sent now, arming a
-	// cooldown so a re-firing alert can't notify more than once per window.
+	// Arms a cooldown so a re-firing alert notifies at most once per window.
 	AllowNotify(ctx context.Context, key string, cooldown time.Duration) (bool, error)
 }
 
@@ -74,8 +70,6 @@ type memCounter struct {
 	now     func() time.Time
 }
 
-// NewMemoryCounter is a process-local counter for tests and single-process runs
-// without Redis. now defaults to time.Now when nil.
 func NewMemoryCounter(now func() time.Time) Counter {
 	if now == nil {
 		now = time.Now

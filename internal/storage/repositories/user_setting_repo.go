@@ -34,9 +34,7 @@ func NewUserSettingRepository(db *gorm.DB) *UserSettingRepository {
 	return &UserSettingRepository{db: db}
 }
 
-// Get returns a user's preferences, or the defaults when they have never saved any.
-// A missing row is not an error: most users never open Preferences, and the caller
-// wants a usable value rather than a branch.
+// A missing row is not an error: most users never save preferences, so the defaults are returned.
 func (r *UserSettingRepository) Get(userID uint) (*models.UserSetting, error) {
 	var s models.UserSetting
 	err := r.db.Where("user_id = ?", userID).First(&s).Error
@@ -51,8 +49,7 @@ func (r *UserSettingRepository) Get(userID uint) (*models.UserSetting, error) {
 	return &s, nil
 }
 
-// Save upserts a user's preferences. The row is created on first write, so a user
-// only occupies a row once they have expressed a preference.
+// The row is created on first write, so a user occupies one only after setting a preference.
 func (r *UserSettingRepository) Save(s *models.UserSetting) error {
 	var existing models.UserSetting
 	err := r.db.Where("user_id = ?", s.UserID).First(&existing).Error

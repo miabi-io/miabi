@@ -7,12 +7,7 @@ on:
 permissions:
   contents: read
 
-# The Goma Gateway a release provisions is the stable one on versions.miabi.io when the tag is
-# built, baked into the binary (pkg/bundled) so each release still pins a concrete version. Publish
-# a new gateway in the versions repo to move it. A repository variable overrides it, to re-cut a
-# release against a specific gateway:
-#
-#   gh variable set GOMA_VERSION --body v1.1.2
+# Override the baked-in gateway to re-cut a release: gh variable set GOMA_VERSION --body v1.1.2
 
 jobs:
   versions:
@@ -68,15 +63,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Baked into the downloadable binaries so a license can unlock
-          # Enterprise features. Empty is a harmless no-op — the binary still
-          # runs as free Community until a valid license is installed.
+          # Empty is a harmless no-op: the binary runs as Community until a license is installed.
           LICENSE_KEYRING: ${{ vars.LICENSE_KEYRING }}
 
-  # One edition. Built with `-tags enterprise`, the image runs as free Community
-  # until a license is installed, so the frictionless path is: pull `latest`, add
-  # a license later, and features unlock with no re-pull or redeploy. Tags are
-  # unsuffixed — there is no `-ce`/`-ee` split.
+  # One edition: the enterprise build runs as Community until licensed, so tags carry no -ce/-ee suffix.
   image:
     runs-on: ubuntu-latest
     needs: versions
@@ -89,12 +79,9 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "COMMIT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-          # The commit's own timestamp, not "now": re-running this workflow on the
-          # same tag then produces the same binary.
+          # The commit's timestamp, not now, so re-running on the same tag reproduces the binary.
           echo "BUILD_DATE=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_ENV"
-          # A prerelease tag (v1.9.4-rc.1) must not move the floating tags: `latest` is
-          # what an unpinned pull and the installer resolve to. Keys on the same "-"
-          # suffix GoReleaser's `prerelease: auto` does, so both agree on what an rc is.
+          # Prereleases must not move `latest`; keys on the "-" suffix like GoReleaser's `prerelease: auto`.
           case "${GITHUB_REF_NAME}" in
             *-*) echo "PRERELEASE=true"  >> "$GITHUB_ENV" ;;
             *)   echo "PRERELEASE=false" >> "$GITHUB_ENV" ;;
@@ -103,16 +90,12 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
-      # The Miabi image (API + web UI in one binary) is published to Docker Hub
-      # (miabi/miabi, the platform default).
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Rootless variant: same binary + web UI on the alpine runtime, running as an
-      # unprivileged user (docker/Dockerfile.rootless).
       - name: Build and push Miabi (rootless)
         uses: docker/build-push-action@v7
         with:
@@ -184,8 +167,7 @@ jobs:
         id: bundle
         run: |
           set -euo pipefail
-          # Agent, runner and CLI release on their own cadence, so this release was tested with the
-          # stable ones live now.
+          # Agent, runner and CLI release on their own cadence; record the stable ones this release was tested with.
           index="$(curl -fsSL https://versions.miabi.io/v1/index.json)"
           agent="$(jq -er '.components.agent.stable.version' <<<"$index")"
           runner="$(jq -er '.components.runner.stable.version' <<<"$index")"

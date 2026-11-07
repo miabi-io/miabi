@@ -44,24 +44,19 @@ import (
 )
 
 var (
-	ErrNodeNotFound = errors.New("node not found")
-	ErrNameRequired = errors.New("node name is required")
-	ErrLocalNode    = errors.New("the local node cannot be modified this way")
-	ErrBadToken     = errors.New("invalid agent token")
-	ErrNodeCordoned = errors.New("node is cordoned and cannot accept new placements")
-	// ErrConnectivityAckRequired is returned when an update changes the node's
-	// reachability settings without the caller acknowledging the impact.
+	ErrNodeNotFound            = errors.New("node not found")
+	ErrNameRequired            = errors.New("node name is required")
+	ErrLocalNode               = errors.New("the local node cannot be modified this way")
+	ErrBadToken                = errors.New("invalid agent token")
+	ErrNodeCordoned            = errors.New("node is cordoned and cannot accept new placements")
 	ErrConnectivityAckRequired = &connectivityAckError{}
 	ErrInvalidPool             = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
-	// ErrSwarmNotMirrored reports a cordon that was saved but not passed on to the swarm scheduler.
-	// Not a failure of the cordon itself, so it is surfaced as a warning rather than an abort.
+	// Surfaced as a warning, not an abort: the cordon itself was saved.
 	ErrSwarmNotMirrored    = errors.New("the node was updated, but its swarm scheduling availability could not be changed — Swarm may still place service tasks on it")
 	ErrInvalidConnectivity = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
 )
 
-// NodeLimitError is returned when registering a node would exceed the edition's node cap. It exposes a
-// stable Code() and a curated Message() so the API envelope surfaces NODE_LIMIT_REACHED with an
-// upgrade-oriented message rather than the generic status word.
+// NodeLimitError carries a stable Code() so the API surfaces NODE_LIMIT_REACHED with an upgrade-oriented message.
 type NodeLimitError struct{ Limit int }
 
 func (e *NodeLimitError) Error() string {
@@ -74,22 +69,17 @@ func (e *NodeLimitError) Message() string {
 
 const tokenPrefix = "mbn_"
 
-// AppNetwork is the shared Docker network Goma Gateway and managed app
-// containers join (the proxy gateway network). Configurable via
-// MIABI_PROXY_NETWORK; set once at startup with SetAppNetwork.
+// AppNetwork is the gateway network Goma and app containers join; set once at startup via MIABI_PROXY_NETWORK.
 var AppNetwork = stack.DefaultNetwork
 
-// SetAppNetwork overrides the gateway network name (call once at startup,
-// before Bootstrap or any deploy).
+// SetAppNetwork must be called once at startup, before Bootstrap or any deploy.
 func SetAppNetwork(name string) {
 	if name != "" {
 		AppNetwork = name
 	}
 }
 
-// AppAlias is the stable network DNS alias for an application's active container, used as the reverse-proxy
-// upstream so it survives redeploys. It is the app's stored Alias ("mb-app-<token>-<id>"); legacy apps with
-// no stored alias fall back to "mb-app-<id>".
+// AppAlias is the redeploy-stable upstream alias; legacy apps without a stored alias fall back to "mb-app-<id>".
 func AppAlias(app *models.Application) string {
 	if app.Alias != "" {
 		return app.Alias
@@ -97,9 +87,7 @@ func AppAlias(app *models.Application) string {
 	return fmt.Sprintf("mb-app-%d", app.ID)
 }
 
-// CanaryAlias is the network DNS alias for an application's canary container, run alongside the stable
-// release during a canary deployment. Only the stable release answers AppAlias, so the proxy can split
-// weighted traffic between the two distinct aliases.
+// CanaryAlias differs from AppAlias so the proxy can split weighted traffic between stable and canary.
 func CanaryAlias(app *models.Application) string {
 	return AppAlias(app) + "-canary"
 }
@@ -109,9 +97,7 @@ func NewAppAlias(token string, appID uint) string {
 	return fmt.Sprintf("mb-app-%s-%d", token, appID)
 }
 
-// IngressOverlay is the single shared, attachable Swarm overlay the central Goma gateway joins to reach
-// every clustered app's service VIP. Cluster apps attach to it in addition to their per-workspace overlay.
-// It carries only gateway-to-VIP traffic, so east-west isolation between workspaces is unaffected.
+// IngressOverlay carries only gateway-to-VIP traffic, so workspace east-west isolation is unaffected.
 const IngressOverlay = "miabi-ingress"
 
 type Service struct {
@@ -120,9 +106,7 @@ type Service struct {
 	docker    docker.Client
 	nodeLimit func() int // resolved edition node cap (-1 = unlimited); nil = unlimited
 	orphaned  func(serverID uint)
-	// swarmCordon mirrors a cordon onto the node's swarm availability. Satisfied by
-	// cluster.Service.MirrorCordon, passed as a closure to keep the cluster service out of this
-	// package's imports (it already depends on this one).
+	// A closure keeps cluster.Service out of this package's imports (it already depends on this one).
 	swarmCordon func(ctx context.Context, serverID uint, cordoned bool) error
 }
 
@@ -138,8 +122,7 @@ func NewService(repo *repositories.ServerRepository, dockerClient docker.Client)
 	return &Service{repo: repo, docker: dockerClient}
 }
 
-// SetClusters wires the cluster rows every node belongs to (nil-safe; nil leaves new nodes unassigned,
-// which resolves to the default cluster).
+// SetClusters wires cluster rows; nil leaves new nodes unassigned, which resolves to the default cluster.
 func (s *Service) SetClusters(r *repositories.ClusterRepository) { s.clusters = r }
 
 func (s *Service) placeInStandaloneCluster(srv *models.Server) error {
@@ -163,14 +146,10 @@ func (s *Service) placeInStandaloneCluster(srv *models.Server) error {
 	return err
 }
 
-// SetNodeLimit wires the resolved edition node cap (nodes besides the control plane). The closure is re-evaluated on every
-// node registration, so a license install or lapse takes effect without a restart. A nil closure or a
-// negative return means unlimited.
+// SetNodeLimit's closure is re-evaluated per registration so license changes apply without restart; nil or negative is unlimited.
 func (s *Service) SetNodeLimit(fn func() int) { s.nodeLimit = fn }
 
-// checkNodeLimit refuses a new node registration once the edition cap is reached. Already-registered nodes
-// keep operating; only adding the next node is blocked. The control-plane host is not counted, matching
-// the node-usage metric shown in the license view.
+// Only the next registration is blocked; the control-plane host is not counted, matching the license view metric.
 func (s *Service) checkNodeLimit() error {
 	if s.nodeLimit == nil {
 		return nil
@@ -189,18 +168,14 @@ func (s *Service) checkNodeLimit() error {
 	return nil
 }
 
-// Bootstrap registers the local node, pings the daemon to set its status, and
-// ensures the managed Docker network exists. Non-fatal: logs and continues if
-// Docker is unreachable so the API can still serve.
+// Bootstrap is non-fatal when Docker is unreachable, so the API can still serve.
 func (s *Service) Bootstrap(ctx context.Context, endpoint string) {
 	server, err := s.repo.EnsureLocal("manager", endpoint)
 	if err != nil {
 		logger.Error("failed to register manager node", "error", err)
 		return
 	}
-	// Normalize the manager node: it always reaches Docker via its local socket,
-	// its role is "manager", and its display name is "manager" (older installs
-	// were created as "local"). Persist any drift once.
+	// The manager always uses the local socket, role and name "manager" (older installs used "local").
 	dirty := false
 	if server.AccessMode != models.AccessSocket {
 		server.AccessMode = models.AccessSocket
@@ -250,12 +225,9 @@ func (s *Service) Get(id uint) (*models.Server, error) {
 	return srv, nil
 }
 
-// NodeInput is the create/update payload for a remote node. The TLS key is
-// plaintext on input and encrypted at rest.
+// The TLS key is plaintext on input and encrypted at rest.
 type NodeInput struct {
-	// DisplayName is the free-text label, and the only name a caller supplies. The URL-safe handle is derived
-	// from it at creation and never settable: it is what /api/v1/provider/{name} is built from, a deployed edge
-	// gateway polls that URL, and nothing is gained by letting an operator change a value they never type again.
+	// The handle is derived once and not settable: deployed edge gateways poll /api/v1/provider/{name}.
 	DisplayName  string
 	Address      string
 	Connectivity models.ServerConnectivity
@@ -265,14 +237,11 @@ type NodeInput struct {
 	TLSCACert      string // api, optional (PEM)
 	TLSCert        string // api, optional (PEM)
 	TLSKey         string // api, optional (PEM; stored encrypted)
-	// Acknowledge confirms the caller accepts that a reachability change may
-	// briefly interrupt the workloads running on the node. Required whenever the
-	// update actually changes connectivity/access mode/endpoint/address/TLS.
+	// Required whenever the update changes reachability, which may briefly interrupt the node's workloads.
 	Acknowledge bool
 }
 
-// CreateNode registers a remote node. For agent mode it returns a one-time join
-// token (only its hash is stored); other modes return an empty token.
+// CreateNode returns a one-time join token for agent mode (only its hash is stored).
 func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if strings.TrimSpace(in.DisplayName) == "" {
 		return nil, "", ErrNameRequired
@@ -288,8 +257,7 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 		return nil, "", ErrInvalidConnectivity
 	}
 	in.Connectivity = models.ConnectivityEdgeGateway
-	// The handle is derived from the label. slug.Unique suffixes a collision
-	// rather than failing, so a second "Frankfurt Edge" becomes frankfurt-edge-2.
+	// slug.Unique suffixes a collision rather than failing.
 	nodeSlug, err := slug.Unique(in.DisplayName, "node", func(c string) (bool, error) {
 		_, e := s.repo.FindByName(c)
 		if e == nil {
@@ -331,8 +299,7 @@ func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	return srv, token, nil
 }
 
-// UpdateNode edits a remote node's reachability settings. Credential fields are
-// only replaced when non-empty (so an unchanged form keeps existing secrets).
+// UpdateNode replaces credential fields only when non-empty, so an unchanged form keeps existing secrets.
 func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -376,8 +343,6 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	return srv, nil
 }
 
-// WorkloadImpact reports how many applications and database instances are placed
-// on the node, so the UI can warn what a connectivity change would affect.
 func (s *Service) WorkloadImpact(id uint) (apps int64, databases int64, err error) {
 	return s.repo.CountWorkloads(id)
 }
@@ -387,9 +352,7 @@ func (s *Service) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) 
 	return s.repo.FindBySwarmNodeID(swarmNodeID)
 }
 
-// RegisterClusterNode creates the record for a swarm worker that registered itself through the global agent
-// service. The caller has already verified the swarm node id is a member of THIS swarm, so this is not an
-// open registration endpoint. The node is marked AutoJoined: the cluster brought it in, an admin did not.
+// RegisterClusterNode is not open registration: the caller has verified the swarm node belongs to this swarm.
 func (s *Service) RegisterClusterNode(clusterID uint, swarmNodeID, hostname string) (*models.Server, error) {
 	if err := s.checkNodeLimit(); err != nil {
 		return nil, err
@@ -452,9 +415,7 @@ func shortID(id string) string {
 	return id
 }
 
-// LearnSwarmNodeID records the swarm node id the agent read from its own Docker engine at connect. This is
-// how a node gets mapped to its swarm node in every case, not just when Miabi did the joining — a host
-// joined by hand stayed unmapped forever, and an unmapped node cannot be resolved from a service's task.
+// LearnSwarmNodeID maps nodes joined by hand too; an unmapped node cannot be resolved from a service's task.
 func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
 	swarmNodeID = strings.TrimSpace(swarmNodeID)
 	if swarmNodeID == "" {
@@ -472,9 +433,7 @@ func (s *Service) LearnSwarmNodeID(id uint, swarmNodeID string) {
 	logger.Info("learned a node's swarm id from its agent", "node", id, "swarm_node_id", swarmNodeID)
 }
 
-// PublicIP returns raw as a normalized IP only when it is a routable public
-// address; loopback/private/link-local/unspecified sources return "". raw may
-// carry a port (RemoteAddr fallback), which is stripped.
+// PublicIP returns "" for non-routable addresses; raw may carry a port, which is stripped.
 func PublicIP(raw string) string {
 	host := strings.TrimSpace(raw)
 	if host == "" {
@@ -490,8 +449,6 @@ func PublicIP(raw string) string {
 	return ip.String()
 }
 
-// deriveAddress resolves the reverse-proxy address for a node: for api mode the host comes from the Docker
-// endpoint, so no separate address is asked for; other modes use the provided address.
 type connectivityAckError struct{}
 
 func (*connectivityAckError) Error() string {
@@ -507,9 +464,7 @@ func validConnectivity(c models.ServerConnectivity) bool {
 // ErrEdgeGatewayInDefaultCluster is returned for a node of the default cluster set to run its own gateway.
 var ErrEdgeGatewayInDefaultCluster = errors.New("a node of the default cluster is served by the control-plane gateway and cannot run one of its own; remove it from the swarm to give it its own cluster")
 
-// checkConnectivity refuses a connectivity the node cannot have. Only the control-plane node or a swarm member
-// can rely on its cluster's gateway, or nothing reaches its apps, and a node of the default cluster cannot run a
-// gateway of its own, since the control plane serves every app there. Empty leaves it unchanged.
+// Only the control plane or a swarm member can use its cluster's gateway; a default-cluster node cannot run its own.
 func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectivity) error {
 	switch {
 	case c == "" || c == srv.Connectivity:
@@ -531,8 +486,7 @@ func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectiv
 	return nil
 }
 
-// SetPool puts a node in a pool, or in none for an empty name. A plan bound to a pool places its workspaces'
-// workloads only on that pool's nodes.
+// SetPool assigns a node to a pool (empty for none); pool-bound plans place workloads only on that pool's nodes.
 func (s *Service) SetPool(id uint, pool string) (*models.Server, error) {
 	pool = strings.TrimSpace(pool)
 	if pool != "" && !models.ValidPoolName(pool) {
@@ -572,9 +526,7 @@ func (s *Service) SetConnectivity(id uint, c models.ServerConnectivity) (*models
 	return srv, nil
 }
 
-// reachabilityChanged reports whether in would actually alter how the control plane reaches the node or how
-// its workloads are exposed, as opposed to a metadata-only edit that resends current values. Mirrors what
-// UpdateNode applies: connectivity for the local node; access mode, endpoint, address and new TLS for remotes.
+// Mirrors what UpdateNode applies, so a metadata-only edit resending current values is not a reachability change.
 func reachabilityChanged(srv *models.Server, in NodeInput) bool {
 	if validConnectivity(in.Connectivity) && in.Connectivity != srv.Connectivity {
 		return true
@@ -610,9 +562,7 @@ func deriveAddress(mode models.ServerAccessMode, endpoint, address string) strin
 	return strings.TrimSpace(address)
 }
 
-// applyCredentials sets/encrypts a node's TLS material from input. Every
-// credential field is "blank = keep" so an edit form (which never receives the
-// stored secrets back) does not wipe them; private keys are encrypted at rest.
+// Blank means keep: the edit form never receives stored secrets back.
 func applyCredentials(srv *models.Server, in NodeInput) error {
 	if strings.TrimSpace(in.TLSCACert) != "" {
 		srv.TLSCACert = in.TLSCACert
@@ -647,9 +597,7 @@ func (s *Service) RegenerateToken(id uint) (string, error) {
 	return token, nil
 }
 
-// GatewayToken returns the node's edge-gateway provider token (decrypted),
-// minting and persisting one (encrypted) on first use. Unlike the join token it
-// is recoverable, so the gateway can be (re)deployed on demand.
+// GatewayToken mints on first use; unlike the join token it is recoverable, so the gateway can be redeployed.
 func (s *Service) GatewayToken(id uint) (string, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -672,9 +620,7 @@ func (s *Service) GatewayToken(id uint) (string, error) {
 	return tok, nil
 }
 
-// GatewayRedisPassword returns the per-node edge-gateway Redis password
-// (decrypted), minting and persisting one (encrypted) on first use. Stable
-// across redeploys so the gateway and its Redis keep matching credentials.
+// GatewayRedisPassword mints on first use and stays stable so gateway and Redis credentials keep matching.
 func (s *Service) GatewayRedisPassword(id uint) (string, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -717,8 +663,7 @@ func (s *Service) StoredGatewayRedisPassword(id uint) (string, error) {
 	return pw, nil
 }
 
-// SetGatewayUpdate persists the node's in-flight gateway update progress (nil
-// clears it). Used by the safe-update flow so progress survives a reconnect.
+// SetGatewayUpdate persists safe-update progress (nil clears) so it survives a reconnect.
 func (s *Service) SetGatewayUpdate(id uint, p *models.GatewayUpdateProgress) error {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -728,8 +673,7 @@ func (s *Service) SetGatewayUpdate(id uint, p *models.GatewayUpdateProgress) err
 	return s.repo.Update(srv)
 }
 
-// SetGatewayConfig stores a node's custom edge-gateway config (empty resets to
-// the rendered default). Returns the updated node.
+// SetGatewayConfig stores a custom edge-gateway config; empty resets to the rendered default.
 func (s *Service) SetGatewayConfig(id uint, config string) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -742,8 +686,7 @@ func (s *Service) SetGatewayConfig(id uint, config string) (*models.Server, erro
 	return srv, nil
 }
 
-// SetGatewayImage stores a node's edge-gateway image override (empty resets to
-// the resolved default). Returns the updated node.
+// SetGatewayImage stores an edge-gateway image override; empty resets to the resolved default.
 func (s *Service) SetGatewayImage(id uint, image string) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -756,8 +699,7 @@ func (s *Service) SetGatewayImage(id uint, image string) (*models.Server, error)
 	return srv, nil
 }
 
-// MarkGatewayDeployed stamps the node's last successful gateway deploy time and
-// clears any imported-gateway tracking (a fresh install supersedes an import).
+// MarkGatewayDeployed also clears imported-gateway tracking, since a fresh install supersedes an import.
 func (s *Service) MarkGatewayDeployed(id uint) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -770,10 +712,7 @@ func (s *Service) MarkGatewayDeployed(id uint) {
 	_ = s.repo.Update(srv)
 }
 
-// AdoptGateway tracks a pre-existing gateway container as this node's gateway. It records the container name
-// and image, optionally copies the gateway's existing config into the node's stored config, switches the
-// node to edge-gateway connectivity, and stamps the deploy time — without recreating anything. A node that
-// cannot run its own gateway is refused, as it would be when changing its connectivity directly.
+// AdoptGateway tracks an existing gateway container without recreating it; nodes that cannot run a gateway are refused.
 func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -799,8 +738,7 @@ func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*m
 	return srv, nil
 }
 
-// ReleaseGateway stops tracking an imported gateway without touching the container. The image and config
-// the import copied stay as the node's gateway settings for a later install, and connectivity is unchanged.
+// ReleaseGateway stops tracking an imported gateway without touching the container; copied settings remain.
 func (s *Service) ReleaseGateway(id uint) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -815,9 +753,7 @@ func (s *Service) ReleaseGateway(id uint) (*models.Server, error) {
 	return srv, nil
 }
 
-// AuthenticateProvider resolves the node a Goma HTTP-provider request belongs to,
-// accepting either the agent join token or the node's gateway token. The slug in
-// the URL must match the resolved node.
+// AuthenticateProvider accepts the agent join token or the gateway token; the URL slug must match the node.
 func (s *Service) AuthenticateProvider(slug, token string) (*models.Server, error) {
 	srv, err := s.repo.FindByName(slug)
 	if err != nil {
@@ -840,9 +776,7 @@ func (s *Service) AuthenticateProvider(slug, token string) (*models.Server, erro
 	return nil, ErrBadToken
 }
 
-// Placeable validates that a node can accept a new resource (app/db/volume).
-// The local node (0) is always placeable; a remote node must exist and not be
-// cordoned. (Reachability is enforced separately when the operation runs.)
+// Placeable: the local node (0) always is; reachability is enforced separately when the operation runs.
 func (s *Service) Placeable(serverID uint) error {
 	if serverID == 0 {
 		return nil
@@ -860,9 +794,7 @@ func (s *Service) Placeable(serverID uint) error {
 	return nil
 }
 
-// SetSwarmNodeID records (or clears) the Docker Swarm node ID a node maps to,
-// so the Nodes page can correlate it to `docker node ls`. Idempotent: a no-op
-// when the value is unchanged, to avoid write churn on every cluster refresh.
+// SetSwarmNodeID is a no-op when unchanged, avoiding write churn on every cluster refresh.
 func (s *Service) SetSwarmNodeID(id uint, swarmNodeID string) error {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -871,14 +803,11 @@ func (s *Service) SetSwarmNodeID(id uint, swarmNodeID string) error {
 	if srv.SwarmNodeID == swarmNodeID {
 		return nil
 	}
-	// Column-scoped: the row is also written on the same agent connect by
-	// MarkConnected, and a full Save from both would race.
+	// Column-scoped: MarkConnected writes the row on the same connect, and two full Saves would race.
 	return s.repo.UpdateSwarmNodeID(id, swarmNodeID)
 }
 
-// NameBySwarmNodeID resolves a swarm node id to a node's Miabi display name, so
-// a cluster app's real replica placement can be shown by name. Returns "" when no
-// node record carries that swarm id (the caller then falls back to a short id).
+// NameBySwarmNodeID returns "" when no node carries the id; the caller falls back to a short id.
 func (s *Service) NameBySwarmNodeID(swarmNodeID string) string {
 	if strings.TrimSpace(swarmNodeID) == "" {
 		return ""
@@ -895,12 +824,7 @@ func (s *Service) NameBySwarmNodeID(swarmNodeID string) string {
 	return ""
 }
 
-// SetCordoned toggles a node's drain flag (no new placements when cordoned). On a swarm member the
-// flag is mirrored onto the node's swarm availability, since Miabi's own placement decisions bind
-// only container apps — Swarm schedules service tasks itself and would ignore the cordon.
-//
-// The flag is saved even when the mirror fails, and ErrSwarmNotMirrored reports that: the caller must
-// surface it, because a cordon Swarm never heard about still takes work.
+// SetCordoned mirrors to swarm availability; on mirror failure it saves anyway and returns ErrSwarmNotMirrored.
 func (s *Service) SetCordoned(ctx context.Context, id uint, cordoned bool) error {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
@@ -944,8 +868,6 @@ func (s *Service) DeleteNode(id uint) error {
 	return nil
 }
 
-// Authenticate resolves the node an agent token belongs to (constant-time-ish
-// via hash lookup).
 func (s *Service) Authenticate(token string) (*models.Server, error) {
 	srv, err := s.repo.FindByTokenHash(hashToken(token))
 	if err != nil {
@@ -976,10 +898,7 @@ func (s *Service) MarkConnected(id uint, agentVersion string) {
 	_ = s.repo.Update(srv)
 }
 
-// SetEngineVersion persists a node's Docker daemon version, keyed by its swarm
-// node id (the stable handle the cluster refresh has for every node, including
-// ones with no Miabi client). Column-scoped so it never clobbers a field the
-// agent-connect path writes concurrently.
+// SetEngineVersion is keyed by swarm node id and column-scoped so it never clobbers concurrent agent-connect writes.
 func (s *Service) SetEngineVersion(swarmNodeID, version string) error {
 	if swarmNodeID == "" || version == "" {
 		return nil

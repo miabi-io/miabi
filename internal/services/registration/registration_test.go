@@ -53,8 +53,7 @@ func TestParseDomains(t *testing.T) {
 	}
 }
 
-// The allow-list is a security control, so the interesting cases are the ones that
-// look allowed and are not.
+// The allow-list is a security control, so test cases that look allowed and are not.
 func TestDomainAllowed(t *testing.T) {
 	allowed := []string{"acme.com", "acme.co.uk"}
 	cases := map[string]struct {
@@ -66,8 +65,7 @@ func TestDomainAllowed(t *testing.T) {
 		"subdomain":         {"someone@mail.acme.com", true},
 		"second entry":      {"someone@acme.co.uk", true},
 
-		// The one that matters: a suffix match without a label boundary would let
-		// anyone registering notacme.com straight in.
+		// Without a label boundary anyone registering notacme.com would get straight in.
 		"suffix without boundary": {"someone@notacme.com", false},
 		"prefix":                  {"someone@acme.com.evil.example", false},
 		"different tld":           {"someone@acme.org", false},
@@ -106,8 +104,7 @@ func provider(t *testing.T, kv map[string]string) *settings.Provider {
 	return settings.NewFixedProvider(cache)
 }
 
-// Sign-up stays shut until an operator opens it. An upgrade must not start
-// accepting accounts from anyone who can reach the platform.
+// An upgrade must not start accepting accounts from anyone who can reach the platform.
 func TestClosedByDefault(t *testing.T) {
 	s := NewService(false, provider(t, nil), fakeMailer{configured: true})
 	if s.Enabled() {
@@ -118,9 +115,7 @@ func TestClosedByDefault(t *testing.T) {
 	}
 }
 
-// Verification required with no mail server would create accounts that cannot log
-// in and cannot verify themselves. Refuse the door rather than open one that
-// leads nowhere.
+// Without mail such accounts could neither log in nor verify themselves.
 func TestRefusesWhenVerificationCannotBeDelivered(t *testing.T) {
 	on := map[string]string{settings.KeyRequireEmailVerification: "true"}
 	if err := NewService(true, provider(t, on), fakeMailer{configured: false}).Available(); !errors.Is(err, ErrVerificationUnavailable) {
@@ -135,9 +130,7 @@ func TestRefusesWhenVerificationCannotBeDelivered(t *testing.T) {
 	}
 }
 
-// A rejected domain is reported to the caller of Check, which is trusted, and
-// never conflated with the platform being shut — the handler is what has to make
-// the two indistinguishable from outside.
+// The handler, not Check, must make rejected-domain and closed indistinguishable from outside.
 func TestRejectedDomainIsDistinctFromClosed(t *testing.T) {
 	s := NewService(true, provider(t, map[string]string{
 		settings.KeyAllowedSignupDomains: "acme.com",

@@ -26,8 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// secretRow is a sqlite-friendly stand-in for models.Secret: the full model carries
-// Postgres-specific defaults sqlite can't migrate, and the paged listing only reads these columns.
+// Stand-in for models.Secret, whose Postgres-specific defaults sqlite can't migrate.
 type secretRow struct {
 	ID          uint `gorm:"primaryKey"`
 	WorkspaceID uint
@@ -91,8 +90,7 @@ func TestListByWorkspacePagedFiltersOwnership(t *testing.T) {
 		t.Errorf("unmanaged = %v (total %d), want the 2 hand-created secrets", got, total)
 	}
 
-	// The count must reflect the filter too — it drives pagination, so a total
-	// that ignored the filter would page into rows that aren't there.
+	// The count drives pagination, so it must reflect the filter too.
 	if _, total = names(t, repo, "", &yes); total != 1 {
 		t.Errorf("filtered total = %d, want 1", total)
 	}

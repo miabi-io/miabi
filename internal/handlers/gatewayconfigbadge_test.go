@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
 )
 
-// gatewayConfigState mirrors what the node-gateway handler puts on GatewayStatus for the console's
-// encryption badge. Kept as a function so the mapping itself is testable without a live handler.
 func gatewayConfigState(srv *models.Server, central string) (encrypted bool, scope string) {
 	key := edgegateway.ConfigKey(srv, central)
 	if key == "" {
@@ -39,8 +37,7 @@ func gatewayConfigState(srv *models.Server, central string) (encrypted bool, sco
 	return true, "node"
 }
 
-// The badge has to tell the two apart: "encrypted" with a key only this node holds is a different
-// guarantee from "encrypted" with a passphrase every gateway shares.
+// A node-only key and a passphrase every gateway shares are different guarantees.
 func TestGatewayConfigBadgeState(t *testing.T) {
 	const central = "s3cr3t-key"
 	for _, tc := range []struct {

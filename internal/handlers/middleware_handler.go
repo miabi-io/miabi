@@ -95,15 +95,11 @@ func (h *MiddlewareHandler) Get(c *okapi.Context) error {
 	return ok(c, redact(m))
 }
 
-// MiddlewareCatalog is the catalog endpoint payload: the curated type
-// descriptors plus the one-click presets, both driving the policy UI.
 type MiddlewareCatalog struct {
 	Types   []mwcatalog.Descriptor `json:"types"`
 	Presets []mwcatalog.Preset     `json:"presets"`
 }
 
-// Catalog returns the curated middleware-type descriptors and presets that drive
-// the UI's schema-driven policy forms.
 func (h *MiddlewareHandler) Catalog(c *okapi.Context) error {
 	return ok(c, MiddlewareCatalog{Types: mwcatalog.All(), Presets: mwcatalog.Presets()})
 }
@@ -165,16 +161,13 @@ func (h *MiddlewareHandler) mapErr(c *okapi.Context, err error) error {
 	}
 }
 
-// invalidRuleError carries the stable MIDDLEWARE_INVALID_RULE code while keeping
-// the catalog's descriptive validation message as the user-facing reason.
 type invalidRuleError struct{ err error }
 
 func (e invalidRuleError) Error() string { return e.err.Error() }
 func (e invalidRuleError) Code() string  { return "MIDDLEWARE_INVALID_RULE" }
 func (e invalidRuleError) Unwrap() error { return e.err }
 
-// redact returns a copy of the middleware with its secret rule fields masked, so
-// API responses never expose stored ciphertext or plaintext secrets.
+// API responses must never expose stored ciphertext or plaintext secrets.
 func redact(m *models.Middleware) models.Middleware {
 	cp := *m
 	cp.Rule = mwcatalog.Redact(m.Type, m.Rule)

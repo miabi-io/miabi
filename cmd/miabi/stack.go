@@ -34,21 +34,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/stackcmd"
 )
 
-// registerStackCommands wires `install|upgrade|restart|status|db-backup|uninstall` and friends onto the server image.
-//
-// The `miabi` CLI is the normal way to drive a host, and it does strictly more. This path exists
-// for the operator who cannot or will not put a binary in /usr/local/bin: the image runs as uid
-// 10001 with the host's docker group, so
-//
-//	docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock \
-//	  -v /etc/miabi:/etc/miabi miabi/miabi:<tag> install --domain …
-//
-// installs Miabi with no root and nothing written outside /etc/miabi.
-//
-// These commands run on the HOST, not inside the control-plane container: the control plane cannot
-// replace itself, so the actor that updates it lives outside it and keeps the desired state in a
-// file. The behaviour is [stackcmd]'s, shared verbatim with the CLI — this file is flag parsing and
-// rendering only, which is what keeps the two from drifting.
+// Stack commands run on the host because the control plane cannot replace itself; logic is shared with the CLI.
 func registerStackCommands(cli *okapicli.CLI) {
 	cli.Command("install", "Install the Miabi stack on this host, or converge an existing install", runInstall).
 		String("domain", "d", "", "Public hostname for the panel, e.g. miabi.example.com").
@@ -74,9 +60,7 @@ func registerStackCommands(cli *okapicli.CLI) {
 		String("file", "f", "", "Manifest path").
 		Bool("yes", "y", false, "Do not prompt")
 
-	// `update` is what every pre-1.8 runbook and doc says, so it keeps working. okapicli has no
-	// hidden-command support, and a visible "Deprecated:" line is the better trade anyway — it is
-	// how an operator reading `--help` finds out about the rename.
+	// Kept for pre-1.8 runbooks; okapicli has no hidden commands and a visible Deprecated line reveals the rename.
 	cli.Command("update", "Deprecated: use `upgrade`", runUpdate).
 		String("version", "", "", "Roll out this version, keeping the current registry and repository (1.8.0 or v1.8.0)").
 		String("image", "", "", "Roll out this exact image instead of the one this installer runs from").
@@ -110,8 +94,7 @@ func registerStackCommands(cli *okapicli.CLI) {
 		Bool("yes", "y", false, "Do not prompt")
 }
 
-// imageDefault adapts defaultImage to stackcmd's signature. A resolution failure becomes "", which
-// stackcmd reports as "pass --image <repo>:<tag>" — the same advice, one layer up.
+// A resolution failure becomes "", which stackcmd reports as "pass --image <repo>:<tag>".
 func imageDefault(dc docker.Client) func() string {
 	return func() string {
 		img, err := defaultImage(context.Background(), dc)
@@ -122,8 +105,6 @@ func imageDefault(dc docker.Client) func() string {
 	}
 }
 
-// imageUI renders stackcmd's output plainly. The CLI colors the same calls; nothing else about the
-// two front-ends differs.
 type imageUI struct{}
 
 func (imageUI) Printf(format string, a ...any)  { fmt.Printf(format, a...) }
@@ -233,8 +214,7 @@ func runStatus(cmd *okapicli.Command) error {
 	case r.LegacyConfig != nil:
 		fmt.Printf("! %v\n\n", r.LegacyConfig)
 	case r.Unmanaged:
-		// Containers exist but no manifest: this is a Compose install (or a hand-rolled one). Say
-		// so plainly instead of implying it is broken.
+		// No manifest: a Docker Compose or hand-rolled install; say so instead of implying it is broken.
 		fmt.Printf("No stack manifest at %s — this stack was not installed by `install`.\n", r.Path)
 		fmt.Printf("Manage it with the tool that created it (for Compose: docker compose up -d).\n\n")
 	default:

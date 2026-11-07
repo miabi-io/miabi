@@ -57,8 +57,6 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
-// The state file holds a workspace's whole vault. Nothing in it may be readable
-// without the passphrase — not a secret value, not a name.
 func TestSealedStateCarriesNoPlaintext(t *testing.T) {
 	sealed, err := Seal(testState(), goodPass)
 	if err != nil {
@@ -71,9 +69,7 @@ func TestSealedStateCarriesNoPlaintext(t *testing.T) {
 	}
 }
 
-// A bundle is only a migration if the whole graph crosses. This holds every class — and every
-// cross-reference between them — through a round trip, so a field added to the model and forgotten
-// in the state document shows up here rather than as a resource that quietly did not travel.
+// Catches a model field forgotten in the state document, which would quietly not travel.
 func TestStateCarriesEveryResourceClass(t *testing.T) {
 	in := &State{
 		Schema:       StateSchema,
@@ -177,8 +173,6 @@ func TestOpenRejectsWrongPassphrase(t *testing.T) {
 	}
 }
 
-// The header is authenticated, so a file whose framing was edited fails to open
-// rather than decrypting to something plausible.
 func TestOpenRejectsTampering(t *testing.T) {
 	sealed, _ := Seal(testState(), goodPass)
 
@@ -199,8 +193,7 @@ func TestOpenRejectsTampering(t *testing.T) {
 	}
 }
 
-// Sealing twice must not produce the same bytes: identical ciphertext would leak
-// that a bundle did not change between two backups.
+// Identical ciphertext would leak that a bundle did not change between two backups.
 func TestSealIsNotDeterministic(t *testing.T) {
 	a, _ := Seal(testState(), goodPass)
 	b, _ := Seal(testState(), goodPass)

@@ -102,8 +102,7 @@ type migrationClient struct {
 	http *http.Client
 }
 
-// newMigrationClient builds a client for base. TLS is verified unless insecure is set; caPEM, when
-// given, is trusted in addition to the system roots, for a source behind a private CA.
+// caPEM, when given, is trusted in addition to the system roots, for a source behind a private CA.
 func newMigrationClient(base, key string, insecure bool, caPEM string) (*migrationClient, error) {
 	u, err := url.Parse(strings.TrimSpace(base))
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
@@ -241,8 +240,6 @@ func (c *migrationClient) deleteExport(ctx context.Context, ws string, id uint) 
 // downloadAttempts bounds the retries of one artifact; each retry resumes where the last one stopped.
 const downloadAttempts = 5
 
-// download writes artifact n into f, resuming with Range after a dropped connection, and checks the
-// whole file against the SHA-256 the source recorded.
 func (c *migrationClient) download(ctx context.Context, ws string, id uint, n int, a models.MigrationArtifact, f *os.File) error {
 	path := c.url(fmt.Sprintf("/workspaces/%s/exports/%d/artifacts/%d", url.PathEscape(ws), id, n))
 	var lastErr error

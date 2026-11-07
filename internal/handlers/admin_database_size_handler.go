@@ -123,8 +123,7 @@ func (h *AdminDatabaseSizeHandler) Update(c *okapi.Context, req *UpdateDatabaseS
 	return ok(c, sz)
 }
 
-// Delete removes a size no plan or workspace override offers. Ungated, so a lapsed license can still clean up;
-// instances sized with it keep their limits and its name as a label.
+// Delete is ungated so a lapsed license can still clean up; sized instances keep their limits.
 func (h *AdminDatabaseSizeHandler) Delete(c *okapi.Context) error {
 	id, err := uintParam(c, "id")
 	if err != nil {

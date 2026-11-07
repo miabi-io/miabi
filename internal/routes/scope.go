@@ -57,8 +57,6 @@ var adminPrefixes = []string{
 	"/api/v1/sso/",
 }
 
-// adminSegments make a route administrative wherever they appear: who may act in a workspace, and
-// what the platform recorded about it.
 var adminSegments = map[string]bool{
 	"members":          true,
 	"invitations":      true,
@@ -73,8 +71,7 @@ var adminSegments = map[string]bool{
 	"encryption":       true,
 }
 
-// adminSuffixes are reads that hand back a credential, a key or a shell — the GETs the plan calls
-// out, because classifying them by method alone would make them `read`.
+// GETs that return a credential, key or shell, which method-based classification would mark `read`.
 var adminSuffixes = []string{
 	"/exec",
 	"/reveal",
@@ -84,8 +81,7 @@ var adminSuffixes = []string{
 	"/webhook-info",
 }
 
-// adminWriteSegments are trees where reading is ordinary but writing reconfigures how the platform
-// builds and who it calls out to.
+// Reading is ordinary, but writing reconfigures how the platform builds and whom it calls out to.
 var adminWriteSegments = map[string]bool{"runners": true, "webhooks": true}
 
 // deployActions are the lifecycle verbs a `deploy` key exists to trigger.
@@ -132,8 +128,7 @@ func adminScope(method, path string, segs []string) string {
 	return ""
 }
 
-// isBackupDownload separates a backup artifact — the workspace's data, in one file — from the
-// ordinary `/logs/download` that every deployment and job step offers.
+// Separates a backup artifact (the workspace's data in one file) from the ordinary /logs/download.
 func isBackupDownload(segs []string) bool {
 	if len(segs) == 0 || segs[len(segs)-1] != "download" {
 		return false

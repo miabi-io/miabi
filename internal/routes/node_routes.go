@@ -166,8 +166,7 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 			Summary:     "Remove a node",
 		},
 
-		// Per-node Docker resources (browse the control-plane node and any agent
-		// node identically). Removal of platform-managed resources is blocked.
+		// Removal of platform-managed resources is blocked.
 		{
 			Method:      http.MethodGet,
 			Path:        "/{nodeID}/containers",
@@ -328,8 +327,6 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.ImportResourcesRequest{},
 		},
 
-		// Housekeeping: reclaim disk (dangling images + build cache), reconcile
-		// drift (orphans/missing/untracked), and report disk usage. Dry-run first.
 		{
 			Method:      http.MethodGet,
 			Path:        "/{nodeID}/housekeeping",
@@ -451,9 +448,7 @@ func (r *Router) nodeRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// agentRoutes registers the agent connect endpoint. It authenticates by join
-// token (not the user JWT) and is registered directly on the app so it bypasses
-// the v1 group's auth/maintenance middleware; it is rate-limited per IP.
+// Authenticates by join token and bypasses the v1 auth/maintenance middleware; rate-limited per IP.
 func (r *Router) agentRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
@@ -477,9 +472,7 @@ func (r *Router) agentRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// providerRoutes registers the Goma HTTP-provider endpoints a remote node's
-// Gateway polls (token-authenticated; bundle = all middlewares + that node's
-// routes). Registered directly on the app to bypass the v1 user-auth middleware.
+// Token-authenticated and registered directly on the app to bypass the v1 user-auth middleware.
 func (r *Router) providerRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{

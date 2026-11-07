@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// stubCatalog reports a fixed protected-digest set, or an error when digests is
-// nil. Provenance is always empty — the delete path doesn't consult it.
+// Provenance is always empty: the delete path doesn't consult it.
 type stubCatalog struct {
 	digests map[string]bool
 	rows    map[string]models.Image
@@ -46,9 +45,7 @@ func (s stubCatalog) ByDigests(uint, []string) (map[string]models.Image, error) 
 	return s.rows, nil
 }
 
-// Deleting the tag a live release is pinned to must be refused: the registry
-// would delete it happily and the breakage would only appear later, as a failed
-// pull on a node.
+// The registry would delete a pinned tag happily; the breakage only shows later as a failed pull on a node.
 func TestDeleteTagRefusesImageInUse(t *testing.T) {
 	svc := listSvc(t)
 	svc.SetCatalog(stubCatalog{digests: map[string]bool{"sha256:abc": true}}) // web:1.0
@@ -68,8 +65,7 @@ func TestDeleteTagAllowsUnusedImage(t *testing.T) {
 	}
 }
 
-// If the protected set can't be resolved we can't prove the image is free, so
-// the delete must fail rather than proceed and risk removing a live image.
+// If the protected set can't be resolved the image can't be proven free, so the delete must fail.
 func TestDeleteTagFailsClosedWhenProtectionUnknown(t *testing.T) {
 	svc := listSvc(t)
 	svc.SetCatalog(stubCatalog{digests: nil})
@@ -86,8 +82,7 @@ func TestSortTags(t *testing.T) {
 		want []string
 	}{
 		{
-			// The case plain lexicographic order gets wrong: v10 sorts before v9,
-			// and "latest" lands in the middle.
+			// Plain lexicographic order gets this wrong: v10 sorts before v9 and "latest" lands in the middle.
 			name: "version tags, newest first",
 			in:   []string{"v1.9.0", "latest", "v1.10.0", "v1.2.0", "v2.0.0"},
 			want: []string{"latest", "v2.0.0", "v1.10.0", "v1.9.0", "v1.2.0"},
@@ -130,8 +125,7 @@ func TestSortTags(t *testing.T) {
 	}
 }
 
-// SortTags must impose a total order — an inconsistent comparator makes
-// sort.Slice produce different results for different input permutations.
+// An inconsistent comparator makes sort.Slice produce different results for different input permutations.
 func TestSortTagsIsStableAcrossPermutations(t *testing.T) {
 	base := []string{"latest", "v2.0.0", "v1.10.0", "v1.9.0", "main", "3", "20"}
 	first := slices.Clone(base)

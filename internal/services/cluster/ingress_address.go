@@ -28,7 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// IngressAddress is where a cluster's public DNS records point: its gateway, or a load balancer in front of it.
 // Id 0 is the default cluster.
 func (s *Service) IngressAddress(clusterID uint) models.PublicAddress {
 	if s.store == nil {
@@ -44,9 +43,7 @@ func (s *Service) IngressAddress(clusterID uint) models.PublicAddress {
 // IsDefaultCluster reports whether a cluster id names the default cluster, whose apps the control plane serves.
 func (s *Service) IsDefaultCluster(clusterID uint) bool { return s.isDefault(clusterID) }
 
-// LearnIngressIP fills a cluster's empty public address with the public source IP its ingress node's agent
-// connected from, so an admin need not type it. A private source address says nothing behind NAT and is ignored.
-// Only one family is ever learned: the other may not reach the gateway, so adding it is left to an admin.
+// Private source addresses are ignored behind NAT; only one family is learned since the other may not reach the gateway.
 func (s *Service) LearnIngressIP(serverID uint, remoteAddr string) {
 	ip := node.PublicIP(remoteAddr)
 	if ip == "" || s.store == nil {

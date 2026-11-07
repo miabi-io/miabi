@@ -238,8 +238,6 @@ func (p recordingPlacer) Place(req placement.Request) (placement.Result, error) 
 	return placement.Result{}, nil
 }
 
-// A volume declared without a location lands where the app mounting it runs, not in the workspace default,
-// so the app can mount it.
 func TestVolumeFollowsTheAppMountingIt(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -271,8 +269,6 @@ func TestVolumeFollowsTheAppMountingIt(t *testing.T) {
 	}
 }
 
-// Moving a resource between locations is refused while planning, before anything else in the bundle
-// applies around it.
 func TestPlanRefusesAMove(t *testing.T) {
 	s := &Service{placer: fakePlacer{clusters: map[string]*models.Cluster{"eu": {ID: 1, Name: "eu"}, "us": {ID: 2, Name: "us"}}}}
 	parse := func(m string) *declarative.ResourceSet {

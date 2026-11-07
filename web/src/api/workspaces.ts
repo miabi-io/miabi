@@ -46,8 +46,7 @@ export const workspaceApi = {
   update(id: number, input: UpdateWorkspaceInput) {
     return api.patch<ApiResponse<Workspace>>(`/workspaces/${id}`, input)
   },
-  // Dedicated handle change (separate from metadata update): the workspace
-  // `name` is its unique URL/CLI/docker handle. Renaming changes its URLs.
+  // `name` is the unique URL/CLI/docker handle, so renaming changes its URLs.
   updateName(id: number, name: string) {
     return api.patch<ApiResponse<Workspace>>(`/workspaces/${id}/name`, { name })
   },

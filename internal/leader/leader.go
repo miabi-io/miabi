@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package leader elects the one process that runs the control plane's singleton work: scheduled
-// jobs, periodic scans and cluster reconciliation. It makes a second control plane started by
-// mistake stand by instead of doing that work twice. It is not multi-replica HA: agent and runner
-// tunnels still belong to the process they dialled.
+// Package leader elects the process that runs singleton work; it is not multi-replica HA.
 package leader
 
 import (
@@ -57,25 +54,20 @@ func newElector(rdb redis.Cmdable, name string, ttl time.Duration) *Elector {
 	return &Elector{
 		name:  name,
 		lease: NewLease(rdb, "miabi:leader:"+name, ttl),
-		// Renewing every third of the TTL and trusting a renewal for half of it survives one failed
-		// renewal, yet stops this process leading well before the key can expire for a standby.
+		// Survives one failed renewal, yet stops leading well before the key can expire for a standby.
 		interval: ttl / 3,
 		validity: ttl / 2,
 		changed:  make(chan struct{}),
 	}
 }
 
-// Leading reports whether this process holds the lease, confirmed recently enough that no other
-// process can hold it yet.
 func (e *Elector) Leading() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return time.Now().Before(e.validUntil)
 }
 
-// Start campaigns once before returning, so a lone control plane leads from the start, then keeps
-// campaigning in the background. stop ends the campaign and releases the lease, so a standby takes
-// over at once instead of when the lease expires.
+// stop releases the lease so a standby takes over at once instead of on expiry.
 func (e *Elector) Start(ctx context.Context) (stop func()) {
 	e.campaign(ctx)
 	if !e.Leading() {
@@ -106,8 +98,7 @@ func (e *Elector) Start(ctx context.Context) (stop func()) {
 	}
 }
 
-// While runs fn for as long as this process leads, cancels its context when leadership is lost,
-// and runs it again after each later win. It returns once ctx is done and fn has returned.
+// Returns once ctx is done and fn has returned.
 func (e *Elector) While(ctx context.Context, fn func(context.Context)) {
 	for {
 		leading, changed := e.state()
@@ -204,8 +195,7 @@ func (e *Elector) setLeadingLocked(leading bool) (changed bool) {
 	return true
 }
 
-// Never never leads. A process that must leave singleton work to the control plane passes it
-// wherever a leader is expected.
+// Never never leads; pass it where singleton work must be left to the control plane.
 var Never never
 
 type never struct{}

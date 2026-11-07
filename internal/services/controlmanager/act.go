@@ -32,30 +32,24 @@ import (
 )
 
 const (
-	// backoffBase doubles per attempt up to backoffMax, so an app that cannot be brought back is retried
-	// ever more slowly rather than every minute forever.
+	// An app that cannot be brought back is retried ever more slowly rather than every minute.
 	backoffBase = time.Minute
 	backoffMax  = 30 * time.Minute
-	// breakerAfter consecutive failed redeploys stops the control manager touching an item at all: past this
-	// point it is not a blip, and a person has to look at it.
+	// Past this point it is not a blip, and a person has to look.
 	breakerAfter = 5
-	// forgetAfter is how long an item's attempt history outlives its finding, so an app that flaps keeps its
-	// backoff instead of resetting it every time it looks healthy for a single sweep.
+	// A flapping app keeps its backoff instead of resetting after one healthy sweep.
 	forgetAfter = 10 * time.Minute
-	// The budgets cap how many redeploys the control manager may have in flight, so a node that rebooted with
-	// forty apps cannot crowd out the deploys people are waiting on.
+	// A rebooted node with forty apps must not crowd out the deploys people are waiting on.
 	budgetPerNode  = 3
 	budgetPlatform = 10
 )
 
-// Redeployer redeploys an app where it already is: the deploy is routed by the app's own ServerID and
-// ClusterID, so nothing is ever placed or moved. Implemented by *application.Service.
+// The deploy is routed by the app's own ServerID and ClusterID, so nothing is placed or moved.
 type Redeployer interface {
 	ReconcileRedeploy(app *models.Application, reason string) (*models.Deployment, error)
 }
 
-// NodePlacement reports whether a node may take a workload. Satisfied by *node.Service: a cordoned node is
-// being drained, and recreating containers on it would work against the operator who cordoned it.
+// A cordoned node is being drained; recreating containers there works against the operator.
 type NodePlacement interface {
 	Placeable(serverID uint) error
 }
@@ -65,14 +59,12 @@ type ConfigStore interface {
 	FindInWorkspace(workspaceID, id uint) (*models.Config, error)
 }
 
-// Auditor records what the control manager did, so an app that restarted itself at 03:00 is explainable
-// without reading logs. Satisfied by *audit.Logger.
+// So an app that restarted itself at 03:00 is explainable without reading logs.
 type Auditor interface {
 	Record(e audit.Entry)
 }
 
-// SetEnforcement wires what acting on a finding needs. Without a Redeployer nothing is ever redeployed,
-// whatever the mode says.
+// Without a Redeployer nothing is redeployed, whatever the mode says.
 func (s *Service) SetEnforcement(r Redeployer, placement NodePlacement, configs ConfigStore, auditor Auditor) {
 	s.redeployer, s.placement, s.configs, s.auditor = r, placement, configs, auditor
 }
@@ -80,16 +72,14 @@ func (s *Service) SetEnforcement(r Redeployer, placement NodePlacement, configs 
 // SetSuspended wires the suspended-workspace check, so enforcement never restarts what a suspension stopped.
 func (s *Service) SetSuspended(f func(workspaceID uint) bool) { s.suspended = f }
 
-// attempt is what enforcement has tried for one item. It outlives the finding by forgetAfter, so a flapping
-// app cannot reset its own backoff.
+// Outlives the finding by forgetAfter so a flapping app cannot reset its own backoff.
 type attempt struct {
 	tries       int
 	failures    int
 	breakerOpen bool
 	lastActedAt time.Time
 	nextAt      time.Time
-	// saidBlocked is the last refusal reported, so a reason the operator has to fix is not repeated every
-	// minute until they do.
+	// So a reason the operator must fix isn't repeated every minute.
 	saidBlocked string
 }
 
@@ -101,11 +91,9 @@ func backoff(tries int) time.Duration {
 	return d
 }
 
-// act restores what it can, in place. It runs after record, so it sees only confirmed findings, and only on
-// the leading control plane — the cron manager runs the sweep nowhere else.
+// Sees only confirmed findings, and runs only on the leading control plane.
 func (s *Service) act(ctx context.Context, items []item) {
-	// The platform mode gates the sweep acting at all; per item, canAct has the final say, since an app may
-	// enforce while the platform observes.
+	// Per item canAct has the final say, since an app may enforce while the platform observes.
 	if s.Mode() == ModeOff {
 		return
 	}
@@ -133,8 +121,6 @@ func (s *Service) act(ctx context.Context, items []item) {
 	}
 }
 
-// restore performs the one action the item's kind allows: a node's gateway is re-ensured on it, an app is
-// redeployed through the ordinary deploy path.
 func (s *Service) restore(ctx context.Context, d actionable) (*models.Deployment, error) {
 	if d.it.kind == kindGateway {
 		return nil, s.gateways.EnsureGateway(ctx, d.it.nodeID)
@@ -168,9 +154,7 @@ func (a actionable) action() string {
 	return "redeploy"
 }
 
-// canAct reports whether enforcement may ever act on an item. Volumes never: lost data is restored by a
-// person. An imported gateway never either — its container belongs to whoever installed it, which on the
-// manager is the platform stack itself.
+// Never volumes (lost data needs a person) or imported gateways (someone else's container).
 func (s *Service) canAct(it *item) bool {
 	switch it.kind {
 	case kindContainer, kindService:
@@ -184,8 +168,6 @@ func (s *Service) canAct(it *item) bool {
 	}
 }
 
-// due picks the confirmed findings enforcement may act on whose backoff has elapsed and whose breaker is
-// closed.
 func (s *Service) due(items []item, now time.Time) []actionable {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -208,8 +190,7 @@ func (s *Service) due(items []item, now time.Time) []actionable {
 	return out
 }
 
-// refuse names why an app must not be redeployed, or "" when it is whole. An app is only brought back with
-// everything it needs: its data, a node that accepts workloads, and the configs it mounts.
+// An app is only brought back with its data, a node accepting workloads, and its mounted configs.
 func (s *Service) refuse(it *item) string {
 	// A gateway is the node's ingress rather than a workload placed on it, so even a draining node wants one.
 	if it.kind == kindGateway {
@@ -239,8 +220,6 @@ func (s *Service) refuse(it *item) string {
 	return ""
 }
 
-// inflight counts the redeploys the control manager has started that have not finished, per node and in
-// total, dropping the ones that reached a terminal state.
 func (s *Service) inflight() (map[uint]int, int) {
 	perNode := map[uint]int{}
 	total := 0
@@ -322,8 +301,7 @@ func (s *Service) failed(d actionable, err error) {
 	s.record4audit(d, "reconcile.breaker_open", map[string]any{"failures": failures, "error": err.Error()})
 }
 
-// reportBlocked says once why an app the control manager would have redeployed was left alone. Repeating it
-// every minute would bury the timeline in something only a person can resolve.
+// Repeating it every minute would bury the timeline in something only a person can resolve.
 func (s *Service) reportBlocked(d actionable, reason string) {
 	s.mu.Lock()
 	a := s.attemptLocked(d.it.key)
@@ -338,8 +316,7 @@ func (s *Service) reportBlocked(d actionable, reason string) {
 		"Not restored by the control manager: "+reason, map[string]string{"actor": actorName, "kind": d.f.Kind})
 }
 
-// emitFor records an action on the timeline of the app it concerns. A gateway belongs to a node rather than a
-// workspace and has no timeline of its own, so its actions live in the report, the metrics and the audit log.
+// A gateway has no timeline of its own, so its actions live in the report, metrics and audit log.
 func (s *Service) emitFor(d actionable, t models.AppEventType, sev models.AppEventSeverity, msg string, meta map[string]string) {
 	if d.it.kind == kindGateway || d.it.workspaceID == 0 {
 		return
@@ -357,8 +334,7 @@ func (s *Service) attemptLocked(key string) *attempt {
 	return a
 }
 
-// record4audit writes the audit trail for an unattended action. There is no actor: nil ActorID plus the
-// actor name in metadata is how a system job signs its work.
+// Nil ActorID plus the actor name in metadata is how a system job signs its work.
 func (s *Service) record4audit(d actionable, action string, meta map[string]any) {
 	if s.auditor == nil {
 		return

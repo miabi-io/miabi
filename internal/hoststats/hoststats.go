@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package hoststats re-exports the procfs readers in pkg/hoststats for existing callers and adds the
-// helper-container sampler, which is control-plane only.
+// Package hoststats re-exports pkg/hoststats and adds the control-plane-only helper-container sampler.
 package hoststats
 
 import (

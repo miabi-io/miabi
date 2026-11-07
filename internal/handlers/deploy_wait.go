@@ -31,8 +31,7 @@ import (
 const (
 	// maxDeployWait bounds ?wait= on deploy and rollback.
 	maxDeployWait = 15 * time.Minute
-	// waitPoll re-reads the database while waiting: the event bus is in-process, so a deploy run by a
-	// separate worker process publishes nothing here.
+	// The event bus is in-process, so a deploy run by a separate worker process publishes nothing here.
 	waitPoll = 2 * time.Second
 	// waitHeader is set to "timeout" when ?wait= ran out before the deploy settled.
 	waitHeader = "X-Miabi-Wait"
@@ -46,14 +45,11 @@ func waitDuration(secs int) time.Duration {
 	return d
 }
 
-// deploySettled reports whether a waiting client can stop: a final state, or a canary, which
-// waits for a human to promote or abort it.
+// A canary counts as settled: it waits for a human to promote or abort it.
 func deploySettled(s models.DeploymentStatus) bool {
 	return s.IsTerminal() || s == models.DeploymentCanary
 }
 
-// waitDeployment blocks until dep settles, the wait runs out or the client goes away, and returns
-// its latest state and whether it settled.
 func (h *ApplicationHandler) waitDeployment(c *okapi.Context, dep *models.Deployment, secs int) (*models.Deployment, bool) {
 	events, unsubscribe := h.bus.Subscribe(worker.DeployTopic(dep.ID))
 	defer unsubscribe()

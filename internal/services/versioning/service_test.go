@@ -219,8 +219,7 @@ func TestVerifyTagFreeSkipsTakenVersions(t *testing.T) {
 	}
 }
 
-// newPostgresService runs on a real database, since the row lock that serializes reserves is
-// Postgres behaviour; SQLite rejects concurrent writers outright.
+// The row lock that serializes reserves is Postgres behaviour; SQLite rejects concurrent writers outright.
 func newPostgresService(t *testing.T) (*Service, *repositories.PipelineRepository) {
 	t.Helper()
 	dsn := os.Getenv("MIABI_TEST_POSTGRES_DSN")

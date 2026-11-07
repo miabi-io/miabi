@@ -33,9 +33,7 @@ func NewBackupRepository(db *gorm.DB) *BackupRepository { return &BackupReposito
 func (r *BackupRepository) Create(b *models.Backup) error { return r.db.Create(b).Error }
 func (r *BackupRepository) Update(b *models.Backup) error { return r.db.Save(b).Error }
 
-// SetLogMeta records the log-store reference + counters for a backup run and
-// replaces the DB column with the bounded tail (the full log lives in the
-// store). A zero ref is ignored so a store failure leaves the full DB tail intact.
+// A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *BackupRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil

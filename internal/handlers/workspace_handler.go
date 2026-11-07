@@ -50,16 +50,13 @@ func NewWorkspaceHandler(svc *workspace.Service, acct *account.Service, auditRep
 	return &WorkspaceHandler{svc: svc, account: acct, audit: auditRepo, users: users, log: log, ee: ee}
 }
 
-// SetMailer wires the platform mailer used to email workspace invitations.
-// Optional; without it (or without SMTP configured) the email is skipped.
 func (h *WorkspaceHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 
 type CreateWorkspaceRequest struct {
 	Body struct {
 		// DisplayName is the free-text label; when omitted it defaults to the handle.
 		DisplayName string `json:"display_name"`
-		// Name is the desired unique handle (URL/docker name); auto-derived from the
-		// display name when blank.
+		// Auto-derived from the display name when blank.
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	} `json:"body"`
@@ -67,15 +64,12 @@ type CreateWorkspaceRequest struct {
 
 type UpdateWorkspaceRequest struct {
 	Body struct {
-		// DisplayName is the free-text label. The unique handle is changed only via
-		// the dedicated rename endpoint.
+		// The unique handle is changed only via the rename endpoint.
 		DisplayName string `json:"display_name"`
 		Description string `json:"description"`
 	} `json:"body"`
 }
 
-// UpdateWorkspaceNameRequest changes only the workspace name — its unique
-// URL/CLI/docker handle.
 type UpdateWorkspaceNameRequest struct {
 	Body struct {
 		Name string `json:"name" required:"true"`
@@ -105,8 +99,7 @@ type InvitationCreated struct {
 	ID    uint   `json:"id"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
-	// Token is returned only when the platform cannot send mail. Otherwise the invited mailbox is the
-	// only place it exists, which is what lets an account created from it count as verified.
+	// Returned only when mail cannot be sent; otherwise the mailbox holding it proves the address.
 	Token     string `json:"token,omitempty"`
 	EmailSent bool   `json:"email_sent"`
 }
@@ -152,16 +145,13 @@ func (h *WorkspaceHandler) Get(c *okapi.Context) error {
 	return ok(c, ws)
 }
 
-// Update edits workspace metadata — the display name and description (admin+).
-// The unique handle is changed only via UpdateName.
 func (h *WorkspaceHandler) Update(c *okapi.Context, req *UpdateWorkspaceRequest) error {
 	ws, err := h.svc.Get(middlewares.WorkspaceID(c))
 	if err != nil {
 		return c.AbortNotFound("workspace not found")
 	}
 	display := strings.TrimSpace(req.Body.DisplayName)
-	// The built-in platform workspace's label is managed by the system; reject a
-	// rename here (description may still be edited).
+	// The system workspace's label is system-managed; its description may still be edited.
 	if ws.System && display != "" && display != ws.DisplayName {
 		return c.AbortWithError(409, errors.New("the system workspace cannot be renamed"))
 	}
@@ -176,9 +166,7 @@ func (h *WorkspaceHandler) Update(c *okapi.Context, req *UpdateWorkspaceRequest)
 	return ok(c, ws)
 }
 
-// UpdateName changes the workspace name — its unique URL/CLI/docker handle. The name is
-// normalized and must stay unique and non-reserved; the system workspace's name is immutable.
-// Audited admin+ action, since it changes URLs and the `docker login` handle.
+// Audited admin+ action, since it changes URLs and the docker login handle.
 func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceNameRequest) error {
 	ws, err := h.svc.Get(middlewares.WorkspaceID(c))
 	if err != nil {
@@ -202,9 +190,7 @@ func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceName
 	return ok(c, ws)
 }
 
-// Delete tears down a workspace and all its resources synchronously (owner
-// only). The UI uses the streaming StartDeletion path for live progress; this
-// REST endpoint gives CLI / API callers the same full teardown in one call.
+// Gives CLI/API callers the full teardown in one call; the UI uses streaming StartDeletion.
 func (h *WorkspaceHandler) Delete(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	if err := h.account.GuardDeletion(wsID); err != nil {
@@ -220,9 +206,6 @@ func (h *WorkspaceHandler) Delete(c *okapi.Context) error {
 	return message(c, "workspace deleted")
 }
 
-// StartDeletion begins an asynchronous workspace teardown and returns the
-// initial job snapshot (owner only). The client streams live progress from
-// DeletionJobEvents and navigates away once the job reports success.
 func (h *WorkspaceHandler) StartDeletion(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	if err := h.account.GuardDeletion(wsID); err != nil {
@@ -274,9 +257,7 @@ func (h *WorkspaceHandler) UpdateMemberRole(c *okapi.Context, req *UpdateMemberR
 	if err != nil || memberUserID <= 0 {
 		return c.AbortBadRequest("invalid user id")
 	}
-	// Read the old role first: after the update there is nothing left to compare
-	// against, and "your role changed" without saying from what is not much of a
-	// notice.
+	// After the update there is nothing left to compare against.
 	oldRole := h.memberRole(wsID, uint(memberUserID))
 	if err := h.svc.UpdateMemberRole(wsID, middlewares.WorkspaceRole(c), uint(memberUserID), models.WorkspaceRole(req.Body.Role)); err != nil {
 		return h.mapWorkspaceErr(c, err)
@@ -300,9 +281,7 @@ func (h *WorkspaceHandler) memberRole(wsID, userID uint) string {
 	return ""
 }
 
-// notifyRoleChange emails the member. Best-effort and silent on failure: the role
-// has already changed, and a mail server problem must not fail the request that
-// changed it.
+// Best-effort: a mail failure must not fail the request that already changed the role.
 func (h *WorkspaceHandler) notifyRoleChange(c *okapi.Context, wsID, userID uint, oldRole, newRole string) {
 	if h.mailer == nil || oldRole == newRole || newRole == "" {
 		return
@@ -383,8 +362,6 @@ func (h *WorkspaceHandler) AcceptInvite(c *okapi.Context, req *AcceptInviteReque
 	return ok(c, ws)
 }
 
-// MyInvitations lists the pending invitations addressed to the caller's email,
-// so an invited user can discover and accept them after signing in.
 func (h *WorkspaceHandler) MyInvitations(c *okapi.Context) error {
 	invs, err := h.svc.ListInvitationsForEmail(c.GetString("email"))
 	if err != nil {
@@ -393,8 +370,7 @@ func (h *WorkspaceHandler) MyInvitations(c *okapi.Context) error {
 	return ok(c, invs)
 }
 
-// AcceptMyInvitation accepts a pending invitation by id, validating it is
-// addressed to the caller's email (no raw token needed).
+// No raw token needed: the invitation must be addressed to the caller's email.
 func (h *WorkspaceHandler) AcceptMyInvitation(c *okapi.Context) error {
 	userID := middlewares.UserID(c)
 	id, err := strconv.Atoi(c.Param("invitationID"))
@@ -424,8 +400,6 @@ func (h *WorkspaceHandler) AuditLog(c *okapi.Context) error {
 	return paginated(c, withActors(h.users, entries), total, page, size)
 }
 
-// AuditLogDetail is a single audit entry enriched with the actor's name/email,
-// which the AuditLog table stores only by id.
 type AuditLogDetail struct {
 	models.AuditLog
 	ActorName  string `json:"actor_name,omitempty"`
@@ -434,8 +408,6 @@ type AuditLogDetail struct {
 	ActorKind string `json:"actor_kind,omitempty"`
 }
 
-// GetAuditLog returns a single audit entry (admin+), scoped to the workspace and
-// enriched with the actor's name and email.
 func (h *WorkspaceHandler) GetAuditLog(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagAuditLog); err != nil {
 		return entitlementAbort(c, err)

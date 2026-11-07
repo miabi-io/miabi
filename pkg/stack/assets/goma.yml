@@ -1,22 +1,8 @@
-# Goma Gateway configuration for Miabi.
-#
-# - Terminates TLS and auto-issues Let's Encrypt certificates (certManager).
-# - Routes the control-plane domain to Miabi, which serves both the API
-#   (/api, /docs) and the web UI (single binary).
-# - The file provider watches /etc/goma/providers, where Miabi writes a
-#   route file per user application (hot-reloaded).
-#
-# ${MIABI_DOMAIN} and ${MIABI_ACME_EMAIL} are interpolated from the
-# gateway container's environment (set them in .env) — no need to edit this file.
+# ${MIABI_DOMAIN} and ${MIABI_ACME_EMAIL} come from the gateway container's environment; no need to edit this file.
 version: 2
 gateway:
   tls:
-    # Directory of static, pre-issued certificates to serve (in addition to the
-    # ACME certs below) — e.g. a platform wildcard, or a workspace's uploaded
-    # custom cert. Goma loads every cert+key pair here, matched by shared base
-    # name (`<name>.crt|.cert|.pem` + `<name>.key`), and picks one per request by
-    # SNI. Use it for certs you manage yourself; leave issuance to ACME otherwise.
-    # Ref: https://goma.jkaninda.dev/usermanual/tls.html#directory-based-certificate-loading
+    # Static certs served by SNI alongside ACME, paired by base name (<name>.crt + <name>.key).
     certsDir: /etc/goma/certs
   entryPoints:
     web:
@@ -71,42 +57,24 @@ gateway:
   #     - "True-Client-IP"
   #     - "Forwarded"
 
-  # Flush the DNS cache after a route reload so a backend whose container was
-  # re-created (new IP on redeploy) is re-resolved instead of served stale.
+  # Re-resolve backends after a reload, since a redeployed container gets a new IP.
   networking:
     dnsCache:
       ttl: 300
       clearOnReload: true
-  # Optional: reuse the stack's Redis for shared caching and distributed rate
-  # limiting. Without it Goma falls back to in-memory (per-instance) state. The
-  # password is interpolated from the gateway container's environment.
+  # Optional: without Redis, caching and rate limiting fall back to per-instance memory.
   redis:
     addr: miabi-redis:6379
     password: "${MIABI_REDIS_PASSWORD}"
-  # Workspace Analytics: publish one event per request to a Redis stream, which
-  # Miabi's analytics consumer rolls up into the Traffic / Performance / Web
-  # dashboards. Events carry NO client IP — only a daily-salted visitor hash and,
-  # when a GeoIP database is present, a country resolved here at the edge.
-  #
-  # GOMA_ANALYTICS_* on the gateway container overrides anything set here.
+  # Events carry no client IP, only a daily-salted visitor hash; GOMA_ANALYTICS_* env overrides this.
   analytics:
     enabled: true
     stream: goma:analytics
-    # Fraction of requests recorded, 0..1. Lower it on very high-traffic edges;
-    # the dashboards scale the sampled counts back up.
+    # The dashboards scale sampled counts back up.
     sample: 1
-    # Approximate cap on the stream, so a stopped consumer can't grow Redis
-    # without bound.
+    # So a stopped consumer can't grow Redis without bound.
     maxLen: 1000000
-  #
-  # Country resolution (the analytics country panels + the geoBlock middleware)
-  # deliberately has NO `geoip.database` here. Goma looks in /etc/goma/geoip/ for
-  # country.mmdb, then GeoLite2-Country.mmdb, and both install paths mount that
-  # directory. Naming one file would disable the other name: an explicit path is
-  # used exactly as given, with no fallback. Goma checks the file every 5 minutes and
-  # loads an updated one without a restart. It ships none (every GeoIP dataset
-  # carries license terms only you can accept); with no file, country data is
-  # simply absent and nothing else is affected.
+  # No geoip.database on purpose: an explicit path disables the country.mmdb/GeoLite2-Country.mmdb fallback.
   providers:
     file:
       enabled: true
@@ -158,26 +126,16 @@ gateway:
     #  backends:
     #    - endpoint: http://miabi:9000
 
-# Middlewares for the Miabi control-plane route above. Routes for user
-# applications are written separately under /etc/goma/providers and are not
-# affected by anything here.
+# Applies only to the control-plane route; app routes live under /etc/goma/providers.
 middlewares:
-  # Force HTTPS: 301-redirect any cleartext request to https so the panel, API,
-  # and session cookies are never exposed over plain HTTP.
+  # So the panel, API and session cookies never travel over plain HTTP.
   - name: miabi-https-redirect
     type: redirectScheme
     rule:
       scheme: https
       permanent: true
 
-  # Optional IP allowlist — lock the Miabi panel and API down to trusted
-  # networks (home / office / VPN). Requests from any other address get a 403;
-  # user apps proxied by Goma are unaffected. Left disabled by default so a
-  # fresh install stays reachable from anywhere. To turn it on:
-  #   1. Replace the example ranges below with your own.
-  #   2. Uncomment `- miabi-ip-allowlist` in the route's middlewares above.
-  # `sourceRanges` accepts single IPs or CIDR blocks, IPv4 and IPv6 alike; add
-  # as many as you need.
+  # Disabled by default so a fresh install stays reachable; replace the ranges, then enable it on the route.
   - name: miabi-ip-allowlist
     type: accessPolicy
     rule:
@@ -216,27 +174,10 @@ middlewares:
   #    # 404 hides that there is anything there at all; 403 says "not from here".
   #    statusCode: 404
 
-  # Optional brute-force protection for the sign-in surface. Only the endpoints
-  # that accept credentials are limited, so the panel and the rest of the API
-  # are untouched — rate-limiting those would break normal use.
-  #
-  # A client over the limit gets 429. After `banAfter` violations it is banned
-  # for `banDuration` and gets 403 until that expires. The defaults leave room
-  # for a person mistyping a password while closing the door on a script:
-  # 10 attempts a minute, 15 in a burst, banned for 15 minutes after 3
-  # violations.
-  #
-  # Clients are identified by IP. If Goma sits behind a CDN or load balancer,
-  # configure `proxy.trustedProxies` above first — otherwise every request
-  # carries the proxy's address, the whole world shares one bucket, and a single
-  # attacker locks everyone out.
-  #
-  # To turn it on, uncomment `- miabi-auth-ratelimit` in the route above.
+  # Only credential endpoints are limited; behind a CDN set proxy.trustedProxies first or everyone shares one bucket.
   - name: miabi-auth-ratelimit
     type: rateLimit
     paths:
-      # Credential-accepting endpoints only: sign-in, the CLI's login token,
-      # password reset, and 2FA verification.
       - ^/api/v1/auth/(login|login-token|forgot-password|reset-password|complete-password-reset|2fa/verify).*$
     rule:
       unit: minute

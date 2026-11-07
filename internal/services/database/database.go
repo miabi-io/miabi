@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package database provisions database server instances (PostgreSQL, MySQL,
-// MariaDB, Redis) as containers and manages the logical databases they host, so
-// a single instance can back many apps instead of one container per database.
+// Package database provisions shared database server instances and manages the logical databases they host.
 package database
 
 import (
@@ -133,9 +131,7 @@ var specs = map[models.DBEngine]engineSpec{
 	},
 }
 
-// dataMount is the in-container path the instance's data volume mounts at. PostgreSQL 18+ images store the
-// cluster in a major-version subdirectory and reject a volume mounted at the pre-18 ".../data" path as a stray
-// mount, so mounting one level up lets the data subdirectory live on the volume. Other engines keep their path.
+// PostgreSQL 18+ rejects a volume at the pre-18 ".../data" path, so mount one level up for those versions.
 func dataMount(engine models.DBEngine, version, defaultDir string) string {
 	if engine == models.DBEnginePostgres && postgresMajor(version) >= 18 {
 		return "/var/lib/postgresql"
@@ -143,8 +139,6 @@ func dataMount(engine models.DBEngine, version, defaultDir string) string {
 	return defaultDir
 }
 
-// postgresMajor parses the leading major version from a Postgres image tag such
-// as "18", "18.1", "18-alpine", or "17-bookworm". Returns 0 when absent.
 func postgresMajor(version string) int {
 	n, digits := 0, 0
 	for i := 0; i < len(version); i++ {
@@ -161,8 +155,7 @@ func postgresMajor(version string) int {
 	return n
 }
 
-// Enqueuer schedules background provisioning. Implemented by the worker
-// producer; an interface here avoids a database->worker import cycle.
+// Enqueuer schedules background provisioning; an interface avoids a database->worker import cycle.
 type Enqueuer interface {
 	EnqueueProvisionDB(instanceID, serverID uint) error
 	EnqueueUpgradeDB(instanceID, serverID uint, target, path string, stopApps bool) error
@@ -175,23 +168,16 @@ type NodeDocker interface {
 	LocalID() uint
 }
 
-// NodeGuard validates that a node can accept a new placement (exists, not
-// cordoned). Implemented by the node service; injected after construction.
 type NodeGuard interface {
 	Placeable(serverID uint) error
 }
 
-// EventRecorder writes instance timeline events (provision/start/stop/restart/upgrade
-// outcomes) and drops a deleted instance's timeline. Injected post-construction so the
-// database service depends on the capability, not the events package.
 type EventRecorder interface {
 	EmitDatabase(workspaceID, databaseID uint, name string, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint)
 	DeleteByDatabase(databaseID uint) error
 }
 
-// ServerInfo resolves a node's display metadata by id. Implemented by the node
-// service; injected after construction (optional — read paths degrade to an
-// empty server name when unset, e.g. in the worker).
+// ServerInfo resolves a node's display metadata; optional, read paths show an empty server name when unset.
 type ServerInfo interface {
 	Get(id uint) (*models.Server, error)
 }
@@ -202,8 +188,7 @@ type Service struct {
 	enqueuer   Enqueuer
 	nodeGuard  NodeGuard
 	serverInfo ServerInfo
-	// storage places the data volume on an operator-registered disk. nil keeps every database on
-	// Docker's own data root, which is where they were before classes reached them.
+	// nil keeps every database on Docker's own data root.
 	storage  StorageClassPlacer
 	secrets  SecretWriter
 	images   ImageResolver
@@ -214,17 +199,13 @@ type Service struct {
 	ownerOf  OwnerExister
 	apps     AppController
 	backups  LogicalBackup
-	// bus fans out live instance status (provisioning, upgrade phases, start/stop)
-	// to SSE subscribers. Shared with the embedded worker so worker-driven phase
-	// changes reach an open detail-page stream. Nil-safe (no-op when unwired).
+	// Shared with the embedded worker so worker-driven phase changes reach an open SSE stream; nil-safe.
 	bus         *eventbus.Bus
 	events      EventRecorder
 	sizeSyncing sync.Map
 }
 
-// OwnerExister reports whether an owning resource of the given kind/id still exists in the workspace,
-// letting Delete refuse to orphan a database that still backs an app or stack. Wired by the
-// composition root to avoid depending on the app/stack repositories directly.
+// OwnerExister lets Delete refuse to orphan a database that still backs an app or stack.
 type OwnerExister func(kind string, id, workspaceID uint) bool
 
 // SetOwnerExister wires the owner-existence check used by Delete (nil-safe).
@@ -250,9 +231,7 @@ func (s *Service) emit(inst *models.DatabaseInstance, t models.AppEventType, sev
 	s.events.EmitDatabase(inst.WorkspaceID, inst.ID, inst.Name, t, sev, msg, meta, nil)
 }
 
-// SetEventBus wires the in-process bus used to stream live instance status over
-// SSE. Inject the SAME bus into the HTTP-facing and embedded-worker services so
-// worker-driven phase changes reach an open stream (nil-safe).
+// SetEventBus must receive the same bus as the embedded worker so its phase changes reach open streams.
 func (s *Service) SetEventBus(b *eventbus.Bus) { s.bus = b }
 
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
@@ -261,21 +240,14 @@ func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 // SetNodeGuard wires the placement guard consulted when provisioning on a node.
 func (s *Service) SetNodeGuard(g NodeGuard) { s.nodeGuard = g }
 
-// StorageClassPlacer decides which operator-registered disk a data volume lands on, and cleans up
-// after it. Satisfied by *storage.Service, so a database is placed by the same rules — and the same
-// plan binding — as a workspace volume.
 type StorageClassPlacer interface {
 	PlaceVolume(ctx context.Context, workspaceID, serverID uint, requested, dockerName string) (className, devicePath string, err error)
 	ReclaimVolumeDir(ctx context.Context, serverID uint, className, dockerName string)
 }
 
-// SetStorageClasses wires storage-class placement for data volumes (nil-safe; without it every
-// database lands on Docker's data root).
 func (s *Service) SetStorageClasses(p StorageClassPlacer) { s.storage = p }
 
-// dataVolumeSpec is how a database's data volume is created, class-backed or not. Shared by the
-// pre-create at provision time and the idempotent re-ensure at bring-up, so both land on the same
-// disk — a class applied in only one of them would put a recreated volume somewhere else.
+// Shared by provision and bring-up so a recreated volume lands on the same disk.
 func (s *Service) dataVolumeSpec(inst *models.DatabaseInstance) docker.VolumeSpec {
 	spec := docker.VolumeSpec{
 		Name: inst.VolumeName,
@@ -299,8 +271,6 @@ func (s *Service) dataVolumeSpec(inst *models.DatabaseInstance) docker.VolumeSpe
 	return spec
 }
 
-// SetSecrets wires the Vault writer that auto-provisions a database's connection
-// secrets and cascades their deletion. Optional (request-side only).
 func (s *Service) SetSecrets(w SecretWriter) { s.secrets = w }
 
 // ImageResolver resolves a deployment-config catalog key to an image ref.
@@ -308,21 +278,14 @@ type ImageResolver interface {
 	Ref(key string) string
 }
 
-// SetImageResolver wires the deployment-config resolver used to pin engine images
-// at provision time. Optional (request-side; the worker uses the pinned image).
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 
-// NetworkProvider resolves workspace Docker networks so a database joins the same
-// networks its applications do — the default network always, plus any custom
-// networks the user attaches. Implemented by the network service.
 type NetworkProvider interface {
 	EnsureDefault(ctx context.Context, workspaceID uint) (*models.Network, error)
 	Get(workspaceID, id uint) (*models.Network, error)
 }
 
-// SetNetworkProvider wires the resolver for workspace networks, where databases
-// run alongside the workspace's applications. Optional (request-side): when
-// unset, databases fall back to the shared gateway network.
+// SetNetworkProvider wires workspace networks; when unset, databases fall back to the shared gateway network.
 func (s *Service) SetNetworkProvider(p NetworkProvider) { s.networks = p }
 
 // SwarmNetworks creates workspace networks in a remote swarm. Implemented by services/cluster.
@@ -331,12 +294,9 @@ type SwarmNetworks interface {
 	EnsureWorkspaceOverlay(ctx context.Context, clusterID uint, n models.Network) error
 }
 
-// SetSwarmNetworks wires network creation for instances in a remote swarm (nil-safe; nil treats every
-// network per its record, as in the default cluster).
 func (s *Service) SetSwarmNetworks(sw SwarmNetworks) { s.swarm = sw }
 
-// ensureNetwork makes one of an instance's networks usable on its node: an overlay in a remote swarm goes
-// through that swarm's manager, any other overlay already exists, and a bridge is created on the node.
+// Overlays in a remote swarm go through its manager; other overlays already exist; bridges are created on the node.
 func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID uint, n models.Network) error {
 	switch {
 	case s.swarm != nil && s.swarm.WorkspaceOverlay(clusterID, n):
@@ -348,10 +308,7 @@ func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID
 	return err
 }
 
-// defaultNetwork resolves the workspace's default network record — where databases live alongside
-// the workspace's own apps. It returns an error rather than nil: the caller pins this network for the
-// instance's lifetime, and the old fallback to the shared proxy network was a silent, permanent loss
-// of isolation.
+// Errors rather than falling back to the shared proxy network: the pin is permanent and would lose isolation.
 func (s *Service) defaultNetwork(ctx context.Context, workspaceID uint) (*models.Network, error) {
 	if s.networks == nil {
 		return nil, ErrNoWorkspaceNetwork
@@ -366,16 +323,12 @@ func (s *Service) defaultNetwork(ctx context.Context, workspaceID uint) (*models
 	return n, nil
 }
 
-// instanceNetworkNames is the full set of Docker networks the instance's own
-// container — and every helper job (DDL, size probe, backup, restore) — joins
-// so they share a network with the instance and resolve it by name.
+// Helper jobs (DDL, size probe, backup, restore) join the same networks so they resolve the instance by name.
 func instanceNetworkNames(inst *models.DatabaseInstance) []string {
 	return inst.NetworkNames(node.AppNetwork)
 }
 
-// ensureInstanceNetworks makes every network the instance is on exist on the node and returns their names, so
-// a helper job attaches to the same full set the instance's container runs on — exactly as bringUp does.
-// Returning the primary alone risks a network the instance is not on: "could not translate host name".
+// Returning only the primary network risks one the instance is not on: "could not translate host name".
 func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := instanceNetworkNames(inst)
 	for _, name := range names {
@@ -411,9 +364,6 @@ func engineImageKey(engine models.DBEngine) string {
 	return ""
 }
 
-// resolveEngineImage builds the full server image (repo:tag) for an engine, taking the repo (and mirror)
-// from the deployment-config catalog and the tag from the requested version (falling back to the
-// configured default tag). Returns the image ref and the effective tag.
 func (s *Service) resolveEngineImage(spec engineSpec, engine models.DBEngine, version string) (image, tag string) {
 	ref := spec.image(spec.defaultVersion) // built-in default, e.g. bundled.PostgresImage
 	if s.images != nil {
@@ -429,8 +379,6 @@ func (s *Service) resolveEngineImage(spec engineSpec, engine models.DBEngine, ve
 	return repo + ":" + tag, tag
 }
 
-// EngineDefault is the resolved default image/version for an engine, used to
-// prefill the create form so it reflects the admin's deployment-config tags.
 type EngineDefault struct {
 	Engine  models.DBEngine `json:"engine"`
 	Image   string          `json:"image"`   // effective default image ref
@@ -442,8 +390,6 @@ type EngineDefault struct {
 	DefaultCPUCores float64 `json:"default_cpu_cores"`
 }
 
-// EngineDefaults returns the resolved default image+version per engine (from the
-// deployment-config catalog), in a stable order.
 func (s *Service) EngineDefaults() []EngineDefault {
 	order := []models.DBEngine{models.DBEnginePostgres, models.DBEngineMySQL, models.DBEngineMariaDB, models.DBEngineRedis, models.DBEngineMongoDB, models.DBEngineLibSQL}
 	out := make([]EngineDefault, 0, len(order))
@@ -462,8 +408,7 @@ func (s *Service) EngineDefaults() []EngineDefault {
 	return out
 }
 
-// engineImage returns the image to run for an existing instance: the pinned ref
-// if set, else rebuilt from the engine default + stored version (legacy rows).
+// Legacy rows without a pinned image rebuild it from the engine default and stored version.
 func (s *Service) engineImage(spec engineSpec, inst *models.DatabaseInstance) string {
 	if inst.Image != "" {
 		return inst.Image
@@ -472,8 +417,6 @@ func (s *Service) engineImage(spec engineSpec, inst *models.DatabaseInstance) st
 	return img
 }
 
-// provisionSecrets creates/rotates the owned Vault secrets for a logical
-// database (best-effort; logged on failure).
 func (s *Service) provisionSecrets(workspaceID uint, inst *models.DatabaseInstance, d *models.Database) {
 	if s.secrets == nil {
 		return
@@ -491,8 +434,6 @@ func (s *Service) provisionSecrets(workspaceID uint, inst *models.DatabaseInstan
 	}
 }
 
-// provisionInstanceSecrets creates the owned Vault secrets for an instance that
-// has no logical databases (Redis).
 func (s *Service) provisionInstanceSecrets(workspaceID uint, inst *models.DatabaseInstance) {
 	if s.secrets == nil {
 		return
@@ -509,9 +450,7 @@ func (s *Service) provisionInstanceSecrets(workspaceID uint, inst *models.Databa
 	}
 }
 
-// createLibsqlDatabase creates the single implicit logical database for a libSQL instance, storing the
-// client JWT (encrypted) as its "password". It is created in the provisioning state and marked running
-// once sqld is up. No DDL runs — libSQL serves the database the moment the container starts.
+// No DDL runs: libSQL serves the database as soon as the container starts.
 func (s *Service) createLibsqlDatabase(workspaceID uint, inst *models.DatabaseInstance, clientToken string) error {
 	encTok, err := crypto.EncryptWS(workspaceID, clientToken)
 	if err != nil {
@@ -528,9 +467,7 @@ func (s *Service) createLibsqlDatabase(workspaceID uint, inst *models.DatabaseIn
 	return nil
 }
 
-// markLibsqlDatabaseRunning flips the implicit libSQL database to running once the server actually serves
-// HTTP. libSQL has no readiness CLI and no DDL to apply, and a container reports "running" before sqld accepts
-// connections — so poll /health first and leave the record provisioning (logged) if it never becomes ready.
+// A container reports running before sqld accepts connections, so poll /health before marking it running.
 func (s *Service) markLibsqlDatabaseRunning(ctx context.Context, inst *models.DatabaseInstance) {
 	if err := s.waitLibsqlReady(ctx, inst); err != nil {
 		logger.Error("libsql not ready; database left provisioning", "instance", inst.ID, "error", err)
@@ -552,9 +489,7 @@ func (s *Service) markLibsqlDatabaseRunning(ctx context.Context, inst *models.Da
 	}
 }
 
-// waitLibsqlReady blocks until the libSQL server answers HTTP, polling /health from a tiny helper container
-// on the instance's networks — the control-plane process is not necessarily on the workspace network, so it
-// cannot reach the alias directly. Bounded; returns the last probe output on timeout.
+// Probes from a helper container: the control plane is not necessarily on the workspace network.
 func (s *Service) waitLibsqlReady(ctx context.Context, inst *models.DatabaseInstance) error {
 	dc, err := s.dockerFor(inst)
 	if err != nil {
@@ -594,12 +529,8 @@ func (s *Service) waitLibsqlReady(ctx context.Context, inst *models.DatabaseInst
 	}
 }
 
-// SetServerInfo wires the resolver used to annotate instances with their node's
-// display name on read paths.
 func (s *Service) SetServerInfo(si ServerInfo) { s.serverInfo = si }
 
-// annotateServer fills the transient ServerName from the node record so the UI
-// can show where an instance lives. Best-effort: leaves it empty on any error.
 func (s *Service) annotateServer(inst *models.DatabaseInstance) {
 	if inst == nil || s.serverInfo == nil {
 		return
@@ -613,14 +544,7 @@ func (s *Service) dockerFor(inst *models.DatabaseInstance) (docker.Client, error
 	return s.clients.For(inst.ServerID)
 }
 
-// nodeGone reports whether the node this instance lived on has been deleted. Deleting a node leaves
-// its workloads pointing at a server row that no longer exists, and an instance in that state used to
-// be stuck: Stop needed a Docker client it could never get, and Delete refused because the instance
-// was still marked running — so neither could ever succeed.
-//
-// This is deliberately narrower than "unreachable". A node that is merely offline may well still be
-// running the container, and saying otherwise would be a lie; a node that no longer exists is not
-// coming back.
+// Deliberately narrower than unreachable: an offline node may still run the container; a deleted one is not coming back.
 func (s *Service) nodeGone(inst *models.DatabaseInstance) bool {
 	if inst == nil || s.serverInfo == nil {
 		return false // unwired: assume the node is fine rather than destroy on a guess
@@ -632,10 +556,7 @@ func (s *Service) nodeGone(inst *models.DatabaseInstance) bool {
 	return err != nil || srv == nil
 }
 
-// guardData refuses to start an instance whose data volume is gone. Docker would create an empty one and
-// the engine would initialize a fresh, empty database over the data it should have kept, so the way forward
-// is a restore — which Miabi never performs by itself. The upgrade paths deliberately create and drop
-// volumes of their own, so they are not guarded here.
+// Docker would create an empty volume and the engine would init over it; upgrade paths manage volumes themselves.
 func (s *Service) guardData(ctx context.Context, inst *models.DatabaseInstance) error {
 	return datavolume.CheckVolume(ctx, s.clients, inst.ServerID, inst.VolumeName, inst.VolumeEngineCreatedAt, inst.Name)
 }
@@ -654,8 +575,6 @@ type ConnectionInfo struct {
 	ReadOnlyURI      string `json:"readonly_uri,omitempty"`
 }
 
-// Provision creates the instance record (admin credentials and connection
-// details known up front) and enqueues the container bring-up to the worker.
 func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, name string, engine models.DBEngine, version string, volumeSizeBytes int64, storageClass string, res Resources, meta, annotations models.Metadata) (*models.DatabaseInstance, error) {
 	if volumeSizeBytes < 0 {
 		volumeSizeBytes = 0
@@ -699,8 +618,6 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if _, err := s.clients.For(serverID); err != nil {
 		return nil, err // chosen node is offline
 	}
-	// Resolve the server image from the deployment-config catalog (repo + mirror)
-	// with the requested version as the tag; pin it on the instance.
 	image, version := s.resolveEngineImage(spec, engine, version)
 	instName, err := slug.Unique(name, "db", func(c string) (bool, error) {
 		return s.repo.ExistsByName(workspaceID, c)
@@ -715,9 +632,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		return nil, err
 	}
 
-	// libSQL authenticates with a JWT instead of a password: generate its keypair
-	// up front so the implicit logical database (created below) can carry a client
-	// token and bring-up can start sqld with the matching public key.
+	// libSQL authenticates with a JWT: generate the keypair up front so the implicit database can carry a client token.
 	var libsqlPrivEnc, libsqlToken string
 	if engine == models.DBEngineLibSQL {
 		if libsqlPrivEnc, libsqlToken, err = libsqlNewKeypair(workspaceID); err != nil {
@@ -740,13 +655,10 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if err := s.repo.Create(inst); err != nil {
 		return nil, err
 	}
-	// In-network host (also the container name + DNS alias): a random token plus
-	// the id. Generated once here and persisted, so connection strings injected
-	// into apps stay valid for the instance's lifetime.
+	// Persisted once so connection strings injected into apps stay valid for the instance's lifetime.
 	inst.Host = fmt.Sprintf("mb-db-%s-%d", slug.Token(8), inst.ID)
 	inst.VolumeName = inst.Host + "-data"
-	// The volume name is only known now (it carries the id), and the class's directory is named
-	// after it — so placement happens here, once the instance has its identity.
+	// The class directory is named after the volume, which carries the id, so placement happens only now.
 	if s.storage != nil {
 		className, _, perr := s.storage.PlaceVolume(ctx, workspaceID, serverID, storageClass, inst.VolumeName)
 		if perr != nil {
@@ -755,13 +667,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 		}
 		inst.StorageClassName = className
 	}
-	// Pin the network the instance runs on (the workspace's default network) so
-	// every consumer — bring-up, DDL, size probes, backups, port-forward — agrees
-	// on where to reach it, for the instance's lifetime.
-	// A database belongs on its workspace's own network. Falling back to the shared proxy network
-	// put it where every tenant's routed containers can reach it — silently, behind a warning, and
-	// for the instance's lifetime, since this pin is permanent. Refuse instead: a database nobody
-	// can isolate is worse than a database that was not created.
+	// Refuse rather than fall back to the shared proxy network: this pin is permanent and would expose the DB to every tenant.
 	defNet, nerr := s.defaultNetwork(ctx, workspaceID)
 	if nerr != nil {
 		return nil, nerr
@@ -770,15 +676,11 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if err := s.repo.Update(inst); err != nil {
 		return nil, err
 	}
-	// Record the default network as an attached network (the user can attach more
-	// later); the container joins every attached network at bring-up.
 	if err := s.repo.AddNetwork(inst, defNet); err != nil {
 		logger.Warn("attach default network to database", "instance", inst.ID, "error", err)
 	}
 
-	// Create the data volume up front on the target node, so creating a database always creates its volume
-	// immediately — independent of the async container bring-up (which, for heavier engines, may lag or fail
-	// to pull). bringUp re-ensures it idempotently.
+	// Created up front so the volume exists even if the async bring-up lags or fails to pull; bringUp re-ensures it.
 	if dc, derr := s.clients.For(serverID); derr == nil {
 		dv, err := dc.CreateVolumeWith(ctx, s.dataVolumeSpec(inst))
 		if err != nil {
@@ -791,13 +693,10 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 
 	switch engine {
 	case models.DBEngineRedis:
-		// Redis has no logical databases — its connection secrets are owned by the
-		// instance and created here (credentials are known up front).
+		// Redis has no logical databases, so the instance owns its connection secrets.
 		s.provisionInstanceSecrets(workspaceID, inst)
 	case models.DBEngineLibSQL:
-		// libSQL hosts exactly one database, with no user-managed logical databases. Create the single implicit
-		// logical record now — carrying the client token — so the existing per-database backup and app-injection
-		// pipeline applies unchanged. It is marked running once sqld is up (markLibsqlDatabaseRunning).
+		// One implicit logical record lets the per-database backup and app-injection pipeline apply unchanged.
 		if err := s.createLibsqlDatabase(workspaceID, inst, libsqlToken); err != nil {
 			logger.Error("create implicit libsql database", "instance", inst.ID, "error", err)
 		}
@@ -809,9 +708,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	return inst, nil
 }
 
-// SetOwner records the owning resource (app/stack/user) on an existing instance's metadata. Used to
-// back-link a template's database to the app or stack it backs once those exist. Built-in keys are
-// authoritative, so this overrides any prior owner.
+// Built-in owner keys are authoritative, so this overrides any prior owner.
 func (s *Service) SetOwner(workspaceID, id uint, kind string, ownerID uint, name string) error {
 	inst, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -842,9 +739,7 @@ func (s *Service) RunProvision(ctx context.Context, instanceID uint) error {
 		s.emit(inst, models.EventDatabaseProvisionFailed, models.SeverityError, "Provisioning failed: "+err.Error(), nil)
 		return err
 	}
-	// Apply any logical databases that were reserved before bring-up (e.g. a
-	// marketplace install of a dedicated database). libSQL has no DDL/readiness
-	// probe: its single implicit database just tracks the container.
+	// libSQL has no DDL or readiness probe: its single implicit database just tracks the container.
 	if inst.Engine == models.DBEngineLibSQL {
 		s.markLibsqlDatabaseRunning(ctx, inst)
 	} else {
@@ -855,9 +750,7 @@ func (s *Service) RunProvision(ctx context.Context, instanceID uint) error {
 	return nil
 }
 
-// applyPendingDatabases runs the deferred CREATE DATABASE/USER DDL for logical databases that were
-// reserved (via PrepareDatabase) before the instance was running. Best-effort: a failure is logged and the
-// database left provisioning rather than failing the bring-up, which is not safely retryable.
+// Best-effort: a failure leaves the database provisioning, since failing bring-up is not safely retryable.
 func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.DatabaseInstance) {
 	if !inst.SupportsLogicalDatabases() {
 		return
@@ -877,9 +770,7 @@ func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.Databa
 	if !hasPending {
 		return
 	}
-	// A container reports "running" before the engine accepts connections, so wait until a trivial admin query
-	// succeeds. Otherwise the CREATE USER/DATABASE DDL races the engine's own startup, fails, and leaves the
-	// logical database stuck provisioning — its role never created, so apps can't authenticate.
+	// Otherwise the DDL races engine startup and leaves the logical database stuck provisioning without its role.
 	if err := s.waitReady(ctx, inst); err != nil {
 		logger.Error("engine not ready; logical databases left pending", "instance", inst.ID, "error", err)
 		return
@@ -908,9 +799,6 @@ func (s *Service) applyPendingDatabases(ctx context.Context, inst *models.Databa
 	}
 }
 
-// waitReady blocks until the engine accepts admin connections (a container reports
-// "running" before the database is ready to serve). Bounded; returns the last
-// probe error on timeout. Only meaningful for SQL engines.
 func (s *Service) waitReady(ctx context.Context, inst *models.DatabaseInstance) error {
 	deadline := time.Now().Add(90 * time.Second)
 	var lastErr error
@@ -936,9 +824,7 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if err != nil {
 		return err
 	}
-	// The instance runs on its attached workspace networks — shared with the
-	// workspace's apps so they reach it by its alias. Ensure each exists on the
-	// node (a remote node won't have them until something creates them).
+	// A remote node won't have the workspace networks until something creates them.
 	netNames, err := s.ensureInstanceNetworks(ctx, dc, inst)
 	if err != nil {
 		return err
@@ -947,8 +833,7 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if err != nil {
 		return fmt.Errorf("create volume: %w", err)
 	}
-	// Only recorded while the instance has none, so a volume replaced by hand keeps the original timestamp
-	// and the sweep can still tell the data is gone.
+	// Only recorded while unset, so a hand-replaced volume keeps the original timestamp and the sweep detects data loss.
 	_ = s.repo.SetVolumeEngineCreatedAt(inst.ID, dv.CreatedAt)
 	image := s.engineImage(spec, inst)
 	s.publishProgress(inst, "Pulling "+image)
@@ -959,11 +844,8 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 	if spec.cmd != nil {
 		cmd = spec.cmd(adminPass)
 	}
-	// The official images prepend the server binary to arguments starting with a dash, so tuning flags work
-	// with or without an explicit command.
+	// Official images prepend the server binary to dash-prefixed args, so tuning flags work with or without a command.
 	cmd = append(cmd, tuningArgs(inst.Engine, inst.MemoryBytes)...)
-	// libSQL is JWT-authenticated: its server env is derived from the instance's
-	// keypair rather than the admin password.
 	env := spec.adminEnv(inst.AdminUser, adminPass)
 	if inst.Engine == models.DBEngineLibSQL {
 		if env, err = libsqlServerEnv(inst); err != nil {
@@ -971,9 +853,7 @@ func (s *Service) bringUp(ctx context.Context, inst *models.DatabaseInstance, sp
 		}
 	}
 	s.publishProgress(inst, "Starting container")
-	// A prior attempt may have created the container but died before recording its
-	// ID (asynq retries this task on failure). Remove any leftover with our fixed
-	// name first, so the retry doesn't fail permanently with "name already in use".
+	// asynq retries may leave a container whose ID was never recorded; remove it to avoid "name already in use".
 	_ = dc.RemoveContainer(ctx, inst.Host, true)
 	containerID, err := dc.RunContainer(ctx, docker.RunSpec{
 		Name:           inst.Host,
@@ -1048,35 +928,28 @@ func (s *Service) Get(workspaceID, id uint) (*models.DatabaseInstance, error) {
 	return inst, nil
 }
 
-// LiveStatus is a lightweight, pollable view of an instance's state: the stored lifecycle status plus,
-// when a container exists, its live Docker state and a stats snapshot. The detail page polls this so a
-// user sees provisioning finish — or a crash — without a manual refresh.
+// LiveStatus is the pollable view of an instance: stored lifecycle status plus live Docker state when a container exists.
 type LiveStatus struct {
-	Status         string          `json:"status"` // headline: stored lifecycle, or live-derived when running
-	StoredStatus   models.DBStatus `json:"stored_status"`
-	ContainerState string          `json:"container_state,omitempty"`
-	Health         string          `json:"health,omitempty"`
-	Running        bool            `json:"running"`
-	Restarting     bool            `json:"restarting"`
-	RestartCount   int             `json:"restart_count"`
-	ExitCode       int             `json:"exit_code"`
-	StartedAt      string          `json:"started_at,omitempty"`
-	UptimeSeconds  int64           `json:"uptime_seconds"`
-	HasContainer   bool            `json:"has_container"`
-	// NodeMissing marks an instance whose node has been deleted: nothing is running, and the UI says
-	// so rather than showing a status nobody can act on.
-	NodeMissing bool                    `json:"node_missing,omitempty"`
-	Upgrade     *models.UpgradeProgress `json:"upgrade,omitempty"`
-	Stats       *docker.StatsSample     `json:"stats,omitempty"`
+	Status         string                  `json:"status"` // headline: stored lifecycle, or live-derived when running
+	StoredStatus   models.DBStatus         `json:"stored_status"`
+	ContainerState string                  `json:"container_state,omitempty"`
+	Health         string                  `json:"health,omitempty"`
+	Running        bool                    `json:"running"`
+	Restarting     bool                    `json:"restarting"`
+	RestartCount   int                     `json:"restart_count"`
+	ExitCode       int                     `json:"exit_code"`
+	StartedAt      string                  `json:"started_at,omitempty"`
+	UptimeSeconds  int64                   `json:"uptime_seconds"`
+	HasContainer   bool                    `json:"has_container"`
+	NodeMissing    bool                    `json:"node_missing,omitempty"`
+	Upgrade        *models.UpgradeProgress `json:"upgrade,omitempty"`
+	Stats          *docker.StatsSample     `json:"stats,omitempty"`
 }
 
-// LiveStatus inspects the instance's container and returns its real-time status.
-// Falls back to the stored status when there is no container yet (provisioning),
-// it was removed, or the node is unreachable — so polling always gets an answer.
+// LiveStatus falls back to the stored status when there is no container or the node is unreachable.
 func (s *Service) LiveStatus(ctx context.Context, inst *models.DatabaseInstance) LiveStatus {
 	ls := LiveStatus{Status: string(inst.Status), StoredStatus: inst.Status, Upgrade: inst.Upgrade}
-	// The stored status is the fallback for an unreachable node, on the theory that it is probably
-	// still running. That theory does not survive the node being deleted.
+	// The stored-status fallback assumes the node still runs it, which no longer holds once the node is deleted.
 	if s.nodeGone(inst) {
 		ls.NodeMissing = true
 		ls.Running = false
@@ -1118,9 +991,7 @@ func (s *Service) LiveStatus(ctx context.Context, inst *models.DatabaseInstance)
 	return ls
 }
 
-// deriveDBStatus maps a container's Docker state + health into a headline status for the UI. Platform
-// lifecycle states (provisioning/upgrading/failed) are authoritative and never overridden by the
-// container; otherwise the live container state wins, distinguishing a user-stopped instance from a crash.
+// Platform lifecycle states are authoritative; otherwise live container state wins, telling user-stops from crashes.
 func deriveDBStatus(stored models.DBStatus, state, health string, restarting bool) string {
 	switch stored {
 	case models.DBStatusProvisioning, models.DBStatusUpgrading, models.DBStatusFailed:
@@ -1151,8 +1022,7 @@ func deriveDBStatus(stored models.DBStatus, state, health string, restarting boo
 	return string(stored)
 }
 
-// AttachNetwork connects the instance to an additional workspace network and,
-// when its container exists, attaches it live (no restart). Idempotent.
+// AttachNetwork connects the instance to another workspace network, live when its container exists; idempotent.
 func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, networkID uint) (*models.DatabaseInstance, error) {
 	if s.networks == nil {
 		return nil, ErrNoNetworkProvider
@@ -1168,9 +1038,7 @@ func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	if err := s.repo.AddNetwork(inst, net); err != nil {
 		return nil, err
 	}
-	// Live-attach the running (or stopped) container so the change takes effect
-	// without recreating it. Best-effort: a stopped/missing container or offline
-	// node reconciles on the next bring-up.
+	// Best-effort: a stopped or missing container or offline node reconciles on the next bring-up.
 	if inst.ContainerID != "" {
 		if dc, derr := s.dockerFor(inst); derr == nil {
 			if eerr := s.ensureNetwork(ctx, dc, inst.ClusterID, *net); eerr == nil {
@@ -1183,8 +1051,7 @@ func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	return s.Get(workspaceID, instanceID)
 }
 
-// DetachNetwork disconnects the instance from a network. The workspace default
-// network (which carries the alias apps reach the instance by) cannot be removed.
+// DetachNetwork refuses the workspace default network, which carries the alias apps reach the instance by.
 func (s *Service) DetachNetwork(ctx context.Context, workspaceID, instanceID, networkID uint) (*models.DatabaseInstance, error) {
 	if s.networks == nil {
 		return nil, ErrNoNetworkProvider
@@ -1213,17 +1080,13 @@ func (s *Service) DetachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	return s.Get(workspaceID, instanceID)
 }
 
-// annotateStorage fills the transient MountPath from the engine spec's data dir
-// (version-aware: PostgreSQL 18+ mounts one level up — see dataMount).
 func annotateStorage(inst *models.DatabaseInstance) {
 	if spec, ok := specs[inst.Engine]; ok {
 		inst.MountPath = dataMount(inst.Engine, inst.Version, spec.dataDir)
 	}
 }
 
-// StreamLogs follows the instance container's logs, invoking sink for each line. tail bounds the
-// initial backlog ("" = a sensible default). When follow is true it then follows live output until the
-// context is cancelled; when false it returns after the tail.
+// StreamLogs follows the container's logs into sink; tail "" uses a default, and follow=false returns after the tail.
 func (s *Service) StreamLogs(ctx context.Context, workspaceID, instanceID uint, follow bool, tail string, sink func(docker.LogLine) error) error {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -1263,20 +1126,17 @@ func (s *Service) Start(ctx context.Context, inst *models.DatabaseInstance) erro
 	}
 	s.publishStatus(inst)
 	s.emit(inst, models.EventDatabaseStarted, models.SeverityInfo, "Instance started", nil)
-	// Heal any logical databases left pending from a racy bring-up (no-op when
-	// none are pending). Async so the request returns immediately.
+	// Heals logical databases left pending by a racy bring-up; async so the request returns immediately.
 	go s.applyPendingDatabases(context.Background(), inst)
 	return nil
 }
 
-// Stop stops the instance container and marks it stopped. The data volume and
-// records are retained, so the instance can be started again later.
+// Stop stops the container but keeps the data volume and records so the instance can start again.
 func (s *Service) Stop(ctx context.Context, inst *models.DatabaseInstance) error {
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
 	}
-	// A container on a node that no longer exists cannot be running, and there is no engine left to
-	// ask. Record the truth rather than failing forever on a client that will never come back.
+	// A node that no longer exists cannot run the container; record that rather than failing forever.
 	if s.nodeGone(inst) {
 		return s.markStoppedOrphan(inst)
 	}
@@ -1299,15 +1159,11 @@ func (s *Service) Stop(ctx context.Context, inst *models.DatabaseInstance) error
 	return nil
 }
 
-// runningBlocksDelete reports whether the "stop it first" guard applies. It is sound advice only
-// while something is actually running: on a deleted node nothing is, and the guard would otherwise
-// make the instance undeletable for good.
+// On a deleted node nothing runs, so the guard would make the instance undeletable for good.
 func (s *Service) runningBlocksDelete(inst *models.DatabaseInstance) bool {
 	return inst.Status == models.DBStatusRunning && !s.nodeGone(inst)
 }
 
-// markStoppedOrphan records that an instance on a deleted node is not running, without touching an
-// engine that no longer exists.
 func (s *Service) markStoppedOrphan(inst *models.DatabaseInstance) error {
 	inst.Status = models.DBStatusStopped
 	if err := s.repo.Update(inst); err != nil {
@@ -1347,9 +1203,7 @@ func (s *Service) Restart(ctx context.Context, inst *models.DatabaseInstance) er
 	return nil
 }
 
-// Delete stops and removes the instance container, its data volume, and its logical database records
-// (their data lives in the dropped container). Refuses while the instance is running, or when any of
-// its databases is still attached to an application.
+// Delete refuses while the instance runs or while any of its databases is attached to an application.
 func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) error {
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
@@ -1367,8 +1221,7 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 	if links, err := s.repo.ListInstanceLinks(inst.ID); err == nil && len(links) > 0 {
 		return ErrInstanceLinked
 	}
-	// Refuse when the instance still backs an owning app/stack; delete the owner
-	// instead of orphaning the database. Stale owners (already gone) don't block.
+	// Refuse while an owning app/stack still exists; stale owners don't block.
 	if ref, ok := models.Owner(inst.Metadata); ok && ref.Kind != models.OwnerUser && ref.ID > 0 && s.ownerOf != nil && s.ownerOf(ref.Kind, ref.ID, inst.WorkspaceID) {
 		name := ref.Name
 		if name == "" {
@@ -1387,8 +1240,7 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 			_ = dc.RemoveVolume(ctx, inst.VolumeName, true)
 		}
 	}
-	// A class-backed volume's data lives behind a bind, so removing the Docker volume leaves the
-	// directory. Best-effort, after the volume: a leftover directory is a reclaimable orphan.
+	// A class-backed volume's data sits behind a bind, so its directory outlives the Docker volume.
 	if s.storage != nil && inst.VolumeName != "" {
 		s.storage.ReclaimVolumeDir(ctx, inst.ServerID, inst.StorageClassName, inst.VolumeName)
 	}
@@ -1399,8 +1251,7 @@ func (s *Service) Delete(ctx context.Context, inst *models.DatabaseInstance) err
 		s.cascadeDeleteSecrets(inst.WorkspaceID, SecretOwnerDatabase, logicalDBs[i].ID)
 	}
 	s.cascadeDeleteSecrets(inst.WorkspaceID, SecretOwnerInstance, inst.ID)
-	// The timeline is instance-scoped, so it goes with the instance rather than lingering
-	// as rows no page can reach.
+	// The timeline is instance-scoped, so it would otherwise linger as unreachable rows.
 	if s.events != nil {
 		if err := s.events.DeleteByDatabase(inst.ID); err != nil {
 			logger.Error("delete database events", "id", inst.ID, "error", err)
@@ -1417,9 +1268,7 @@ func (s *Service) ListDatabases(workspaceID, instanceID uint) ([]models.Database
 	return s.repo.ListDatabases(instanceID)
 }
 
-// AppDatabase is a logical database enriched with its instance's engine and
-// network address, for display on an application. Kind "instance" rows are
-// instance links (Redis): ID and Name are the instance's.
+// Kind "instance" rows are Redis instance links: ID and Name are the instance's.
 type AppDatabase struct {
 	models.Database
 	Kind         string          `json:"kind"`
@@ -1429,8 +1278,6 @@ type AppDatabase struct {
 	Port         int             `json:"port"`
 }
 
-// ListByApp returns the logical databases attached to an application, each with
-// its instance's engine and address.
 func (s *Service) ListByApp(workspaceID, appID uint) ([]AppDatabase, error) {
 	dbs, err := s.repo.ListDatabasesByApp(workspaceID, appID)
 	if err != nil {
@@ -1475,9 +1322,7 @@ func (s *Service) ListByApp(workspaceID, appID uint) ([]AppDatabase, error) {
 	return out, nil
 }
 
-// DatabaseConnectionForApp reveals the connection for a logical database that
-// belongs to the given application (the app's own scoped credentials — not the
-// instance admin credentials).
+// DatabaseConnectionForApp reveals the app's own scoped credentials, not the instance admin ones.
 func (s *Service) DatabaseConnectionForApp(workspaceID, appID, dbID uint) (ConnectionInfo, error) {
 	d, err := s.repo.FindDatabaseInWorkspace(workspaceID, dbID)
 	if err != nil || d.ApplicationID == nil || *d.ApplicationID != appID {
@@ -1499,9 +1344,7 @@ func (s *Service) GetDatabase(workspaceID, id uint) (*models.Database, error) {
 	return d, nil
 }
 
-// AttachToApp links an existing logical database to an application, recording
-// the env prefix, mapping and resulting var names of its injected connection.
-// Node-affinity and cross-app checks are the caller's responsibility.
+// AttachToApp links a logical database to an app; node-affinity and cross-app checks are the caller's job.
 func (s *Service) AttachToApp(workspaceID, dbID, appID uint, env EnvLink) (*models.Database, error) {
 	d, err := s.repo.FindDatabaseInWorkspace(workspaceID, dbID)
 	if err != nil {
@@ -1517,9 +1360,7 @@ func (s *Service) AttachToApp(workspaceID, dbID, appID uint, env EnvLink) (*mode
 	return d, nil
 }
 
-// DetachFromApp unlinks a logical database from its application, clearing the
-// owner and env prefix. Returns the updated database (with its prior prefix so
-// the caller can clean up injected env vars before it is cleared on the row).
+// DetachFromApp returns the database with its prior prefix so the caller can clean up injected env vars.
 func (s *Service) DetachFromApp(workspaceID, dbID uint) (*models.Database, error) {
 	d, err := s.repo.FindDatabaseInWorkspace(workspaceID, dbID)
 	if err != nil {
@@ -1535,8 +1376,6 @@ func (s *Service) DetachFromApp(workspaceID, dbID uint) (*models.Database, error
 	return d, nil
 }
 
-// CreateDatabase provisions a new logical database (with its own scoped user) on
-// a running SQL instance by running the engine client as a one-shot container.
 func (s *Service) CreateDatabase(ctx context.Context, workspaceID, instanceID uint, name string, appID *uint) (*models.Database, error) {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -1585,9 +1424,7 @@ func (s *Service) CreateDatabase(ctx context.Context, workspaceID, instanceID ui
 	return d, nil
 }
 
-// UniqueDatabaseName derives a sanitized logical-database name from base that is free on the instance,
-// appending _2, _3, ... only on collision. This lets callers use a meaningful, readable name — the
-// install's name — without ever hitting ErrNameTaken.
+// UniqueDatabaseName appends _2, _3, ... on collision so callers never hit ErrNameTaken.
 func (s *Service) UniqueDatabaseName(instanceID uint, base string) (string, error) {
 	name := sanitizeIdent(base)
 	if name == "" {
@@ -1607,9 +1444,7 @@ func (s *Service) UniqueDatabaseName(instanceID uint, base string) (string, erro
 	return name + "_" + token(4), nil // pathological fallback
 }
 
-// PrepareDatabase reserves a logical database (record + scoped credentials) WITHOUT running DDL, so a
-// caller can wire an app's connection env before the instance has finished provisioning. The actual
-// CREATE runs later, when the instance comes up. For a running instance use CreateDatabase.
+// PrepareDatabase reserves a logical database without DDL; the CREATE runs once the instance is up.
 func (s *Service) PrepareDatabase(workspaceID, instanceID uint, name string, appID *uint) (*models.Database, error) {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -1644,13 +1479,10 @@ func (s *Service) PrepareDatabase(workspaceID, instanceID uint, name string, app
 	return d, nil
 }
 
-// RecreateDatabase drops and recreates a logical database (and its user) with
-// the same credentials — a clean slate for a force restore. Satisfies the backup
-// service's DDLRunner.
+// RecreateDatabase drops and recreates a logical database with the same credentials, for a force restore.
 func (s *Service) RecreateDatabase(ctx context.Context, inst *models.DatabaseInstance, db *models.Database) error {
 	if inst.Engine == models.DBEngineLibSQL {
-		// libSQL has no DROP/CREATE DDL; a force restore replaces the data wholesale
-		// via the backup tool, so there is nothing to recreate here.
+		// libSQL has no DDL; a force restore replaces the data wholesale via the backup tool.
 		return nil
 	}
 	if !inst.SupportsLogicalDatabases() {
@@ -1666,8 +1498,7 @@ func (s *Service) RecreateDatabase(ctx context.Context, inst *models.DatabaseIns
 	if err := s.execDDL(ctx, inst, createDDL(inst.Engine, db.Name, db.Username, pass)); err != nil {
 		return fmt.Errorf("recreate database: %w", err)
 	}
-	// Its role outlived the dropped database; the new one needs its grants again before a restore loads
-	// data whose dump grants to it.
+	// The role outlived the dropped database and needs its grants back before the dump that grants to it loads.
 	return s.applyReadOnly(ctx, inst, db)
 }
 
@@ -1695,8 +1526,6 @@ func (s *Service) DeleteDatabase(ctx context.Context, workspaceID, id uint) erro
 	return nil
 }
 
-// cascadeDeleteSecrets removes the owned Vault secrets when a database/instance
-// is deleted, warning if apps still referenced them.
 func (s *Service) cascadeDeleteSecrets(workspaceID uint, ownerKind string, ownerID uint) {
 	if s.secrets == nil {
 		return
@@ -1712,8 +1541,6 @@ func (s *Service) cascadeDeleteSecrets(workspaceID uint, ownerKind string, owner
 	}
 }
 
-// DatabaseConnection returns the decrypted connection info for a logical
-// database (sensitive — admin only).
 func (s *Service) DatabaseConnection(inst *models.DatabaseInstance, d *models.Database) (ConnectionInfo, error) {
 	pass, err := crypto.Decrypt(d.PasswordEnc)
 	if err != nil {
@@ -1737,18 +1564,15 @@ func (s *Service) DatabaseConnection(inst *models.DatabaseInstance, d *models.Da
 		// The scoped user is created on its own database, so authSource = the db.
 		info.URI = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=%s", d.Username, pass, inst.Host, inst.Port, d.Name, d.Name)
 	case models.DBEngineLibSQL:
-		// libSQL clients connect over HTTP with the JWT carried as authToken; `pass`
-		// is the token, not a password.
+		// libSQL clients connect over HTTP with the JWT as authToken; pass is the token.
 		info.URI = fmt.Sprintf("libsql://%s:%d?authToken=%s", inst.Host, inst.Port, pass)
 	}
 	return info, nil
 }
 
-// InstanceConnection returns the admin/direct connection for an instance. Used
-// for Redis (which has no logical databases) and for diagnostics.
+// InstanceConnection returns the admin connection, used for Redis and diagnostics.
 func (s *Service) InstanceConnection(inst *models.DatabaseInstance) (ConnectionInfo, error) {
-	// libSQL has no admin user/password; its connection lives on the single implicit
-	// logical database (carrying the client token). Delegate to it.
+	// libSQL has no admin credentials; its connection lives on the implicit logical database.
 	if inst.Engine == models.DBEngineLibSQL {
 		dbs, err := s.repo.ListDatabases(inst.ID)
 		if err != nil {
@@ -1778,8 +1602,6 @@ func (s *Service) InstanceConnection(inst *models.DatabaseInstance) (ConnectionI
 	return info, nil
 }
 
-// execDDL runs SQL statements against the instance as admin, using the engine's
-// own client image as a one-shot container on the instance's networks.
 func (s *Service) execDDL(ctx context.Context, inst *models.DatabaseInstance, statements []string) error {
 	return s.execDDLIn(ctx, inst, "", statements)
 }
@@ -1826,12 +1648,7 @@ func token(nBytes int) string {
 // IDByUID resolves a database instance's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.repo.IDByUID(uid) }
 
-// MarkNodeRemoved records that every instance on a deleted node has stopped. Called after the node
-// is gone, so the console shows something an operator can act on instead of a status frozen at the
-// moment the node vanished.
-//
-// It records, it does not destroy: the rows, their volumes' names and their credentials survive, so
-// an operator can still delete them deliberately or point them somewhere else.
+// MarkNodeRemoved marks a deleted node's instances stopped but keeps rows, volume names and credentials.
 func (s *Service) MarkNodeRemoved(serverID uint) {
 	if serverID == 0 {
 		return
@@ -1856,8 +1673,6 @@ func (s *Service) MarkNodeRemoved(serverID uint) {
 	}
 }
 
-// AuditSharedNetworkInstances reports database instances sitting on the shared proxy network, where
-// every tenant's routed containers can reach them.
 func (s *Service) AuditSharedNetworkInstances() {
 	instances, err := s.repo.ListAllInstances()
 	if err != nil {

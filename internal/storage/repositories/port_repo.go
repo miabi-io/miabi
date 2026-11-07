@@ -102,9 +102,7 @@ func (r *PortBindingRepository) ListByStatus(status models.PortBindingStatus) ([
 	return bindings, err
 }
 
-// ListApprovedByApp returns the app's approved (published) bindings.
-// ListActive returns every binding that holds or asks for a host port. Rejected
-// ones are excluded: they claim nothing, so they are history rather than state.
+// Rejected bindings are excluded: they claim nothing, so they are history rather than state.
 func (r *PortBindingRepository) ListActive() ([]models.PortBinding, error) {
 	var out []models.PortBinding
 	err := r.db.Where("status IN ?", []models.PortBindingStatus{
@@ -124,9 +122,7 @@ func (r *PortBindingRepository) DeleteByApp(appID uint) error {
 	return r.db.Where("application_id = ?", appID).Delete(&models.PortBinding{}).Error
 }
 
-// HostPortInUse reports whether an approved binding on the given node already
-// claims host:proto (host ports are per-node). Optionally excludes a binding
-// being re-evaluated.
+// HostPortInUse reports whether an approved binding on the node already claims host:proto (host ports are per-node).
 func (r *PortBindingRepository) HostPortInUse(serverID uint, hostPort int, protocol string, excludeID uint) (bool, error) {
 	var count int64
 	q := r.db.Model(&models.PortBinding{}).

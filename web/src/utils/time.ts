@@ -1,11 +1,8 @@
-// Small time formatters shared across views. The relative strings are still English —
-// they are UI text, for the catalogue in Phase 2.
+// TODO: the relative strings are still English; move them into the i18n catalogue.
 
 import { fmtDate } from './datetime'
 
-// relativeTime renders an ISO timestamp as a short "2h ago" / "in 3m" string.
-// Pass a `now` (e.g. a ticking ref value) to make it update live. Falls back to
-// a locale date for anything older than a month, and '—' for empty/invalid input.
+// Pass a ticking `now` to update live; older than a month falls back to a locale date.
 export function relativeTime(iso?: string | null, now: number = Date.now()): string {
   if (!iso) return '—'
   const t = new Date(iso).getTime()
@@ -24,11 +21,7 @@ export function relativeTime(iso?: string | null, now: number = Date.now()): str
   return fmtDate(iso)
 }
 
-// formatDuration renders the span between two timestamps as "45s" / "1m 5s" /
-// "1h 3m". When `finished` is missing it measures against `now` — pass a ticking
-// value to show a live, counting-up duration for in-progress work.
-// `created` covers a run that failed while queued and so never started.
-// `ended` stops a terminal run counting up when it has no finish timestamp.
+// `created` covers a run that failed while queued; `ended` stops a terminal run with no finish time counting up.
 export function formatDuration(
   started?: string | null,
   finished?: string | null,

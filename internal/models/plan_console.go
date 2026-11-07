@@ -24,8 +24,7 @@ import (
 	"strings"
 )
 
-// PlanConsoleSettings are the non-limit plan fields a billing console may set. Everything else on a
-// plan — placement, storage classes, platform runners — names things of one instance and stays local.
+// Other plan fields name instance-local things and stay local.
 var PlanConsoleSettings = []string{
 	"description", "is_active", "security_profile", "default_cpu_millicores", "default_memory_mb",
 	"require_resource_limits", "database_sizes",
@@ -47,8 +46,7 @@ func IsPlanConsoleField(key string) bool {
 	return false
 }
 
-// KeepConsoleFields copies the console-owned fields of from onto p, so a local edit of a managed plan
-// changes only its instance-local fields.
+// KeepConsoleFields makes a local edit of a managed plan change only its instance-local fields.
 func (p *Plan) KeepConsoleFields(from *Plan) error {
 	src, err := planFields(from)
 	if err != nil {

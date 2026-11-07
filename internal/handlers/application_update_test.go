@@ -43,8 +43,7 @@ func patch(t *testing.T, body string) *UpdateAppRequest {
 	return req
 }
 
-// The request from issue #451: a PATCH with only healthcheck fields must not clear the tag (the next
-// deploy pulled :latest), nor anything else it did not mention.
+// Issue #451: a PATCH with only healthcheck fields must not clear the tag or anything else unsent.
 func TestPartialUpdateKeepsUnsentFields(t *testing.T) {
 	req := patch(t, `{"healthcheck_type":"http","healthcheck_http_path":"/healthz","healthcheck_port":8080}`)
 	app := runningApp()
@@ -86,8 +85,6 @@ func TestStartPeriodAppliesOnItsOwn(t *testing.T) {
 	}
 }
 
-// Clearing the tag of a GitOps-owned app is a source change; before, it slipped through the guard, and
-// the PATCH that tried to restore the tag was the one refused.
 func TestClearingTagChangesSource(t *testing.T) {
 	app := runningApp()
 	cases := map[string]bool{

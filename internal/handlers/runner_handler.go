@@ -32,16 +32,12 @@ import (
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 )
 
-// RunnerConnRegistry reports whether a runner currently has a live tunnel.
-// Implemented by runners.Manager; injected after construction (nil disables the
-// annotation, so a runner just reads as not-connected).
+// nil disables the annotation, so a runner reads as not connected.
 type RunnerConnRegistry interface {
 	Connected(id uint) bool
 }
 
-// RunnerHandler exposes workspace-scoped runner management: a workspace registers, lists, edits,
-// cordons and removes its own runners. The one-time registration token is returned only at
-// create or regenerate (hashed at rest, never read back).
+// The registration token is returned only at create or regenerate: hashed at rest.
 type RunnerHandler struct {
 	svc      *runner.Service
 	conn     RunnerConnRegistry
@@ -54,15 +50,12 @@ func NewRunnerHandler(svc *runner.Service, auditLog *audit.Logger) *RunnerHandle
 	return &RunnerHandler{svc: svc, audit: auditLog}
 }
 
-// SetConnRegistry wires the live-tunnel lookup used to annotate a runner's
-// transient Connected flag (nil-safe).
 func (h *RunnerHandler) SetConnRegistry(c RunnerConnRegistry) { h.conn = c }
 
 // SetRunnerReleases wires the newest known runner release, used to flag outdated runners (nil-safe).
 func (h *RunnerHandler) SetRunnerReleases(r AgentReleases) { h.releases = r }
 
-// annotate sets the transient Connected flag from the live tunnel registry and LatestVersion when a newer
-// runner release exists. Computed per request: the runner's build and the release move independently.
+// Computed per request: the runner's build and the release move independently.
 func (h *RunnerHandler) annotate(runners []models.Runner) {
 	latest := h.latestRelease()
 	for i := range runners {
@@ -129,9 +122,7 @@ func (h *RunnerHandler) List(c *okapi.Context) error {
 	return ok(c, runners)
 }
 
-// ListShared returns the platform runners this workspace may build on — the pool narrowed to what
-// its plan offers, so a member is never shown a runner their builds would be refused. Managing them
-// stays an admin concern; this is read-only for workspace members.
+// Narrowed to what the plan offers, so a member never sees a runner their builds would be refused.
 func (h *RunnerHandler) ListShared(c *okapi.Context) error {
 	runners, err := h.svc.UsableShared(middlewares.WorkspaceID(c))
 	if err != nil {
@@ -218,8 +209,6 @@ func (h *RunnerHandler) record(c *okapi.Context, wsID *uint, action string, id u
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: wsID, Action: action, TargetType: "runner", TargetID: strconv.Itoa(int(id)), IP: c.RealIP()})
 }
 
-// mapErr maps runner service errors to the API envelope's stable codes. Shared
-// with the admin runner handler.
 func (h *RunnerHandler) mapErr(c *okapi.Context, err error) error {
 	if a := quotaAbort(c, err); a != nil {
 		return a

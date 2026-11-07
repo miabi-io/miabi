@@ -25,8 +25,6 @@ import (
 	"strings"
 )
 
-// EdgeType classifies a dependency between two resources, so a topology view can
-// label and style the link.
 type EdgeType string
 
 const (
@@ -39,9 +37,7 @@ const (
 	EdgeAppRef   EdgeType = "app-ref"  // Application -> Application (env {{ .applications.X }})
 	EdgeRegistry EdgeType = "registry" // Application -> Registry (spec.registry)
 	EdgeConfig   EdgeType = "config"   // Application -> Config   (mounts[].config)
-	// EdgeMiddleware is Route -> Middleware (spec.middlewares). Only drawn for a
-	// middleware declared in the same bundle: a route may just as well name one the
-	// workspace already has, and that is not a dangling reference.
+	// Only drawn for a middleware in the same bundle; naming an existing workspace one is not a dangling reference.
 	EdgeMiddleware EdgeType = "middleware"
 	// EdgeSchedule is CronJob -> Application (spec.app).
 	EdgeSchedule EdgeType = "schedule"
@@ -51,22 +47,16 @@ const (
 	EdgeRepository EdgeType = "repository"
 )
 
-// Edge is a directed dependency from one resource to another, keyed by Resource
-// Key() ("<Kind>/<name>"). From depends on / targets To.
 type Edge struct {
 	From string   `json:"from"`
 	To   string   `json:"to"`
 	Type EdgeType `json:"type"`
 }
 
-// tmplRef matches a template reference into a named resource collection,
-// capturing the collection and the resource name. Mirrors the keys the renderer
-// exposes (see render.go data()).
+// Mirrors the keys the renderer exposes (see render.go data()).
 var tmplRef = regexp.MustCompile(`\{\{[-\s]*\.(databases|secrets|applications)\.([A-Za-z0-9_-]+)`)
 
-// Edges derives the cross-resource dependency edges within a set. It must run on the parsed
-// (un-rendered) set, where env still carries the "{{ .databases.X }}" templates that reveal soft
-// references. Only edges whose target is in the set are emitted; the result is deduplicated.
+// Edges must run on the un-rendered set, where env templates still reveal soft references.
 func Edges(set *ResourceSet) []Edge {
 	var out []Edge
 	seen := map[Edge]bool{}
@@ -107,9 +97,7 @@ func Edges(set *ResourceSet) []Edge {
 				}
 				add(KindApplication, name, KindVolume, mt.Volume, EdgeMount)
 			}
-			// Only drawn when the credential is declared in the same bundle — add()
-			// skips targets outside the set, so referencing a workspace credential
-			// created elsewhere leaves no dangling edge.
+			// add() skips targets outside the set, so a credential created elsewhere leaves no dangling edge.
 			add(KindApplication, name, KindRegistry, a.Registry, EdgeRegistry)
 			if a.Source != nil {
 				add(KindApplication, name, KindGitRepository, a.Source.Repository, EdgeRepository)
@@ -143,9 +131,7 @@ func Edges(set *ResourceSet) []Edge {
 			for _, mw := range r.Route.Middlewares {
 				add(KindRoute, name, KindMiddleware, mw, EdgeMiddleware)
 			}
-			// Link the route to each owning Domain when a host is the domain or a
-			// subdomain of it (the Domain's name is a real FQDN). A route may answer
-			// on several hosts spanning more than one domain.
+			// A route may answer on several hosts spanning more than one domain.
 			for _, h := range r.Route.Hosts {
 				if d := matchDomain(h, domains); d != "" {
 					add(KindRoute, name, KindDomain, d, EdgeDomain)
@@ -163,8 +149,6 @@ func Edges(set *ResourceSet) []Edge {
 	return out
 }
 
-// matchDomain returns the name of the most specific domain that host falls
-// under (exact match or a subdomain), or "" when none applies.
 func matchDomain(host string, domains []Resource) string {
 	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 	best := ""

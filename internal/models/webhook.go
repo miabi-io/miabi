@@ -21,20 +21,16 @@ package models
 
 import "time"
 
-// Webhook is a workspace-registered HTTP endpoint receiving a signed JSON payload when a
-// subscribed application event fires. The signing Secret is encrypted at rest and never
-// serialized (a transient HasSecret flag instead); it is returned in cleartext once.
+// Webhook's signing Secret is encrypted at rest, returned in cleartext once, then only as HasSecret.
 type Webhook struct {
-	ID          uint     `json:"id" gorm:"primaryKey"`
-	WorkspaceID uint     `json:"workspace_id" gorm:"index;not null"`
-	Name        string   `json:"name"`
-	URL         string   `json:"url" gorm:"not null"`
-	Secret      string   `json:"-" gorm:"not null"`
-	Events      []string `json:"events" gorm:"serializer:json"`
-	// Headers are extra HTTP headers sent with each delivery (e.g. an
-	// Authorization header for the receiving service).
-	Headers map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
-	Enabled bool              `json:"enabled" gorm:"not null;default:true"`
+	ID          uint              `json:"id" gorm:"primaryKey"`
+	WorkspaceID uint              `json:"workspace_id" gorm:"index;not null"`
+	Name        string            `json:"name"`
+	URL         string            `json:"url" gorm:"not null"`
+	Secret      string            `json:"-" gorm:"not null"`
+	Events      []string          `json:"events" gorm:"serializer:json"`
+	Headers     map[string]string `json:"headers,omitempty" gorm:"serializer:json"`
+	Enabled     bool              `json:"enabled" gorm:"not null;default:true"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -53,8 +49,7 @@ const (
 	WebhookDeliveryFailed  WebhookDeliveryStatus = "failed"
 )
 
-// WebhookDelivery records the outcome of delivering one event to one webhook.
-// One row is written per attempt; Attempt is the 1-based attempt number.
+// One row per attempt; Attempt is 1-based.
 type WebhookDelivery struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WebhookID   uint   `json:"webhook_id" gorm:"index;not null"`

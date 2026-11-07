@@ -40,8 +40,7 @@ type clusterRow struct {
 
 func (clusterRow) TableName() string { return "clusters" }
 
-// Regression: importing a gateway switched a node to edge-gateway without the check UpdateNode and
-// SetConnectivity apply, so a default-cluster node could be given a gateway of its own.
+// Regression: adopting a gateway skipped the connectivity check, letting a default-cluster node get its own gateway.
 func TestAdoptGatewayChecksConnectivity(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {

@@ -38,9 +38,7 @@ func (r *PlatformBackupRepository) Create(b *models.PlatformBackup) error {
 }
 func (r *PlatformBackupRepository) Update(b *models.PlatformBackup) error { return r.db.Save(b).Error }
 
-// SetLogMeta records the log-store reference and counters for a platform-backup run and replaces
-// the DB column with the bounded tail. A zero ref is ignored, so a store failure leaves the full
-// DB tail intact.
+// A zero ref is ignored, so a store failure leaves the full DB tail intact.
 func (r *PlatformBackupRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil
@@ -152,8 +150,7 @@ func (r *PlatformBackupSetRepository) ListPaged(limit, offset int) ([]models.Pla
 	return sets, total, err
 }
 
-// ListCompletedOldestFirst returns usable recovery points oldest first — the
-// order retention prunes in.
+// ListCompletedOldestFirst returns usable recovery points in the order retention prunes them.
 func (r *PlatformBackupSetRepository) ListCompletedOldestFirst() ([]models.PlatformBackupSet, error) {
 	var sets []models.PlatformBackupSet
 	err := r.db.Preload("Items").Where("status = ?", models.BackupCompleted).
@@ -161,8 +158,6 @@ func (r *PlatformBackupSetRepository) ListCompletedOldestFirst() ([]models.Platf
 	return sets, err
 }
 
-// PlatformBackupSettingsRepository persists the single-row platform backup
-// target + policy.
 type PlatformBackupSettingsRepository struct {
 	db *gorm.DB
 }

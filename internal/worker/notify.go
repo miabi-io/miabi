@@ -35,13 +35,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// containerEventDebounce coalesces repeated container.* notifications for the
-// same app (e.g. a crash-looping container) within this window. Deploy results
-// are never suppressed.
+// Deploy results are never suppressed.
 const containerEventDebounce = 60 * time.Second
 
-// FanoutHandler resolves a recorded event into per-endpoint delivery tasks for
-// the event's workspace.
 type FanoutHandler struct {
 	webhooks *repositories.WebhookRepository
 	channels *repositories.NotificationChannelRepository
@@ -68,8 +64,7 @@ func (h *FanoutHandler) ProcessTask(ctx context.Context, task *asynq.Task) error
 	}
 	event := string(e.Type)
 
-	// Suppress repeated container.* notifications for a flapping app. The event
-	// is still recorded on the timeline; only outbound delivery is throttled.
+	// The event is still recorded on the timeline; only outbound delivery is throttled.
 	if strings.HasPrefix(event, "container.") && h.suppressed(ctx, e.WorkspaceID, e.ApplicationID, event) {
 		logger.Debug("notification suppressed (debounced)", "app", e.ApplicationID, "type", event)
 		return nil
@@ -97,9 +92,7 @@ func (h *FanoutHandler) ProcessTask(ctx context.Context, task *asynq.Task) error
 	return nil
 }
 
-// suppressed reports whether an identical (workspace, app, event) notification
-// fired within the debounce window. The first occurrence claims the key (and is
-// allowed); subsequent ones within the window are suppressed. Fails open.
+// The first occurrence claims the key and is allowed; fails open.
 func (h *FanoutHandler) suppressed(ctx context.Context, workspaceID, appID uint, event string) bool {
 	if h.rdb == nil {
 		return false

@@ -64,8 +64,7 @@ func TestAnnotateAgentVersions(t *testing.T) {
 	}
 }
 
-// With no release check wired — or one that has never succeeded — the floor is still enforced.
-// That half needs no network, and it is the half that matters.
+// Without release data the floor is still enforced: that half needs no network and matters most.
 func TestAnnotateAgentVersionsWithoutReleaseData(t *testing.T) {
 	h := &NodeHandler{}
 	servers := []models.Server{

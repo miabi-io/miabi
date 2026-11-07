@@ -74,8 +74,7 @@ func TestRunAsUserIsNonRoot(t *testing.T) {
 		}
 	}
 
-	// Root itself, and anything the platform cannot verify: a name is resolved from
-	// the image's own /etc/passwd, so it is free to be uid 0.
+	// A name resolves via the image's own /etc/passwd, so it is free to be uid 0.
 	rooted := []string{"", "0", "0:0", "root", "root:root", "appuser", "nobody", "1000:staff", "-1"}
 	for _, v := range rooted {
 		if RunAsUserIsNonRoot(v) {

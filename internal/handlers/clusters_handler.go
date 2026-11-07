@@ -31,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// clusterUsageMaxAge bounds how old a node's load reading may be before a cluster stops counting it,
-// so a node that stopped reporting fades out of the cluster's figures.
+// A node that stopped reporting fades out of the cluster's figures.
 const clusterUsageMaxAge = 5 * time.Minute
 
 // ConnectivityApplier deploys or tears down a node's gateway after its connectivity changed.
@@ -60,9 +59,7 @@ func (h *ClusterHandler) ListClusters(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// Dedication reports what a change of owner would affect in the location: how much runs here and
-// which organizations it belongs to. Pure read, so the console can describe the change before an
-// admin makes it rather than after.
+// Pure read, so the console can describe the change before an admin makes it.
 func (h *ClusterHandler) Dedication(c *okapi.Context) error {
 	id, err := resolveID(c.Param("clusterID"), h.cluster.ClusterIDByUID)
 	if err != nil {
@@ -94,8 +91,7 @@ func (h *ClusterHandler) GetCluster(c *okapi.Context) error {
 	return ok(c, cl)
 }
 
-// UpdateClusterRequest sets a cluster's tenant-facing identity, who may place into it, and where its generated app
-// URLs live. Omitted fields are left unchanged.
+// Omitted fields are left unchanged.
 type UpdateClusterRequest struct {
 	Body struct {
 		// DisplayName is the location name tenants see, e.g. "Frankfurt". Empty clears it.
@@ -104,30 +100,23 @@ type UpdateClusterRequest struct {
 		LocationCode *string `json:"location_code"`
 		// Visibility "restricted" hides the location from tenants; only platform admins place into it.
 		Visibility string `json:"visibility" enum:"all,restricted,organization"`
-		// OrganizationID dedicates the location to one organization: nobody else sees it or may place
-		// in it, and that organization is confined to the clusters it owns. 0 releases it to shared.
+		// The owning org is also confined to the clusters it owns; 0 releases the location to shared.
 		OrganizationID *uint `json:"organization_id"`
 		// Cordoned stops new placements in the location; running workloads stay.
 		Cordoned *bool `json:"cordoned"`
-		// ExternalBaseDomain is the wildcard domain for generated app URLs here, e.g. "apps.eu-central.example.com".
-		// Empty turns one-click external access off in the location; a change re-hosts the URLs already generated.
+		// Empty turns one-click external access off; a change re-hosts the URLs already generated.
 		ExternalBaseDomain *string `json:"external_base_domain"`
 		// ExternalCertProvider names the gateway's certManager provider for those URLs; empty uses its default.
 		ExternalCertProvider *string `json:"external_cert_provider"`
-		// ExternalCertificateID serves the generated URLs from a certificate in the system workspace, which
-		// must cover *.<external domain>. 0 goes back to a certificate per app.
+		// Must cover *.<external domain>; 0 goes back to a certificate per app.
 		ExternalCertificateID *uint `json:"external_certificate_id"`
-		// ServiceEndpointMode is how service apps are reached by name: "vip", or "dnsrr" on hosts that cannot run
-		// IPVS, such as LXC containers. Running services switch in place.
+		// "dnsrr" is for hosts that cannot run IPVS, such as LXC containers; running services switch in place.
 		ServiceEndpointMode string `json:"service_endpoint_mode" enum:"vip,dnsrr"`
-		// IngressIP (IPv4), IngressIPv6 and IngressHostname are where the location's public DNS records point: its
-		// gateway, or a load balancer in front of it. Each IP gets its own A or AAAA record; the hostname is a CNAME
-		// target used only when there is no IP. Empty clears one.
+		// Each IP gets its own A or AAAA record; the hostname is a CNAME target used only when there is no IP.
 		IngressIP       *string `json:"ingress_ip"`
 		IngressIPv6     *string `json:"ingress_ipv6"`
 		IngressHostname *string `json:"ingress_hostname"`
-		// Acknowledge confirms the caller accepts what a change of organization does to the tenants
-		// already here. Required whenever organization_id actually changes hands.
+		// Required whenever organization_id actually changes hands.
 		Acknowledge bool `json:"acknowledge"`
 	} `json:"body"`
 }
@@ -180,8 +169,7 @@ type SetClusterGatewayRequest struct {
 	Body struct {
 		// ServerID is an edge-gateway node of the cluster.
 		ServerID uint `json:"server_id" required:"true"`
-		// IngressIP (IPv4), IngressIPv6 and IngressHostname replace the cluster's public address, what DNS records
-		// point at, e.g. a load balancer in front of the node. Omitted fields keep their value; empty clears one.
+		// Omitted fields keep their value; empty clears one.
 		IngressIP       *string `json:"ingress_ip"`
 		IngressIPv6     *string `json:"ingress_ipv6"`
 		IngressHostname *string `json:"ingress_hostname"`
@@ -223,8 +211,7 @@ func (h *ClusterHandler) SetClusterGateway(c *okapi.Context, req *SetClusterGate
 // ConvertIngressRequest settles how a standalone cluster's node serves its apps.
 type ConvertIngressRequest struct {
 	Body struct {
-		// Action "gateway" serves them through the node's own gateway; "join" joins the node to a swarm
-		// cluster as a worker, whose gateway then serves them.
+		// "join" joins the node to a swarm cluster as a worker, whose gateway then serves them.
 		Action          string `json:"action" required:"true" enum:"gateway,join"`
 		TargetClusterID uint   `json:"target_cluster_id"`
 	} `json:"body"`
@@ -302,7 +289,6 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 	}
 }
 
-// ExternalCertificateOption is a system-workspace certificate offered for a cluster's generated URLs.
 // Problem says why it cannot serve them; empty means it can.
 type ExternalCertificateOption struct {
 	ID          uint      `json:"id"`
@@ -315,8 +301,6 @@ type ExternalCertificateOption struct {
 	Problem     string    `json:"problem,omitempty"`
 }
 
-// ExternalCertificates lists the system workspace's certificates, each checked against the cluster's external
-// domain, for the certificate picker.
 func (h *ClusterHandler) ExternalCertificates(c *okapi.Context) error {
 	id, err := resolveID(c.Param("clusterID"), h.cluster.ClusterIDByUID)
 	if err != nil {

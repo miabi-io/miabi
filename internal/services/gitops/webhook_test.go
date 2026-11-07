@@ -51,8 +51,7 @@ func TestVerifyWebhook(t *testing.T) {
 	}
 }
 
-// A source with no secret configured must reject every signature, including one
-// the caller computed under the empty key.
+// An unconfigured secret must reject every signature, including one computed under the empty key.
 func TestVerifyWebhookRejectsAnUnconfiguredSecret(t *testing.T) {
 	s := &Service{}
 	src := &models.GitSource{}

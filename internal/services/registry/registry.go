@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package registry manages stored container-registry credentials used to pull
-// private images at deploy time. Secrets are encrypted at rest.
+// Package registry manages container-registry credentials for pulling private images; secrets are encrypted at rest.
 package registry
 
 import (
@@ -48,9 +47,7 @@ var (
 // DefaultServer is the implicit registry when none is given (Docker Hub).
 const DefaultServer = "registry-1.docker.io"
 
-// Vault is the vault access a registry credential needs: resolving a stored credential — its own encrypted
-// value, or the secret it references — and checking that a reference points at something. Implemented by the
-// secret service; optional, with nil meaning literal secrets only.
+// Optional; nil means literal secrets only.
 type Vault interface {
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 	ExistsByName(workspaceID uint, name string) bool
@@ -63,13 +60,9 @@ type Service struct {
 
 func NewService(repo *repositories.RegistryRepository) *Service { return &Service{repo: repo} }
 
-// SetSecrets wires the vault, enabling credentials that reference a Secret
-// rather than storing their own copy of the password.
 func (s *Service) SetSecrets(v Vault) { s.secrets = v }
 
-// Secret resolves a credential's password: the vault value when it references a
-// Secret, else its own decrypted literal. This is the only way the plaintext
-// leaves this package.
+// Secret is the only way the plaintext leaves this package.
 func (s *Service) Secret(reg *models.Registry) (string, error) {
 	if reg.SecretRef != "" {
 		if s.secrets == nil {
@@ -83,9 +76,7 @@ func (s *Service) Secret(reg *models.Registry) (string, error) {
 	return crypto.Decrypt(reg.Secret)
 }
 
-// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}` value becomes a vault reference,
-// anything else is encrypted here. The two are mutually exclusive, so switching a credential from one form to
-// the other always clears the other. A blank value means "leave as-is" and is the caller's business.
+// Reference and literal are mutually exclusive, so switching forms clears the other; blank is the caller's business.
 func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, err error) {
 	if name := secret.RefName(value); name != "" {
 		if s.secrets != nil && !s.secrets.ExistsByName(workspaceID, name) {
@@ -102,13 +93,9 @@ type Input struct {
 	Name     string
 	Server   string
 	Username string
-	// Secret is either the password itself (encrypted before storage) or a
-	// `${{ secrets.NAME }}` reference to a workspace Secret, which is stored as a
-	// reference and resolved at every use. Blank on update = keep what is stored.
+	// A `${{ secrets.NAME }}` value is stored as a reference and resolved at every use; blank on update keeps the stored one.
 	Secret string
-	// Metadata and Annotations carry provenance labels and free-form notes. Set by the declarative apply engine
-	// (managed-by, gitops-source) so a prune can tell its own credentials from hand-created ones; nil leaves them
-	// untouched on update.
+	// Set by the declarative engine so a prune can tell its own credentials from hand-created ones; nil leaves them on update.
 	Metadata    models.Metadata
 	Annotations models.Metadata
 }
@@ -157,8 +144,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Registry, erro
 	}
 	reg.Server = normalizeServer(in.Server)
 	reg.Username = in.Username
-	// Only rotate the secret when a new value is supplied. Switching between a
-	// stored password and a vault reference always clears the other form.
+	// Rotate only when a new value is supplied.
 	if strings.TrimSpace(in.Secret) != "" {
 		enc, ref, err := s.storeSecret(workspaceID, in.Secret)
 		if err != nil {
@@ -178,9 +164,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Registry, erro
 	return strip(reg), nil
 }
 
-// BundleSecret returns what a portable workspace bundle should carry for a credential: its vault reference
-// when it has one, so the indirection and later rotations survive, else the decrypted password. It re-reads
-// the row because List/Get strip the secret, and a listed record would export a blank credential.
+// BundleSecret re-reads the row because List/Get strip the secret; references are kept so rotations survive.
 func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
 	reg, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -195,8 +179,7 @@ func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
 	return crypto.Decrypt(reg.Secret)
 }
 
-// FindByName resolves a credential by its workspace-scoped name handle — how a
-// manifest references one (an Application's spec.registry).
+// Manifests reference credentials by name (an Application's spec.registry).
 func (s *Service) FindByName(workspaceID uint, name string) (*models.Registry, error) {
 	regs, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -210,9 +193,7 @@ func (s *Service) FindByName(workspaceID uint, name string) (*models.Registry, e
 	return nil, ErrNotFound
 }
 
-// Fingerprints returns a non-reversible fingerprint of every credential's stored password, keyed by registry
-// name. It lets the declarative plan engine detect and converge a rotated password without the plaintext
-// leaving this package. An undecryptable credential is omitted, so it reads as unknown, not as a rotation.
+// Fingerprints let the plan engine detect rotation without plaintext; undecryptable credentials are omitted, not rotations.
 func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	regs, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -220,9 +201,7 @@ func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	}
 	out := make(map[string]string, len(regs))
 	for i := range regs {
-		// A vault-backed credential is fingerprinted by its *reference*, not by the value behind it: the
-		// credential says "whatever secret X holds", so rotating X is not a change to this credential (the next
-		// pull just reads the new value). Pointing it at a different secret is.
+		// Fingerprint the reference, not the value: rotating the secret is not a change, repointing it is.
 		if regs[i].SecretRef != "" {
 			out[regs[i].Name] = Fingerprint(regs[i].Name, secret.Ref(regs[i].SecretRef))
 			continue
@@ -236,9 +215,7 @@ func (s *Service) Fingerprints(workspaceID uint) (map[string]string, error) {
 	return out, nil
 }
 
-// Fingerprint derives the stable fingerprint of a registry password. It is salted with the credential's name,
-// so the same password under two names does not produce the same digest — no cross-registry correlation, no
-// shared rainbow table — and truncated, because it is only ever compared for equality.
+// Fingerprint is salted by name to prevent cross-registry correlation, and truncated since it is only compared.
 func Fingerprint(name, password string) string {
 	if password == "" {
 		return ""
@@ -274,15 +251,13 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	return s.repo.Delete(reg.ID)
 }
 
-// TestConnection verifies the stored credential can authenticate to the
-// registry, following the Docker Registry v2 token-auth flow.
+// TestConnection follows the Docker Registry v2 token-auth flow.
 func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) error {
 	reg, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
 		return ErrNotFound
 	}
-	// Resolves the vault reference when there is one, so "Test connection" checks
-	// the credential the deploy will actually use.
+	// Resolve the vault reference so the test checks the credential deploys will actually use.
 	password, err := s.Secret(reg)
 	if err != nil {
 		return err
@@ -290,16 +265,13 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 	return checkRegistryAuth(ctx, reg.Server, reg.Username, password)
 }
 
-// strip clears the ciphertext and flags secret presence for safe responses. A
-// vault reference is a name, not a secret, so it is left in place for the UI.
+// A vault reference is a name, not a secret, so it stays for the UI.
 func strip(reg *models.Registry) *models.Registry {
 	reg.HasSecret = reg.Secret != "" || reg.SecretRef != ""
 	reg.Secret = ""
 	return reg
 }
 
-// normalizeServer trims a registry host to its bare authority, defaulting to
-// Docker Hub when empty.
 func normalizeServer(server string) string {
 	server = strings.TrimSpace(server)
 	if server == "" {
@@ -310,9 +282,6 @@ func normalizeServer(server string) string {
 	return strings.TrimSuffix(server, "/")
 }
 
-// checkRegistryAuth probes the registry's /v2/ endpoint with basic auth and, if
-// the registry uses bearer-token auth, completes a token request against the
-// advertised realm.
 func checkRegistryAuth(ctx context.Context, server, username, password string) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	base := "https://" + normalizeServer(server)
@@ -337,8 +306,6 @@ func checkRegistryAuth(ctx context.Context, server, username, password string) e
 		return fmt.Errorf("registry returned status %d", resp.StatusCode)
 	}
 
-	// Bearer-token flow: parse the realm/service from WWW-Authenticate and
-	// exchange basic creds for a token.
 	challenge := resp.Header.Get("Www-Authenticate")
 	if !strings.HasPrefix(strings.ToLower(challenge), "bearer ") {
 		return fmt.Errorf("authentication failed")

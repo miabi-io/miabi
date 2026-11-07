@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cluster drives Docker Swarm as Miabi's optional cluster mode, one swarm per cluster. The default
-// cluster follows the local engine and is auto-detected; another cluster becomes a swarm when an admin
-// initializes it over its node's agent tunnel. Plain single-node Docker stays first-class.
+// Package cluster drives Docker Swarm as the optional cluster mode, one swarm per cluster.
 package cluster
 
 import (
@@ -49,26 +47,20 @@ var (
 	ErrManagerAddrUnknown = errors.New("manager swarm address is unknown; refresh cluster state")
 	// ErrClusterNotFound is returned for a cluster id with no row.
 	ErrClusterNotFound = errors.New("cluster not found")
-	// ErrNodeHasWorkloads is returned when a node with workloads would enter or leave a remote swarm, whose
-	// workspace networks exist only as overlays.
+	// A remote swarm's workspace networks exist only as overlays.
 	ErrNodeHasWorkloads = errors.New("the node still has apps, databases or volumes; a remote swarm only takes and releases empty nodes")
 	// ErrClusterHasWorkloads is returned when disabling a remote swarm that still holds workloads.
 	ErrClusterHasWorkloads = errors.New("the cluster still has apps, databases or volumes; move or delete them before disabling Swarm")
 	// ErrNodeInOtherSwarm is returned for a node whose engine already belongs to another swarm.
-	ErrNodeInOtherSwarm = errors.New("the node is already in another swarm; remove it from that swarm first")
-	// ErrClusterHasForeignWorkloads is returned when dedicating a cluster that still runs other
-	// tenants' apps, databases or volumes.
+	ErrNodeInOtherSwarm           = errors.New("the node is already in another swarm; remove it from that swarm first")
 	ErrClusterHasForeignWorkloads = errors.New("this location still runs workloads belonging to other organizations; move or delete them before dedicating it")
-	// ErrDedicationAckRequired is returned when a change of owner arrives without the caller
-	// confirming it. Who owns a location decides who may see and place in it, so it is not a field
-	// that changes as a side effect of saving the form it happens to sit in.
+	// Ownership decides who may see and place in a location, so it must not change as a form side effect.
 	ErrDedicationAckRequired = errors.New("changing which organization a location is dedicated to must be acknowledged")
 )
 
 const (
 	swarmStateActive = "active"
-	// AgentLabel marks swarm nodes Miabi already reaches directly (the local socket or their own agent), so
-	// the global agent service skips them rather than opening a second tunnel for the same node.
+	// The global agent service skips these rather than opening a second tunnel for the same node.
 	AgentLabel       = "miabi.agent"
 	agentLabelDirect = "direct"
 )
@@ -135,8 +127,7 @@ type Service struct {
 	refreshedAt      time.Time
 	defaultClusterID uint
 
-	// ingressReconciler re-asserts the central gateway's attachment to the default cluster's ingress overlay,
-	// so a gateway recreate can't leave clustered apps dark for longer than a refresh interval.
+	// So a gateway recreate can't leave clustered apps dark longer than a refresh interval.
 	ingressReconciler func(context.Context) error
 	nodeJoined        func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)
 	gatewayListener   func(context.Context, uint)
@@ -148,8 +139,6 @@ type Service struct {
 	// endpointModeListener switches a cluster's running services after its service endpoint mode changed.
 	endpointModeListener func(context.Context, uint, models.ServiceEndpointMode)
 
-	// networkMigrator converts the default cluster's workspace bridges into overlays when Swarm is enabled,
-	// networkRollback reverses it before leaving, and networkPending counts bridges still left.
 	networkMigrator func(context.Context) error
 	networkRollback func(context.Context) error
 	networkPending  func() int
@@ -162,8 +151,6 @@ type Service struct {
 	probeImages        NetCheckImages
 	probeImageFallback string
 
-	// The global agent service (see agents.go): the registrar that turns a self-reporting
-	// agent into a Miabi node, the address the agents dial back on, and the agent image.
 	registrar          NodeRegistrar
 	controlURL         string
 	agentImages        NetCheckImages
@@ -178,35 +165,28 @@ func NewService(clients NodeDocker, nodes Nodes) *Service {
 // SetStore wires the cluster rows (nil-safe; nil leaves only the default cluster, unnamed).
 func (s *Service) SetStore(st Store) { s.store = st }
 
-// SetLeader makes Refresh only read swarm state while l does not lead: persisting what it observed
-// and re-asserting memberships, pool labels and gateway attachments is left to the leading process.
-// Without a leader every refresh writes.
+// Non-leaders only read swarm state; without a leader every refresh writes.
 func (s *Service) SetLeader(l Leader) { s.leader = l }
 
-// SetNetworkMigrator wires the default cluster's workspace-network conversion: `migrate` (bridge -> overlay)
-// runs on Enable, `rollback` on Disable, and `pending` counts the networks still on bridges. Nil-safe.
+// Nil-safe.
 func (s *Service) SetNetworkMigrator(migrate, rollback func(context.Context) error, pending func() int) {
 	s.networkMigrator, s.networkRollback, s.networkPending = migrate, rollback, pending
 }
 
-// SetNodeJoinedHook wires a callback run after a node joins a cluster, with that node's Docker client.
-// Nil-safe; failures are the hook's own to report and never undo the join.
+// Hook failures never undo the join.
 func (s *Service) SetNodeJoinedHook(fn func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)) {
 	s.mu.Lock()
 	s.nodeJoined = fn
 	s.mu.Unlock()
 }
 
-// SetIngressReconciler wires the callback that re-asserts the central gateway's attachment to the
-// default cluster's ingress overlay, run on every Refresh. Nil-safe.
 func (s *Service) SetIngressReconciler(fn func(context.Context) error) {
 	s.mu.Lock()
 	s.ingressReconciler = fn
 	s.mu.Unlock()
 }
 
-// ApplyNetworking converts the default cluster's workspace bridges into overlays on demand, for an install
-// already clustered when it upgraded. A remote swarm only ever holds overlays, so there is nothing to apply.
+// For installs already clustered when they upgraded; a remote swarm only holds overlays.
 func (s *Service) ApplyNetworking(ctx context.Context, clusterID uint) error {
 	if !s.isDefault(clusterID) {
 		return nil
@@ -220,8 +200,7 @@ func (s *Service) ApplyNetworking(ctx context.Context, clusterID uint) error {
 	return s.networkMigrator(ctx)
 }
 
-// migrateNetworks is best-effort at the call site: a failing workspace stays on its bridge rather than
-// failing the whole enable.
+// A failing workspace stays on its bridge rather than failing the whole enable.
 func (s *Service) migrateNetworks(ctx context.Context) {
 	if s.networkMigrator == nil {
 		return
@@ -308,8 +287,6 @@ func (s *Service) AnySwarm() bool {
 	return false
 }
 
-// Manager returns a Docker client that can issue Swarm and engine calls for the cluster: the local socket
-// for the default cluster, the node itself for a standalone one, and a manager's tunnel for a remote swarm.
 func (s *Service) Manager(_ context.Context, clusterID uint) (docker.Client, error) {
 	if s.isDefault(clusterID) {
 		return s.clients.Local(), nil
@@ -324,8 +301,6 @@ func (s *Service) Manager(_ context.Context, clusterID uint) (docker.Client, err
 	return s.remoteManager(c)
 }
 
-// remoteManager reaches a remote swarm through its preferred manager, or through any other manager
-// of the cluster whose agent is connected.
 func (s *Service) remoteManager(c *models.Cluster) (docker.Client, error) {
 	dc, err := s.clients.For(c.ManagerServerID)
 	if err == nil {
@@ -365,11 +340,9 @@ type Status struct {
 	Nodes       int    `json:"nodes"`
 	// IngressNetwork is the attachable overlay a gateway joins to reach service VIPs; set only in cluster mode.
 	IngressNetwork string `json:"ingress_network,omitempty"`
-	// NetworksPending counts the default cluster's workspace networks still on node-local bridges, which
-	// have no cross-node connectivity until cluster networking is applied.
+	// Bridges have no cross-node connectivity until cluster networking is applied.
 	NetworksPending int `json:"networks_pending,omitempty"`
-	// AgentsDeployed reports whether the global agent service is installed, i.e. whether swarm members
-	// are managed (metrics, stats, shell, housekeeping) or merely run tasks Miabi cannot see into.
+	// Without agents, swarm members run tasks Miabi cannot see into.
 	AgentsDeployed bool `json:"agents_deployed"`
 	AgentTasks     int  `json:"agent_tasks,omitempty"`
 	// AgentInsecureTLS is true when those agents skip verification of the control plane's certificate.
@@ -407,8 +380,7 @@ func (s *Service) Status(clusterID uint) Status {
 	return out
 }
 
-// Refresh re-reads every swarm cluster's state from its manager. Cheap and safe on plain Docker.
-// Called at boot and on an interval.
+// Cheap and safe on plain Docker.
 func (s *Service) Refresh(ctx context.Context) {
 	local := s.clients.Local()
 	info, err := local.Swarm(ctx)
@@ -467,8 +439,7 @@ func (s *Service) readSwarm(ctx context.Context, mgr docker.Client, info docker.
 	return st
 }
 
-// recordEngineVersions persists each member's engine version from its manager's view, so a daemon too old
-// for the SDK is flagged even without a client for it.
+// So a daemon too old for the SDK is flagged even without a client for it.
 func (s *Service) recordEngineVersions(states map[uint]swarmState) {
 	for _, st := range states {
 		for _, n := range st.nodes {
@@ -512,8 +483,7 @@ func (s *Service) refreshRemote(ctx context.Context) map[uint]swarmState {
 	return out
 }
 
-// reconcileMembership moves a node into the cluster whose swarm it is actually in, however it got there:
-// a join from the console, a `docker swarm join` by hand, or an agent the swarm brought in.
+// However the node got there: console join, manual `docker swarm join`, or the agent service.
 func (s *Service) reconcileMembership(ctx context.Context, states map[uint]swarmState) {
 	if s.store == nil {
 		return
@@ -547,8 +517,7 @@ func (s *Service) reconcileMembership(ctx context.Context, states map[uint]swarm
 	}
 }
 
-// syncDefaultMode records whether the default cluster runs a swarm, which the local engine decides: the
-// default cluster's mode stays auto-detected rather than configured.
+// The default cluster's mode is auto-detected from the local engine, not configured.
 func (s *Service) syncDefaultMode(info docker.SwarmInfo) {
 	if s.store == nil {
 		return
@@ -582,9 +551,7 @@ func (s *Service) RefreshLoop(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// Enrich annotates each server's transient fields from its cluster: the swarm role and availability
-// of its last refresh, and whether the cluster is dedicated to an organization. A node outside every
-// swarm shows as standalone while any cluster runs one.
+// A node outside every swarm shows as standalone while any cluster runs one.
 func (s *Service) Enrich(servers []models.Server) {
 	s.markNodeDedication(servers)
 	s.mu.RLock()
@@ -637,8 +604,7 @@ func roleOf(n docker.SwarmNode) string {
 	return "worker"
 }
 
-// matchByHostname is the fallback correlation when a node's swarm id is not yet stored. The label is
-// often the machine's hostname while the handle is slugified from it, so both are tried.
+// Fallback before the swarm id is stored; the label is often the hostname while the handle is slugified.
 func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server) (docker.SwarmNode, bool) {
 	candidates := []string{srv.DisplayName, srv.Name}
 	for _, n := range swarmNodes {
@@ -651,9 +617,7 @@ func matchByHostname(swarmNodes map[string]docker.SwarmNode, srv *models.Server)
 	return docker.SwarmNode{}, false
 }
 
-// Enable makes a cluster a swarm. The default cluster initializes (or adopts) the local engine's swarm; any
-// other cluster initializes one on its node, over the agent tunnel. advertiseAddr is the address peers
-// reach the manager on, ignored when adopting a swarm the engine is already managing.
+// advertiseAddr is ignored when adopting a swarm the engine already manages.
 func (s *Service) Enable(ctx context.Context, clusterID uint, advertiseAddr string) (Status, error) {
 	if s.isDefault(clusterID) {
 		return s.enableDefault(ctx, advertiseAddr)
@@ -744,8 +708,7 @@ func (s *Service) enableRemote(ctx context.Context, c *models.Cluster, advertise
 	return s.Status(c.ID), nil
 }
 
-// ensureIngressOverlay pre-creates the swarm's ingress overlay so a gateway has a network to join before
-// the first clustered app deploys. Best-effort: the deploy path creates it too.
+// Best-effort: the deploy path creates it too.
 func ensureIngressOverlay(ctx context.Context, mgr docker.Client) {
 	if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
 		logger.Warn("failed to ensure cluster ingress overlay", "network", node.IngressOverlay, "error", err)
@@ -761,8 +724,7 @@ func labelDirect(ctx context.Context, mgr docker.Client, swarmNodeID string) {
 	}
 }
 
-// Disable takes a cluster out of swarm mode. Its member nodes leave first and each becomes a standalone
-// cluster of its own; the manager leaves last.
+// Members leave first and each becomes its own standalone cluster; the manager leaves last.
 func (s *Service) Disable(ctx context.Context, clusterID uint) error {
 	if s.isDefault(clusterID) {
 		return s.disableDefault(ctx)
@@ -778,8 +740,7 @@ func (s *Service) disableDefault(ctx context.Context) error {
 	if !s.CapCluster() {
 		return ErrNotEnabled
 	}
-	// Overlays die with the swarm, so every workspace must be back on a bridge first or it would be
-	// stranded on a network that no longer exists. The one step that must not be best-effort.
+	// Overlays die with the swarm, so workspaces must be back on bridges first; this step must not be best-effort.
 	if s.networkRollback != nil {
 		if err := s.networkRollback(ctx); err != nil {
 			return fmt.Errorf("could not move workspace networks back to bridges; cluster mode left enabled: %w", err)
@@ -842,8 +803,6 @@ func (s *Service) leaveMembers(ctx context.Context, clusterID, managerServerID u
 	}
 }
 
-// JoinNode joins a node to a cluster's swarm over its agent tunnel, with the worker join token and the
-// manager's advertised address, then moves the node and everything placed on it into that cluster.
 // Idempotent: a node already in this swarm just has its swarm id reconciled.
 func (s *Service) JoinNode(ctx context.Context, clusterID, serverID uint) error {
 	if !s.IsSwarm(clusterID) {
@@ -934,8 +893,6 @@ func isMember(ctx context.Context, mgr docker.Client, swarmNodeID string) bool {
 	return false
 }
 
-// Member is one swarm node (docker node ls), annotated with the Miabi node it maps to, or marked
-// unmanaged when it has no Miabi record (e.g. a host joined by hand).
 type Member struct {
 	docker.SwarmNode
 	// Managed is true when this swarm node maps to a Miabi node.
@@ -947,8 +904,6 @@ type Member struct {
 	IsManager bool `json:"is_manager"`
 }
 
-// Members returns a cluster's swarm nodes annotated with the Miabi node each maps to. Empty when the
-// cluster runs no swarm.
 func (s *Service) Members(ctx context.Context, clusterID uint) ([]Member, error) {
 	if !s.IsSwarm(clusterID) {
 		return []Member{}, nil
@@ -1002,8 +957,7 @@ func (s *Service) Members(ctx context.Context, clusterID uint) ([]Member, error)
 // ErrInvalidAvailability is returned for an availability outside active/pause/drain.
 var ErrInvalidAvailability = errors.New("availability must be active, pause or drain")
 
-// SetAvailability changes a swarm node's scheduling availability: active places new tasks, pause keeps
-// existing tasks running without placing more, and drain reschedules existing tasks off the node.
+// pause keeps existing tasks without placing more; drain reschedules existing tasks off the node.
 func (s *Service) SetAvailability(ctx context.Context, clusterID uint, swarmNodeID, availability string) error {
 	if !s.IsSwarm(clusterID) {
 		return ErrNotEnabled
@@ -1054,8 +1008,7 @@ func (s *Service) swarmNodeIDOf(srv *models.Server) string {
 	return ""
 }
 
-// Tasks lists the service tasks the scheduler placed on a swarm node, or on all nodes when swarmNodeID is
-// empty. Only a manager can answer this, which is the only way to see an unmanaged node's workload.
+// Only a manager can answer this, the only way to see an unmanaged node's workload.
 func (s *Service) Tasks(ctx context.Context, clusterID uint, swarmNodeID string) ([]docker.SwarmTask, error) {
 	if !s.IsSwarm(clusterID) {
 		return []docker.SwarmTask{}, nil
@@ -1067,8 +1020,7 @@ func (s *Service) Tasks(ctx context.Context, clusterID uint, swarmNodeID string)
 	return mgr.SwarmTasks(ctx, swarmNodeID)
 }
 
-// JoinInstructions are what an operator needs to join a host to a swarm by hand, for a node not reachable
-// over the agent tunnel. The command runs on the host itself.
+// For nodes not reachable over the agent tunnel.
 type JoinInstructions struct {
 	// WorkerToken is the swarm worker join token (a secret; admin-only).
 	WorkerToken string `json:"worker_token"`
@@ -1102,8 +1054,7 @@ func (s *Service) JoinInstructions(ctx context.Context, clusterID uint) (JoinIns
 	}, nil
 }
 
-// ReaffirmNode re-joins a node Miabi already considers a swarm member if it has dropped out, e.g. after
-// the host was rebuilt. It never joins a node that was never a member. Best-effort, for the agent-connect hook.
+// Never joins a node that was never a member.
 func (s *Service) ReaffirmNode(ctx context.Context, serverID uint) {
 	srv, err := s.nodes.Get(serverID)
 	if err != nil || srv.IsLocal || srv.SwarmNodeID == "" || !s.IsSwarm(srv.ClusterID) {
@@ -1121,8 +1072,6 @@ func (s *Service) ReaffirmNode(ctx context.Context, serverID uint) {
 	}
 }
 
-// LeaveNode removes a member node from its cluster's swarm, prunes it from the manager's node list, and
-// gives the node a standalone cluster of its own. force is passed to the node-side leave.
 func (s *Service) LeaveNode(ctx context.Context, serverID uint, force bool) error {
 	srv, err := s.nodes.Get(serverID)
 	if err != nil {
@@ -1181,8 +1130,6 @@ func (s *Service) giveStandaloneCluster(srv *models.Server) {
 	}
 }
 
-// managerRemoteAddr returns the address a node dials to join a cluster's swarm, with the standard
-// management port appended when absent.
 func (s *Service) managerRemoteAddr(clusterID uint) (string, error) {
 	addr := strings.TrimSpace(s.state(clusterID).info.NodeAddr)
 	if addr == "" {

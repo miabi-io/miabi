@@ -24,8 +24,7 @@ import (
 	"testing"
 )
 
-// The shape Goma documents for an attribute-matched canary. Rendering is pinned
-// byte-for-byte so a change on either side breaks a test rather than a deployment.
+// Pinned byte-for-byte so a change on either side breaks a test rather than a deployment.
 const goldenCanaryRoute = `# Managed by Miabi. Do not edit by hand.
 routes:
     - name: mb-ws1-web
@@ -72,8 +71,6 @@ func TestRenderCanaryWithRulesMatchesGomaShape(t *testing.T) {
 	}
 }
 
-// A plain weighted canary must render exactly as it did before match rules
-// existed: no exclusive, priority or match keys anywhere.
 func TestRenderCanaryWithoutRulesUnchanged(t *testing.T) {
 	out, err := RenderRoute(RenderedRoute{
 		ID: 1, WorkspaceID: 1, Name: "web", Hosts: []string{"api.example.com"},
@@ -102,8 +99,7 @@ routes:
 	}
 }
 
-// The advanced (raw YAML) route path builds its backends by hand, so it needs
-// its own proof that the canary fields survive.
+// The advanced route builds its backends by hand, so it needs its own proof.
 func TestRenderAdvancedRouteCarriesCanaryRules(t *testing.T) {
 	out, err := RenderRoute(RenderedRoute{
 		ID: 1, WorkspaceID: 1, Name: "web",

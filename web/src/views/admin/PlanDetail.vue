@@ -15,8 +15,7 @@ const router = useRouter()
 const { t } = useI18n()
 const notify = useNotificationStore()
 
-// The restricted security profile is an Enterprise-only policy; in Community the
-// profile stays default.
+// Enterprise only; in Community the profile stays default.
 const securityProfile = useEntitlement('security_profile')
 const placementPolicy = useEntitlement('placement_policy')
 const clusters = ref<Cluster[]>([])
@@ -26,8 +25,7 @@ const databaseSizes = ref<DatabaseSize[]>([])
 adminApi.listDatabaseSizes().then((r) => { databaseSizes.value = r.data.data ?? [] }).catch(() => { databaseSizes.value = [] })
 const storageClasses = ref<StorageClass[]>([])
 adminApi.listStorageClasses().then((r) => { storageClasses.value = r.data.data ?? [] }).catch(() => { storageClasses.value = [] })
-// Which shared runners a plan offers. The pool is the platform's to lend; a workspace's own
-// runners are never bound by its plan, so only shared runners are listed here.
+// A workspace's own runners are never bound by its plan, so only shared runners are listed.
 const platformRunnersPolicy = useEntitlement('platform_runners')
 const sharedRunners = ref<Runner[]>([])
 adminRunnerApi.list().then((r) => { sharedRunners.value = r.data.data ?? [] }).catch(() => { sharedRunners.value = [] })
@@ -83,8 +81,7 @@ async function load() {
     plan.value = (await adminApi.getPlan(planId.value)).data.data
     const { id, created_at, updated_at, ...rest } = plan.value
     void id; void created_at; void updated_at
-    // The API reads a null default as "keep what is stored", so the select must always hand back a
-    // concrete string — otherwise clearing it back to the node's own default would be impossible.
+    // The API reads null as "keep stored", so always send a string to allow clearing to the node default.
     form.value = { ...rest, default_storage_class: rest.default_storage_class ?? '' }
   } catch (e) {
     notify.apiError(e)
@@ -216,9 +213,7 @@ function fmtDate(s?: string): string {
         </div>
         <div class="header-actions">
           <button v-if="!plan.is_default && !plan.system" class="btn btn-secondary" @click="makeDefault">{{ $t('plans.setAsDefault') }}</button>
-          <!-- The system plan is the platform's own: deleting it would drop the
-               system workspace onto the default plan's limits, silently. The API
-               refuses it too — this only keeps the console from offering it. -->
+          <!-- Deleting the system plan would silently drop the system workspace onto default limits; the API refuses too. -->
           <button v-if="!plan.system && plan.managed_by !== 'console'" class="btn btn-danger" @click="showDelete = true">{{ $t('action.delete') }}</button>
         </div>
       </div>
@@ -236,9 +231,7 @@ function fmtDate(s?: string): string {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <!-- The system plan is resolved by name when it is pinned to the
-                   system workspace, so renaming it would quietly unpin it. Its
-                   limits stay editable. -->
+              <!-- The system plan is resolved by name, so renaming it would quietly unpin it. -->
               <input v-model="form.name" class="form-input" required :disabled="plan.system || plan.managed_by === 'console'" />
               <p v-if="plan.system" class="form-hint">{{ $t('planDetail.slugFixed') }}</p>
             </div>

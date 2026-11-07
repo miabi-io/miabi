@@ -244,9 +244,7 @@ func TestMergeKeptSecrets(t *testing.T) {
 	}
 }
 
-// forwardAuth's response mappings are Goma's "source: target" strings. Goma
-// splits on the first colon, so a second one would silently rename the target to
-// something nobody asked for — reject it at the door instead.
+// Goma splits on the first colon, so a second one would silently rename the target.
 func TestForwardAuthMappingValidation(t *testing.T) {
 	ok := []any{"x-user-id: X-Auth-User-ID", "X-Auth-Email", "x-roles:X-Roles"}
 	if err := Validate("forwardAuth", map[string]any{
@@ -273,8 +271,7 @@ func TestForwardAuthMappingValidation(t *testing.T) {
 	}
 }
 
-// The claim-forwarding map is header → claim path; both sides are plain strings,
-// and a non-string value must not reach Goma.
+// A non-string value must not reach Goma.
 func TestJWTForwardHeadersIsAStringMap(t *testing.T) {
 	if err := Validate("jwtAuth", map[string]any{
 		"secret": "s3cret",
@@ -294,9 +291,7 @@ func TestJWTForwardHeadersIsAStringMap(t *testing.T) {
 	}
 }
 
-// Every Goma middleware type Miabi means to support should have a descriptor —
-// an uncatalogued type can't be picked in the UI at all, only edited if one
-// already exists.
+// An uncatalogued type cannot be picked in the UI, only edited if one already exists.
 func TestCatalogCoversGomaAuthTypes(t *testing.T) {
 	for _, typ := range []string{
 		"basicAuth", "jwtAuth", "forwardAuth", "ldapAuth",
@@ -310,8 +305,7 @@ func TestCatalogCoversGomaAuthTypes(t *testing.T) {
 	}
 }
 
-// Any editor with two columns needs both column labels, or the form falls back
-// to a generic "Key/Value" that describes neither side.
+// Without both labels the form falls back to a generic "Key/Value" that describes neither side.
 func TestPairAndMapFieldsAreLabelled(t *testing.T) {
 	var check func(typ string, fields []Field)
 	check = func(typ string, fields []Field) {

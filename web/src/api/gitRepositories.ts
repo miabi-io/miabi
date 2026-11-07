@@ -49,15 +49,10 @@ export const gitRepositoryApi = {
   get: (ws: number, id: number) => api.get<ApiResponse<GitRepository>>(`${base(ws)}/${id}`),
   create: (ws: number, input: GitRepositoryInput) => api.post<ApiResponse<GitRepository>>(base(ws), input),
   update: (ws: number, id: number, input: GitRepositoryInput) => api.patch<ApiResponse<GitRepository>>(`${base(ws)}/${id}`, input),
-  // Returns the repository with its refreshed connection status on success; a
-  // failed check is a 400 carrying the reason, and is persisted just the same.
+  // A failed check is a 400 carrying the reason, and is persisted just the same.
   test: (ws: number, id: number) => api.post<ApiResponse<GitRepository>>(`${base(ws)}/${id}/test`),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}`),
-  /**
-   * Probe a repository before an app exists to hang the question off: does it
-   * build from a Dockerfile, and does it carry a pipeline Miabi should adopt?
-   * Clones the repo server-side, so it is slower than a normal call.
-   */
+  /** Clones the repo server-side to detect a Dockerfile or pipeline, so it is slower than a normal call. */
   inspect: (ws: number, input: GitInspectInput) =>
     api.post<ApiResponse<GitInspectResult>>(`/workspaces/${ws}/git/inspect`, input),
 }

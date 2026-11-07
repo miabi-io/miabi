@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Checks both installers parse, and that the Docker-install block they share is identical:
-# each is piped through `curl | bash`, so neither can source a common file at run time.
+# Each installer is piped through `curl | bash`, so neither can source a common file at run time.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 

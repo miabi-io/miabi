@@ -230,8 +230,7 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Detach a network from a database",
 		},
 
-		// "timeline", not "events": /{databaseID}/events above is already the live status
-		// stream. This is the persisted history, i.e. the app-side /apps/{appID}/events.
+		// Named "timeline" because /{databaseID}/events is already the live status stream.
 		{
 			Method:      http.MethodGet,
 			Path:        base + "/{databaseID}/timeline",

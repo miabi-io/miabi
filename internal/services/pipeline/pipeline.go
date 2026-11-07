@@ -42,45 +42,27 @@ var (
 	ErrInvalidSpec  = errors.New("invalid pipeline spec")
 	ErrDisabled     = errors.New("pipeline is disabled")
 	ErrUnauthorized = errors.New("invalid webhook signature")
-	// ErrRepoOwned rejects an in-place edit of a pipeline the repository owns.
-	// Only its enabled flag can be changed here.
+	// Only a repo-owned pipeline's enabled flag can be changed here.
 	ErrRepoOwned = errors.New("this pipeline is managed by its repository — edit the file in git and push, or disable the pipeline to build directly")
-	// ErrNoPipelineInRepo reports a repository that carries no pipeline-as-code
-	// document. It is an ordinary outcome of adoption, not a failure.
+	// An ordinary outcome of adoption, not a failure.
 	ErrNoPipelineInRepo = errors.New("repository carries no pipeline-as-code file")
 	// ErrNotGitApp rejects adoption for an app that has no git source to read.
 	ErrNotGitApp = errors.New("application does not build from a git repository")
-	// ErrSourceConflict rejects binding a pipeline to both an application and a
-	// repository. Each supplies the checkout, so together there is no answer to
-	// what the run clones.
+	// Both supply the checkout, so together there is no answer to what the run clones.
 	ErrSourceConflict = errors.New("bind a pipeline to an application or to a repository, not both")
-	// ErrDeployNeedsApp rejects a `uses: deploy` step on a pipeline with no
-	// application: there is nothing to deploy to.
 	ErrDeployNeedsApp = errors.New("a 'uses: deploy' step needs the pipeline bound to an application")
-	// ErrBuildNeedsSource rejects a `uses: build` step on a pipeline that clones
-	// nothing. It would build an empty workspace and succeed, which is worse than
-	// failing.
+	// It would build an empty workspace and succeed, which is worse than failing.
 	ErrBuildNeedsSource = errors.New("a 'uses: build' step needs the pipeline bound to an application or a repository")
-	// ErrRepositoryNotFound reports a git_repository reference that names nothing
-	// in this workspace. Names are workspace-scoped: a pipeline can only bind to a
-	// repository its own workspace registered.
-	ErrRepositoryNotFound = errors.New("no git repository with that name in this workspace")
-	// ErrRepositoriesUnavailable reports that repository bindings are not wired
-	// up (no git credential service).
+	// Names are workspace-scoped: a pipeline binds only to repositories its own workspace registered.
+	ErrRepositoryNotFound      = errors.New("no git repository with that name in this workspace")
 	ErrRepositoriesUnavailable = errors.New("git repositories are not available")
-	// ErrApplicationNotFound reports an application_id that names nothing in
-	// this workspace.
-	ErrApplicationNotFound = errors.New("no application with that id in this workspace")
-	// ErrAdoptionUnavailable reports that repository adoption is not wired up
-	// (no git credential service), so nothing can be discovered.
-	ErrAdoptionUnavailable = errors.New("repository pipeline adoption is not available")
+	ErrApplicationNotFound     = errors.New("no application with that id in this workspace")
+	ErrAdoptionUnavailable     = errors.New("repository pipeline adoption is not available")
 	// ErrInvalidVersioning wraps a version request or policy the versioning rules refuse.
 	ErrInvalidVersioning = errors.New("invalid version request")
 )
 
-// Enqueuer hands a created run to the background worker. It is an interface so
-// the pipeline service does not import the worker package (avoiding a cycle:
-// the worker's runner imports this package).
+// An interface avoids an import cycle: the worker's runner imports this package.
 type Enqueuer interface {
 	EnqueuePipelineRun(runID, serverID uint) error
 }
@@ -92,9 +74,7 @@ type Service struct {
 	repo       *repositories.PipelineRepository
 	enqueuer   Enqueuer
 	scheduler  Scheduler
-	// gitRepos and apps back repository-owned pipelines: resolving an app's clone
-	// URL + credential so a spec can be discovered at adoption and re-read at each
-	// run. Both nil-safe — without them a pipeline is manual-only.
+	// Both nil-safe: without them a pipeline is manual-only.
 	gitRepos *gitrepo.Service
 	apps     *repositories.ApplicationRepository
 	// versions hands each run its image version; nil leaves every build on run-<number> tags.
@@ -111,39 +91,28 @@ func NewService(repo *repositories.PipelineRepository, enqueuer Enqueuer) *Servi
 	return &Service{repo: repo, enqueuer: enqueuer}
 }
 
-// Input is the create/update payload for a pipeline definition. Name is the
-// desired unique slug handle; DisplayName is the free-text label (falls back to
-// Name when blank).
+// Name is the unique slug handle; DisplayName falls back to Name when blank.
 type Input struct {
 	Name        string
 	DisplayName string
-	// ApplicationID is the deploy-target app. On update it is written only when
-	// SetApplicationID is true (partial-update aware): a nil pointer then unbinds,
-	// a non-nil binds; when SetApplicationID is false the binding is left as-is.
+	// Written on update only when SetApplicationID is true; then nil unbinds and non-nil binds.
 	ApplicationID    *uint
 	SetApplicationID bool
-	// GitRepositoryID binds the pipeline to a registered repository instead of an
-	// application, for build-and-push without a deploy target. Partial-update
-	// aware in the same way as ApplicationID.
+	// Binds to a registered repository for build-and-push without a deploy target; partial-update aware like ApplicationID.
 	GitRepositoryID    *uint
 	SetGitRepositoryID bool
-	// Branch is the ref a repository-bound pipeline builds when the trigger names
-	// none. Empty clones the repository's default branch.
+	// Empty clones the repository's default branch.
 	Branch    string
 	SetBranch bool
 	Spec      string
-	// Enabled is a pointer so an update can leave it unchanged (nil). On create,
-	// nil is treated as disabled (the zero value), matching the prior behavior.
+	// A pointer so an update can leave it unchanged; nil on create means disabled.
 	Enabled *bool
-	// Source and the Source* fields mark a definition adopted from a repository's
-	// pipeline-as-code file. They are set by adoption, not by the public API — a
-	// user-authored pipeline leaves them zero and is treated as manual.
+	// Set by adoption only; a user-authored pipeline leaves them zero and counts as manual.
 	Source       models.PipelineSource
 	SourcePath   string
 	SourceRef    string
 	SourceCommit string
-	// Versioning configures the image repository's policy when the pipeline creates it. Ignored when the
-	// repository already has one, and overridden by a `versioning:` block in the spec.
+	// Ignored when the repository already has a policy; a `versioning:` block in the spec overrides it.
 	Versioning *versioning.Settings
 }
 
@@ -164,8 +133,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 	if in.ApplicationID != nil && in.GitRepositoryID != nil {
 		return nil, ErrSourceConflict
 	}
-	// Checked here, where the binding is known: ParseSpec only sees the YAML, and
-	// "this step needs a deploy target" is a fact about the definition.
+	// Checked here because ParseSpec sees only YAML; "needs a deploy target" is a fact about the definition.
 	if err := validateStepsAgainstBinding(spec, in.ApplicationID, in.GitRepositoryID); err != nil {
 		return nil, err
 	}
@@ -199,8 +167,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.PipelineDefinition
 	return p, nil
 }
 
-// syncVersioning keeps the repository's policy in step with the spec: a `versioning:` block owns the
-// settings, and dropping the block hands them back to the API. A new building pipeline gets a policy.
+// A `versioning:` block owns the settings; dropping it hands them back to the API.
 func (s *Service) syncVersioning(p *models.PipelineDefinition, spec *Spec, settings *versioning.Settings, created bool) {
 	if s.versions == nil || spec == nil {
 		return
@@ -225,9 +192,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	if err != nil {
 		return nil, err
 	}
-	// A repo-owned pipeline is a mirror of a file in git: the spec, name and binding are all derived, so an edit
-	// here is reverted by the next re-sync and unbinding would orphan the definition. Refuse the edit and say
-	// where it belongs. Enabled stays writable on purpose — it is the kill switch when the repo's pipeline breaks.
+	// A repo-owned pipeline mirrors git, so edits would be reverted; Enabled stays writable as the kill switch.
 	if p.IsRepoOwned() && repoOwnedEditRequested(p, in) {
 		return nil, ErrRepoOwned
 	}
@@ -246,8 +211,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	if dn := strings.TrimSpace(in.DisplayName); dn != "" {
 		p.DisplayName = dn
 	}
-	// Partial update: only touch the bindings / enabled flag when the caller
-	// actually supplied them, so a spec-only update can't unbind or disable.
+	// Only touch supplied fields, so a spec-only update can't unbind or disable.
 	if in.SetApplicationID {
 		if err := s.checkBindingsInWorkspace(workspaceID, in.ApplicationID, nil); err != nil {
 			return nil, err
@@ -263,8 +227,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	if in.SetBranch {
 		p.Branch = strings.TrimSpace(in.Branch)
 	}
-	// Re-checked against the merged result, not the payload: a spec-only update
-	// that adds a deploy step to an unbound pipeline has to be caught too.
+	// Checked against the merged result so a spec-only update adding a deploy step is caught too.
 	if p.ApplicationID != nil && p.GitRepositoryID != nil {
 		return nil, ErrSourceConflict
 	}
@@ -291,8 +254,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.PipelineDefini
 	return p, nil
 }
 
-// checkBindingsInWorkspace rejects an application or repository id that belongs to another workspace.
-// It fails closed when the lookup isn't wired: the run would otherwise clone with the owner's credential.
+// Fails closed when unwired: the run would otherwise clone with the owner's credential.
 func (s *Service) checkBindingsInWorkspace(workspaceID uint, appID, repoID *uint) error {
 	if appID != nil {
 		if s.apps == nil {
@@ -313,9 +275,7 @@ func (s *Service) checkBindingsInWorkspace(workspaceID uint, appID, repoID *uint
 	return nil
 }
 
-// repoOwnedEditRequested reports whether an update asks to change something a repository-owned pipeline
-// derives rather than owns. A request that only repeats the stored values (a UI form round-tripping
-// unchanged fields) is not an edit, so it is allowed through — only an actual change is refused.
+// Repeating stored values (a form round-trip) is not an edit; only an actual change is refused.
 func repoOwnedEditRequested(p *models.PipelineDefinition, in Input) bool {
 	if in.Spec != "" && in.Spec != p.Spec {
 		return true
@@ -346,9 +306,7 @@ func sameAppID(a, b *uint) bool {
 	return *a == *b
 }
 
-// Get loads a pipeline definition without last-run enrichment. Used by internal
-// callers (Update/Delete/Trigger existence checks); client-facing reads that
-// want the at-a-glance status should use GetWithLastRun.
+// Get skips last-run enrichment; client-facing reads should use GetWithLastRun.
 func (s *Service) Get(workspaceID, id uint) (*models.PipelineDefinition, error) {
 	p, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -358,8 +316,6 @@ func (s *Service) Get(workspaceID, id uint) (*models.PipelineDefinition, error) 
 	return p, nil
 }
 
-// GetWithLastRun loads a pipeline and attaches its most recent run summary, for
-// client-facing reads (the runs page header, etc.).
 func (s *Service) GetWithLastRun(workspaceID, id uint) (*models.PipelineDefinition, error) {
 	p, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -378,8 +334,6 @@ func (s *Service) List(workspaceID uint) ([]models.PipelineDefinition, error) {
 	return defs, nil
 }
 
-// ListPaged returns a page of pipeline definitions plus the total count, each
-// enriched with its most recent run.
 func (s *Service) ListPaged(workspaceID uint, limit, offset int) ([]models.PipelineDefinition, int64, error) {
 	defs, total, err := s.repo.ListByWorkspacePaged(workspaceID, limit, offset)
 	if err != nil {
@@ -394,9 +348,7 @@ func (s *Service) ListPaged(workspaceID uint, limit, offset int) ([]models.Pipel
 	return defs, total, nil
 }
 
-// attachLastRuns fills each definition's LastRun with its newest run, resolved
-// in a single batch query. Best-effort: an enrichment failure leaves LastRun nil
-// rather than failing the caller.
+// One batch query; an enrichment failure leaves LastRun nil rather than failing the caller.
 func (s *Service) attachLastRuns(defs ...*models.PipelineDefinition) {
 	if len(defs) == 0 {
 		return
@@ -436,22 +388,19 @@ func (s *Service) Delete(workspaceID, id uint) error {
 // TriggerInput attributes and contextualizes a run.
 type TriggerInput struct {
 	Trigger string // push | manual | schedule | upstream
-	// Branch is the ref being built. It reaches steps as $MIABI_BRANCH and, for a
-	// repo-owned pipeline, selects the ref the spec is re-read from.
+	// Reaches steps as $MIABI_BRANCH and selects the ref a repo-owned spec is re-read from.
 	Branch        string
 	Commit        string
 	CommitMessage string
 	UserID        *uint
 	APIKeyID      *uint
 	NoCache       bool
-	// Bump and Version override this run's version: a bump part, or an exact version. Manual and API
-	// triggers only; pushes and schedules follow the policy.
+	// Manual and API triggers only; pushes and schedules follow the policy.
 	Bump    models.VersionBump
 	Version string
 }
 
-// Trigger creates a PipelineRun (with its step rows) and enqueues it. The run
-// executes on the internal runner unless routed to a remote runner by labels.
+// Trigger runs on the internal runner unless labels route it to a remote runner.
 func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*models.PipelineRun, error) {
 	p, err := s.Get(workspaceID, pipelineID)
 	if err != nil {
@@ -460,23 +409,17 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	if !p.Enabled {
 		return nil, ErrDisabled
 	}
-	// A repo-owned pipeline re-reads its document before every run, so the steps this run executes are the ones
-	// the ref actually carries. This has to happen here rather than in the worker: the run's step rows are
-	// projected from the spec a few lines down, and refreshing after that would leave a stale step list.
+	// Must sync before step rows are projected from the spec below, or the step list would be stale.
 	if p.IsRepoOwned() {
 		if _, err := s.SyncFromRepo(context.Background(), p, in.Branch); err != nil {
 			return nil, err
 		}
-		// Pin the run to the commit the spec was just read at, for two reasons: the steps and the tree the runner
-		// builds then come from one revision, and the runner checks out by commit — with none it clones the
-		// repository's default branch, which for an app tracking any other branch would silently build the wrong code.
+		// Pin to the spec's commit: one revision for steps and tree, and no silent default-branch build.
 		if in.Commit == "" {
 			in.Commit = p.SourceCommit
 		}
 	}
-	// A repository-bound pipeline has no app ref to fall back on, so an untriggered
-	// branch comes from the definition. Otherwise a manual run clones the repository's
-	// default branch and silently builds the wrong code.
+	// A repository-bound pipeline has no app ref, so the branch comes from the definition.
 	if in.Branch == "" && p.GitRepositoryID != nil {
 		in.Branch = p.Branch
 	}
@@ -523,8 +466,7 @@ func (s *Service) Trigger(workspaceID, pipelineID uint, in TriggerInput) (*model
 	return run, nil
 }
 
-// reserveVersion hands a building run its version before it is queued, so the version is fixed (and shown)
-// from the moment the run exists, and two concurrent runs can never build the same one.
+// Reserved before queueing so the version is fixed from the start and concurrent runs never share one.
 func (s *Service) reserveVersion(run *models.PipelineRun, p *models.PipelineDefinition, spec *Spec, in TriggerInput) error {
 	if s.versions == nil {
 		return nil
@@ -545,8 +487,7 @@ func (s *Service) reserveVersion(run *models.PipelineRun, p *models.PipelineDefi
 	return s.repo.UpdateRun(run)
 }
 
-// Rerun starts a fresh run of the same pipeline at the ref and commit an earlier run built. The
-// commit is carried over deliberately: "re-run" means run this again, not run whatever landed since.
+// Rerun deliberately reuses the earlier commit: re-run means this again, not whatever landed since.
 func (s *Service) Rerun(workspaceID, runID uint, userID *uint, noCache bool) (*models.PipelineRun, error) {
 	prev, err := s.GetRun(workspaceID, runID)
 	if err != nil {

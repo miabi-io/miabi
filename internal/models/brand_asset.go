@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// BrandAsset is an image the operator uploaded for the brand: a logo or the favicon.
-// Kept in the database rather than on disk, so every control-plane replica serves
-// the same file.
+// Kept in the database, not on disk, so every control-plane replica serves the same file.
 type BrandAsset struct {
 	Slot        string `gorm:"primaryKey;size:16"`
 	ContentType string `gorm:"size:64;not null"`

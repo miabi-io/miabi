@@ -31,9 +31,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The fake registry serves ws_7/{api,web} plus ws_8/secret; web has tags
-// latest + 1.0 (digests sha256:wlatest / sha256:abc), api has v2 (sha256:av2).
-
 func TestListRepositoriesPagePaginates(t *testing.T) {
 	svc := listSvc(t)
 	ctx := context.Background()
@@ -57,8 +54,7 @@ func TestListRepositoriesPagePaginates(t *testing.T) {
 		t.Fatalf("page 1 = %+v, want [web]", second)
 	}
 
-	// Past the end is an empty page, not an error — a client landing on a stale
-	// page number must not see a failure.
+	// Past the end is an empty page, not an error, for clients on a stale page number.
 	beyond, total, err := svc.ListRepositoriesPage(ctx, 7, "", 99, 20, 0)
 	if err != nil || len(beyond) != 0 || total != 2 {
 		t.Fatalf("beyond end = (%+v, %d, %v)", beyond, total, err)
@@ -73,8 +69,7 @@ func TestListRepositoriesPageReportsFullTagCountWithPreview(t *testing.T) {
 	if len(repos) != 1 {
 		t.Fatalf("repos = %+v, want just web", repos)
 	}
-	// The preview is truncated; the count is not — that distinction is what lets
-	// the list say "4 of 214" instead of lying about how many tags exist.
+	// The preview is truncated but the count is not, so the list can say "4 of 214".
 	if repos[0].TagCount != 2 {
 		t.Errorf("TagCount = %d, want 2", repos[0].TagCount)
 	}
@@ -149,8 +144,6 @@ func TestListTagsPageFiltersAndPaginates(t *testing.T) {
 	}
 }
 
-// A listing must survive a broken manifest: the tag is still returned, just
-// without the details the manifest would have supplied.
 func TestListTagsPageSurvivesUnreadableManifest(t *testing.T) {
 	tags, _, err := listSvc(t).ListTagsPage(context.Background(), 7, "api", "", 0, 20)
 	if err != nil {

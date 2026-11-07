@@ -25,9 +25,7 @@ export interface BackupSettings {
   updated_at?: string
 }
 
-// UpdateBackupSettingsInput mirrors the backend body. Leave s3_secret_key,
-// bundle_passphrase or backup_passphrase empty to keep the stored value unchanged;
-// the *_passphrase_clear flags are the only way to turn encryption back off.
+// Empty secrets keep the stored value; the *_passphrase_clear flags are the only way to turn encryption off.
 export interface UpdateBackupSettingsInput {
   s3_enabled: boolean
   s3_endpoint: string
@@ -53,8 +51,7 @@ export interface UpdateBackupSettingsInput {
   skip_backup_verify: boolean
 }
 
-// One prefix's result from a connection test: the probe wrote a small object
-// there, read it back and tried to remove it.
+// The probe wrote a small object there, read it back and tried to remove it.
 export interface BackupPrefixCheck {
   prefix: string
   key?: string

@@ -121,8 +121,7 @@ func TestOIDCRejectsUnknownClaimSource(t *testing.T) {
 	}
 }
 
-// session.secret sits inside an object. Before nested handling it would have
-// been stored in clear, returned unredacted, and wiped by any edit.
+// Regression: a nested secret was once stored in clear, returned unredacted and wiped by edits.
 func TestNestedSecretIsEncryptedRedactedAndKept(t *testing.T) {
 	rule := oidcRule(map[string]any{
 		"session": map[string]any{"store": "cookie", "secret": "session-key"},
@@ -197,8 +196,7 @@ func TestSSOPresetIsValidAsFarAsItGoes(t *testing.T) {
 	if preset.Type != "oidc" {
 		t.Errorf("preset type = %q, want oidc", preset.Type)
 	}
-	// A preset deliberately leaves the credentials blank, so it validates only
-	// once the issuer and client are filled in.
+	// Presets leave credentials blank, so they validate only once issuer and client are filled in.
 	rule := map[string]any{}
 	for k, v := range preset.Rule {
 		rule[k] = v

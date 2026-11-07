@@ -27,8 +27,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// legacyBackup is the backups table as it stood before the number column, so the
-// test starts from the schema a real upgrade actually finds.
 type legacyBackup struct {
 	ID          uint `gorm:"primaryKey"`
 	WorkspaceID uint
@@ -38,8 +36,7 @@ type legacyBackup struct {
 
 func (legacyBackup) TableName() string { return "backups" }
 
-// TestBackfillBackupNumbers pins the upgrade path: the result must be unique per database,
-// or the index AutoMigrate adds next cannot be created.
+// The result must be unique per database or the index AutoMigrate adds next can't be created.
 func TestBackfillBackupNumbers(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -111,8 +108,6 @@ type legacyCronJob struct {
 
 func (legacyCronJob) TableName() string { return "cron_jobs" }
 
-// Free-text and duplicate names become unique slugs per workspace, keeping the
-// original as the display name, so the unique index AutoMigrate adds next holds.
 func TestSlugifyCronJobNames(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

@@ -30,8 +30,7 @@ const form = ref({
   max_workspaces: 0,
   unlimited: true,
   default_cluster_id: 0,
-  // Per-user caps are tri-state: inherit the platform default, unlimited, or a number. A plain
-  // number field cannot express "inherit", and an empty one would read as 0 — which means none.
+  // Tri-state because an empty number field would read as 0, which means none.
   per_user_mode: 'inherit' as LimitMode,
   per_user: 10,
   joined_mode: 'inherit' as LimitMode,
@@ -109,8 +108,7 @@ async function load() {
 }
 watch(orgId, load, { immediate: true })
 
-// Confined: the organization runs its own locations, so its workspaces deploy there and nowhere
-// else, and a location outside the set cannot be its default.
+// The organization runs its own locations, so its workspaces deploy only there.
 const confined = computed(() => (org.value?.clusters.length ?? 0) > 0)
 const selectableClusters = computed(() =>
   confined.value ? clusters.value.filter((c) => c.organization_id === orgId.value) : clusters.value.filter((c) => !c.organization_id),
@@ -141,8 +139,7 @@ const dirty = computed(() => {
   )
 })
 
-// The default org's label stays editable in Community; its limits do not, so a label-only change
-// must still be saveable without sending a single gated field.
+// The default org's label stays editable in Community; a label-only change must send no gated field.
 const labelOnlyChange = computed(() => {
   const o = org.value
   if (!o) return false
@@ -164,8 +161,7 @@ async function save() {
     const o = org.value
     const payload: OrganizationUpdate = { display_name: form.value.display_name.trim() }
     const cap = form.value.unlimited ? -1 : Math.max(0, Number(form.value.max_workspaces) || 0)
-    // Every limit is sent only when it changed: they are gated on the organizations entitlement, and
-    // resending an unchanged one would refuse an edit Community is allowed to make.
+    // Limits are entitlement-gated, so resending an unchanged one would refuse an allowed Community edit.
     if (o && cap !== o.max_workspaces) payload.max_workspaces = cap
     const perUser = limitValue(form.value.per_user_mode, form.value.per_user)
     if (o && perUser !== (o.max_workspaces_per_user ?? undefined)) {
@@ -185,8 +181,7 @@ async function save() {
     if (o && form.value.creation !== (o.workspace_creation ?? 'inherit')) {
       payload.workspace_creation = form.value.creation
     }
-    // Only send the location when it actually changed: it is the one field still gated on the
-    // organizations entitlement, and sending it unchanged would refuse an otherwise allowed edit.
+    // The location is entitlement-gated, so sending it unchanged would refuse an otherwise allowed edit.
     if (o && form.value.default_cluster_id !== (o.default_cluster_id ?? 0)) {
       payload.default_cluster_id = form.value.default_cluster_id
     }

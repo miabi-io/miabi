@@ -29,8 +29,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// registryServerRoutes registers the built-in registry's admin settings, per-workspace info,
-// and the internal gateway forwardAuth endpoint.
 func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 	admin := r.v1.Group("/admin").WithTagInfo(okapi.GroupTag{Name: "Admin", Description: "Platform administration."})
 	ws := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Workspaces", Description: "Workspaces."})
@@ -117,8 +115,7 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[dto.MessageData]{},
 		},
 
-		// Internal: Goma forwardAuth target (unauthenticated; gateway-only). Hit on
-		// every /v2/* request to allow/deny by docker Basic credentials.
+		// Unauthenticated, gateway-only; hit on every /v2/* request to allow/deny by docker Basic credentials.
 		{
 			Method:  http.MethodPost,
 			Path:    "/internal/registry/auth",
@@ -127,8 +124,7 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Summary: "Registry forwardAuth (gateway-only)",
 		},
 		{
-			// GET variant: docker login's initial /v2/ probe forwards a GET; some
-			// forwardAuth setups replay the original method, so accept both.
+			// docker login's /v2/ probe is a GET and some forwardAuth setups replay the original method.
 			Method:  http.MethodGet,
 			Path:    "/internal/registry/auth",
 			Handler: r.h.registryServer.Authenticate,

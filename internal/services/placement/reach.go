@@ -48,8 +48,7 @@ func (s Site) String() string {
 	return s.Kind + " " + s.Name
 }
 
-// Reach refuses a link that cannot resolve at runtime. Cluster ids must be resolved (never 0); swarm
-// reports whether a cluster's workspace networks span its nodes, and label names a cluster.
+// Reach refuses links that cannot resolve at runtime; cluster ids must already be resolved (never 0).
 func Reach(a, b Site, swarm func(clusterID uint) bool, label func(clusterID uint) string) error {
 	if label == nil {
 		label = func(id uint) string { return fmt.Sprintf("location %d", id) }

@@ -27,8 +27,6 @@ import (
 	"time"
 )
 
-// fsBackend stores log objects as files under a rooted directory: for a single-node or homelab
-// install a durable, greppable set of log files on a shared volume with zero extra infrastructure.
 // Every process that reads or writes it must mount the same directory.
 type fsBackend struct {
 	root string
@@ -44,8 +42,7 @@ func NewFSBackend(dir string) (Backend, error) {
 
 func (b *fsBackend) Name() string { return "filesystem" }
 
-// path resolves a ref to an absolute file path, guarding against traversal out
-// of the root (refs are built internally, but keep the store hermetic).
+// Refs are built internally, but the store stays hermetic.
 func (b *fsBackend) path(ref string) (string, bool) {
 	ref = strings.ReplaceAll(ref, "\\", "/")
 	for _, seg := range strings.Split(ref, "/") {

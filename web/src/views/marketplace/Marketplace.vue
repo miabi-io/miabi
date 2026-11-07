@@ -64,8 +64,6 @@ function matchesSearch(t: CatalogEntry, q: string): boolean {
   )
 }
 
-// activeSearch binds the header search box to the current tab's state and
-// resets that tab to page 1 on every keystroke.
 const activeSearch = computed<string>({
   get: () => (isBrowse.value ? searchBy.value[tab.value as BrowseSource] : ''),
   set: (v) => {
@@ -76,9 +74,6 @@ const activeSearch = computed<string>({
   },
 })
 
-// activeList is the current tab's templates after source + search filtering.
-// The All tab skips the source filter and shows every synced and imported
-// template together.
 const activeList = computed(() => {
   if (!isBrowse.value) return []
   const src = tab.value as BrowseSource
@@ -155,9 +150,7 @@ onMounted(async () => {
   }
 })
 
-// Keep the active tab in the URL so a reload / back-forward / shared link lands
-// on the same tab. Uses replace (no history spam); omits the param for the
-// default All tab to keep URLs clean.
+// Uses replace (no history spam) and omits the param for the default All tab.
 watch(tab, (t) => {
   const query = { ...route.query }
   if (t === 'all') delete query.tab
@@ -216,8 +209,7 @@ async function doImport() {
 // ---- installed lifecycle ----
 const busyInstall = ref<number | null>(null)
 
-// Upgrades are driven from the template detail page (marketplace/<slug>?upgrade);
-// the Installed-tab Upgrade button links there.
+// Upgrades are driven from the template detail page (marketplace/<slug>?upgrade).
 
 const uninstallTarget = ref<TemplateInstallView | null>(null)
 // Typed-name confirmation guards an uninstall, as on app/database deletion.
@@ -240,8 +232,6 @@ function deletionSummary(i: TemplateInstallView): string {
   return parts.join(', ') || t('marketplace.itsResources')
 }
 
-// Teardown follow-up: after an uninstall, show which resources were removed (and
-// any that failed).
 const teardown = ref<{ name: string; result: UninstallResult } | null>(null)
 const teardownItems = computed(() => teardown.value?.result.removed ?? [])
 const teardownFailed = computed(() => (teardown.value?.result.failed ?? 0) > 0)

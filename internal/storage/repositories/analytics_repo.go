@@ -28,8 +28,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// AnalyticsRepository persists the minute-bucketed rollups the analytics
-// consumer produces and answers range queries for the dashboards.
 type AnalyticsRepository struct {
 	db *gorm.DB
 }
@@ -38,9 +36,7 @@ func NewAnalyticsRepository(db *gorm.DB) *AnalyticsRepository {
 	return &AnalyticsRepository{db: db}
 }
 
-// Upsert folds each flushed rollup into its stored row for the same (workspace, app, route,
-// minute) key: counters add, histograms add element-wise, top-K maps combine, HLL sketches
-// merge. Under a row lock so concurrent consumers never lose or double-count a bucket.
+// Under a row lock so concurrent consumers never lose or double-count a bucket.
 func (r *AnalyticsRepository) Upsert(rollups []*models.AnalyticsRollup) error {
 	if len(rollups) == 0 {
 		return nil
@@ -70,9 +66,6 @@ func (r *AnalyticsRepository) Upsert(rollups []*models.AnalyticsRollup) error {
 	})
 }
 
-// Range returns every rollup for a workspace whose bucket falls in [since, until),
-// oldest first. appID filters to a single application when non-nil (0 means "all
-// apps in the workspace", so a nil filter is the whole workspace).
 func (r *AnalyticsRepository) Range(workspaceID uint, appID *uint, since, until time.Time) ([]models.AnalyticsRollup, error) {
 	q := r.db.Where("workspace_id = ? AND bucket >= ? AND bucket < ?", workspaceID, since, until)
 	if appID != nil {
@@ -83,9 +76,7 @@ func (r *AnalyticsRepository) Range(workspaceID uint, appID *uint, since, until 
 	return rows, err
 }
 
-// summaryColumns are the columns BuildSummary reads. The seven top-K maps and the upstream
-// histogram are JSON blobs gorm deserializes whether or not the caller looks at them, and they
-// dwarf the counters — naming the columns keeps the dashboard's query small.
+// The top-K and histogram JSON blobs dwarf the counters, so naming columns keeps the query small.
 var summaryColumns = []string{
 	"id", "bucket", "requests", "bytes_in", "bytes_out",
 	"status2xx", "status3xx", "status4xx", "status5xx",
@@ -94,9 +85,6 @@ var summaryColumns = []string{
 
 var summaryGeoColumns = append(append([]string{}, summaryColumns...), "top_countries")
 
-// RangeSummary is Range with only the columns the summary needs: same rows, same order, a
-// fraction of the bytes and none of the top-K decoding. withGeo additionally reads
-// top_countries, for the one window whose countries are rendered.
 func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since, until time.Time, withGeo bool) ([]models.AnalyticsRollup, error) {
 	cols := summaryColumns
 	if withGeo {
@@ -113,8 +101,6 @@ func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since,
 	return rows, err
 }
 
-// AppIDs lists the distinct application ids that have analytics data in the
-// window, so the UI can populate its app filter with only apps that have traffic.
 func (r *AnalyticsRepository) AppIDs(workspaceID uint, since, until time.Time) ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.AnalyticsRollup{}).
@@ -123,8 +109,6 @@ func (r *AnalyticsRepository) AppIDs(workspaceID uint, since, until time.Time) (
 	return ids, err
 }
 
-// Prune deletes rollups older than `before`, returning the number removed — the
-// retention job's unit of work.
 func (r *AnalyticsRepository) Prune(before time.Time) (int64, error) {
 	res := r.db.Where("bucket < ?", before).Delete(&models.AnalyticsRollup{})
 	return res.RowsAffected, res.Error

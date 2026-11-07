@@ -58,9 +58,7 @@ func (s *Service) Export(ctx context.Context, workspaceID uint, userID *uint, tr
 	})
 }
 
-// runExport writes the workspace to the bucket as a bundle. Order matters and is the reverse of what it looks
-// like: the data artifacts are captured first and the index written last, so a bundle's info file exists only
-// once the things it lists do. An interrupted export leaves orphaned objects, not an index promising a restore.
+// Data first, index last, so an interrupted export leaves orphans, never an index promising a restore.
 func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) error {
 	cfg, prefix, passphrase, err := s.Settings.BundleTarget(b.WorkspaceID)
 	if err != nil {
@@ -73,9 +71,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 		return nil
 	}
 
-	// Preflight the bucket before doing any work. An export dumps every database and archives every volume before
-	// it writes its own two objects, so a target that refuses the control plane would fail at the very end — after
-	// the expensive part, and after leaving those artifacts behind. One small object answers that in a second.
+	// Probe first: otherwise a refusing bucket fails only after every dump and archive has run.
 	if p, err := blob.RunProbe(ctx, blobConfig(cfg), prefix); err != nil {
 		s.fail(b, fmt.Errorf("the backup target is not usable: %w", err))
 		return nil
@@ -168,9 +164,7 @@ func (s *Service) runExport(ctx context.Context, b *models.WorkspaceBundle) erro
 	return nil
 }
 
-// exportDatabases dumps every logical database in the workspace into the bundle's branch, reusing services/backup
-// so each engine is dumped by the tool that understands it. A dump that fails does not fail the bundle — it is
-// recorded on the artifact and in the report. One unreachable database must not cost every other one.
+// A failed dump is recorded, not fatal: one unreachable database must not cost every other one.
 func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle, cfg *backup.S3Config, prefix, passphrase string, report *models.BundleReport) []wsbundle.Artifact {
 	path := wsbundle.DatabasePath(prefix, b.Ref)
 	instances, err := s.Database.List(b.WorkspaceID)
@@ -187,8 +181,7 @@ func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle
 			continue
 		}
 		if len(dbs) == 0 {
-			// Redis and friends: no logical database, so nothing the dump tools can
-			// read. Its declaration still travels; its contents do not.
+			// No logical database for the dump tools to read; its declaration still travels.
 			report.Add("database", inst.Name, "skipped", "engine "+string(inst.Engine)+" has no logical database to dump")
 			continue
 		}
@@ -228,8 +221,6 @@ func (s *Service) exportDatabases(ctx context.Context, b *models.WorkspaceBundle
 	return out
 }
 
-// exportVolumes archives every workspace volume into the bundle's branch with the
-// volume-bkup helper, on the node that actually holds each volume.
 func (s *Service) exportVolumes(ctx context.Context, b *models.WorkspaceBundle, cfg *backup.S3Config, prefix, passphrase string, report *models.BundleReport) []wsbundle.Artifact {
 	path := wsbundle.VolumePath(prefix, b.Ref)
 	vols, err := s.Volume.List(b.WorkspaceID)
@@ -260,8 +251,7 @@ type objectLister interface {
 	List(ctx context.Context, prefix string) ([]blob.Object, error)
 }
 
-// sizeArtifacts reads from the bucket the size of each captured artifact whose helper did not report one
-// (volume-bkup prints only the archive name), so the run and the index count what was really written.
+// volume-bkup prints only the archive name, so sizes are read from the bucket.
 func sizeArtifacts(ctx context.Context, store objectLister, arts []wsbundle.Artifact) {
 	listed := map[string][]blob.Object{}
 	for i := range arts {

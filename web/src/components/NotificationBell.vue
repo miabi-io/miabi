@@ -56,8 +56,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
-  // The bell mounts once with the dashboard layout, so unmount == leaving the app
-  // (logout): tear the SSE stream down.
+  // The bell mounts once with the layout, so unmount means logout: tear the SSE stream down.
   store.disconnect()
 })
 </script>

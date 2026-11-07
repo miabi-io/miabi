@@ -40,9 +40,7 @@ func (r *APIKeyRepository) Update(k *models.APIKey) error {
 	return r.db.Save(k).Error
 }
 
-// FindByPrefix returns all keys sharing an indexed lookup prefix (including
-// revoked/expired ones) so the caller can constant-time compare the full hash
-// and report validity precisely.
+// Includes revoked/expired keys so the caller can constant-time compare and report validity precisely.
 func (r *APIKeyRepository) FindByPrefix(prefix string) ([]models.APIKey, error) {
 	var keys []models.APIKey
 	if err := r.db.Where("key_prefix = ?", prefix).Find(&keys).Error; err != nil {
@@ -59,17 +57,13 @@ func (r *APIKeyRepository) FindByID(id uint) (*models.APIKey, error) {
 	return &k, nil
 }
 
-// ListByUser returns a user's own API keys, newest first. Ephemeral,
-// machine-minted job/registry credentials are excluded — they are per-run and
-// not user-managed, so they never appear in the API-keys UI.
+// Ephemeral per-run job/registry keys are excluded so they never appear in the API-keys UI.
 func (r *APIKeyRepository) ListByUser(userID uint) ([]models.APIKey, error) {
 	var keys []models.APIKey
 	err := r.db.Where("user_id = ? AND ephemeral = ?", userID, false).Order("created_at DESC").Find(&keys).Error
 	return keys, err
 }
 
-// DeleteExpiredEphemeral permanently removes ephemeral job keys past their
-// expiry (the orphan sweep). Returns how many were deleted.
 func (r *APIKeyRepository) DeleteExpiredEphemeral(now time.Time) (int, error) {
 	res := r.db.Where("ephemeral = ? AND expires_at IS NOT NULL AND expires_at < ?", true, now).
 		Delete(&models.APIKey{})
@@ -85,8 +79,7 @@ func (r *APIKeyRepository) Revoke(id uint) error {
 	return r.db.Model(&models.APIKey{}).Where("id = ?", id).Update("revoked", true).Error
 }
 
-// Delete permanently removes a key. Handlers only allow this for keys that are
-// already revoked or expired.
+// Handlers only allow this for keys already revoked or expired.
 func (r *APIKeyRepository) Delete(id uint) error {
 	return r.db.Delete(&models.APIKey{}, id).Error
 }
@@ -95,8 +88,7 @@ func (r *APIKeyRepository) TouchLastUsed(id uint) error {
 	return r.db.Model(&models.APIKey{}).Where("id = ?", id).Update("last_used_at", gorm.Expr("NOW()")).Error
 }
 
-// ListByScope returns the keys holding scope, bound to workspaceID, or to no workspace when it is nil,
-// newest first. Scopes are a JSON column, so the match is on the quoted name.
+// Scopes are a JSON column, so the match is on the quoted name.
 func (r *APIKeyRepository) ListByScope(scope string, workspaceID *uint) ([]models.APIKey, error) {
 	var out []models.APIKey
 	q := r.db.Where("scopes LIKE ?", `%"`+scope+`"%`)

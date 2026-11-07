@@ -5,14 +5,14 @@
       "description": "ApplicationPlacementSpec is where an application runs.",
       "properties": {
         "constraints": {
-          "description": "Constraints narrow the nodes of the location a service is scheduled on, in Swarm syntax: node.labels.disk==ssd. An empty list clears them; omitting the field keeps them.",
+          "description": "Constraints use Swarm syntax (node.labels.disk==ssd); an empty list clears them, omitting keeps them.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "location": {
-          "description": "Location names where the app is created. Omitted, the app follows its stack, a volume it mounts or the databases it references, else the workspace default. Fixed once created.",
+          "description": "Location defaults to the stack, a mounted volume or referenced databases, else the workspace default; fixed once created.",
           "type": "string"
         }
       },
@@ -20,7 +20,7 @@
     },
     "ApplicationSpec": {
       "additionalProperties": false,
-      "description": "ApplicationSpec is a long-running container workload. CI writes the immutable Digest; GitOps converges runtime to it.",
+      "description": "ApplicationSpec Digest is written by CI; GitOps converges runtime to it.",
       "properties": {
         "command": {
           "items": {
@@ -32,7 +32,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "ContainerLabels are user-defined Docker labels stamped on the app's container(s), for label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply — a manifest is machine-authored, so import is fail-soft rather than erroring.",
+          "description": "ContainerLabels reserved keys (io.miabi.*, com.docker.*) are stripped on apply rather than rejected.",
           "type": "object"
         },
         "deployment": {
@@ -50,12 +50,12 @@
           "type": "object"
         },
         "externalLabel": {
-          "description": "ExternalLabel pins the subdomain used for external access (`\u003clabel\u003e.\u003cbase-domain\u003e`). When unset Miabi generates a stable label. The label is platform-wide unique: if already claimed it is ignored and a generated one is used, so a copy-pasted manifest never fails on a clash.",
+          "description": "ExternalLabel is platform-wide unique; a claimed one is ignored for a generated label.",
           "type": "string"
         },
         "healthcheck": {
           "$ref": "#/$defs/HealthcheckSpec",
-          "description": "Healthcheck is how the container's health is probed. A deploy waits for it to report healthy before the new release goes live, so a broken release never replaces a working one. Omitted, the app keeps the check it has, so one configured in the console is not undone."
+          "description": "Healthcheck gates releases so a broken one never replaces a working one; omitted keeps the current check."
         },
         "image": {
           "type": "string"
@@ -67,8 +67,7 @@
           "type": "array"
         },
         "placement": {
-          "$ref": "#/$defs/ApplicationPlacementSpec",
-          "description": "Placement is where the app runs: the location it is created in and, for a service, the nodes Swarm may schedule it on."
+          "$ref": "#/$defs/ApplicationPlacementSpec"
         },
         "ports": {
           "items": {
@@ -77,11 +76,11 @@
           "type": "array"
         },
         "registry": {
-          "description": "Registry names the Registry credential used to pull this image; empty means an anonymous public pull. It need not be declared in the same bundle: a name not in the manifest resolves against the workspace's existing credentials, so a token created once in the UI can be reused.",
+          "description": "Registry empty means an anonymous pull; an undeclared name resolves against existing workspace credentials.",
           "type": "string"
         },
         "reloadPolicy": {
-          "description": "ReloadPolicy decides what a mounted config's content change does: \"restart\" (default) redeploys the app, \"none\" leaves it running for apps that watch their own config file.",
+          "description": "ReloadPolicy \"restart\" (default) redeploys on config change; \"none\" suits apps that watch their own config.",
           "enum": [
             "restart",
             "none"
@@ -104,11 +103,11 @@
         },
         "security": {
           "$ref": "#/$defs/SecuritySpec",
-          "description": "Security is the account the container runs as, the hardening it runs with and the kernel privileges it is granted, checked on apply the way the console checks them."
+          "description": "Security is checked on apply the way the console checks it."
         },
         "source": {
           "$ref": "#/$defs/SourceSpec",
-          "description": "Source builds the image from a Git repository instead of pulling one. Exactly one of source and image is set: an app either builds or pulls, and a manifest declaring both would not say which wins. Image stays the plain, common case; source is what makes a build-from-git app expressible at all, so an app created in the console can be exported and re-applied as itself."
+          "description": "Source and image are mutually exclusive: an app either builds or pulls."
         },
         "stack": {
           "description": "Stack optionally names the owning Stack resource.",
@@ -134,7 +133,7 @@
       "description": "CapabilitiesSpec changes the Linux capabilities a container starts with. The CAP_ prefix is optional.",
       "properties": {
         "add": {
-          "description": "Add grants capabilities, e.g. [\"NET_ADMIN\"]. Anything off the allow-list is refused on apply, not dropped.",
+          "description": "Add refuses anything off the allow-list on apply rather than dropping it.",
           "items": {
             "type": "string"
           },
@@ -152,17 +151,16 @@
     },
     "ConfigSpec": {
       "additionalProperties": false,
-      "description": "ConfigSpec is a set of named files projected into containers at mount time. Values are interpolated exactly like application env, so a config can carry a rendered database password without a bootstrap script.",
+      "description": "ConfigSpec values are interpolated like env, so a config can carry a rendered database password.",
       "properties": {
         "data": {
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Data maps a file key (a relative filename, \"/\" permitted for subdirectories) to its content.",
           "type": "object"
         },
         "delimiters": {
-          "description": "Delimiters overrides the interpolation delimiters for every value, so a file whose own syntax uses {{ }} is not mangled. Exactly two distinct entries.",
+          "description": "Delimiters must be exactly two distinct entries.",
           "items": {
             "type": "string"
           },
@@ -184,10 +182,10 @@
     },
     "CronJobSpec": {
       "additionalProperties": false,
-      "description": "CronJobSpec is a schedule bound to an Application. Each fire runs Command in the app's runtime context, on the app's active release unless Image overrides it.",
+      "description": "CronJobSpec runs on the app's active release unless Image overrides it.",
       "properties": {
         "app": {
-          "description": "App is the Application the command runs in. Immutable: moving a schedule to another app is a delete and a create.",
+          "description": "App is immutable: moving a schedule to another app is a delete and a create.",
           "type": "string"
         },
         "command": {
@@ -198,7 +196,7 @@
           "type": "array"
         },
         "concurrencyPolicy": {
-          "description": "ConcurrencyPolicy decides what a fire does while the previous run is still active: allow (start another), forbid (skip this fire) or replace (cancel the running one). Default allow.",
+          "description": "ConcurrencyPolicy is allow (default), forbid (skip the fire) or replace (cancel the running one).",
           "type": "string"
         },
         "entrypoint": {
@@ -229,7 +227,7 @@
           "description": "Security pins the account runs use; omitted inherits the app's when each run fires."
         },
         "suspend": {
-          "description": "Suspend pauses the schedule. Omitted leaves the live value alone, so a pause made in the console survives a sync.",
+          "description": "Suspend omitted leaves the live value alone, so a console pause survives a sync.",
           "type": "boolean"
         },
         "timeoutSeconds": {
@@ -246,7 +244,7 @@
     },
     "DatabasePlacementSpec": {
       "additionalProperties": false,
-      "description": "DatabasePlacementSpec is where a database is created. It also reads the string this field held before it became a block (placement: dedicated) as the old spelling of instance.",
+      "description": "DatabasePlacementSpec also accepts the old string form (placement: dedicated) as instance.",
       "properties": {
         "location": {
           "description": "Location names where the database is created; omitted, the workspace default. Fixed once created.",
@@ -257,7 +255,7 @@
     },
     "DatabaseResourcesSpec": {
       "additionalProperties": false,
-      "description": "DatabaseResourcesSpec limits a database instance, by memory and CPU or by a named size. Memory accepts Ki/Mi/Gi; CPU is a number of cores, \"0.5\" for half of one. \"0\" removes a limit.",
+      "description": "DatabaseResourcesSpec memory accepts Ki/Mi/Gi, CPU is cores (\"0.5\"); \"0\" removes a limit.",
       "properties": {
         "cpu": {
           "type": "string"
@@ -281,7 +279,7 @@
           "type": "string"
         },
         "instance": {
-          "description": "Instance decides which instance hosts the database: auto (default) reuses a compatible running one and provisions one when none exists, dedicated always provisions one, shared requires an existing one.",
+          "description": "Instance is auto (reuse a compatible one, else provision), dedicated (always provision) or shared (must exist).",
           "enum": [
             "auto",
             "dedicated",
@@ -290,7 +288,7 @@
           "type": "string"
         },
         "placement": {
-          "description": "Placement is where the database is created. The string form (placement: dedicated) is the deprecated spelling of instance.",
+          "description": "Placement's string form (placement: dedicated) is the deprecated spelling of instance.",
           "oneOf": [
             {
               "$ref": "#/$defs/DatabasePlacementSpec"
@@ -307,12 +305,12 @@
           ]
         },
         "readOnlyUser": {
-          "description": "ReadOnlyUser gives the database a second, read-only user (PostgreSQL): SELECT on every table, now and future, referenced as {{ .databases.\u003cname\u003e.readonly_user|readonly_password|readonly_uri }}. Omitted, the database keeps what it has; false removes it.",
+          "description": "ReadOnlyUser (PostgreSQL) grants SELECT on all tables; omitted keeps what it has, false removes it.",
           "type": "boolean"
         },
         "resources": {
           "$ref": "#/$defs/DatabaseResourcesSpec",
-          "description": "Resources limit the database's instance, the engine tuned to the memory. Stating them gives the database an instance of its own, since a reused one already runs with another's size. Omitted, the instance keeps its limits."
+          "description": "Resources give the database its own instance, since a reused one runs with another's size; omitted keeps limits."
         },
         "version": {
           "description": "e.g. \"16-alpine\"",
@@ -329,11 +327,11 @@
       "description": "DeploymentSpec is how an application runs and rolls out.",
       "properties": {
         "replicas": {
-          "description": "Replicas is how many tasks a service runs, 1 to 100. Omitted, a new service runs one and an existing one keeps its count, so a scale made in the console is not undone.",
+          "description": "Replicas is 1 to 100; omitted keeps the current count, so a console scale is not undone.",
           "type": "integer"
         },
         "runtime": {
-          "description": "Runtime is container (one Docker container) or service (a replicated Swarm service, which needs a location that runs a swarm). Omitted, a new app is a container and an existing one keeps its runtime.",
+          "description": "Runtime service needs a location that runs a swarm; omitted, an existing app keeps its runtime.",
           "enum": [
             "container",
             "service"
@@ -341,7 +339,7 @@
           "type": "string"
         },
         "strategy": {
-          "description": "Strategy is how a new release replaces the running one: recreate (stop then start), rolling (start the new container before retiring the old) or canary (run both and shift traffic). Omitted, the app keeps the strategy it is configured with.",
+          "description": "Strategy is recreate, rolling or canary; omitted keeps the configured strategy.",
           "enum": [
             "canary",
             "recreate",
@@ -358,7 +356,7 @@
     },
     "DomainSpec": {
       "additionalProperties": false,
-      "description": "DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real FQDN). tls is the default certificate policy routes under it inherit, and wildcard covers *.name too. Ownership verification is a runtime action.",
+      "description": "DomainSpec wildcard also covers *.name; ownership verification is a runtime action.",
       "properties": {
         "tls": {
           "description": "acme|custom (default acme)",
@@ -376,7 +374,7 @@
     },
     "GitRepositorySpec": {
       "additionalProperties": false,
-      "description": "GitRepositorySpec is a Git credential. SecretRef names the vault entry holding the token (auth token) or private key (auth ssh), so the manifest is safe to commit when that entry is sealed.",
+      "description": "GitRepositorySpec is safe to commit when the SecretRef vault entry is sealed.",
       "properties": {
         "auth": {
           "description": "public|token|ssh (default token with a secretRef, else public)",
@@ -399,13 +397,13 @@
     },
     "GitSourceSpec": {
       "additionalProperties": false,
-      "description": "GitSourceSpec is a GitOps project. The repository is either a public URL (repo) or a stored Git credential named by repository, which supplies the URL too. The webhook secret is generated on create and never declared.",
+      "description": "GitSourceSpec webhook secret is generated on create and never declared.",
       "properties": {
         "allowEmpty": {
           "type": "boolean"
         },
         "deletePolicy": {
-          "description": "DeletePolicy decides what deleting the project does to the resources it created: orphan (the default) leaves them running, cascade tears them down. Orphan keeps a mistaken prune harmless.",
+          "description": "DeletePolicy orphan (default) keeps a mistaken prune harmless; cascade tears resources down.",
           "type": "string"
         },
         "path": {
@@ -441,10 +439,10 @@
     },
     "HealthcheckSpec": {
       "additionalProperties": false,
-      "description": "HealthcheckSpec is how a container's health is probed. Only the fields stated are applied; the rest keep their current value (interval 30s, timeout 5s, 3 retries and no start period on a new app).",
+      "description": "HealthcheckSpec applies only stated fields; the rest keep their current value.",
       "properties": {
         "command": {
-          "description": "Command is the shell command a command check runs, e.g. pg_isready. It needs a shell in the image; an http check does not.",
+          "description": "Command needs a shell in the image; an http check does not.",
           "type": "string"
         },
         "intervalSeconds": {
@@ -468,7 +466,7 @@
           "type": "integer"
         },
         "type": {
-          "description": "Type is http (GET path on port, healthy on 2xx/3xx), command (run command in the container, healthy on exit 0), image (the image's own HEALTHCHECK, the default) or none (no check, not even the image's).",
+          "description": "Type is http, command, image (the image's HEALTHCHECK, default) or none (not even the image's).",
           "enum": [
             "command",
             "http",
@@ -485,14 +483,14 @@
     },
     "JobSpec": {
       "additionalProperties": false,
-      "description": "JobSpec is a declared one-off run in an Application's runtime context. Syncing the same commit twice never runs it twice; a failed run is not retried by the next sync.",
+      "description": "JobSpec never runs twice for the same commit; a failed run is not retried by the next sync.",
       "properties": {
         "app": {
           "description": "App is the Application the command runs in. Immutable.",
           "type": "string"
         },
         "backoffLimit": {
-          "description": "BackoffLimit is how many times a failed run is retried before the Job counts as failed; 0 (default) never retries. Retries start a new run; a sync never does.",
+          "description": "BackoffLimit 0 never retries; retries start a new run, a sync never does.",
           "type": "integer"
         },
         "command": {
@@ -522,7 +520,6 @@
           "type": "string"
         },
         "runPolicy": {
-          "description": "RunPolicy decides when the Job runs: onChange (default) when its fingerprint changes, once per name, or onRelease each time a new release of the app becomes active.",
           "type": "string"
         },
         "security": {
@@ -534,7 +531,7 @@
           "type": "integer"
         },
         "waitForDeploy": {
-          "description": "WaitForDeploy (onChange only, default true) holds a run while the app has a deploy in flight, so it runs on the new release; a failed deploy marks the run skipped.",
+          "description": "WaitForDeploy (onChange only) runs on the new release; a failed deploy marks the run skipped.",
           "type": "boolean"
         }
       },
@@ -546,7 +543,7 @@
     },
     "Meta": {
       "additionalProperties": false,
-      "description": "Meta is the identity block shared by every kind. Labels are short and identifying (for selection and grouping); Annotations hold descriptive data the engine stores but never queries. Custom metadata belongs in one of these maps, never as ad-hoc top-level keys.",
+      "description": "Custom metadata belongs in Labels or Annotations, never as ad-hoc top-level keys.",
       "properties": {
         "annotations": {
           "additionalProperties": {
@@ -564,7 +561,7 @@
           "type": "string"
         },
         "uid": {
-          "description": "UID is the resource's portable identifier (its Miabi uid). Written on export so a restore into another install — or a rename in a manifest — keeps identity. Optional in hand-authored manifests; matched ahead of name when set.",
+          "description": "UID survives restores and renames; when set it is matched ahead of name.",
           "type": "string"
         }
       },
@@ -575,10 +572,10 @@
     },
     "MiddlewareSpec": {
       "additionalProperties": false,
-      "description": "MiddlewareSpec is one gateway middleware. Type selects the behaviour from the gateway's catalogue (basicAuth, rateLimit, accessPolicy, …) and Rule carries that type's own configuration, so the manifest reads like the gateway config it produces rather than a Miabi-shaped translation of it.",
+      "description": "MiddlewareSpec Rule is the gateway type's own configuration, passed through untranslated.",
       "properties": {
         "paths": {
-          "description": "Paths narrows the middleware to the request paths listed; empty applies it to everything the route serves.",
+          "description": "Paths empty applies the middleware to everything the route serves.",
           "items": {
             "type": "string"
           },
@@ -606,7 +603,7 @@
           "type": "string"
         },
         "key": {
-          "description": "Key selects one file from the config, making Path that file's exact location. Empty projects every key under Path as a directory prefix.",
+          "description": "Key makes Path that file's exact location; empty projects every key under Path as a directory.",
           "type": "string"
         },
         "mode": {
@@ -640,13 +637,13 @@
     },
     "PortSpec": {
       "additionalProperties": false,
-      "description": "PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal: externalAccess gives it a public HTTPS URL through the reverse proxy, while publish/hostPort binds it to a raw port on the node, like `docker -p`.",
+      "description": "PortSpec exposure knobs are orthogonal: externalAccess is a public HTTPS URL, publish binds a raw node port.",
       "properties": {
         "container": {
           "type": "integer"
         },
         "externalAccess": {
-          "description": "ExternalAccess publishes this port on `\u003cexternalLabel\u003e.\u003cbase-domain\u003e` over HTTPS via the reverse proxy (the base domain must be configured platform-wide).",
+          "description": "ExternalAccess requires the base domain to be configured platform-wide.",
           "type": "boolean"
         },
         "hostPort": {
@@ -661,7 +658,7 @@
           "type": "string"
         },
         "publish": {
-          "description": "Publish binds this container port to a host port on the node (raw TCP/UDP). HostPort requests a specific host port; 0 auto-allocates from the pool.",
+          "description": "HostPort 0 auto-allocates from the pool.",
           "type": "boolean"
         },
         "scheme": {
@@ -680,7 +677,6 @@
     },
     "ProjectSpec": {
       "additionalProperties": false,
-      "description": "ProjectSpec bundles a set of resources authored in one place. Child resources may be inlined; the parser flattens them into the document set.",
       "properties": {
         "description": {
           "type": "string"
@@ -697,7 +693,7 @@
     },
     "RegistrySpec": {
       "additionalProperties": false,
-      "description": "RegistrySpec is a container-registry credential; an Application selects one via spec.registry. Password is write-only and never appears in a plan — prefer a vault reference over an inline literal. A rotation still converges via an unreadable fingerprint (see PasswordFP).",
+      "description": "RegistrySpec Password is write-only and never in a plan; rotation converges via PasswordFP.",
       "properties": {
         "password": {
           "type": "string"
@@ -720,7 +716,7 @@
           "type": "string"
         },
         "gpu": {
-          "description": "GPU is the number of whole GPU units the app requests (0 = none). GPUKind narrows the request to a vendor/model (\"nvidia\", \"NVIDIA A100-…\").",
+          "description": "GPUKind narrows the request to a vendor/model (\"nvidia\", \"NVIDIA A100-...\").",
           "type": "integer"
         },
         "gpuKind": {
@@ -735,7 +731,7 @@
     },
     "RouteMaintenanceSpec": {
       "additionalProperties": false,
-      "description": "RouteMaintenanceSpec is the response a parked route answers with. An unset statusCode or message leaves the gateway's defaults (503 and a short notice).",
+      "description": "RouteMaintenanceSpec unset fields keep the gateway defaults (503 and a short notice).",
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -744,7 +740,7 @@
           "type": "string"
         },
         "statusCode": {
-          "description": "StatusCode must be 4xx or 5xx: a parked route answering 2xx reads as healthy to uptime monitors and search engines.",
+          "description": "StatusCode must be 4xx or 5xx: a 2xx parked route reads as healthy to monitors and search engines.",
           "type": "integer"
         }
       },
@@ -755,10 +751,8 @@
     },
     "RouteSecuritySpec": {
       "additionalProperties": false,
-      "description": "RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's own security block so the manifest reads like the gateway config it produces.",
       "properties": {
         "exploitProtection": {
-          "description": "ExploitProtection has the gateway reject requests carrying common injection and traversal signatures before the backend sees them.",
           "type": "boolean"
         }
       },
@@ -766,7 +760,6 @@
     },
     "RouteSpec": {
       "additionalProperties": false,
-      "description": "RouteSpec binds one or more hostnames (and an optional path) to an application's port with a TLS mode — an HTTP routing rule. List every hostname the route should answer on, e.g. both example.com and www.example.com.",
       "properties": {
         "advancedConfig": {
           "description": "AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above.",
@@ -787,7 +780,7 @@
         },
         "maintenance": {
           "$ref": "#/$defs/RouteMaintenanceSpec",
-          "description": "Maintenance parks the route at the gateway. Omitting it means \"serving\", so removing the block from a manifest resumes traffic."
+          "description": "Maintenance omitted means serving, so removing the block resumes traffic."
         },
         "methods": {
           "items": {
@@ -835,7 +828,7 @@
     },
     "SealedSecretSpec": {
       "additionalProperties": false,
-      "description": "SealedSecretSpec is a secret value sealed with `miabi secrets seal`. Only the workspace it was sealed for can open it, and only for a SealedSecret of the same name. Unlike a Secret, it is compared by fingerprint, so changing the sealed value in git updates the secret.",
+      "description": "SealedSecretSpec opens only in the workspace and name it was sealed for; compared by fingerprint.",
       "properties": {
         "value": {
           "description": "Value is the output of `miabi secrets seal`: sealed:v1:\u003ckeyVersion\u003e:\u003cdata\u003e. Never plaintext.",
@@ -849,7 +842,7 @@
     },
     "SecretSpec": {
       "additionalProperties": false,
-      "description": "SecretSpec is a write-only secret value. Value is never read back; the diff engine treats secrets as opaque (presence/absence only). The generation options mirror the console's generator exactly, so the same policy can be expressed in a manifest and in the UI and mean the same thing. Without them `generate:` could not satisfy a service that requires a symbol, and the two halves of the product would disagree about what generating a secret means.",
+      "description": "SecretSpec generation options mirror the console generator so both mean the same thing.",
       "properties": {
         "generate": {
           "type": "boolean"
@@ -858,7 +851,7 @@
           "type": "integer"
         },
         "minNumbers": {
-          "description": "MinNumbers / MinSpecial guarantee at least this many digits / symbols appear, for policies that demand them. Asking for symbols implies them.",
+          "description": "Asking for a minimum of symbols implies symbols.",
           "type": "integer"
         },
         "minSpecial": {
@@ -875,7 +868,7 @@
     },
     "SecuritySpec": {
       "additionalProperties": false,
-      "description": "SecuritySpec is the account a container runs as, its hardening and the kernel privileges it is granted. An omitted field means the container default, so removing one from a manifest converges.",
+      "description": "SecuritySpec omitted fields mean the container default, so removing one converges.",
       "properties": {
         "addCapabilities": {
           "description": "Deprecated: use capabilities.add. Still accepted; setting both is an error.",
@@ -896,15 +889,15 @@
           "type": "array"
         },
         "noNewPrivileges": {
-          "description": "NoNewPrivileges stops a process gaining privileges through setuid binaries. The restricted security profile always sets it, so false is refused there rather than silently overridden.",
+          "description": "NoNewPrivileges false is refused under the restricted profile rather than silently overridden.",
           "type": "boolean"
         },
         "readOnlyRootFilesystem": {
-          "description": "ReadOnlyRootFilesystem mounts the container's root filesystem read-only. Volumes stay writable, so an image that writes elsewhere (/tmp, /var/run) needs a volume there.",
+          "description": "ReadOnlyRootFilesystem leaves volumes writable, so paths like /tmp need a volume.",
           "type": "boolean"
         },
         "runAsUser": {
-          "description": "RunAsUser pins the container to an account — \"1000\", \"1000:1000\", \"node\", \"node:node\" — like `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security profile must give a non-root numeric uid; anything else is refused on apply, not silently dropped, since the manifest is the source of truth for what should be running.",
+          "description": "RunAsUser empty keeps the image user; restricted workspaces must use a non-root numeric uid or apply refuses.",
           "type": "string"
         }
       },
@@ -912,21 +905,20 @@
     },
     "SourceSpec": {
       "additionalProperties": false,
-      "description": "SourceSpec builds an application's image from a Git repository. It mirrors the console's Source card: where the code is, which ref to build, and how to turn it into an image.",
       "properties": {
         "buildEnv": {
           "additionalProperties": {
             "type": "string"
           },
-          "description": "BuildEnv are variables available to the BUILD, not to the running container — a private module token, a feature flag the compiler reads. Runtime env belongs in spec.env.",
+          "description": "BuildEnv is for the build only, not the running container; runtime env belongs in spec.env.",
           "type": "object"
         },
         "buildMethod": {
-          "description": "BuildMethod is auto (Dockerfile if present, else buildpacks), dockerfile or buildpack. Empty means auto.",
+          "description": "BuildMethod empty means auto: Dockerfile if present, else buildpacks.",
           "type": "string"
         },
         "builder": {
-          "description": "Builder is the Cloud Native Buildpacks builder image; Buildpacks pins the buildpacks to run. Both apply to the buildpack path only.",
+          "description": "Builder and Buildpacks apply to the buildpack path only.",
           "type": "string"
         },
         "buildpacks": {
@@ -944,7 +936,7 @@
           "type": "string"
         },
         "repository": {
-          "description": "Repository names a Git credential for a private repo: a GitRepository in the bundle, or one that already exists in the workspace.",
+          "description": "Repository names a GitRepository in the bundle or one already in the workspace.",
           "type": "string"
         }
       },
@@ -1007,7 +999,7 @@
           "type": "string"
         },
         "storageClass": {
-          "description": "StorageClass names the admin-registered storage the volume is created on (e.g. \"ssd-fast\"). Omit it to take whatever this install's plan and node defaults decide, which is what keeps one manifest portable across installs with different disks. A class cannot be changed afterwards: the data is already under it, so apply refuses the edit rather than recreating the volume.",
+          "description": "StorageClass is immutable, so apply refuses an edit; omit it to keep the manifest portable across installs.",
           "type": "string"
         }
       },

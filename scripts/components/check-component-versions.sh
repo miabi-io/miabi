@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Warns when a component's code changed since BASE without a bump of its version in
-# internal/components/versions.go. Warn-only: exits 0 so it never blocks a merge.
-#   BASE=origin/dev scripts/components/check-component-versions.sh
+# Warn-only: exits 0 so a missing version bump never blocks a merge.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 base="${BASE:-origin/dev}"

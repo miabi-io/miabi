@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package customrole manages admin-defined roles (permission sets) and enforces the cardinal RBAC rule:
-// no privilege escalation. A role may never grant a permission its author does not already hold, and
-// may never be assigned to give a member more than the assigning admin has.
+// Package customrole manages admin-defined roles and forbids privilege escalation beyond the author's own permissions.
 package customrole
 
 import (
@@ -39,8 +37,7 @@ var (
 	ErrRoleInUse         = errors.New("role is assigned to members")
 )
 
-// ErrEscalation is returned when a role would grant more than its author holds.
-// It carries a stable code mapped to HTTP 403 by the handler.
+// ErrEscalation is returned when a role would grant more than its author holds; the handler maps it to 403.
 var ErrEscalation = &escalationError{}
 
 type escalationError struct{}
@@ -77,9 +74,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.CustomRole, error) {
 	return role, nil
 }
 
-// Create validates and persists a role. actorPerms is the creating admin's own
-// effective permission set; the role's permissions (and its base-role preset)
-// must be a subset of it (no escalation).
+// Create persists a role whose permissions (and base preset) must be a subset of actorPerms.
 func (s *Service) Create(workspaceID uint, in Input, actorPerms map[models.Permission]bool) (*models.CustomRole, error) {
 	if err := s.validate(in, actorPerms); err != nil {
 		return nil, err

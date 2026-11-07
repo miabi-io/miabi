@@ -57,10 +57,7 @@ type CreateStackRequest struct {
 
 type UpdateStackRequest struct {
 	Body struct {
-		// Name is immutable. It is still accepted so a client that PATCHes the whole
-		// object back unchanged keeps working; sending a different one is refused
-		// with 409 rather than silently ignored, so a rename never looks like it
-		// succeeded.
+		// Accepted so whole-object PATCHes keep working; a different name is refused with 409, not ignored.
 		Name        *string `json:"name"`
 		DisplayName *string `json:"display_name"`
 		Description *string `json:"description"`
@@ -204,9 +201,7 @@ func (h *StackHandler) Start(c *okapi.Context) error   { return h.lifecycle(c, s
 func (h *StackHandler) Stop(c *okapi.Context) error    { return h.lifecycle(c, stack.ActionStop) }
 func (h *StackHandler) Restart(c *okapi.Context) error { return h.lifecycle(c, stack.ActionRestart) }
 
-// lifecycle runs a start/stop/restart across the stack's apps and returns the
-// per-app result summary. Restart honors ?rolling=true (one app at a time with
-// a readiness gate).
+// Restart honors ?rolling=true: one app at a time with a readiness gate.
 func (h *StackHandler) lifecycle(c *okapi.Context, action stack.Action) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -237,8 +232,6 @@ func (h *StackHandler) DeployAll(c *okapi.Context) error {
 	return ok(c, results)
 }
 
-// DeployOutdated redeploys only the member applications whose configuration has
-// moved on since their last deploy.
 func (h *StackHandler) DeployOutdated(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -253,8 +246,7 @@ func (h *StackHandler) DeployOutdated(c *okapi.Context) error {
 	return ok(c, results)
 }
 
-// staleMsg tells the caller how far the change has spread: a shared env var is
-// only live once each member application is redeployed.
+// A shared env var is only live once each member application is redeployed.
 func staleMsg(base string, apps int) string {
 	switch apps {
 	case 0:
@@ -322,9 +314,7 @@ func (h *StackHandler) ImportEnvVars(c *okapi.Context, req *ImportEnvVarsRequest
 	return ok(c, map[string]any{"imported": n, "apps_pending_redeploy": stale})
 }
 
-// RevealEnvVar returns a shared env var's decrypted value (workspace Admin only,
-// audited). Mirrors the per-app reveal: a stack secret that can only be
-// overwritten and never read back is write-only storage, not a secret store.
+// Admin-only and audited: a secret that can never be read back is write-only storage, not a secret store.
 func (h *StackHandler) RevealEnvVar(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {

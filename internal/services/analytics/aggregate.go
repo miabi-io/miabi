@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package analytics turns Goma Gateway's per-request event stream into minute-bucketed rollups and
-// answers the Traffic, Performance and Web Analytics queries over them. It holds no per-request rows
-// and no PII: latency is a histogram, uniques an HLL sketch, and the visitor id a daily-salted hash.
+// Package analytics holds no per-request rows or PII: histogram latency, HLL uniques, daily-salted visitor hash.
 package analytics
 
 import (
@@ -33,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Event is one request as emitted by Goma onto the analytics stream. Field tags
-// mirror the gateway's AnalyticsEvent JSON.
+// Field tags mirror the gateway's AnalyticsEvent JSON.
 type Event struct {
 	Ts           int64  `json:"ts"` // unix millis
 	Gateway      string `json:"gw"`
@@ -54,16 +51,13 @@ type Event struct {
 	RefererHost  string `json:"referer_host"`
 }
 
-// LatencyBoundsMs are the histogram bucket upper bounds (milliseconds). A value
-// is counted in the first bucket whose bound it does not exceed; anything above
-// the last bound lands in a trailing overflow bucket (index len(bounds)).
+// Values above the last bound land in a trailing overflow bucket at index len(bounds).
 var LatencyBoundsMs = []int64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}
 
 // histLen is the histogram length (bounds + one overflow bucket).
 func histLen() int { return len(LatencyBoundsMs) + 1 }
 
-// topKCap bounds each categorical count map so a bucket can't grow unbounded on
-// a high-cardinality dimension (paths, referrers).
+// Bounds high-cardinality dimensions (paths, referrers).
 const topKCap = 200
 
 func bucketIndex(ms int64) int {
@@ -75,9 +69,7 @@ func bucketIndex(ms int64) int {
 	return len(LatencyBoundsMs) // overflow
 }
 
-// Percentile estimates the p-th percentile (0..1) latency in ms from a histogram,
-// returning each bucket's upper bound (the overflow bucket returns the last bound
-// as a floor). Approximate by design — bucketed, cheap, and mergeable.
+// Approximate by design: bucketed, cheap and mergeable; overflow returns the last bound as a floor.
 func Percentile(hist []int64, p float64) float64 {
 	var total int64
 	for _, c := range hist {
@@ -100,13 +92,10 @@ func Percentile(hist []int64, p float64) float64 {
 	return float64(LatencyBoundsMs[len(LatencyBoundsMs)-1])
 }
 
-// maxPathLen bounds a stored request path. The gateway has no per-request path patterns, so the paths
-// breakdown is keyed on the raw request path — which is client-controlled and ends up in the rollup's JSON
-// map, so it can't be left unbounded.
+// Paths are raw and client-controlled and land in the rollup JSON, so they must be bounded.
 const maxPathLen = 128
 
-// clipPath truncates an over-long path on a rune boundary, so the stored key
-// stays valid UTF-8.
+// Truncates on a rune boundary so the stored key stays valid UTF-8.
 func clipPath(p string) string {
 	if len(p) <= maxPathLen {
 		return p
@@ -118,9 +107,7 @@ func clipPath(p string) string {
 	return p[:cut] + "…"
 }
 
-// topKAdd adds n to key in m, keeping m bounded: once at cap, a new key only
-// displaces the current minimum (approximate top-K, fine for a dashboard).
-// maxUALen bounds a stored user-agent string; some clients send several hundred bytes.
+// Some clients send several hundred bytes of user agent.
 const maxUALen = 180
 
 func clipUA(ua string) string {
@@ -166,8 +153,7 @@ func mergeTopK(dst, src map[string]int64) {
 	}
 }
 
-// IsBotUA reports whether a user agent looks automated, using the same rule as the rollups' bot/human
-// split. Exported so callers outside the aggregator — live visitors — classify traffic identically.
+// Exported so live visitors classify traffic exactly like the rollups' bot/human split.
 func IsBotUA(ua string) bool {
 	_, _, _, bot := classifyUA(ua)
 	return bot
@@ -232,9 +218,7 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-// WorkspaceIDFromRoute parses the workspace id out of a Goma route name of the
-// form "mb-ws<id>-<slug>". Returns 0 when the name isn't in that form (a route
-// Miabi doesn't own — e.g. the platform gateway's own route).
+// Returns 0 for routes Miabi does not own, such as the platform gateway's own route.
 func WorkspaceIDFromRoute(name string) uint {
 	const prefix = "mb-ws"
 	if !strings.HasPrefix(name, prefix) {
@@ -252,16 +236,12 @@ func WorkspaceIDFromRoute(name string) uint {
 	return uint(n)
 }
 
-// bucketAgg is a live in-memory rollup plus its HLL sketch (kept separate because
-// the model stores the serialized bytes).
 type bucketAgg struct {
 	r   *models.AnalyticsRollup
 	hll *hyperloglog.Sketch
 }
 
-// Aggregator accumulates events into per-(workspace, app, route, minute) buckets
-// in memory, and hands over "closed" buckets (older than a grace window) as
-// models.AnalyticsRollup for persistence. Safe for concurrent Ingest/Flush.
+// Closed buckets are those older than a grace window; safe for concurrent Ingest/Flush.
 type Aggregator struct {
 	mu      sync.Mutex
 	buckets map[string]*bucketAgg
@@ -279,8 +259,7 @@ func key(ws, app uint, route string, bucket time.Time) string {
 	return strconv.FormatUint(uint64(ws), 10) + "|" + strconv.FormatUint(uint64(app), 10) + "|" + route + "|" + strconv.FormatInt(bucket.Unix(), 10)
 }
 
-// Ingest folds one event into its bucket. ws/app are resolved by the caller
-// (workspace from the route name, app via a route lookup); an unresolved app is 0.
+// An unresolved app is 0.
 func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	bucket := minuteOf(e.Ts)
 	if e.Ts == 0 {
@@ -326,9 +305,7 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	if e.VID != "" {
 		b.hll.Insert([]byte(e.VID))
 	}
-	// Prefer a path template when the gateway can supply one (it collapses
-	// /orders/1 and /orders/2 into one row); today it can't, so this is the raw
-	// request path.
+	// The gateway cannot supply templates today, so this is the raw request path.
 	if p := e.PathTemplate; p != "" {
 		topKAdd(r.TopPaths, clipPath(p), 1)
 	} else if e.Path != "" {
@@ -349,9 +326,7 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	}
 }
 
-// Flush removes and returns every bucket strictly older than `before`,
-// serializing its HLL sketch into VisitorsHLL. Call with now-grace so an
-// in-progress minute keeps accumulating.
+// Call with now-grace so an in-progress minute keeps accumulating.
 func (a *Aggregator) Flush(before time.Time) []*models.AnalyticsRollup {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -375,9 +350,7 @@ func (a *Aggregator) Pending() int {
 	return len(a.buckets)
 }
 
-// Merge adds src into dst: counters, element-wise histograms, sums, top-K maps,
-// and the HLL sketch. Used by the repository to combine a flushed bucket with an
-// existing row (multi-consumer / re-flush safe).
+// Lets the repository combine a flushed bucket with an existing row (multi-consumer / re-flush safe).
 func Merge(dst, src *models.AnalyticsRollup) {
 	dst.Requests += src.Requests
 	dst.BytesIn += src.BytesIn
@@ -462,8 +435,6 @@ func UniquesOf(data []byte) int64 {
 	return int64(sketchFrom(data).Estimate())
 }
 
-// MergeUniques merges several serialized sketches and returns the estimate — the
-// unique-visitor count over a range is the merge of its buckets' sketches.
 func MergeUniques(sketches [][]byte) int64 {
 	acc := hyperloglog.New()
 	for _, s := range sketches {

@@ -57,9 +57,6 @@ func NewBackupHandler(svc *backup.Service, dbs *repositories.DatabaseRepository,
 	return &BackupHandler{svc: svc, ee: ee, dbs: dbs, repo: repo, sets: sets, settings: settings, cron: cron, audit: auditLog, maxRestoreBytes: int64(maxRestoreMB) * 1024 * 1024}
 }
 
-// SetLogStore wires the shared execution-log store so a backup run's full log
-// can be downloaded from the store (falling back to the DB tail). nil keeps
-// tail-only.
 func (h *BackupHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 // LogsDownload streams a backup run's full log as a file download.
@@ -106,8 +103,6 @@ type RunBackupRequest struct {
 	} `json:"body"`
 }
 
-// UpdateBackupRequest edits a backup's note and retention pin. Both fields are
-// pointers so omitting one leaves it untouched.
 type UpdateBackupRequest struct {
 	Body struct {
 		Comment *string `json:"comment" maxLength:"200"`
@@ -118,14 +113,10 @@ type UpdateBackupRequest struct {
 type RestoreRequest struct {
 	Body struct {
 		S3 *S3Body `json:"s3"`
-		// Method: "normal" (default) restores over the existing database; "force"
-		// drops & recreates it first.
+		// "force" drops and recreates the database first.
 		Method string `json:"method" enum:"normal,force"`
-		// AllowVersionMismatch loads a dump taken from a newer engine anyway. Refused
-		// by default: the failure lands mid-restore, over a database a force run has
-		// already dropped.
+		// Refused by default: the failure lands mid-restore, over a database a force run may have dropped.
 		AllowVersionMismatch bool `json:"allow_version_mismatch"`
-		// AgeIdentity reads an age-encrypted backup when the workspace stores no identity.
 		// Used for this restore only, never stored.
 		AgeIdentity string `json:"age_identity"`
 	} `json:"body"`
@@ -251,8 +242,6 @@ func allowedDump(name string) bool {
 	return strings.HasSuffix(name, ".sql.gz") || strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".dump")
 }
 
-// RestoreFile restores a logical database from an uploaded dump (multipart). The
-// "method" form field selects normal/force.
 func (h *BackupHandler) RestoreFile(c *okapi.Context) error {
 	db, err := h.loadDB(c)
 	if err != nil {

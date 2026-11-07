@@ -5,24 +5,13 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { secretApi, type SecretOwnership } from '@/api/secrets'
 import type { Secret } from '@/api/types'
 
-/**
- * Picks one secret by name from the workspace vault.
- *
- * A plain <select> does not work here: the vault is paged, so a dropdown can
- * only ever show the first page and offers no way to reach the rest. This is a
- * combobox instead — you type, the server searches every page, and the list
- * shows what matched. The ownership filter is sent to the API for the same
- * reason: narrowing a single page in the browser would hide secrets that exist
- * on later ones.
- */
+/** A combobox searching server-side because the vault is paged; filtering one page locally would hide secrets. */
 const props = withDefaults(
   defineProps<{
     /** Selected secret name ('' = nothing chosen). */
     modelValue?: string
     label?: string
-    /** Ownership shown first. Callers picking a credential default to
-     *  'unmanaged': a managed secret belongs to another resource and rotates
-     *  with it, so it is rarely what you want to point a credential at. */
+    /** Credentials default to 'unmanaged': a managed secret rotates with its owning resource. */
     defaultOwnership?: SecretOwnership
     disabled?: boolean
   }>(),
@@ -68,8 +57,7 @@ async function search() {
   }
 }
 
-// Debounced so typing doesn't fire a request per keystroke; the filter chips
-// re-query immediately, since that is a deliberate single action.
+// Debounced per keystroke; filter chips re-query immediately as a deliberate action.
 let timer: ReturnType<typeof setTimeout> | undefined
 function onInput() {
   open.value = true
@@ -121,8 +109,6 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
 
 <template>
   <div ref="root" class="secret-picker">
-    <!-- The chosen secret replaces the input, so the current value is never in
-         doubt and clearing it is one click. -->
     <div v-if="selected" class="chosen">
       <span class="mdi mdi-key-variant"></span>
       <span class="chosen-name">{{ selected }}</span>

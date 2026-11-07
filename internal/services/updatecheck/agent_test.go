@@ -67,8 +67,7 @@ func TestAgentSupportedNeedsNoReleaseData(t *testing.T) {
 	}
 }
 
-// The agent check tracks no local build, so it must not disable itself the way a `dev` platform
-// build does — every node reports its own version and none of them is this process's.
+// Every node reports its own version, so the agent check must not disable itself like a dev platform build.
 func TestAgentServiceEnabledWithoutALocalBuild(t *testing.T) {
 	if !NewAgentService(nil, true).Enabled() {
 		t.Error("the agent check disabled itself for having no local version")
@@ -78,8 +77,7 @@ func TestAgentServiceEnabledWithoutALocalBuild(t *testing.T) {
 	}
 }
 
-// legacyUpdateStatus is the table shape from before the agent had a check of its own: one unlabelled
-// singleton row. It maps onto the same table as models.UpdateStatus on purpose.
+// Deliberately maps onto the same table as models.UpdateStatus.
 type legacyUpdateStatus struct {
 	ID            uint `gorm:"primaryKey"`
 	LatestVersion string
@@ -89,9 +87,7 @@ type legacyUpdateStatus struct {
 
 func (legacyUpdateStatus) TableName() string { return "update_statuses" }
 
-// An install that predates the agent check carries one row and no component column. AutoMigrate has
-// to add a NOT NULL column to a populated table — illegal without a default — and the row it
-// backfills is the platform's own. Getting this wrong fails at boot, so it is worth pinning.
+// AutoMigrate must add a NOT NULL column to a populated table; getting this wrong fails at boot.
 func TestMigratingAnInstallThatPredatesComponents(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:uc_migrate_"+t.Name()+"?mode=memory&cache=shared"),
 		&gorm.Config{Logger: logger.Discard})

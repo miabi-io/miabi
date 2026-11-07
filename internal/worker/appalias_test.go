@@ -35,8 +35,6 @@ func appWithNetworks(name string, nets ...string) *models.Application {
 	return app
 }
 
-// The app answers to its own name on its workspace networks, which is what makes
-// {{ .applications.<name>.host }} an address rather than a guess.
 func TestAppRegistersItsNameOnWorkspaceNetworks(t *testing.T) {
 	got := nameAliasesByNetwork(appWithNetworks("api", "mb-ws3-a1b2c3"), false)
 	if !slices.Contains(got["mb-ws3-a1b2c3"], "api") {
@@ -44,9 +42,7 @@ func TestAppRegistersItsNameOnWorkspaceNetworks(t *testing.T) {
 	}
 }
 
-// The guard that matters: the shared proxy network spans every workspace on the host, so a bare
-// name there would let one tenant's "api" answer for another's. It must never be registered by
-// this path — only by the per-network map, for networks the app actually owns.
+// The shared proxy network spans every workspace, so a bare name there would let one tenant answer for another's.
 func TestAppNameIsNeverRegisteredOnTheProxyNetwork(t *testing.T) {
 	got := nameAliasesByNetwork(appWithNetworks("api", "mb-ws3-a1b2c3"), false)
 	if _, ok := got[node.AppNetwork]; ok {
@@ -59,8 +55,6 @@ func TestAppNameIsNeverRegisteredOnTheProxyNetwork(t *testing.T) {
 	}
 }
 
-// A stacked app keeps answering to its service name on the stack network — the behaviour siblings
-// in a stack already rely on.
 func TestStackAliasStillRegistered(t *testing.T) {
 	app := appWithNetworks("api", "mb-ws3-a1b2c3")
 	app.Stack = &models.Stack{DockerNetwork: "mb-stack-7"}
@@ -70,8 +64,7 @@ func TestStackAliasStillRegistered(t *testing.T) {
 	}
 }
 
-// Docker refuses a duplicate alias on one attachment, so a stack network that is also listed as a
-// workspace network must yield the name once.
+// Docker refuses a duplicate alias on one attachment.
 func TestAliasIsNotRegisteredTwiceOnOneNetwork(t *testing.T) {
 	app := appWithNetworks("api", "mb-stack-7")
 	app.Stack = &models.Stack{DockerNetwork: "mb-stack-7"}
@@ -80,8 +73,7 @@ func TestAliasIsNotRegisteredTwiceOnOneNetwork(t *testing.T) {
 	}
 }
 
-// A canary runs beside the stable release. Taking the workspace name would send a sibling's traffic
-// to the release under test by DNS round-robin, which is the opposite of a controlled rollout.
+// A canary taking the workspace name would get a sibling's traffic by DNS round-robin.
 func TestCanaryDoesNotTakeTheWorkspaceName(t *testing.T) {
 	got := nameAliasesByNetwork(appWithNetworks("api", "mb-ws3-a1b2c3"), true)
 	if slices.Contains(got["mb-ws3-a1b2c3"], "api") {
@@ -89,8 +81,7 @@ func TestCanaryDoesNotTakeTheWorkspaceName(t *testing.T) {
 	}
 }
 
-// An app with no networks yet registers nothing rather than producing an empty-keyed entry Docker
-// would reject.
+// Docker would reject an empty-keyed alias entry.
 func TestNoNetworksYieldsNoAliases(t *testing.T) {
 	app := appWithNetworks("api")
 	app.Networks = append(app.Networks, models.Network{DockerName: ""})

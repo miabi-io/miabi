@@ -66,8 +66,7 @@ const policies: { value: AccentPolicy; label: string; hint: string }[] = [
   },
 ]
 
-// Only preview a URL that could load, so a half-typed one does not fire a request
-// per keystroke.
+// Avoids a request per keystroke for a half-typed URL.
 function previewable(url: string): string {
   const u = url.trim()
   return /^https?:\/\/[^/\s]+\/\S+$/i.test(u) ? u : ''
@@ -174,8 +173,7 @@ async function removeAsset(slot: BrandAssetSlot) {
   }
 }
 
-// The brand accent and its policy cover this admin's account too, so the console
-// changes now rather than at the next sign-in.
+// The brand accent policy covers this admin too, so the console updates now rather than at next sign-in.
 async function refreshOwnAccent() {
   try {
     const me = (await authApi.me()).data.data

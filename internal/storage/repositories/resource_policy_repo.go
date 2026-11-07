@@ -24,8 +24,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ResourcePolicyRepository accesses per-resource permission grants (Enterprise;
-// empty in CE).
 type ResourcePolicyRepository struct{ db *gorm.DB }
 
 func NewResourcePolicyRepository(db *gorm.DB) *ResourcePolicyRepository {
@@ -43,8 +41,6 @@ func (r *ResourcePolicyRepository) Find(workspaceID, userID uint, resourceType s
 	return &p, nil
 }
 
-// HasPermission reports whether the user holds a permission on a specific
-// resource via a policy. Used on the hot path by RequireResourcePermission.
 func (r *ResourcePolicyRepository) HasPermission(workspaceID, userID uint, resourceType string, resourceID uint, perm models.Permission) bool {
 	p, err := r.Find(workspaceID, userID, resourceType, resourceID)
 	if err != nil {

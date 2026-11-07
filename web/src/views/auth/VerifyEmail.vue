@@ -10,13 +10,9 @@ const router = useRouter()
 const state = ref<'working' | 'done' | 'failed'>('working')
 const error = ref('')
 
-// Arrived at from a link in an email, so no hero: the visitor already knows who
-// they are and is here to finish one thing.
 onMounted(async () => {
   const token = String(route.query.token ?? '')
-  // Drop it from the address bar before doing anything with it: a token left in
-  // the URL is copied into browser history, and into the Referer of every request
-  // the page makes afterwards.
+  // A token left in the URL lands in browser history and every later request's Referer.
   if (token) router.replace({ name: 'verify-email', query: {} })
   if (!token) {
     state.value = 'failed'

@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package drift is the shared vocabulary for divergence between what Miabi recorded and what Docker
-// runs. Node housekeeping reports it for one node; the control manager watches it across the platform.
+// Package drift is the shared vocabulary for divergence between Miabi's records and what Docker runs.
 package drift
 
 import (
@@ -33,8 +32,7 @@ const (
 	ClassOrphan    = "orphan"    // managed label present, DB record gone — still running on the node
 	ClassMissing   = "missing"   // DB record expects it live, nothing running for it
 	ClassUntracked = "untracked" // no miabi.* label — a hand-run resource
-	// ClassReplaced is a resource whose record is intact but whose contents are not: a volume deleted and
-	// recreated by hand keeps its name and its row, and holds none of the data they describe.
+	// ClassReplaced is a hand-recreated volume: same name and row, none of the data.
 	ClassReplaced = "replaced"
 )
 
@@ -43,11 +41,9 @@ const (
 	ActionRemove   = "remove"   // orphan → delete the lingering resource
 	ActionRedeploy = "redeploy" // missing → redeploy from the owning resource
 	ActionImport   = "import"   // untracked → adopt via the existing import flow
-	// ActionRestore is for lost data: recreating the volume would give an empty one, so the way back is a
-	// backup, not a redeploy.
+	// ActionRestore: recreating the volume would give an empty one, so the way back is a backup.
 	ActionRestore = "restore"
-	// ActionNone is for drift Miabi must report but may not touch, because something else owns the resource —
-	// the platform's own gateway, installed and owned by the Miabi stack.
+	// ActionNone is drift Miabi reports but may not touch, such as the stack-owned platform gateway.
 	ActionNone = "none"
 )
 
@@ -75,9 +71,7 @@ type Item struct {
 	Action    string `json:"action"`
 }
 
-// OwnerOf returns the owning DB record (kind and numeric id) encoded in a managed resource's labels, so drift
-// can check whether that record still exists. ok is false when the resource is not orphan-eligible. Precedence
-// matters: an app's container carries both app and stack labels, and the app is the owning record.
+// OwnerOf gives the app precedence over the stack, since an app container carries both labels.
 func OwnerOf(labels map[string]string) (kind string, id uint, ok bool) {
 	if docker.IsPlatformInfra(labels) {
 		return "", 0, false
@@ -104,8 +98,7 @@ func OwnerOf(labels map[string]string) (kind string, id uint, ok bool) {
 	return "", 0, false
 }
 
-// VolumeOwner returns the record a managed Docker volume backs: a volume row, or the database instance
-// whose data it holds. App and stack labels are not owners here: neither record owns a volume's data.
+// VolumeOwner ignores app and stack labels: neither record owns a volume's data.
 func VolumeOwner(labels map[string]string) (kind string, id uint, ok bool) {
 	if docker.IsPlatformInfra(labels) {
 		return "", 0, false

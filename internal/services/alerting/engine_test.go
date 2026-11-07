@@ -70,9 +70,7 @@ func die(ws, app uint) *models.AppEvent {
 	return &models.AppEvent{WorkspaceID: ws, ApplicationID: app, Type: models.EventContainerDied, Severity: models.SeverityError, Message: "exited 137"}
 }
 
-// TestCrashLoopThesis is acceptance #1: 40 die events collapse to ONE alert whose
-// count climbs and ONE unread notification (not 40); a healthy signal auto-resolves
-// it to ONE "recovered" notification.
+// 40 die events must collapse to one alert and one unread notification; healthy auto-resolves to one "recovered".
 func TestCrashLoopThesis(t *testing.T) {
 	eng, alerts, inbox, bus := newEngineDB(t)
 
@@ -97,8 +95,7 @@ func TestCrashLoopThesis(t *testing.T) {
 		t.Fatalf("alert count = %d, want 36", a.Count)
 	}
 
-	// The eligible member (developer) has exactly ONE unread notification; the
-	// viewer (below MinRole) has none.
+	// The viewer is below MinRole and gets none.
 	ns, err := inbox.ListByUser(7, 0, false, 0, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +110,6 @@ func TestCrashLoopThesis(t *testing.T) {
 		t.Fatalf("unread count = %d, want 1", c)
 	}
 
-	// Auto-resolve: a healthy signal closes the alert and rewrites the single
-	// notification to "recovered" (still one row), re-surfaced as unread.
 	eng.OnEvent(&models.AppEvent{WorkspaceID: 1, ApplicationID: 42, Type: models.EventContainerHealth, Severity: models.SeverityInfo, Message: "healthy"})
 
 	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 0 {
@@ -139,8 +134,6 @@ func TestCrashLoopThesis(t *testing.T) {
 	}
 }
 
-// TestReFireNotSpam is acceptance #2: unhealthy → healthy → unhealthy re-fires and
-// resolves without a running tally of duplicates.
 func TestReFireNotSpam(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	unhealthy := &models.AppEvent{WorkspaceID: 1, ApplicationID: 5, Type: models.EventContainerHealth, Severity: models.SeverityWarning}
@@ -155,8 +148,7 @@ func TestReFireNotSpam(t *testing.T) {
 	if len(act) != 1 || act[0].DedupKey != "unhealthy:app:5" {
 		t.Fatalf("want 1 active unhealthy alert, got %+v", act)
 	}
-	// The developer has a single notification row throughout (upsert per user+alert
-	// on the first, a new row for the re-fired alert = 2 total; never a tally).
+	// Upsert per user+alert, a new row for the re-fired alert: 2 total, never a tally.
 	ns, _ := inbox.ListByUser(7, 0, false, 0, 100)
 	if len(ns) == 0 || len(ns) > 2 {
 		t.Fatalf("want 1-2 notifications, got %d", len(ns))

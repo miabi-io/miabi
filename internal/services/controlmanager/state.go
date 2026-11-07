@@ -28,13 +28,11 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Restore is the backup a report of lost data points at. Miabi never restores one by itself: which
-// recovery point to accept, and the data loss between it and now, are a person's call.
+// Miabi never restores by itself: choosing the point and accepting the loss are a person's call.
 type Restore struct {
 	// From names where the data comes back from: a volume archive, or a database recovery point.
 	From string `json:"from"`
-	// Available is false when there is no completed backup to restore, which is the worst case and the
-	// one worth saying out loud.
+	// No completed backup is the worst case and worth saying out loud.
 	Available bool      `json:"available"`
 	BackupID  uint      `json:"backup_id,omitempty"`
 	Ref       string    `json:"ref,omitempty"`
@@ -42,8 +40,7 @@ type Restore struct {
 	SizeBytes int64     `json:"size_bytes,omitempty"`
 }
 
-// Finding is a workload a sweep found missing or replaced. Findings live only in the leading process's
-// memory, so a new leader starts over and confirms again before it reports anything.
+// Findings live only in the leader's memory, so a new leader re-confirms before reporting.
 type Finding struct {
 	drift.Item
 	WorkspaceID uint      `json:"workspace_id"`
@@ -51,11 +48,8 @@ type Finding struct {
 	ClusterID   uint      `json:"cluster_id"`
 	FirstSeenAt time.Time `json:"first_seen_at"`
 	LastSeenAt  time.Time `json:"last_seen_at"`
-	// Confirmed is set once enough sweeps agree. Only confirmed findings are recorded as events and counted
-	// in metrics.
-	Confirmed bool `json:"confirmed"`
-	// Attempts, NextAttemptAt and BreakerOpen report what enforcement has tried: how many redeploys, when the
-	// next one is due under backoff, and whether it has given up and left this to a person.
+	// Only confirmed findings are recorded as events and counted in metrics.
+	Confirmed     bool       `json:"confirmed"`
 	Attempts      int        `json:"attempts,omitempty"`
 	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
 	BreakerOpen   bool       `json:"breaker_open,omitempty"`
@@ -70,8 +64,7 @@ type Finding struct {
 	subjects []subject
 }
 
-// BlockedApp is an app whose data is gone. Starting it again would give it an empty volume and call that
-// recovery, so it needs a person to restore the volume first — Miabi cannot put the data back.
+// Starting it again would give it an empty volume and call that recovery.
 type BlockedApp struct {
 	AppID  uint   `json:"app_id"`
 	Name   string `json:"name"`
@@ -120,9 +113,7 @@ func (s *Service) Status() Status {
 	return out
 }
 
-// BlockedRedeploy reports whether an app must not be started again, and why. Whatever comes to act on
-// findings must ask first: Docker creates a named volume silently when a container starts without one, so
-// redeploying an app whose volume is gone turns data loss into an empty volume nobody notices.
+// Docker silently creates a missing named volume on start, turning data loss into an unnoticed empty volume.
 func (s *Service) BlockedRedeploy(appID uint) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -149,8 +140,7 @@ type notice struct {
 	back    bool
 }
 
-// record folds one sweep into the findings. An unknown observation neither advances nor clears a finding:
-// only a sweep that could see the item changes what is known about it.
+// An unknown observation neither advances nor clears a finding.
 func (s *Service) record(items []item, seen map[string]observation, skipped []Skip, start time.Time) {
 	now := s.now()
 	var notices []notice
@@ -189,8 +179,7 @@ func (s *Service) record(items []item, seen map[string]observation, skipped []Sk
 			delete(s.findings, key)
 		}
 	}
-	// An item's attempt history outlives its finding for a while, so an app that keeps disappearing does not
-	// reset its own backoff by looking healthy for one sweep.
+	// So an app that keeps disappearing doesn't reset its backoff by looking healthy for one sweep.
 	for key, a := range s.attempts {
 		if _, still := s.findings[key]; !still && now.Sub(a.lastActedAt) > forgetAfter {
 			delete(s.attempts, key)
@@ -218,9 +207,7 @@ func (s *Service) record(items []item, seen map[string]observation, skipped []Sk
 	}
 }
 
-// blockLocked lists the apps whose data is gone, and marks their own findings so a report of a missing
-// container says a redeploy is not the answer. A lost volume is only confirmed after two sweeps, so an
-// app is never blocked on one bad look at a node.
+// A lost volume is confirmed only after two sweeps, so one bad look never blocks an app.
 func (s *Service) blockLocked(items []item) map[uint]string {
 	out := map[uint]string{}
 	for i := range items {
@@ -290,13 +277,11 @@ func newFinding(it *item, st state, now time.Time) *Finding {
 		subjects: it.subjects,
 	}
 	if it.kind == kindGateway && it.imported {
-		// An imported gateway is somebody else's container — the platform stack's own on the manager, or an
-		// operator's. Miabi reports it and stops there.
+		// An imported gateway is somebody else's container, so Miabi only reports it.
 		f.Action = drift.ActionNone
 	}
 	if it.kind == kindVolume {
-		// Recreating a volume gives an empty one, which is data loss dressed up as self-healing. The way
-		// back is a backup, and choosing one is a person's call.
+		// Recreating a volume gives an empty one; the way back is a backup a person chooses.
 		f.Action = drift.ActionRestore
 		if it.restore != nil {
 			f.Restore = it.restore()
@@ -320,9 +305,7 @@ var resolvedMessages = map[string]string{
 	kindGateway:   "The node's gateway is running again",
 }
 
-// message describes a finding for the timeline. A volume names itself, since the event is recorded on the
-// timeline of whatever mounts it rather than the volume's own, and it says plainly that Miabi will not put
-// the data back.
+// Volume events land on the timeline of whatever mounts it, so the message names the volume.
 func message(f Finding, back bool) string {
 	if f.Kind != kindVolume {
 		if back {
@@ -340,8 +323,7 @@ func message(f Finding, back bool) string {
 	return lost + ". " + restoreAdvice(f.Restore) + " Miabi will not recreate the volume, and nothing that mounts it is started again until it is back."
 }
 
-// restoreAdvice suggests the backup to restore, or says there is none — which an operator needs to hear
-// immediately, not discover while looking for one.
+// An operator needs to hear there is no backup immediately.
 func restoreAdvice(r *Restore) string {
 	switch {
 	case r == nil:
@@ -357,8 +339,6 @@ func restoreAdvice(r *Restore) string {
 	}
 }
 
-// announce records a confirmed finding, and its recovery, on the timeline of everything it affects: the
-// app itself, every app mounting a lost volume, or the database instance whose data it was.
 func (s *Service) announce(n notice) {
 	f := n.finding
 	meta := map[string]string{

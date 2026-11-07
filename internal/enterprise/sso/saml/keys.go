@@ -25,9 +25,7 @@ import (
 	"time"
 )
 
-// loadOrGenerateKeyPair returns the SP signing key and certificate. When both PEM inputs are
-// supplied they are parsed; otherwise a self-signed pair is generated in memory, which suffices
-// for signing AuthnRequests since the IdP trusts the SP via the SP metadata it is configured with.
+// A self-signed pair suffices since the IdP trusts the SP via its configured metadata.
 func loadOrGenerateKeyPair(keyPEM, certPEM string) (*rsa.PrivateKey, *x509.Certificate, error) {
 	if keyPEM != "" && certPEM != "" {
 		key, err := parseRSAKey(keyPEM)

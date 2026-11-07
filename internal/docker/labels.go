@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The platform label contract lives in the stack module so the CLI applies exactly the labels
-// the control plane recognises. These aliases keep the server's existing import path.
+// The label contract lives in the stack module so the CLI applies exactly the labels the control plane recognises.
 
 package docker
 
@@ -66,9 +65,7 @@ const (
 	ManagedLabel           = stackdocker.ManagedLabel
 )
 
-// SwarmServiceNameLabel is Docker's own label on a swarm task's container, naming the service that
-// owns it. Swarm recreates such a container the moment it is removed, so it is the handle onto the
-// only thing that can actually be reclaimed: the service.
+// Swarm recreates a task container the moment it is removed, so the service is what can be reclaimed.
 const SwarmServiceNameLabel = "com.docker.swarm.service.name"
 
 var (
@@ -85,9 +82,7 @@ var (
 	WorkspaceID        = stackdocker.WorkspaceID
 )
 
-// NetworkRefMatches reports whether ref names this network: its name, its full id, or the short id
-// Docker prints. A guard that compares the name alone is bypassed by passing the id, which the
-// engine accepts everywhere a name is accepted.
+// NetworkRefMatches accepts name, full id or short id, since a name-only guard is bypassed by passing the id.
 func NetworkRefMatches(n Network, ref string) bool {
 	if ref == "" {
 		return false

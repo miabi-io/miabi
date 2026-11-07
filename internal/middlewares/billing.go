@@ -28,8 +28,7 @@ import (
 // BillingPathPrefix is the Billing API tree; billing keys are refused anywhere else.
 const BillingPathPrefix = "/api/v1/billing/"
 
-// RequireBillingCaller admits only a billing key: purpose billing, account-wide (no workspace,
-// application or ephemeral binding). A session or any other key, "*" included, is refused.
+// A session or any other key, "*" included, is refused.
 func RequireBillingCaller() okapi.Middleware {
 	return func(c *okapi.Context) error {
 		if AuthMethod(c) != "api_key" || c.GetString(CtxAPIKeyPurpose) != models.KeyPurposeBilling {
@@ -42,9 +41,7 @@ func RequireBillingCaller() okapi.Middleware {
 	}
 }
 
-// RequireLicensed refuses unless the licence grants flag: 402 LICENSE_REQUIRED without one,
-// 403 ENTITLEMENT_DENIED when it lacks the flag. It runs on every request, so installing or
-// removing a licence applies without a restart.
+// Runs on every request, so installing or removing a licence applies without a restart.
 func RequireLicensed(ee enterprise.EE, flag string) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		var err error = enterprise.ErrLicenseRequired

@@ -23,8 +23,7 @@ import en from './en.json'
 import fr from './fr.json'
 import { LANGUAGES, DEFAULT_LANGUAGE } from './languages'
 
-// A missing key renders English, and an orphaned one never renders at all. Neither
-// breaks a build, which is why they need a test.
+// Missing or orphaned keys never break a build, which is why they need a test.
 const catalogues: Record<string, unknown> = { en, fr }
 
 function valueAt(cat: unknown, key: string): unknown {
@@ -61,8 +60,7 @@ describe('translation catalogues', () => {
     })
   }
 
-  // A translation that drops {name} renders "Delete ?" — fluent, and missing the one
-  // detail that tells the user what they are about to destroy.
+  // A translation that drops {name} renders "Delete ?", losing what is about to be destroyed.
   it('keeps every interpolation the reference declares', () => {
     const placeholders = (s: string) => new Set(s.match(/\{\w+\}/g) ?? [])
     const mismatched: string[] = []
@@ -76,8 +74,7 @@ describe('translation catalogues', () => {
     expect(mismatched).toEqual([])
   })
 
-  // The same sentence under two keys gets translated twice and drifts. Shared text lives
-  // under a common namespace instead; this catches the next copy before it is translated.
+  // The same sentence under two keys gets translated twice and drifts; shared text lives in a common namespace.
   it('does not repeat a string across feature namespaces', () => {
     const seen = new Map<string, string>()
     const dupes: string[] = []
@@ -92,8 +89,7 @@ describe('translation catalogues', () => {
     expect(dupes).toEqual([])
   })
 
-  // Catalogue values reach the page through {{ }}, not v-html, so an entity carried over
-  // from the original template renders as the literal "&quot;" rather than a quote.
+  // Values render via {{ }}, not v-html, so an entity shows as the literal "&quot;".
   it('has no HTML entity, which text interpolation would not decode', () => {
     for (const [code, cat] of Object.entries(catalogues)) {
       const offenders = keysOf(cat).filter((k) => {
@@ -104,11 +100,7 @@ describe('translation catalogues', () => {
     }
   })
 
-  // vue-i18n compiles a message the first time it renders, and its syntax reserves
-  // '@' (linked messages), '|' (plural branches) and braces. A value carrying one of
-  // those throws a SyntaxError at render — the search placeholder shipped a literal
-  // '@' and took the whole command palette down with it. Compiling every message
-  // here catches the next one at the cost of a few milliseconds.
+  // vue-i18n reserves '@', '|' and braces; a stray '@' once crashed the command palette at render.
   it('compiles every message', () => {
     const broken: string[] = []
     for (const [code, cat] of Object.entries(catalogues)) {
@@ -124,17 +116,13 @@ describe('translation catalogues', () => {
     expect(broken).toEqual([])
   })
 
-  // The sign-in picker offers every entry in LANGUAGES. One without a catalogue file
-  // would switch to itself and render English, with nothing to say why.
+  // A language without a catalogue would switch to itself and silently render English.
   it('ships a catalogue for every language the picker offers', () => {
     const shipped = Object.keys(catalogues)
     expect(LANGUAGES.map((l) => l.code).sort()).toEqual(shipped.sort())
   })
 
-  // Parity above proves the catalogues agree with EACH OTHER; it says nothing about whether a key
-  // the app asks for exists at all. A missing one renders as the raw key — the user sees
-  // "apps.form.addPort" on a button — and no test caught it, because both catalogues lacked it
-  // equally. This walks the source instead of the catalogues.
+  // Parity says nothing about keys absent from both catalogues, so this walks the source instead.
   it('defines every key the app asks for', () => {
     // Vite reads the sources, so this needs no node types in the app's tsconfig.
     const sources = import.meta.glob('../**/*.{vue,ts}', {
@@ -143,8 +131,7 @@ describe('translation catalogues', () => {
       import: 'default',
     }) as Record<string, string>
 
-    // $t('a.b') or t("a.b") with a literal, dotted key — the form that can be checked statically.
-    // A computed key (t(someVar)) is invisible here and stays the author's responsibility.
+    // Only literal dotted keys are checkable; a computed key (t(someVar)) stays the author's responsibility.
     const used = new Map<string, string>()
     for (const [file, src] of Object.entries(sources)) {
       if (file.endsWith('.spec.ts')) continue

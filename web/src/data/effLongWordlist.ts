@@ -1,15 +1,4 @@
-// The EFF "long" diceware wordlist — 7776 words, exactly 12.9 bits of entropy
-// per word (log2(7776)). Public domain, from
-// https://www.eff.org/dice — eff_large_wordlist.txt, with the dice-roll column
-// dropped.
-//
-// This file is imported dynamically so it lands in its own chunk (~24 KB
-// gzipped) and only downloads when someone opens the passphrase tab. A short
-// list is not a cheaper version of this: entropy per word is the whole point,
-// and a 200-word list would make a six-word passphrase weaker than an
-// eight-character password.
-//
-// Generated from the upstream file; do not hand-edit.
+// EFF long wordlist (12.9 bits/word, https://www.eff.org/dice), loaded lazily; generated upstream, do not hand-edit.
 export const EFF_LONG_WORDLIST: readonly string[] = [
   'abacus', 'abdomen', 'abdominal', 'abide', 'abiding', 'ability', 'ablaze', 'able',
   'abnormal', 'abrasion', 'abrasive', 'abreast', 'abridge', 'abroad', 'abruptly', 'absence',

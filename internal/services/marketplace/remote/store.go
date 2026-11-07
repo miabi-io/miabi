@@ -84,9 +84,7 @@ func (s *Store) effectiveURL() (url string, denied bool) {
 	return official, true
 }
 
-// sameMarketplace compares two marketplace URLs the way the fetcher does, so a
-// trailing slash or a case difference in the scheme/host is not read as a custom
-// catalog.
+// Normalizes so a trailing slash or case difference is not read as a custom catalog.
 func sameMarketplace(a, b string) bool {
 	return strings.EqualFold(resolveExportURL(a), resolveExportURL(b))
 }
@@ -130,16 +128,13 @@ func (s *Store) Enabled() bool {
 	return s.client != nil
 }
 
-// Source returns the marketplace actually being synced from, and whether a
-// configured custom one was refused for want of a license.
 func (s *Store) Source() (url string, denied bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.activeURL, s.denied
 }
 
-// LoadCache populates the in-memory view from a previously-synced bundle, so a
-// restart can serve community templates before the first live sync completes.
+// Lets a restart serve community templates before the first live sync completes.
 func (s *Store) LoadCache(ctx context.Context) error {
 	if s.cache == nil {
 		return nil
@@ -151,8 +146,7 @@ func (s *Store) LoadCache(ctx context.Context) error {
 	if source == "" {
 		return nil
 	}
-	// Scoped to the source: a bundle cached from a marketplace this install may no
-	// longer sync from must not be served after the fallback.
+	// A bundle cached from a marketplace this install may no longer sync from must not be served.
 	data, etag, err := s.cache.Load(ctx, source)
 	if err != nil || len(data) == 0 {
 		return err
@@ -160,11 +154,8 @@ func (s *Store) LoadCache(ctx context.Context) error {
 	return s.set(data, etag)
 }
 
-// Sync fetches the export bundle conditionally and refreshes the cache and the
-// in-memory view. A 304 (ETag match) is a no-op. Disabled stores return nil.
 func (s *Store) Sync(ctx context.Context) error {
-	// Re-resolve first: a license installed or lapsed since the last sync changes
-	// which catalog this install may pull from, without a restart.
+	// A license installed or lapsed since the last sync changes the allowed catalog without a restart.
 	s.resolve()
 
 	s.mu.RLock()
@@ -220,8 +211,6 @@ func (s *Store) markSynced() {
 	s.mu.Unlock()
 }
 
-// CatalogInfo reports the synced catalog's template count, its last successful live sync (zero
-// before one) and the marketplace's generatedAt.
 func (s *Store) CatalogInfo() (templates int, syncedAt time.Time, generatedAt string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -235,8 +224,6 @@ func (s *Store) Templates() []DecodedTemplate {
 	return s.templates
 }
 
-// Manifest resolves a synced manifest (empty version = latest), reporting the
-// template's source label. A non-empty version must match exactly.
 func (s *Store) Manifest(name, version string) (*manifest.Manifest, string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

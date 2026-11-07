@@ -29,13 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// PruneStaleBridges removes, on one node, the workspace bridges that no longer back a workspace network.
-// Converting to cluster networking removes the old bridges only on the nodes it reaches, and hands their
-// pool subnets to the new overlays; a bridge left on another node then makes every overlay attachment
-// there fail with "Pool overlaps". Run when a node joins the cluster and whenever its agent connects.
-//
-// Docker refuses to remove a network with containers attached, so a bridge still in use is kept and
-// reported rather than torn out from under its containers.
+// PruneStaleBridges removes leftover workspace bridges that would make overlay attachments fail with "Pool overlaps".
 func (s *Service) PruneStaleBridges(ctx context.Context, dc docker.Client, nodeName string) []string {
 	if !s.clusterOn() || dc == nil {
 		return nil

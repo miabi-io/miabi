@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package worker holds the asynq producer, task types, and handlers for
-// background work (deploys, backups, metric scrapes, ...).
+// Package worker holds the asynq producer, task types, and handlers for background work.
 package worker
 
 import (
@@ -34,13 +33,9 @@ const (
 	QueueDeploy  = "deploy"
 	QueueDefault = "default"
 	QueueLow     = "low"
-	// QueueNode carries tasks that must run on a remote node. Agent tunnels live only in the
-	// control-plane server process, so only its embedded worker consumes this queue; a standalone
-	// `miabi worker` never receives a remote-node task it couldn't reach.
+	// Agent tunnels live only in the control-plane server, so only its embedded worker consumes this queue.
 	QueueNode = "node"
-	// QueueControl carries tasks that drive the control plane's own service graph rather than a
-	// container: a portable workspace bundle creates apps, routes, databases and members through the
-	// very services the API server wires. A standalone worker builds only a subset, so it doesn't consume it.
+	// A standalone worker builds only a subset of the control-plane services, so it doesn't consume this queue.
 	QueueControl = "control"
 )
 
@@ -74,8 +69,7 @@ type CanaryStepPayload struct {
 // ProvisionDBPayload identifies the database to provision.
 type ProvisionDBPayload struct {
 	DatabaseID uint `json:"database_id"`
-	// Resize recreates an existing instance's container with its new limits; the previous ones are what a failed
-	// resize restores.
+	// The previous limits are what a failed resize restores.
 	Resize          bool   `json:"resize,omitempty"`
 	PrevMemoryBytes int64  `json:"prev_memory_bytes,omitempty"`
 	PrevNanoCPUs    int64  `json:"prev_nano_cpus,omitempty"`
@@ -90,14 +84,11 @@ type UpgradeDBPayload struct {
 	StopApps   bool   `json:"stop_apps"` // quiesce apps using the database during the upgrade
 }
 
-// NotifyFanoutPayload identifies a persisted event to fan out to a workspace's
-// webhooks and notification channels.
 type NotifyFanoutPayload struct {
 	AppEventID uint `json:"app_event_id"`
 }
 
-// WebhookDeliverPayload identifies a single webhook delivery. EventID == 0
-// signals a synthetic test delivery.
+// EventID == 0 signals a synthetic test delivery.
 type WebhookDeliverPayload struct {
 	WebhookID uint `json:"webhook_id"`
 	EventID   uint `json:"event_id"`
@@ -124,15 +115,12 @@ type RunPipelinePayload struct {
 	PipelineRunID uint `json:"pipeline_run_id"`
 }
 
-// WorkspaceBundlePayload identifies the portable workspace bundle run to execute. Only the row id
-// travels: everything the run needs is read from the database when it starts, so no secret is ever
-// written to the queue.
+// Only the row id travels so no secret is ever written to the queue.
 type WorkspaceBundlePayload struct {
 	WorkspaceBundleID uint `json:"workspace_bundle_id"`
 }
 
-// LocationMigrationPayload identifies the location migration to run. The run reads everything else from
-// its row, so a resumed run and a first run are the same task.
+// The run reads everything from its row, so a resumed run and a first run are the same task.
 type LocationMigrationPayload struct {
 	MigrationID uint `json:"migration_id"`
 }
@@ -159,13 +147,9 @@ func NewProducer(redisAddr, redisPassword string, redisDB, maxRetries int) *Prod
 	return &Producer{client: client, maxRetries: maxRetries}
 }
 
-// SetLocalID records the local node's server id so node-affine tasks can be
-// routed to the right queue (remote nodes -> QueueNode, local -> def).
 func (p *Producer) SetLocalID(id uint) { p.localID = id }
 
-// nodeQueue returns QueueNode when serverID is a remote node (so only the
-// control-plane server's worker, which holds the agent tunnels, runs it), else
-// the given default queue.
+// Remote nodes go to QueueNode so only the worker holding the agent tunnels runs them.
 func (p *Producer) nodeQueue(serverID uint, def string) string {
 	if serverID != 0 && serverID != p.localID {
 		return QueueNode
@@ -173,8 +157,6 @@ func (p *Producer) nodeQueue(serverID uint, def string) string {
 	return def
 }
 
-// EnqueueDeploy schedules a deployment to be processed by the worker. serverID
-// is the app's node, used to route remote-node deploys to the server's worker.
 func (p *Producer) EnqueueDeploy(deploymentID, serverID uint) error {
 	payload, err := json.Marshal(DeployPayload{DeploymentID: deploymentID})
 	if err != nil {
@@ -185,9 +167,7 @@ func (p *Producer) EnqueueDeploy(deploymentID, serverID uint) error {
 	return err
 }
 
-// EnqueueDeployToBuilder routes a deployment to QueueNode, which only the control-plane server's
-// embedded worker consumes — the process holding the runner tunnels. A git-source deploy must build
-// on a runner, so a standalone worker hands it off here instead of failing.
+// A git-source deploy must build on a runner, so a standalone worker hands it to the tunnel-holding worker.
 func (p *Producer) EnqueueDeployToBuilder(deploymentID uint) error {
 	payload, err := json.Marshal(DeployPayload{DeploymentID: deploymentID})
 	if err != nil {
@@ -198,8 +178,6 @@ func (p *Producer) EnqueueDeployToBuilder(deploymentID uint) error {
 	return err
 }
 
-// EnqueueDeployIn re-schedules a deployment after a delay — used to defer a
-// deploy when another for the same app is already in progress (per-app lock).
 func (p *Producer) EnqueueDeployIn(deploymentID, serverID uint, delay time.Duration) error {
 	payload, err := json.Marshal(DeployPayload{DeploymentID: deploymentID})
 	if err != nil {
@@ -232,8 +210,7 @@ func (p *Producer) EnqueueProvisionDB(databaseID, serverID uint) error {
 	return err
 }
 
-// EnqueueResizeDB schedules recreating a database's container with new limits. MaxRetry is 0, like an upgrade:
-// the job restores the previous limits itself on failure.
+// MaxRetry is 0: the job restores the previous limits itself on failure.
 func (p *Producer) EnqueueResizeDB(databaseID, serverID uint, previous database.Resources) error {
 	payload, err := json.Marshal(ProvisionDBPayload{
 		DatabaseID: databaseID, Resize: true, PrevMemoryBytes: previous.MemoryBytes, PrevNanoCPUs: previous.NanoCPUs,
@@ -247,9 +224,7 @@ func (p *Producer) EnqueueResizeDB(databaseID, serverID uint, previous database.
 	return err
 }
 
-// EnqueueUpgradeDB schedules a database version upgrade. MaxRetry is 0: a
-// half-applied upgrade must not be blindly re-run (the handler records failures
-// on the instance instead).
+// MaxRetry is 0: a half-applied upgrade must not be blindly re-run.
 func (p *Producer) EnqueueUpgradeDB(databaseID, serverID uint, target, path string, stopApps bool) error {
 	payload, err := json.Marshal(UpgradeDBPayload{DatabaseID: databaseID, Target: target, Path: path, StopApps: stopApps})
 	if err != nil {
@@ -260,8 +235,6 @@ func (p *Producer) EnqueueUpgradeDB(databaseID, serverID uint, target, path stri
 	return err
 }
 
-// EnqueueNotifyFanout schedules fan-out of an event to a workspace's webhooks
-// and channels. Cheap and safe to call from request or worker goroutines.
 func (p *Producer) EnqueueNotifyFanout(appEventID uint) error {
 	payload, err := json.Marshal(NotifyFanoutPayload{AppEventID: appEventID})
 	if err != nil {
@@ -272,8 +245,7 @@ func (p *Producer) EnqueueNotifyFanout(appEventID uint) error {
 	return err
 }
 
-// EnqueueWebhookDeliver schedules delivery of an event to one webhook. Each
-// endpoint retries independently with asynq's exponential backoff.
+// Each endpoint retries independently with asynq's exponential backoff.
 func (p *Producer) EnqueueWebhookDeliver(webhookID, eventID uint) error {
 	payload, err := json.Marshal(WebhookDeliverPayload{WebhookID: webhookID, EventID: eventID})
 	if err != nil {
@@ -284,8 +256,6 @@ func (p *Producer) EnqueueWebhookDeliver(webhookID, eventID uint) error {
 	return err
 }
 
-// EnqueueNotifyChannel schedules delivery of an event to one notification
-// channel.
 func (p *Producer) EnqueueNotifyChannel(channelID, eventID uint) error {
 	payload, err := json.Marshal(NotifyChannelPayload{ChannelID: channelID, EventID: eventID})
 	if err != nil {
@@ -296,8 +266,7 @@ func (p *Producer) EnqueueNotifyChannel(channelID, eventID uint) error {
 	return err
 }
 
-// EnqueueRunJob schedules a one-off Job to be run by the worker. Jobs are not
-// auto-retried — a failed run is recorded; the user re-runs it explicitly.
+// Jobs are not auto-retried; the user re-runs a failed one explicitly.
 func (p *Producer) EnqueueRunJob(jobID, serverID uint) error {
 	payload, err := json.Marshal(RunJobPayload{JobID: jobID})
 	if err != nil {
@@ -308,9 +277,7 @@ func (p *Producer) EnqueueRunJob(jobID, serverID uint) error {
 	return err
 }
 
-// EnqueueVolumeBackup schedules a volume backup to run in the background. Like
-// jobs, it is not auto-retried — a failed run is recorded on the backup row and
-// the user re-runs it explicitly. serverID routes remote-node backups.
+// Not auto-retried; a failed run is recorded on the backup row.
 func (p *Producer) EnqueueVolumeBackup(backupID, serverID uint) error {
 	payload, err := json.Marshal(VolumeBackupPayload{VolumeBackupID: backupID})
 	if err != nil {
@@ -321,9 +288,7 @@ func (p *Producer) EnqueueVolumeBackup(backupID, serverID uint) error {
 	return err
 }
 
-// EnqueuePipelineRun schedules a pipeline run on the internal runner. Like jobs it is not
-// auto-retried — a failed run is recorded and the user re-runs it. The run is deploy-priority so CI
-// feedback is prompt; serverID routes remote-node runs.
+// Not auto-retried; deploy priority so CI feedback is prompt.
 func (p *Producer) EnqueuePipelineRun(runID, serverID uint) error {
 	payload, err := json.Marshal(RunPipelinePayload{PipelineRunID: runID})
 	if err != nil {
@@ -334,8 +299,6 @@ func (p *Producer) EnqueuePipelineRun(runID, serverID uint) error {
 	return err
 }
 
-// EnqueuePipelineRunIn re-enqueues a pipeline run after delay — used to poll for
-// a free runner when a run is waiting for one (no eligible runner right now).
 func (p *Producer) EnqueuePipelineRunIn(runID uint, delay time.Duration) error {
 	payload, err := json.Marshal(RunPipelinePayload{PipelineRunID: runID})
 	if err != nil {
@@ -356,9 +319,7 @@ func (p *Producer) EnqueuePipelineRunToBuilder(runID uint, delay time.Duration) 
 	return err
 }
 
-// EnqueuePlatformBackup schedules a platform backup to run in the background. Like volume backups it
-// is not auto-retried — a failed run is recorded on the row and the admin re-runs it. It always runs
-// on the manager node, so it uses the default queue.
+// Not auto-retried; always runs on the manager node, so it uses the default queue.
 func (p *Producer) EnqueuePlatformBackup(backupID uint) error {
 	payload, err := json.Marshal(PlatformBackupPayload{PlatformBackupID: backupID})
 	if err != nil {
@@ -369,9 +330,7 @@ func (p *Producer) EnqueuePlatformBackup(backupID uint) error {
 	return err
 }
 
-// EnqueueWorkspaceBundle schedules a portable workspace bundle export or restore. Never auto-retried:
-// a restore replayed blindly after a partial run is exactly what an operator wants to look at first.
-// It drives the local Docker socket and the control plane's services, so it uses the default queue.
+// Never auto-retried: a partial restore is what an operator wants to look at before replaying.
 func (p *Producer) EnqueueWorkspaceBundle(bundleID uint) error {
 	payload, err := json.Marshal(WorkspaceBundlePayload{WorkspaceBundleID: bundleID})
 	if err != nil {

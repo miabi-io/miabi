@@ -61,9 +61,7 @@ func TestMintBothCredentials(t *testing.T) {
 		t.Errorf("Secrets() = %v, want 2 values to mask", creds.Secrets())
 	}
 
-	// The registry token authenticates and carries exactly its ephemeral, app-
-	// bound, registry read+write identity (read is required: a docker push HEADs
-	// blobs to skip existing layers, and those checks need a read scope).
+	// Read is required: docker push HEADs blobs to skip existing layers.
 	key, err := svc.Verify(creds.RegistryToken)
 	if err != nil {
 		t.Fatalf("registry token should verify: %v", err)
@@ -111,8 +109,6 @@ func TestRevokeKillsCredentials(t *testing.T) {
 	}
 }
 
-// Ephemeral job keys never appear in a user's API-keys list, and the orphan
-// sweep removes expired ones.
 func TestEphemeralKeysHiddenAndSwept(t *testing.T) {
 	svc, repo := newKeyService(t)
 	// One ordinary user key, plus a run's ephemeral pair.

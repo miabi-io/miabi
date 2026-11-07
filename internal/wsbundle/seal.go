@@ -32,8 +32,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Envelope framing. The header is self-describing so a future format change is a
-// clean refusal instead of a garbled decrypt.
+// The self-describing header makes a future format change a clean refusal instead of a garbled decrypt.
 const (
 	magic       = "MBWS1"
 	saltLen     = 16
@@ -48,21 +47,16 @@ const (
 )
 
 var (
-	// ErrBadPassphrase means the state file did not authenticate: a wrong
-	// passphrase, or a tampered file. The two are indistinguishable by design.
+	// A wrong passphrase and a tampered file are indistinguishable by design.
 	ErrBadPassphrase = errors.New("bundle state did not decrypt: wrong passphrase or corrupt file")
 	// ErrNotState means the bytes are not a bundle state file at all.
 	ErrNotState = errors.New("not a Miabi workspace bundle state file")
 	// ErrPassphraseRequired means the state file is sealed but no passphrase was given.
 	ErrPassphraseRequired = errors.New("this bundle is encrypted: set the bundle passphrase it was created with to restore it")
-	// ErrWeakPassphrase is returned when a passphrase is too weak to protect a
-	// workspace's entire vault.
-	ErrWeakPassphrase = fmt.Errorf("backup passphrase must be at least %d characters and mix letters with digits or symbols", minPassLen)
+	ErrWeakPassphrase     = fmt.Errorf("backup passphrase must be at least %d characters and mix letters with digits or symbols", minPassLen)
 )
 
-// ValidatePassphrase rejects passphrases too weak for the bundle. A bundle holds
-// every secret the workspace owns, so the floor is enforced rather than
-// suggested.
+// A bundle holds every workspace secret, so the floor is enforced rather than suggested.
 func ValidatePassphrase(pass string) error {
 	if len([]rune(pass)) < minPassLen {
 		return ErrWeakPassphrase
@@ -82,9 +76,7 @@ func ValidatePassphrase(pass string) error {
 	return nil
 }
 
-// Seal encrypts a state document under a key derived from passphrase with Argon2id, returning the
-// framed file. A fresh random salt and nonce are generated per call, so sealing the same state
-// twice never produces the same bytes.
+// A fresh salt and nonce per call, so sealing the same state twice never yields the same bytes.
 func Seal(st *State, passphrase string) ([]byte, error) {
 	if st == nil {
 		return nil, errors.New("nil state")
@@ -120,15 +112,12 @@ func Seal(st *State, passphrase string) ([]byte, error) {
 	out = append(out, byte(formatVer))
 	out = append(out, salt...)
 	out = append(out, nonce...)
-	// The header is authenticated as additional data, so a file whose salt or
-	// version was edited fails to open rather than decrypting to nonsense.
+	// The header is authenticated so an edited salt or version fails to open rather than decrypting to nonsense.
 	out = gcm.Seal(out, nonce, plaintext, out[:headerLen])
 	return out, nil
 }
 
-// Open decrypts a sealed state file. A wrong passphrase and a tampered file are
-// reported identically — the AEAD cannot tell them apart, and pretending
-// otherwise would be a decryption oracle.
+// Wrong passphrase and tampering are reported identically; distinguishing them would be a decryption oracle.
 func Open(sealed []byte, passphrase string) (*State, error) {
 	if len(sealed) < headerLen || string(sealed[:len(magic)]) != magic {
 		return nil, ErrNotState
@@ -163,8 +152,7 @@ func Open(sealed []byte, passphrase string) (*State, error) {
 	return &st, nil
 }
 
-// Encode renders a state document for upload: sealed under passphrase, or as plain JSON when the
-// passphrase is empty. The plain form carries the workspace's secrets in the clear.
+// An empty passphrase writes plain JSON, carrying the workspace's secrets in the clear.
 func Encode(st *State, passphrase string) ([]byte, error) {
 	if passphrase != "" {
 		return Seal(st, passphrase)
@@ -176,8 +164,7 @@ func Encode(st *State, passphrase string) ([]byte, error) {
 	return json.MarshalIndent(st, "", "  ")
 }
 
-// Decode reads a state file in either form. The form is taken from the bytes, not from the bundle's
-// index, so a bundle is read correctly whatever the workspace's current setting is.
+// The form is read from the bytes, not the index, so it decodes whatever the workspace's current setting is.
 func Decode(data []byte, passphrase string) (*State, error) {
 	if len(data) >= len(magic) && string(data[:len(magic)]) == magic {
 		if passphrase == "" {
@@ -211,9 +198,7 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	return gcm, nil
 }
 
-// zero wipes material we are done with. Go's GC gives no guarantee the backing
-// array is not copied, but leaving a workspace's plaintext vault in a
-// long-running control plane's heap for no reason is worse.
+// Go's GC may still copy the array, but leaving the plaintext vault in the heap for no reason is worse.
 func zero(b []byte) {
 	for i := range b {
 		b[i] = 0

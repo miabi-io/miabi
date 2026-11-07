@@ -3,8 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useComponents } from '@/composables/useComponents'
 
-// Shown while a component is Beta or Preview in internal/components; promoting it to
-// Stable removes the badge everywhere without touching the pages.
+// Promoting the component to Stable removes the badge everywhere without touching the pages.
 const props = defineProps<{ component: string }>()
 
 const { t } = useI18n()

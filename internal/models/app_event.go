@@ -46,14 +46,10 @@ const (
 	EventSettingsUpdated  AppEventType = "settings.updated"
 	EventAppCreated       AppEventType = "app.created"
 	EventAppDeleted       AppEventType = "app.deleted"
-	// EventPipelineAdopted records the outcome of reading a git app's repository
-	// for pipeline-as-code: adopted, or why it fell back to a direct build.
-	EventPipelineAdopted AppEventType = "pipeline.adopted"
+	EventPipelineAdopted  AppEventType = "pipeline.adopted"
 )
 
-// Database instance event types. These record outcomes and unattended activity, which is what
-// separates them from AuditLog: the audit log records that a user asked for a restart, this
-// records whether the instance came back.
+// Outcomes, not requests: the audit log records the restart ask, this whether the instance came back.
 const (
 	EventDatabaseProvisioned      AppEventType = "database.provisioned"
 	EventDatabaseProvisionFailed  AppEventType = "database.provision_failed"
@@ -68,23 +64,19 @@ const (
 	EventDatabaseRestoreFailed    AppEventType = "restore.failed"
 )
 
-// Drift event types, recorded by the control manager on the timeline of an app whose workload
-// disappeared from under it, and again once it exists again.
 const (
 	EventDriftDetected AppEventType = "drift.detected"
 	EventDriftResolved AppEventType = "drift.resolved"
 )
 
-// Reconcile event types, recorded when the control manager acts on drift — or declines to, which matters
-// just as much: an app left alone because its data is gone has to say so.
+// Declining to act matters too: an app left alone because its data is gone has to say so.
 const (
 	EventReconcileRedeploy    AppEventType = "reconcile.redeploy"
 	EventReconcileBlocked     AppEventType = "reconcile.blocked"
 	EventReconcileBreakerOpen AppEventType = "reconcile.breaker_open"
 )
 
-// EventSubjectType names the kind of resource a timeline event is about. An event carries
-// exactly one subject; the matching id column holds it and the other stays 0.
+// The matching id column holds the subject and the other stays 0.
 type EventSubjectType string
 
 const (
@@ -101,18 +93,12 @@ const (
 	SeverityError   AppEventSeverity = "error"
 )
 
-// AppEvent is a timeline entry for a resource: lifecycle transitions, runtime container
-// events (start/stop/crash/health), and configuration changes. Distinct from AuditLog (user
-// mutations, admin-scoped) and from deployment build logs.
-//
-// Despite the name it is subject-scoped: SubjectType says which of ApplicationID / DatabaseID
-// is set. The name stays because the type is the outbound webhook contract.
+// Subject-scoped despite the name, which stays because the type is the outbound webhook contract.
 type AppEvent struct {
 	ID          uint             `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint             `json:"workspace_id" gorm:"index;not null"`
 	SubjectType EventSubjectType `json:"subject_type" gorm:"not null;default:app"`
-	// ApplicationID is 0 on a non-app event. 0 rather than a nullable pointer because the
-	// delivery layer already reads it that way (notify.appLabel treats 0 as "no application").
+	// 0 rather than a pointer because notify.appLabel already treats 0 as "no application".
 	ApplicationID uint              `json:"application_id" gorm:"index:idx_event_app_id;not null;default:0"`
 	DatabaseID    uint              `json:"database_id,omitempty" gorm:"index:idx_event_db_id;not null;default:0"`
 	Type          AppEventType      `json:"type" gorm:"not null"`
@@ -122,16 +108,13 @@ type AppEvent struct {
 	ActorID       *uint             `json:"actor_id,omitempty"`
 	CreatedAt     time.Time         `json:"created_at" gorm:"index:idx_event_app_id;index:idx_event_db_id"`
 
-	// Display fields are populated at delivery time (notifications, webhooks) and
-	// are never persisted. They let a renderer name the resource instead of
-	// showing a bare numeric id. Empty when the resource has been deleted.
+	// Populated at delivery time, never persisted; empty when the resource has been deleted.
 	ApplicationName string `json:"application_name,omitempty" gorm:"-"`
 	ApplicationSlug string `json:"application_slug,omitempty" gorm:"-"`
 	DatabaseName    string `json:"database_name,omitempty" gorm:"-"`
 }
 
-// Subject returns the event's subject type and id, defaulting to the application subject so
-// rows written before SubjectType existed keep behaving as application events.
+// Defaults to application so rows written before SubjectType existed keep working.
 func (e *AppEvent) Subject() (EventSubjectType, uint) {
 	if e.SubjectType == SubjectDatabase {
 		return SubjectDatabase, e.DatabaseID
@@ -139,8 +122,7 @@ func (e *AppEvent) Subject() (EventSubjectType, uint) {
 	return SubjectApp, e.ApplicationID
 }
 
-// HasSubject reports whether the event names a resource. An event without one cannot be
-// listed, streamed or trimmed, so the recorder drops it.
+// An event without a subject cannot be listed, streamed or trimmed, so the recorder drops it.
 func (e *AppEvent) HasSubject() bool {
 	_, id := e.Subject()
 	return id != 0

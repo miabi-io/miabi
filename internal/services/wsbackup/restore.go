@@ -55,9 +55,7 @@ import (
 type RestoreInput struct {
 	// Ref names the bundle in the bucket.
 	Ref string
-	// NewWorkspaceName, when set, restores into a workspace created for the
-	// purpose instead of into the one asking. It is what makes a bundle a clone
-	// rather than an overwrite.
+	// A fresh workspace makes a bundle a clone rather than an overwrite.
 	NewWorkspaceName string
 	// RestoreData pulls the dumps and archives too.
 	RestoreData bool
@@ -65,9 +63,7 @@ type RestoreInput struct {
 	DeployApps bool
 }
 
-// Restore records a pending restore and schedules it. workspaceID is the workspace whose bucket and
-// passphrase are used. The target is that same workspace unless NewWorkspaceName asks for a fresh one,
-// created synchronously so a name clash is an error the caller sees rather than a job that fails later.
+// A new workspace is created synchronously so a name clash is an error now, not a failed job later.
 func (s *Service) Restore(ctx context.Context, workspaceID uint, userID *uint, in RestoreInput) (*models.WorkspaceBundle, error) {
 	cfg, prefix, _, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
@@ -88,9 +84,7 @@ func (s *Service) Restore(ctx context.Context, workspaceID uint, userID *uint, i
 			return nil, err
 		}
 		if err := s.inheritSettings(workspaceID, ws.ID); err != nil {
-			// The workspace exists and the restore can still run against the source's
-			// bucket; only its own future backups are unconfigured. Say so rather than
-			// unwinding a workspace the operator can keep.
+			// The workspace is keepable and the restore still works; only its own future backups are unconfigured.
 			logger.Warn("bundle: could not copy backup settings to the restored workspace",
 				"workspace", ws.ID, "error", err)
 		}
@@ -113,8 +107,6 @@ func (s *Service) Restore(ctx context.Context, workspaceID uint, userID *uint, i
 	})
 }
 
-// inheritSettings copies one workspace's bundle target to another, so a restored
-// clone points at the same bucket its bundle came from.
 func (s *Service) inheritSettings(from, to uint) error {
 	src, err := s.Settings.Get(from)
 	if err != nil {
@@ -145,9 +137,7 @@ func (s *Service) inheritSettings(from, to uint) error {
 	return err
 }
 
-// runRestore rebuilds a workspace from a bundle. Resources are created in dependency order — credentials,
-// networks, secrets, volumes, stacks, databases, domains, certificates, apps, routing, delivery — and every one
-// is keyed by name, so an existing resource is left as it is and reported skipped. Safe to run live, and twice.
+// Dependency-ordered and keyed by name, so existing resources are skipped; safe to run live, and twice.
 func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) error {
 	cfg, prefix, passphrase, err := s.Settings.BundleTarget(b.WorkspaceID)
 	if err != nil {
@@ -184,9 +174,7 @@ func (s *Service) runRestore(ctx context.Context, b *models.WorkspaceBundle) err
 	return nil
 }
 
-// restoreFrom rebuilds b's target workspace from state, reading its data through src. report, when given,
-// is extended rather than started afresh, so a migration's transfer items come first. It records the
-// outcome on b and returns the run for a caller that has more to report.
+// report is extended rather than restarted, so a migration's transfer items come first.
 func (s *Service) restoreFrom(ctx context.Context, b *models.WorkspaceBundle, state *wsbundle.State, info *wsbundle.Info, src artifactSource, report *models.BundleReport) *restoreRun {
 	target := b.TargetWorkspaceID
 	if target == 0 {
@@ -197,8 +185,7 @@ func (s *Service) restoreFrom(ctx context.Context, b *models.WorkspaceBundle, st
 	}
 	r := &restoreRun{svc: s, bundle: b, target: target, state: state, info: info, src: src, report: report}
 	if s.Placer != nil {
-		// Resolved before anything is created: a workspace with no usable location would otherwise restore
-		// half its resources before the first one failed to place.
+		// Otherwise a workspace with no usable location restores half its resources before one fails to place.
 		at, err := s.Placer.Place(placement.Request{WorkspaceID: target})
 		if err != nil {
 			b.Report = *r.report
@@ -230,9 +217,7 @@ func (s *Service) restoreFrom(ctx context.Context, b *models.WorkspaceBundle, st
 	b.Report = *r.report
 	b.Artifacts = r.restored
 	if fails := r.report.Failures(); len(fails) > 0 {
-		// Partial is the honest outcome: the resources that came back are real and
-		// keeping them is the point, but a run reported as successful when a
-		// database did not restore is how an operator finds out too late.
+		// Reporting success when a database didn't restore is how an operator finds out too late.
 		s.partial(b, fmt.Errorf("%d of %d resources could not be restored", len(fails), len(r.report.Items)))
 		return r
 	}
@@ -240,8 +225,6 @@ func (s *Service) restoreFrom(ctx context.Context, b *models.WorkspaceBundle, st
 	return r
 }
 
-// artifactSource is where a restore's dumps and archives come from: the bundle's bucket, or the install
-// a migration pulls from.
 type artifactSource interface {
 	restoreDatabase(ctx context.Context, r *restoreRun, art wsbundle.Artifact, inst *models.DatabaseInstance, db *models.Database) error
 	restoreVolume(ctx context.Context, r *restoreRun, art wsbundle.Artifact, vol *models.Volume) error
@@ -253,8 +236,7 @@ type bucketSource struct {
 	passphrase string
 }
 
-// passphraseFor is the passphrase an artifact was written with: none for a cleartext one, even when
-// the workspace has a passphrase now.
+// None for a cleartext artifact, even when the workspace has a passphrase now.
 func (b bucketSource) passphraseFor(art wsbundle.Artifact) string {
 	if !art.Encrypted {
 		return ""
@@ -285,18 +267,14 @@ type restoreRun struct {
 	src      artifactSource
 	report   *models.BundleReport
 	restored int
-	// at is where every restored resource lands: the target workspace's location, on one node, so apps can
-	// mount the volumes and reach the databases restored with them.
+	// One node, so apps can mount the volumes and reach the databases restored with them.
 	at placement.Result
 
-	// appIDs and instanceIDs are the remap table: a natural key from the bundle to the id this platform minted for
-	// it. Every cross-reference resolves through them, which is the whole reason nothing in a bundle carries an
-	// id. They hold pre-existing resources too, so a reference resolves whether or not this run created it.
+	// Every cross-reference resolves through these, which is why no bundle carries an id; includes pre-existing ones.
 	appIDs      map[string]uint
 	instanceIDs map[string]uint
 	volumeIDs   map[string]uint
-	// createdApps are the apps this run created, in bundle order — the only ones
-	// it may deploy.
+	// The only apps this run may deploy.
 	createdApps []string
 	// conn rewrites source database connection values to the target's; nil until mapConnections runs.
 	conn      *strings.Replacer
@@ -326,9 +304,7 @@ type restoreStep struct {
 	run  func(context.Context)
 }
 
-// steps is the restore's dependency order, named so it can be asserted rather than assumed. Each entry
-// exists because something after it needs what it creates: domains before certificates, certificates
-// before routing, apps before links/routing/delivery, and delivery last so GitOps sees a built workspace.
+// Named so the order can be asserted; delivery runs last so GitOps sees a built workspace.
 func (r *restoreRun) steps() []restoreStep {
 	return []restoreStep{
 		// Before secrets: a restored GitOps source re-applies sealed values, which must open on the target.
@@ -339,11 +315,9 @@ func (r *restoreRun) steps() []restoreStep {
 		{"networks", r.applyNetworks},
 		{"volumes", r.applyVolumes},
 		{"databases", r.applyDatabases},
-		// After databases, before anything storing env or files: values rendered from a source database
-		// are rewritten to the target's as configs, stacks and apps are written.
+		// After databases, before anything storing env or files, so source connection values get rewritten.
 		{"connections", func(context.Context) { r.mapConnections() }},
-		// Before apps: an app's mounts reference configs by name, and the mount can
-		// only be rebuilt once the config it points at exists.
+		// An app's config mount can only be rebuilt once the config it names exists.
 		{"configs", func(context.Context) { r.applyConfigs() }},
 		{"stacks", r.applyStacks},
 		{"domains", func(context.Context) { r.applyDomains() }},
@@ -414,9 +388,7 @@ func (r *restoreRun) applyCredentials() {
 			r.add("dns-provider", p.Name, "failed", "credential could not be read: "+err.Error())
 			continue
 		}
-		// No TestZone: connecting must not depend on a zone this platform can
-		// reach right now. The credential is validated for shape, stored, and
-		// tested by the operator (or by the first record it writes).
+		// No TestZone: connecting must not depend on a zone this platform can reach right now.
 		if _, err := r.svc.DNSProvider.Connect(context.Background(), r.target, dnsprovider.ConnectInput{
 			Name: p.Name, DisplayName: p.DisplayName, Type: p.Type, Credentials: creds,
 		}); err != nil {
@@ -427,9 +399,7 @@ func (r *restoreRun) applyCredentials() {
 	}
 }
 
-// applyDomains registers the workspace's owned hostnames. It runs BEFORE certificates, and that order is
-// load-bearing: importing a certificate validates its subject names against registered domains, so one restored
-// first is refused. Domains come back unverified — DNS at restore time still points wherever it pointed.
+// Before certificates: importing a cert validates its names against registered domains; domains come back unverified.
 func (r *restoreRun) applyDomains() {
 	providerIDs := map[string]uint{}
 	if provs, err := r.svc.DNSProvider.List(r.target); err == nil {
@@ -455,8 +425,7 @@ func (r *restoreRun) applyDomains() {
 			r.add("domain", d.Name, "failed", err.Error())
 			continue
 		}
-		// Re-link the DNS connection so ownership can be proven automatically,
-		// rather than leaving the operator to paste a TXT record by hand.
+		// Re-linked so ownership can be proven automatically rather than by a hand-pasted TXT record.
 		if id := providerIDs[d.DNSProvider]; d.DNSProvider != "" && id != 0 {
 			if _, err := r.svc.Domain.SetDNSProvider(r.target, created.ID, &id); err != nil {
 				logger.Warn("bundle: could not link the dns provider", "domain", d.Name, "error", err)
@@ -466,9 +435,7 @@ func (r *restoreRun) applyDomains() {
 	}
 }
 
-// applyCertificates re-imports the uploaded certificates. A Miabi-issued one is not recreated: issuing it
-// here would ask a CA to validate a host that still resolves to the source, which fails — and would keep
-// failing until DNS moves. It is reported instead, so the operator issues it as part of the cutover.
+// Issuing here would make a CA validate a host still resolving to the source, so it's left for cutover.
 func (r *restoreRun) applyCertificates() {
 	existing := map[string]bool{}
 	if certs, err := r.svc.Certificate.List(r.target); err == nil {
@@ -516,9 +483,7 @@ func (r *restoreRun) applyNetworks(ctx context.Context) {
 	}
 }
 
-// applySecrets recreates the vault. An existing secret of the same name is never
-// overwritten: the value in a bundle is as old as the bundle, and silently
-// rolling back a rotated credential is worse than leaving one unrestored.
+// Existing secrets are never overwritten: silently rolling back a rotated credential is worse.
 func (r *restoreRun) applySecrets() {
 	existing := map[string]bool{}
 	if secrets, err := r.svc.Secret.List(r.target); err == nil {
@@ -546,8 +511,7 @@ func (r *restoreRun) applySecrets() {
 	}
 }
 
-// applySealingKeys imports the source's sealing keys. A target that already has keys keeps its active one and
-// gains the imported ones as older versions, so both its own and the source's sealed values open.
+// A target with keys keeps its active one and gains the imported ones as older versions.
 func (r *restoreRun) applySealingKeys() {
 	if len(r.state.SealingKeys) == 0 {
 		return
@@ -617,9 +581,6 @@ func (r *restoreRun) applyVolumes(ctx context.Context) {
 			driver = models.VolumeDriverLocal
 		}
 		if driver != models.VolumeDriverLocal {
-			// NFS/CIFS mount options and host paths belong to the node that serves
-			// them; a bundle carries neither the password nor the guarantee that the
-			// export exists here.
 			r.add("volume", v.Name, "skipped",
 				"driver "+driver+" is not portable; create it on the target and restore its archive by hand")
 			continue
@@ -663,9 +624,7 @@ func (r *restoreRun) applyStacks(ctx context.Context) {
 	}
 }
 
-// applyDatabases provisions the managed servers and reserves their logical databases. Provision enqueues the
-// container's bring-up rather than starting it, so each logical database is written pending, with its user and
-// vault secrets, and bring-up runs the CREATE DDL once the engine answers — CREATE needs a running instance.
+// CREATE needs a running instance, so logical databases are written pending and bring-up runs the DDL.
 func (r *restoreRun) applyDatabases(ctx context.Context) {
 	existing := map[string]*models.DatabaseInstance{}
 	if instances, err := r.svc.Database.List(r.target); err == nil {
@@ -690,8 +649,7 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 		r.add("database", d.Name, "created", "")
 
 		if !models.EngineSupportsLogicalDatabases(inst.Engine) {
-			// Redis has none; libSQL's single implicit database is created by
-			// Provision itself. Either way there is nothing to reserve.
+			// Redis has none and libSQL's single implicit database is created by Provision itself.
 			continue
 		}
 		for _, ld := range d.Databases {
@@ -700,8 +658,7 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 				r.add("database", d.Name+"/"+ld.Name, "failed", err.Error())
 				continue
 			}
-			// Reserved now, created with the database when the instance comes up, so its grants
-			// cover the tables the data restore loads.
+			// Reserved now so its grants cover the tables the data restore loads.
 			if ld.ReadOnlyUser {
 				if err := r.svc.Database.EnableReadOnly(ctx, created); err != nil {
 					r.add("database", d.Name+"/"+ld.Name, "failed", "read-only user: "+err.Error())
@@ -713,19 +670,14 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 	}
 }
 
-// databaseWaitTimeout bounds how long the data phase waits for a freshly provisioned server to accept
-// connections. Long enough to pull and start a database image on a cold host; short enough that a
-// genuinely stuck bring-up is reported rather than hanging the run.
+// Long enough to pull and start a database image on a cold host; short enough to report a stuck bring-up.
 const databaseWaitTimeout = 5 * time.Minute
 
-// waitForDatabase blocks until a reserved logical database has had its DDL applied by bring-up, or the wait runs
-// out. It polls the row rather than the container: "running" on the logical database is the platform's own
-// statement that the CREATE pair succeeded and the engine answered — strictly more than "the container started".
+// Polls the row, not the container: "running" there means the CREATE pair succeeded and the engine answered.
 func (r *restoreRun) waitForDatabase(ctx context.Context, instanceID uint, name string) error {
 	deadline := time.Now().Add(databaseWaitTimeout)
 	for {
-		// A server that failed to come up will never make its databases ready, so
-		// say so at once instead of waiting out the deadline once per database.
+		// A failed server will never get ready, so fail at once instead of waiting out each database's deadline.
 		if inst, err := r.svc.Database.Get(r.target, instanceID); err == nil && inst.Status == models.DBStatusFailed {
 			return fmt.Errorf("the database server failed to start")
 		}
@@ -756,10 +708,7 @@ func (r *restoreRun) waitForDatabase(ctx context.Context, instanceID uint, name 
 	}
 }
 
-// applyDatabaseLinks re-attaches each logical database to the app that owns it, re-links instances (Redis)
-// and re-injects the connection. The injection is the point: the app's environment came from a platform whose
-// alias, port and generated user are not this one's. Re-injecting rewrites exactly those keys; a hand-typed
-// connection string is left alone.
+// The env came from another platform's alias, port and user; only those keys are rewritten, hand-typed ones kept.
 func (r *restoreRun) applyDatabaseLinks() {
 	for _, d := range r.state.Databases {
 		instID := r.instanceIDs[d.Name]
@@ -815,8 +764,7 @@ func (r *restoreRun) applyDatabaseLinks() {
 	}
 }
 
-// envLink rebuilds a link's env from the bundle. A mapping this platform rejects falls back to the
-// defaults, so the link still lands.
+// A mapping this platform rejects falls back to the defaults, so the link still lands.
 func (r *restoreRun) envLink(inst *models.DatabaseInstance, what, prefix string, m map[string]string) database.EnvLink {
 	norm, err := database.NormalizeEnvMap(inst.Engine, prefix, m)
 	if err != nil {
@@ -826,9 +774,7 @@ func (r *restoreRun) envLink(inst *models.DatabaseInstance, what, prefix string,
 	return database.EnvLink{Prefix: prefix, Map: norm, Vars: database.EnvKeys(inst.Engine, prefix, norm)}
 }
 
-// injectConnection writes the target's own connection details onto the app,
-// mirroring what attaching a database through the UI does. db is nil for an
-// instance link.
+// db is nil for an instance link.
 func (r *restoreRun) injectConnection(inst *models.DatabaseInstance, db *models.Database, appID uint, env database.EnvLink) {
 	vars, err := r.svc.Database.AppEnv(inst, db, env.Prefix, env.Map)
 	if err != nil {
@@ -841,13 +787,8 @@ func (r *restoreRun) injectConnection(inst *models.DatabaseInstance, db *models.
 	}
 }
 
-// applyRouting restores the middlewares and the routes that attach them. The domains those routes serve
-// under were registered earlier (applyDomains), because the certificates between the two steps depend on
-// them.
 func (r *restoreRun) applyRouting(ctx context.Context) {
-	// Middlewares first: a route names the ones it attaches, and one restored
-	// without them would serve without the authentication or the rate limit it
-	// was written to have.
+	// A route restored without its middlewares would serve without its authentication or rate limit.
 	existingMW := map[string]bool{}
 	if mws, err := r.svc.Middleware.List(r.target); err == nil {
 		for i := range mws {
@@ -909,9 +850,7 @@ func (r *restoreRun) applyRouting(ctx context.Context) {
 			if id := certIDs[rt.Certificate]; id != 0 {
 				in.CertificateID = &id
 			} else {
-				// The certificate did not travel (Miabi issues it) or did not import.
-				// Serving custom TLS with no certificate is a route that cannot answer,
-				// so it falls back to ACME and the report says so.
+				// Custom TLS with no certificate can't answer, so the route falls back to ACME and the report says so.
 				in.TLSMode = models.RouteTLSACME
 				detail = "certificate " + rt.Certificate + " is not here yet; the route was set to ACME TLS"
 			}
@@ -924,9 +863,7 @@ func (r *restoreRun) applyRouting(ctx context.Context) {
 	}
 }
 
-// applyDelivery restores what builds and reconciles the workspace: GitOps sources, promotion environments,
-// pipeline definitions and schedules. It runs last, after the resources those act on exist — a GitOps source
-// created before its apps would reconcile against an empty workspace and, with prune on, tear it down.
+// Runs last: a GitOps source created before its apps would reconcile an empty workspace and, with prune, tear it down.
 func (r *restoreRun) applyDelivery() {
 	repoIDs := map[string]uint{}
 	if repos, err := r.svc.GitRepo.List(r.target); err == nil {
@@ -1060,8 +997,7 @@ func (r *restoreRun) applyDelivery() {
 		r.add("cron-job", c.Name, "created", "")
 	}
 
-	// Restored without running: they ran on the source platform, and the
-	// fingerprint they carry keeps the next GitOps sync from running them again.
+	// Not run: they ran on the source, and their fingerprint keeps the next GitOps sync from rerunning them.
 	for _, d := range r.state.JobDefinitions {
 		if _, err := r.svc.Jobs.GetDefinitionByName(r.target, d.Name); err == nil {
 			r.add("job", d.Name, "skipped", "already exists")
@@ -1089,9 +1025,7 @@ func (r *restoreRun) applyDelivery() {
 	}
 }
 
-// applyMembers links people the target already knows. It never creates users:
-// authentication belongs to the platform, and a bundle that could mint accounts
-// would be a way to grant access by uploading a file.
+// Never creates users: a bundle that could mint accounts would grant access by uploading a file.
 func (r *restoreRun) applyMembers() {
 	for _, m := range r.state.Members {
 		user, err := r.svc.Users.FindByEmail(m.Email)
@@ -1146,9 +1080,7 @@ func (r *restoreRun) restoreDatabases(ctx context.Context) {
 			r.add("database-data", name, "skipped", "no database of that name on the restored server")
 			continue
 		}
-		// The server was provisioned a moment ago and comes up on the worker; its image may still be pulling.
-		// Loading a dump into a database whose role does not exist yet fails in a way that reads like a bad dump,
-		// so wait for the platform to say the database is ready first.
+		// Loading a dump before the role exists fails like a bad dump, so wait until the database is ready.
 		if err := r.waitForDatabase(ctx, instID, target.Name); err != nil {
 			r.add("database-data", name, "failed", err.Error())
 			continue
@@ -1182,8 +1114,7 @@ func (r *restoreRun) restoreVolumes(ctx context.Context) {
 	}
 }
 
-// deploy rolls out the applications this run created. Only those: an app that was already here was left
-// untouched, and redeploying it would restart a workload the operator never asked this run to touch.
+// Only created apps: redeploying a pre-existing one would restart a workload nobody asked this run to touch.
 func (r *restoreRun) deploy() {
 	for _, name := range r.createdApps {
 		app, err := r.svc.App.Get(r.target, r.appIDs[name])
@@ -1198,9 +1129,7 @@ func (r *restoreRun) deploy() {
 	}
 }
 
-// closingNotes records what a restore cannot do for the operator. They are the
-// deliverable of the run: the difference between "it restored" and "it is
-// serving" is DNS, certificates and tokens, none of which a bundle can carry.
+// The gap between "restored" and "serving" is DNS, certificates and tokens, none of which a bundle carries.
 func (r *restoreRun) closingNotes() {
 	r.connectionNote()
 	if len(r.state.Domains) > 0 {

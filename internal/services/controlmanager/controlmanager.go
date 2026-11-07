@@ -17,15 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package controlmanager watches for workloads that disappeared from under Miabi: an app whose active
-// release container is gone from its node, a service app whose swarm service is gone from its cluster,
-// and a volume whose data is gone from its node. Its scope is restoring what Miabi already decided, where
-// Miabi decided it; it never places or moves a workload.
-//
-// Lost data is never repaired unattended. A volume that is gone is reported with the backup to restore it
-// from, and every app mounting it is blocked: recreating the volume would hand the app an empty one, and
-// starting a database on that initializes a new, empty cluster over the data it should have kept. So far
-// nothing is acted on at all: findings become timeline events, alerts, metrics and an admin report.
+// Package controlmanager restores vanished workloads in place, never moves them, and never repairs lost data unattended.
 package controlmanager
 
 import (
@@ -49,8 +41,7 @@ type Mode string
 const (
 	ModeOff     Mode = "off"
 	ModeObserve Mode = "observe"
-	// ModeEnforce redeploys a container or service app that disappeared, where it already runs. It never
-	// places or moves a workload, and never acts on an app that is missing anything else it needs.
+	// Never places or moves a workload, and never acts on an app missing anything else it needs.
 	ModeEnforce Mode = "enforce"
 )
 
@@ -61,8 +52,7 @@ const (
 	sweepTimeout = 50 * time.Second
 	// nodeGrace keeps a freshly connected agent's partial view from reading as deleted containers.
 	nodeGrace = time.Minute
-	// confirmAfter is how many sweeps must see an item missing before it is reported, so a container caught
-	// between remove and run by Miabi's own deploy path is never taken for a deleted one.
+	// So a container caught between remove and run by Miabi's own deploy is never taken for deleted.
 	confirmAfter = 2
 )
 
@@ -87,48 +77,36 @@ type ReleaseStore interface {
 	FindActive(appID uint) (*models.Release, error)
 }
 
-// DeploymentStore reports the apps with a deploy under way, and how a redeploy the control manager started
-// is getting on. Satisfied by *repositories.DeploymentRepository.
 type DeploymentStore interface {
 	InProgressAppIDs() ([]uint, error)
 	FindByID(id uint) (*models.Deployment, error)
 }
 
-// VolumeStore reads volume rows and adopts the engine's creation timestamp into one that has none.
-// Satisfied by *repositories.VolumeRepository.
 type VolumeStore interface {
 	ListAll() ([]models.Volume, error)
 	SetEngineCreatedAt(id uint, at string) error
 }
 
-// DatabaseStore does the same for a database instance's data volume.
-// Satisfied by *repositories.DatabaseRepository.
 type DatabaseStore interface {
 	ListAllInstances() ([]models.DatabaseInstance, error)
 	SetVolumeEngineCreatedAt(id uint, at string) error
 }
 
-// VolumeBackupStore lists a volume's archives, so a report of lost data can name the one to restore.
-// Satisfied by *repositories.VolumeBackupRepository. Optional: without it a finding simply suggests none.
+// Optional: without it a finding suggests no backup.
 type VolumeBackupStore interface {
 	ListByVolume(volumeID uint) ([]models.VolumeBackup, error)
 }
 
-// DatabaseBackupStore lists an instance's recovery points, which is what a database is restored from.
-// Satisfied by *repositories.DatabaseBackupSetRepository. Optional.
+// Optional.
 type DatabaseBackupStore interface {
 	ListByInstance(instanceID uint) ([]models.DatabaseBackupSet, error)
 }
 
-// ServerStore lists the nodes, so the gateway that fronts each one can be checked too. Satisfied by
-// *node.Service.
 type ServerStore interface {
 	List(ctx context.Context) ([]models.Server, error)
 }
 
-// GatewayEnsurer redeploys a node's own gateway, idempotently. Satisfied by the wiring in internal/routes,
-// which mints the node's gateway token and calls edgegateway.Ensure. It is never used for a gateway Miabi did
-// not deploy: an imported one, including the platform's own on the manager, belongs to whoever installed it.
+// Never used for imported gateways, including the platform's own on the manager.
 type GatewayEnsurer interface {
 	EnsureGateway(ctx context.Context, serverID uint) error
 }
@@ -193,21 +171,17 @@ func New(nodes NodeDocker, clusters ClusterManager, apps AppStore, releases Rele
 	}
 }
 
-// SetBackups wires the backup histories a report of lost data points at. Nil-safe: without them a finding
-// still reports the loss, with no backup to name.
+// Nil-safe: a finding still reports the loss, with no backup to name.
 func (s *Service) SetBackups(volumes VolumeBackupStore, databases DatabaseBackupStore) {
 	s.volumeBackups, s.dbBackups = volumes, databases
 }
 
-// SetGateways wires node-gateway watching: the nodes to check, and how to put a Miabi-deployed gateway back.
-// Nil-safe — without them gateways are simply not watched.
+// Nil-safe: without them gateways are simply not watched.
 func (s *Service) SetGateways(servers ServerStore, ensurer GatewayEnsurer) {
 	s.servers, s.gateways = servers, ensurer
 }
 
-// Mode returns the configured mode. Off and enforce are both deliberate choices, so they are matched
-// exactly; anything else observes, because an unrecognized value must neither switch detection off nor start
-// redeploying things on its own.
+// Unknown values observe: they must neither switch detection off nor start redeploying.
 func (s *Service) Mode() Mode {
 	switch Mode(strings.ToLower(strings.TrimSpace(s.settings.String(settings.KeyControlManagerMode, "")))) {
 	case ModeOff:
@@ -219,8 +193,7 @@ func (s *Service) Mode() Mode {
 	}
 }
 
-// Tick runs one sweep with its own deadline. It is scheduled on the cron manager, which runs it only on the
-// leading control plane, the process that holds the agent tunnels.
+// The cron manager runs it only on the leading control plane, which holds the agent tunnels.
 func (s *Service) Tick() error {
 	ctx, cancel := context.WithTimeout(context.Background(), sweepTimeout)
 	defer cancel()
@@ -240,8 +213,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 	}
 	seen, skipped := s.observe(ctx, items)
 	s.record(items, seen, skipped, start)
-	// Acting comes last, on what this sweep just confirmed: never on a finding it has not seen twice, and
-	// never on one the same sweep marked blocked.
+	// Never act on a finding not seen twice or one this sweep marked blocked.
 	s.act(ctx, items)
 	return nil
 }
@@ -254,8 +226,6 @@ type subject struct {
 	databaseName string
 }
 
-// item is one thing the sweep expects to exist: an app's container, an app's swarm service, or the
-// volume holding an app's or a database's data.
 type item struct {
 	key   string // unique across kinds: "app:7", "volume:3", "dbvolume:5"
 	kind  string // container | service | volume
@@ -276,22 +246,18 @@ type item struct {
 	containerID string // container items: the active release's container
 	service     string // service items: the swarm service name
 
-	// gatewayName is the gateway container to inspect on the node; imported marks one Miabi did not deploy and
-	// must never recreate.
+	// imported marks a gateway Miabi did not deploy and must never recreate.
 	gatewayName string
 	imported    bool
 
 	volumeName string // volume items: the Docker volume
-	// engineCreatedAt is what Miabi recorded for the volume. Empty means it was created before Miabi
-	// recorded one, and the next sweep adopts whatever the engine reports.
+	// Empty means created before Miabi recorded one; the next sweep adopts the engine's value.
 	engineCreatedAt string
 	adopt           func(at string) error
-	// restore names the backup this item's data comes back from. Resolved only when a finding is first
-	// raised, so a quiet sweep costs no backup queries.
+	// Resolved only when a finding is first raised, so a quiet sweep costs no backup queries.
 	restore func() *Restore
 
-	// subjects are the timelines an event about this item goes to. A volume no app mounts has none, so
-	// it is reported without an event.
+	// A volume no app mounts has none, so it is reported without an event.
 	subjects []subject
 	// needs lists the volume items whose data this item depends on, so a missing volume blocks it.
 	needs []string
@@ -303,8 +269,7 @@ func dbVolumeKey(id uint) string { return fmt.Sprintf("dbvolume:%d", id) }
 func gatewayKey(id uint) string  { return fmt.Sprintf("gateway:%d", id) }
 func nodeRef(id uint) string     { return fmt.Sprintf("node:%d", id) }
 
-// plan builds what the sweep expects to exist. Apps with a deploy under way are left out: the deploy
-// path is removing and starting their containers, and what it leaves behind is judged by a later sweep.
+// Apps with a deploy under way are left out; a later sweep judges what the deploy leaves.
 func (s *Service) plan(ctx context.Context) ([]item, error) {
 	apps, err := s.apps.ListReconcilable()
 	if err != nil {
@@ -327,8 +292,7 @@ func (s *Service) plan(ctx context.Context) ([]item, error) {
 		return nil, fmt.Errorf("list database instances: %w", err)
 	}
 
-	// A volume is addressed by row id or by Docker name depending on how the app was built, so both
-	// resolve to the same item.
+	// Apps address a volume by row id or Docker name, so both resolve to the same item.
 	byID := make(map[uint]string, len(volumes))
 	byName := make(map[string]string, len(volumes))
 	for i := range volumes {
@@ -417,9 +381,7 @@ func (s *Service) plan(ctx context.Context) ([]item, error) {
 	return items, nil
 }
 
-// gatewayItems expects a gateway on every node Miabi recorded one for. That includes the manager's own, which
-// the platform stack installs and Miabi adopts as an imported gateway: an ingress nobody is watching is an
-// outage waiting to be reported by a user, and on a swarm cluster's ingress node it fronts every app there.
+// Includes the manager's imported gateway: on a swarm ingress node it fronts every app there.
 func (s *Service) gatewayItems(ctx context.Context) []item {
 	if s.servers == nil {
 		return nil
@@ -443,8 +405,7 @@ func (s *Service) gatewayItems(ctx context.Context) []item {
 	return out
 }
 
-// effectivePolicy resolves what may be done about one app: its own override when it has one, else the
-// platform's mode. An app may opt out of enforcement, or into it, without the platform changing.
+// An app may opt in or out of enforcement without the platform mode changing.
 func effectivePolicy(a *models.Application, platform Mode) Mode {
 	switch a.ReconcilePolicy {
 	case models.ReconcileOff:
@@ -462,8 +423,7 @@ func effectivePolicy(a *models.Application, platform Mode) Mode {
 	}
 }
 
-// latestVolumeBackup names the newest completed archive of a volume. A failed or half-finished one is not
-// something to point an operator at.
+// A failed or half-finished archive is not something to point an operator at.
 func (s *Service) latestVolumeBackup(volumeID uint) *Restore {
 	if s.volumeBackups == nil {
 		return nil
@@ -485,8 +445,6 @@ func (s *Service) latestVolumeBackup(volumeID uint) *Restore {
 	return &Restore{From: "volume-backup"}
 }
 
-// latestRecoveryPoint names the newest completed recovery point of a database instance, which is what its
-// data comes back from.
 func (s *Service) latestRecoveryPoint(instanceID uint) *Restore {
 	if s.dbBackups == nil {
 		return nil

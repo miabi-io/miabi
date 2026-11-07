@@ -35,37 +35,27 @@ import (
 var (
 	// ErrNothingSelected is returned when a restore request selects no artifacts.
 	ErrNothingSelected = errors.New("select at least one artifact to restore")
-	// ErrNotRestorableHere is returned for an artifact the dashboard must not
-	// restore into a live platform — see restorableFromDashboard.
+	// See restorableFromDashboard.
 	ErrNotRestorableHere = errors.New("this artifact cannot be restored from the dashboard")
 )
 
-// RestoreSelection asks for specific artifacts of a recovery point to be
-// restored into this live platform.
 type RestoreSelection struct {
-	// ArtifactIDs are PlatformBackup rows of the set. Selecting by id rather than
-	// by name means the request refers to exactly what the operator was shown,
-	// not to whatever matches a name by the time the worker runs.
+	// By id so the request means exactly what the operator was shown, not whatever matches a name later.
 	ArtifactIDs []uint
-	// Passphrase decrypts the artifacts. Empty uses the stored one, which is
-	// right for this platform's own recovery points and wrong for a foreign one.
+	// Empty uses the stored passphrase: right for this platform's points, wrong for a foreign one.
 	Passphrase string
-	// StopApps stops the applications using a volume before overwriting it, and
-	// starts them afterwards. Restoring underneath a running app hands it files
-	// that change while it is reading them.
+	// Restoring under a running app hands it files that change while it reads them.
 	StopApps bool
 }
 
 // SelectiveRestoreReport is what the operator gets back.
 type SelectiveRestoreReport struct {
-	Ref       string                   `json:"ref"`
-	Requested int                      `json:"requested"`
-	Restored  int                      `json:"restored"`
-	Results   []SelectiveRestoreResult `json:"results"`
-	// StartedAt/FinishedAt bound the run; a selective restore of a large volume
-	// is minutes, not seconds.
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
+	Ref        string                   `json:"ref"`
+	Requested  int                      `json:"requested"`
+	Restored   int                      `json:"restored"`
+	Results    []SelectiveRestoreResult `json:"results"`
+	StartedAt  time.Time                `json:"started_at"`
+	FinishedAt time.Time                `json:"finished_at"`
 }
 
 // SelectiveRestoreResult is one artifact's outcome.
@@ -76,12 +66,9 @@ type SelectiveRestoreResult struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// AppStopper stops and starts the applications attached to a volume, so an
-// archive is not unpacked underneath a running container. Optional: without it
-// a volume restore still runs, and the report says the app was left running.
+// Optional: without it a volume restore still runs and the report says the app was left running.
 type AppStopper interface {
-	// StopUsers stops every application using the volume and returns their ids,
-	// so the same set can be started again afterwards.
+	// Returns the ids so the same set can be started again afterwards.
 	StopUsers(ctx context.Context, volumeName string) ([]uint, error)
 	StartApps(ctx context.Context, appIDs []uint) error
 }
@@ -89,12 +76,9 @@ type AppStopper interface {
 // SetAppStopper wires the quiesce-around-a-volume-restore behaviour.
 func (s *Service) SetAppStopper(a AppStopper) { s.apps = a }
 
-// RestoreSelected restores chosen artifacts of a recovery point into this platform. This is restore into
-// a LIVE platform, a different operation from `miabi restore`: the control plane is already running, its
-// encryption key is present, and the operator wants specific data back.
+// RestoreSelected restores into a live platform, unlike `miabi restore`: the control plane and its key are present.
 func (s *Service) RestoreSelected(ctx context.Context, set *models.PlatformBackupSet, sel RestoreSelection) (*SelectiveRestoreReport, error) {
-	// Detached: a volume restore outlives the request that asked for it, and a
-	// cancelled context mid-unpack leaves a half-written volume.
+	// Detached: a cancelled context mid-unpack leaves a half-written volume.
 	ctx = context.WithoutCancel(ctx)
 
 	if len(sel.ArtifactIDs) == 0 {
@@ -111,9 +95,7 @@ func (s *Service) RestoreSelected(ctx context.Context, set *models.PlatformBacku
 	if cfg == nil {
 		return nil, ErrS3NotConfigured
 	}
-	// An explicit passphrase is for a recovery point this platform did not take.
-	// It travels as an in-memory copy of the settings, so it is never persisted
-	// and never becomes this platform's passphrase.
+	// Carried as an in-memory settings copy so a foreign point's passphrase is never persisted.
 	if sel.Passphrase != "" {
 		if st, err = withPassphrase(st, sel.Passphrase); err != nil {
 			return nil, err
@@ -154,8 +136,6 @@ func (s *Service) RestoreSelected(ctx context.Context, set *models.PlatformBacku
 	return rep, nil
 }
 
-// restoreOne dispatches a single artifact, refusing the ones that must not be
-// restored into a running platform.
 func (s *Service) restoreOne(ctx context.Context, st *models.PlatformBackupSettings, cfg *backup.S3Config, item *models.PlatformBackup, sel RestoreSelection) error {
 	if item.Status != models.BackupCompleted || item.Filename == "" {
 		return errors.New("this artifact never completed; there is nothing to restore")
@@ -180,9 +160,7 @@ func (s *Service) restoreOne(ctx context.Context, st *models.PlatformBackupSetti
 	}
 }
 
-// restoreVolumeQuiesced stops the applications using a volume, restores it, and starts them again. Unpacking an
-// archive into a volume a container is reading is a corruption with extra steps. The apps are started again even
-// when the restore fails — leaving a workspace down would turn a data problem into an outage.
+// Apps restart even if the restore fails: leaving a workspace down turns a data problem into an outage.
 func (s *Service) restoreVolumeQuiesced(ctx context.Context, st *models.PlatformBackupSettings, cfg *backup.S3Config, item *models.PlatformBackup, stopApps bool) error {
 	var stopped []uint
 	if stopApps && s.apps != nil && item.VolumeName != "" {
@@ -203,9 +181,7 @@ func (s *Service) restoreVolumeQuiesced(ctx context.Context, st *models.Platform
 	return s.restoreTenantVolume(ctx, st, cfg, item)
 }
 
-// withPassphrase returns a COPY of the settings carrying an explicit passphrase, encrypted the same way a
-// stored one is so every reader resolves it identically. A copy, not a mutation, and never written back:
-// restoring one recovery point from another install must not silently become this platform's passphrase.
+// A copy never written back, so a foreign recovery point's passphrase never becomes this platform's.
 func withPassphrase(st *models.PlatformBackupSettings, passphrase string) (*models.PlatformBackupSettings, error) {
 	enc, err := crypto.Encrypt(strings.TrimSpace(passphrase))
 	if err != nil {

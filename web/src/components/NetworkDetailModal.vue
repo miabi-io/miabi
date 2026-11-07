@@ -5,8 +5,7 @@ import type { Network, NetworkDetail } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import AppModal from '@/components/AppModal.vue'
 
-// The stored row says what Miabi asked for; the addressing comes from the engine, so it is fetched
-// when the modal opens rather than carried in the list.
+// Addressing comes from the engine, so it is fetched on open rather than carried in the list.
 const props = defineProps<{ workspaceId: number | null; network: Network | null }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -71,8 +70,7 @@ watch(
             </template>
           </template>
         </div>
-        <!-- An overlay exists on a node only once one of its containers attaches there, so "not on
-             this node" is ordinary rather than an error. -->
+        <!-- An overlay exists on a node only once one of its containers attaches, so absence is not an error. -->
         <p v-if="!detail.exists" class="form-hint text-muted" style="margin-top: 10px">{{ $t('networks.thisNetworkIsNotPresent') }}<template v-if="detail.driver === 'overlay'">{{ $t('networks.anOverlayAppearsOnA') }}</template>
         </p>
       </template>

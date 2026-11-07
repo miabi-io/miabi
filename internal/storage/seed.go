@@ -35,9 +35,7 @@ import (
 // InstallIDKey is the settings key holding this deployment's stable Install ID.
 const InstallIDKey = "install_id"
 
-// EnsureInstallID returns this instance's stable Install ID, generating and persisting one on
-// first call. It is immutable for the life of the deployment — a customer quotes it when buying
-// a license — so it must survive restarts. Race-safe across concurrent boots via FirstOrCreate.
+// Immutable for the deployment's life (quoted when buying a license); FirstOrCreate makes concurrent boots safe.
 func EnsureInstallID(db *gorm.DB) (string, error) {
 	var existing models.Setting
 	err := db.Where("key = ?", InstallIDKey).First(&existing).Error
@@ -58,9 +56,7 @@ func EnsureInstallID(db *gorm.DB) (string, error) {
 	return rec.Value, nil
 }
 
-// SchemaVersion returns the version of the most recently applied upgrade step, or "" when none
-// has run. A recovery point records it so restore can refuse to load a dump into an older binary
-// than produced it — a downgrade restore corrupts silently, where a refusal costs nothing.
+// Lets restore refuse a dump into an older binary: a downgrade restore corrupts silently.
 func SchemaVersion(db *gorm.DB) string {
 	var step models.UpgradeStep
 	if err := db.Order("applied_at DESC, id DESC").First(&step).Error; err != nil {
@@ -69,15 +65,10 @@ func SchemaVersion(db *gorm.DB) string {
 	return step.Version
 }
 
-// ErrAdminSeedInvalid wraps credentials that cannot seed the first platform admin. Boot must stop on
-// it: an install left without an admin would make whoever registers first the platform admin.
+// Boot must stop: an install without an admin would make whoever registers first the platform admin.
 var ErrAdminSeedInvalid = errors.New("cannot seed the platform admin")
 
-// SeedAdmin ensures a platform admin exists: returns the existing admin if one
-// is already present, otherwise creates one from the configured credentials.
-// Idempotent — safe to run on every boot. (Mirrors the Posta admin seeder.)
-//
-// validate checks the credentials and runs only when an admin is about to be created.
+// SeedAdmin is idempotent; validate runs only when an admin is about to be created.
 func SeedAdmin(db *gorm.DB, email, password string, validate func() error) (*models.User, error) {
 	// Already bootstrapped: return the first admin (its workspace is then ensured).
 	var existing models.User
@@ -120,10 +111,7 @@ func SeedAdmin(db *gorm.DB, email, password string, validate func() error) (*mod
 	return admin, nil
 }
 
-// AdoptDefaultOrganizationOwner makes the platform admin the owner of the default organization when
-// it has none. The default organization is seeded before any user exists, so it cannot take an owner
-// at creation the way a later one does — and the first platform admin is a deterministic answer,
-// unlike "whoever signs in first". Idempotent: an organization that already has an owner keeps it.
+// The default org predates any user, and the first admin is a deterministic owner unlike first sign-in.
 func AdoptDefaultOrganizationOwner(db *gorm.DB, adminID uint) error {
 	if adminID == 0 {
 		return nil
@@ -140,9 +128,7 @@ func AdoptDefaultOrganizationOwner(db *gorm.DB, adminID uint) error {
 	return nil
 }
 
-// SeedPlans creates the built-in plan catalog on first boot if no plans exist.
-// Idempotent — a no-op once any plan is present (so admin edits are preserved).
-// Limits use -1 for unlimited, 0 for none.
+// A no-op once any plan exists, so admin edits are preserved; -1 means unlimited, 0 none.
 func SeedPlans(db *gorm.DB) error {
 	var n int64
 	if err := db.Model(&models.Plan{}).Count(&n).Error; err != nil {
@@ -176,8 +162,7 @@ func SeedPlans(db *gorm.DB) error {
 			AllowServiceRuntime:    true,
 		},
 		{
-			// System: the platform's own plan for the system workspace, not part of
-			// the catalog an operator publishes.
+			// The platform's own plan for the system workspace, not part of the operator's catalog.
 			Name: models.UnlimitedPlanName, Description: "No resource limits; all capabilities.", IsActive: true, System: true,
 			MaxApps: u, MaxDatabaseInstances: u, MaxCronJobs: u, MaxVolumes: u, MaxNetworks: u, MaxAPIKeys: u, MaxMembers: u,
 			MaxRunners:              3,
@@ -196,9 +181,6 @@ func SeedPlans(db *gorm.DB) error {
 	return nil
 }
 
-// SeedDefaultOrganization ensures exactly one default organization exists — the
-// realm new workspaces and SSO providers attach to. Idempotent; safe on every
-// boot. Returns the default org.
 func SeedDefaultOrganization(db *gorm.DB) (*models.Organization, error) {
 	var org models.Organization
 	err := db.Where("is_default = ?", true).First(&org).Error

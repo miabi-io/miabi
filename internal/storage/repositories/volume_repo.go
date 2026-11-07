@@ -61,33 +61,26 @@ func (r *VolumeRepository) ListByWorkspace(workspaceID uint) ([]models.Volume, e
 	return vols, err
 }
 
-// ListAll returns every volume across all workspaces, for the alerting disk-usage scanner
-// (which compares UsedBytes against SizeBytes).
 func (r *VolumeRepository) ListAll() ([]models.Volume, error) {
 	var volumes []models.Volume
 	err := r.db.Find(&volumes).Error
 	return volumes, err
 }
 
-// ServerIDsWithVolumes returns the distinct nodes owning a volume, so the usage sweep
-// queries each one once.
 func (r *VolumeRepository) ServerIDsWithVolumes() ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.Volume{}).Distinct().Pluck("server_id", &ids).Error
 	return ids, err
 }
 
-// SetUsage records a measured size by Docker name, touching only the two
-// measurement columns. Unmeasured volumes keep their prior value.
+// Touches only the measurement columns; unmeasured volumes keep their prior value.
 func (r *VolumeRepository) SetUsage(dockerName string, usedBytes int64, at time.Time) error {
 	return r.db.Model(&models.Volume{}).
 		Where("docker_name = ?", dockerName).
 		Updates(map[string]any{"used_bytes": usedBytes, "used_measured_at": at}).Error
 }
 
-// SetEngineCreatedAt records the creation timestamp Docker reports for a volume, and only while the row
-// has none: keeping the first one is what lets a volume deleted and recreated by hand read as replaced
-// rather than quietly adopting the new, empty one.
+// Keeps the first timestamp so a volume recreated by hand reads as replaced rather than adopting the empty one.
 func (r *VolumeRepository) SetEngineCreatedAt(id uint, at string) error {
 	if at == "" {
 		return nil
@@ -97,9 +90,7 @@ func (r *VolumeRepository) SetEngineCreatedAt(id uint, at string) error {
 		Update("engine_created_at", at).Error
 }
 
-// ExistsByID reports whether a (non-deleted) volume record with this id exists.
-// A soft-deleted volume reads as absent — exactly the housekeeping "orphan"
-// condition (a volume deleted in Miabi but still on the node).
+// A soft-deleted volume reads as absent, the housekeeping "orphan" condition.
 func (r *VolumeRepository) ExistsByID(id uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Volume{}).Where("id = ?", id).Count(&count).Error
@@ -113,9 +104,7 @@ func (r *VolumeRepository) ExistsByName(workspaceID uint, name string) (bool, er
 	return count > 0, err
 }
 
-// FindByDockerName returns the volume referencing the given Docker volume name,
-// or gorm.ErrRecordNotFound. DockerName is globally unique, so no workspace
-// scoping is needed (used by the import flow for idempotency).
+// DockerName is globally unique, so no workspace scoping is needed.
 func (r *VolumeRepository) FindByDockerName(dockerName string) (*models.Volume, error) {
 	var v models.Volume
 	if err := r.db.Where("docker_name = ?", dockerName).First(&v).Error; err != nil {
@@ -124,7 +113,6 @@ func (r *VolumeRepository) FindByDockerName(dockerName string) (*models.Volume, 
 	return &v, nil
 }
 
-// ExistsByDockerName reports whether any volume row claims this Docker volume name.
 // Housekeeping uses it for volumes created before they carried io.miabi.volume.
 func (r *VolumeRepository) ExistsByDockerName(dockerName string) (bool, error) {
 	var count int64

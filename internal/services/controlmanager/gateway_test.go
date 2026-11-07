@@ -44,8 +44,6 @@ func (f *fakeEnsurer) EnsureGateway(_ context.Context, serverID uint) error {
 	return f.err
 }
 
-// gatewayNode is a node Miabi deployed a gateway on; imported marks one it merely adopted, like the
-// platform's own gateway on the manager.
 func gatewayNode(id uint, name string, imported bool) models.Server {
 	deployed := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
 	srv := models.Server{
@@ -90,8 +88,7 @@ func TestMissingNodeGatewayIsReportedAndPutBack(t *testing.T) {
 	}
 }
 
-// The platform's own gateway on the manager is adopted, not managed: the Miabi stack owns that container, so
-// it is reported and never touched.
+// The Miabi stack owns that container, so it is reported and never touched.
 func TestImportedGatewayIsReportedButNeverTouched(t *testing.T) {
 	h := newHarness()
 	h.enforcing()
@@ -122,8 +119,7 @@ func TestRunningGatewayIsNotDrift(t *testing.T) {
 	}
 }
 
-// A gateway that exists but is stopped serves nothing, and containers run unless-stopped — so it was stopped
-// by hand or cannot start, and either way it is drift.
+// Containers run unless-stopped, so a stopped gateway was stopped by hand or cannot start.
 func TestStoppedGatewayIsDrift(t *testing.T) {
 	h := newHarness()
 	h.enforcing()

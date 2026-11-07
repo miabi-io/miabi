@@ -103,10 +103,7 @@ func (r *ClusterRepository) CountWorkloads(clusterID uint) (int64, error) {
 	return r.countPlaced("cluster_id", clusterID)
 }
 
-// CountForeignWorkloads counts the apps, database instances and volumes in a cluster that belong to
-// a workspace OUTSIDE the given organization. Dedicating a cluster hides it from everyone else, so
-// their running workloads would be stranded there — visible in the cluster, unreachable from the
-// workspace that owns them.
+// Dedicating a cluster hides it from others, stranding their running workloads there.
 func (r *ClusterRepository) CountForeignWorkloads(clusterID, orgID uint) (int64, error) {
 	var total int64
 	for _, table := range []string{"applications", "database_instances", "volumes"} {
@@ -124,9 +121,7 @@ func (r *ClusterRepository) CountForeignWorkloads(clusterID, orgID uint) (int64,
 	return total, nil
 }
 
-// WorkloadsByOrganization breaks a cluster's apps, database instances and volumes down by the
-// organization that owns them, keyed by organization id (0 = workspaces in no organization). It is
-// how a change of dedication can be described before it is made rather than discovered after.
+// Lets a dedication change be described before it is made rather than discovered after.
 func (r *ClusterRepository) WorkloadsByOrganization(clusterID uint) (map[uint]int64, error) {
 	totals := map[uint]int64{}
 	for _, table := range []string{"applications", "database_instances", "volumes"} {
@@ -149,16 +144,7 @@ func (r *ClusterRepository) WorkloadsByOrganization(clusterID uint) (map[uint]in
 	return totals, nil
 }
 
-// clearUnusableDefaultsSQL clears a workspace's default location when its organization can no longer
-// place there. Two ways that happens, and both arise from dedicating a cluster rather than from
-// anything the workspace did:
-//
-//   - its default belongs to another organization, or
-//   - its own organization now runs clusters, which confines it to them, and its default is shared.
-//
-// Clearing rather than repointing: placement then resolves to the first location the workspace may
-// use, which is the same answer without guessing at one. COALESCE instead of IS DISTINCT FROM keeps
-// it portable to the sqlite the upgrade tests run on.
+// Clears rather than repoints so placement resolves the first allowed location; COALESCE stays sqlite-portable.
 const clearUnusableDefaultsSQL = `
 UPDATE workspaces SET default_cluster_id = NULL
 WHERE default_cluster_id IS NOT NULL
@@ -175,8 +161,6 @@ WHERE default_cluster_id IS NOT NULL
       )
   )`
 
-// ClearUnusableWorkspaceDefaults drops default locations their workspace may no longer place in, and
-// reports how many it cleared. Idempotent: a second run touches nothing.
 func (r *ClusterRepository) ClearUnusableWorkspaceDefaults() (int64, error) {
 	res := r.db.Exec(clearUnusableDefaultsSQL)
 	return res.RowsAffected, res.Error
@@ -274,24 +258,20 @@ func (r *ClusterRepository) ServerLoads(clusterID uint) (map[uint]ServerLoad, er
 	return out, nil
 }
 
-// WorkspaceDefault returns the cluster a workspace's new resources land in when a create names none.
-// ListByOrganization returns the clusters dedicated to one organization.
 func (r *ClusterRepository) ListByOrganization(orgID uint) ([]models.Cluster, error) {
 	var out []models.Cluster
 	err := r.db.Where("organization_id = ?", orgID).Order("name ASC").Find(&out).Error
 	return out, err
 }
 
-// CountByOrganization is how many clusters an organization owns. Non-zero confines that organization
-// to them, so this is read on every placement.
+// Non-zero confines the organization to its clusters, so this is read on every placement.
 func (r *ClusterRepository) CountByOrganization(orgID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).Count(&n).Error
 	return n, err
 }
 
-// ReleaseOrganization detaches every cluster an organization owns, when that organization is deleted.
-// A cluster left pointing at a row that is gone would be visible to nobody.
+// A cluster pointing at a deleted organization would be visible to nobody.
 func (r *ClusterRepository) ReleaseOrganization(orgID uint) error {
 	return r.db.Model(&models.Cluster{}).Where("organization_id = ?", orgID).
 		Updates(map[string]any{"organization_id": nil, "visibility": models.ClusterVisibilityRestricted}).Error
@@ -322,8 +302,7 @@ func (r *ClusterRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Cluster](r.db, uid)
 }
 
-// UpdateColumns writes only the given columns, so the refresh loop and an admin edit cannot clobber
-// each other's fields.
+// Writes only the given columns so the refresh loop and an admin edit can't clobber each other.
 func (r *ClusterRepository) UpdateColumns(id uint, cols map[string]any) error {
 	return r.db.Model(&models.Cluster{}).Where("id = ?", id).Updates(cols).Error
 }

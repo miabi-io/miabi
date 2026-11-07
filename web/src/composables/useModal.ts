@@ -21,8 +21,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type ComputedRef, type
 
 type BoolSource = Ref<boolean> | (() => boolean)
 
-// Nested modals share one body scroll lock: a confirm dialog raised from inside
-// a form modal must not release the page's scroll when it closes.
+// Nested modals share one scroll lock so a nested confirm closing doesn't release the page's scroll.
 let openModals = 0
 let restoreOverflow = ''
 
@@ -51,32 +50,12 @@ const FOCUSABLE = [
 // Marks a region whose own keyboard handling owns Tab — a shell completes a path with it.
 const TAB_THROUGH = '[data-modal-tab-through]'
 
-// Marks a region that owns Escape too, for content where Escape is a working key rather than a
-// dismissal: a terminal running vim, most obviously. Shift+Tab is deliberately NOT forwarded to
-// such a region (see onKeydown), so it always leads back out to the dialog's own controls — which
-// is what keeps the keyboard from being trapped once Escape no longer closes the dialog.
+// Escape-owning region (e.g. vim terminal); Shift+Tab is never forwarded, so the keyboard can always get out.
 const ESCAPE_THROUGH = '[data-modal-escape-through]'
 
-/**
- * ModalKeyAction is what a modal should do with a key press:
- * - `close` — dismiss the dialog
- * - `trap-tab` — run the focus trap
- * - `ignore` — leave the key to the focused content
- */
 export type ModalKeyAction = 'close' | 'trap-tab' | 'ignore'
 
-/**
- * modalKeyAction is the keyboard policy, separated from the DOM so it can be read
- * and tested on its own. The rules it encodes, in order:
- *
- * 1. A dialog mid-action (`escapable: false`) ignores Escape entirely.
- * 2. Content that owns Escape keeps it — a terminal running vim needs Escape to
- *    leave insert mode, and dismissing the dialog instead loses the session.
- * 3. Content that owns Tab keeps it, so a shell can complete a path.
- * 4. Shift+Tab always runs the trap, even inside that content. It is the way back
- *    out to the dialog's controls, and it is what stops rule 2 from trapping a
- *    keyboard user in a dialog they can no longer dismiss.
- */
+/** modalKeyAction is the keyboard policy, separated from the DOM so it can be tested on its own. */
 export function modalKeyAction(opts: {
   key: string
   shiftKey: boolean
@@ -101,12 +80,7 @@ function focusableIn(container: HTMLElement | null): HTMLElement[] {
 }
 
 interface UseModalOptions {
-  /**
-   * Called when the user asks to close with the keyboard. A modal holding
-   * unsaved work should confirm here rather than closing outright — nothing
-   * else dismisses a modal, by design: clicking the backdrop does not close it,
-   * so an errant click next to a form can no longer discard what was typed.
-   */
+  /** A modal with unsaved work should confirm here; nothing else dismisses a modal, by design. */
   onRequestClose?: () => void
   /** The dialog element, used to trap focus and to place it on open. */
   container?: Ref<HTMLElement | null>
@@ -116,11 +90,7 @@ interface UseModalOptions {
   autoFocus?: boolean
 }
 
-/**
- * useModal gives a modal the behaviour every modal should have: the page behind
- * it stops scrolling, focus moves into it and stays there while it is open,
- * Escape asks it to close, and the element that opened it gets focus back.
- */
+/** useModal locks page scroll, traps focus, routes Escape to close, and restores focus to the opener. */
 export function useModal(open: BoolSource, options: UseModalOptions = {}) {
   const isOpen = computed(() => (typeof open === 'function' ? open() : open.value))
   const escapable = computed(() =>
@@ -154,8 +124,7 @@ export function useModal(open: BoolSource, options: UseModalOptions = {}) {
       return
     }
 
-    // Keep Tab inside the dialog: a focus ring wandering onto the page behind an
-    // overlay is disorienting with a mouse and a dead end with a screen reader.
+    // A focus ring wandering behind an overlay is a dead end for a screen reader.
     const focusable = focusableIn(options.container?.value ?? null)
     if (focusable.length === 0) return
 
@@ -203,11 +172,7 @@ export function useModal(open: BoolSource, options: UseModalOptions = {}) {
   return { isOpen }
 }
 
-/**
- * useDirtyGuard tracks whether a form has been edited since it was opened, so a
- * modal can tell the difference between "close this" and "throw away my work".
- * Snapshot with `reset()` whenever the form is (re)populated.
- */
+/** useDirtyGuard tells "close this" from "throw away my work"; call reset() whenever the form is (re)populated. */
 export function useDirtyGuard(snapshot: () => unknown): {
   dirty: ComputedRef<boolean>
   reset: () => void
@@ -218,8 +183,7 @@ export function useDirtyGuard(snapshot: () => unknown): {
     try {
       return JSON.stringify(snapshot() ?? null)
     } catch {
-      // A value that will not serialize cannot be compared; treat the form as
-      // untouched rather than warning the user on every close.
+      // A value that will not serialize is treated as untouched rather than warning on every close.
       return baseline.value
     }
   }

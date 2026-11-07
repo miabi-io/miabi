@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// mustEncrypt stores a value the way the DB layer does; with no key configured in
-// tests crypto round-trips via base64 so connEnv can decrypt it back.
+// With no key configured in tests, crypto round-trips via base64.
 func mustEncrypt(t *testing.T, v string) string {
 	t.Helper()
 	enc, err := crypto.Encrypt(v)
@@ -113,9 +112,7 @@ func TestArtifactRegexMatchesEveryToolArtifact(t *testing.T) {
 	}
 }
 
-// The tenant-database failure reported from production: with a passphrase set every artifact uploaded as
-// ".gpg", but the recorded name was the plain one — so verify reported databases "missing from the
-// bucket" that were sitting there under a different key. The first match names an intermediate file.
+// Regression: the plain name was recorded while the upload was ".gpg", so verify reported it missing.
 func TestArtifactNameTakesTheUploadedFile(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -169,9 +166,7 @@ func TestArtifactNameWithNoMatch(t *testing.T) {
 	}
 }
 
-// Enabling encryption must not strand the backups taken before it. The artifact's
-// own suffix decides whether a passphrase is applied, so a workspace holds a mix of
-// encrypted and cleartext backups and both restore.
+// The artifact suffix decides the passphrase, so pre-encryption backups still restore.
 func TestPassphraseForKeysOffTheArtifact(t *testing.T) {
 	cases := []struct {
 		name     string

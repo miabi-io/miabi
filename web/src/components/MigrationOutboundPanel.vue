@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// The source side of a migration: start one to get a code, watch the other Miabi pull, cancel or
-// roll back. Without wsId it is the install's instance migration (platform admin).
+// Without wsId it is the install's instance migration (platform admin).
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {

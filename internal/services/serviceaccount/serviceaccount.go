@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package serviceaccount manages non-human identities owned by a workspace. A service account is a
-// user of kind "service": it holds workspace memberships like anyone else, but signs in only with
-// API keys minted by the admins of its home workspace, so automation (CI, AI agents, scripts) does not
-// borrow a person's credentials or lose access when that person leaves.
+// Package serviceaccount manages workspace-owned non-human users that sign in only with API keys.
 package serviceaccount
 
 import (
@@ -123,8 +120,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.User, error) {
 	return u, nil
 }
 
-// Delete disables a service account: its keys stop working and it leaves every workspace. The row
-// stays so audit entries keep naming who acted.
+// Delete keeps the row so audit entries keep naming who acted.
 func (s *Service) Delete(workspaceID, id uint) (*models.User, error) {
 	u, err := s.Get(workspaceID, id)
 	if err != nil {

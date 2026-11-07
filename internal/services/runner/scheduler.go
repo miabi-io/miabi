@@ -31,39 +31,27 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ErrNoRunner is returned when no connected, eligible runner can take a job
-// right now. The caller queues the run in a "waiting for a runner" state rather
-// than falling back to building on a hosting node.
+// Callers queue the run as "waiting for a runner" rather than building on a hosting node.
 var ErrNoRunner = errors.New("no eligible runner available")
 
-// ConnRegistry reports whether a runner currently has a live tunnel. Satisfied
-// by runners.Manager; injected (via SetScheduling) to avoid an import cycle.
+// Injected via SetScheduling to avoid an import cycle with runners.Manager.
 type ConnRegistry interface {
 	Connected(id uint) bool
 }
 
-// SetScheduling wires the runtime the scheduler needs: the live-tunnel registry
-// and the lease store (for concurrency accounting). Nil-safe.
 func (s *Service) SetScheduling(conn ConnRegistry, leases *repositories.RunnerLeaseRepository) {
 	s.conn = conn
 	s.leases = leases
 }
 
-// Job describes what a build/pipeline run needs from a runner: the tenant it
-// belongs to, any required labels (arch/gpu/buildkit/…), and any features the
-// runner must report supporting (multi-platform).
 type Job struct {
 	WorkspaceID      uint
 	RequiredLabels   []string
 	RequiredFeatures []string
-	// MinVersion is the oldest runner release that can run the job, for capabilities that shipped before
-	// runners advertised features. Empty means any version.
+	// For capabilities that shipped before runners advertised features; empty means any version.
 	MinVersion string
 }
 
-// SelectRunner picks the best eligible runner for job, or ErrNoRunner when none can take it right
-// now. Eligible means connected, enabled, not cordoned, labels superset of required, in scope (owned by the
-// workspace or shared with plan permission), and active leases below declared concurrency.
 func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
 	candidates, err := s.schedulable(job.WorkspaceID)
 	if err != nil {
@@ -80,7 +68,6 @@ func (s *Service) SelectRunner(job Job) (*models.Runner, error) {
 	return best, nil
 }
 
-// pick is the selection policy: the eligible runner with spare capacity that outranks every other.
 // Pure, so the policy is covered without a database or a live tunnel.
 func pick(candidates []models.Runner, job Job, loads map[uint]int, connected func(uint) bool) *models.Runner {
 	var best *models.Runner
@@ -101,13 +88,7 @@ func pick(candidates []models.Runner, job Job, loads map[uint]int, connected fun
 	return best
 }
 
-// outranks reports whether r should displace best.
-//
-// A workspace's own runner beats the shared pool outright, ahead of load: a tenant registers a
-// runner for its warm layer cache, the private network it sits on, or simply its size, and a job
-// that lands on the shared pool instead loses all three. Queueing on the machine someone chose is
-// more predictable than relocating the build. Within a tier the least-loaded wins, and the lowest
-// id breaks the remaining tie so selection is deterministic.
+// Own runners beat the shared pool outright (warm cache, private network); then least load, then lowest id.
 func outranks(r *models.Runner, load int, best *models.Runner, bestLoad int) bool {
 	if best == nil {
 		return true
@@ -124,9 +105,7 @@ func outranks(r *models.Runner, load int, best *models.Runner, bestLoad int) boo
 // owned reports whether the runner belongs to a workspace rather than the platform pool.
 func owned(r *models.Runner) bool { return r.WorkspaceID != nil }
 
-// AvailabilityReason explains why SelectRunner couldn't place job, so a waiting
-// deploy/pipeline can tell the user what to fix instead of an opaque "waiting…".
-// Returns "" when a runner is in fact schedulable (the caller shouldn't be here).
+// AvailabilityReason explains why no runner could be placed, so a waiting job tells the user what to fix.
 func (s *Service) AvailabilityReason(job Job) string {
 	includeShared := s.quota.Require(job.WorkspaceID, quota.CapPlatformRunners) == nil
 	candidates, err := s.schedulable(job.WorkspaceID)
@@ -134,8 +113,6 @@ func (s *Service) AvailabilityReason(job Job) string {
 		return "could not check runner availability: " + err.Error()
 	}
 	if len(candidates) == 0 {
-		// A platform (shared) runner may exist but be gated by the workspace plan — either the
-		// capability as a whole, or the plan's list of the runners it offers.
 		if shared, _ := s.repo.ListSchedulable(job.WorkspaceID, true); len(shared) > 0 {
 			if !includeShared {
 				return "a platform (shared) runner exists but this workspace's plan doesn't include platform runners"
@@ -189,9 +166,7 @@ func (s *Service) AvailabilityReason(job Job) string {
 	return ""
 }
 
-// Lease records a runner's at-most-once claim on a job (pipeline run or build,
-// per kind) with the given deadline, so it counts against the runner's
-// concurrency and a dead lease can be requeued. Returns the created lease.
+// Lease records a runner's at-most-once claim on a job so it counts against concurrency and can be requeued.
 func (s *Service) Lease(runnerID uint, kind models.LeaseKind, runID uint, stepID *uint, deadline time.Time) (*models.RunnerLease, error) {
 	now := time.Now()
 	l := &models.RunnerLease{
@@ -214,15 +189,11 @@ func (s *Service) ReleaseRun(kind models.LeaseKind, runID uint) error {
 	return s.leases.Release(kind, runID)
 }
 
-// SweepExpiredLeases marks every active lease past now as expired and returns
-// them, so the caller can requeue their runs. Belt-and-suspenders for a runner
-// that died without releasing its lease.
+// SweepExpiredLeases expires overdue leases for requeue, covering runners that died without releasing.
 func (s *Service) SweepExpiredLeases(now time.Time) ([]models.RunnerLease, error) {
 	return s.leases.ExpireDue(now)
 }
 
-// activeCounts returns per-runner active-lease counts (empty when no lease store
-// is wired, so eligibility still works in tests without one).
 func (s *Service) activeCounts() (map[uint]int, error) {
 	if s.leases == nil {
 		return map[uint]int{}, nil
@@ -230,14 +201,11 @@ func (s *Service) activeCounts() (map[uint]int, error) {
 	return s.leases.ActiveCountsByRunner()
 }
 
-// connected reports a runner's live-tunnel state, treating a missing registry as
-// "connected" so eligibility can be unit-tested without a live manager.
+// A missing registry counts as connected so eligibility can be unit-tested without a live manager.
 func (s *Service) connected(id uint) bool {
 	return s.conn == nil || s.conn.Connected(id)
 }
 
-// eligible is the pure matcher: it decides whether a runner may take a job,
-// independent of load. Exported behavior is covered by the scheduler tests.
 func eligible(r *models.Runner, job Job, connected bool) bool {
 	if !r.Enabled || r.Cordoned || !connected {
 		return false
@@ -249,9 +217,7 @@ func eligible(r *models.Runner, job Job, connected bool) bool {
 		versionAtLeast(r.Version, job.MinVersion)
 }
 
-// versionAtLeast reports whether a runner's self-reported version satisfies min. Release builds report
-// "0.1.0" or "v0.1.0"; a source build reports "dev" and is taken to be current. Anything else, including
-// an empty version from a runner too old to send one, is too old.
+// A source build reports "dev" and counts as current; an empty or unparseable version is too old.
 func versionAtLeast(have, min string) bool {
 	if min == "" || have == "dev" {
 		return true
@@ -266,9 +232,7 @@ func versionAtLeast(have, min string) bool {
 	return semver.IsValid(have) && semver.Compare(have, canon(min)) >= 0
 }
 
-// inScope reports whether a runner may serve the workspace: an owned runner must
-// belong to it; a shared runner (nil workspace) is in scope for anyone (the
-// plan-capability gate is applied earlier, when the candidate set is built).
+// The plan-capability gate for shared runners is applied earlier, when the candidate set is built.
 func inScope(r *models.Runner, workspaceID uint) bool {
 	if r.WorkspaceID != nil {
 		return *r.WorkspaceID == workspaceID
@@ -276,8 +240,6 @@ func inScope(r *models.Runner, workspaceID uint) bool {
 	return r.Scope == models.ScopeShared
 }
 
-// labelsSatisfy reports whether have ⊇ required (every required label is present
-// on the runner). No required labels means any runner matches.
 func labelsSatisfy(have, required []string) bool {
 	if len(required) == 0 {
 		return true

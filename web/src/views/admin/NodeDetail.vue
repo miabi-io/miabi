@@ -9,9 +9,7 @@ import { useNodeStatusStream } from './useNodeStatusStream'
 import { clusterApi } from '@/api/cluster'
 import { adminApi } from '@/api/admin'
 
-// MIN_ENGINE_VERSION mirrors docker.MinEngineVersion (Go) — the minimum Docker
-// Engine Miabi supports (the CI engine-matrix floor). A node below it should be
-// upgraded before the enforcement release; surface it as a warning here first.
+// Mirrors docker.MinEngineVersion (Go), the CI engine-matrix floor; warn here before enforcement lands.
 const MIN_ENGINE_VERSION = '25.0'
 function engineTooOld(v?: string): boolean {
   if (!v) return false
@@ -26,8 +24,7 @@ import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
 import AppModal from '@/components/AppModal.vue'
 
-// Managed gateways are named mb-node-gateway, but an imported gateway keeps its
-// original container name (returned as gateway.container) — use that for stats.
+// An imported gateway keeps its original container name (gateway.container); use that for stats.
 const GATEWAY_CONTAINER = 'mb-node-gateway'
 
 const route = useRoute()
@@ -61,8 +58,7 @@ function startGatewayStats() {
   }
   statsES.onerror = () => stopGatewayStats()
 }
-// Stream stats only while the gateway is running; restart if the tracked
-// container name changes (e.g. after an import). Tear down otherwise.
+// Restart when the tracked container name changes, e.g. after an import.
 watch(() => [gateway.value?.running, gateway.value?.container], ([running]) => {
   if (running) startGatewayStats()
   else stopGatewayStats()
@@ -95,8 +91,7 @@ async function savePool() {
   }
 }
 
-// Cluster membership (docker node ls) — shown on the manager's page only, since
-// the manager is the swarm's source of truth. Includes unmanaged members.
+// Manager page only, since the manager is the swarm's source of truth; includes unmanaged members.
 const clusterMembers = ref<ClusterMember[]>([])
 async function loadClusterMembers() {
   const clusterId = node.value?.cluster_id
@@ -127,9 +122,7 @@ function fmtDateTime(s?: string | null): string {
   return s ? new Date(s).toLocaleString() : '—'
 }
 
-// --- Cluster membership helpers ---
-// Role and leadership are separate facts: the Raft leader is also a manager, and
-// collapsing them into one label hid that. The leader badge is rendered alongside.
+// The Raft leader is also a manager, so role and leadership stay separate facts.
 function memberRole(m: ClusterMember): string {
   return m.role || 'worker'
 }
@@ -145,15 +138,12 @@ function fmtCores(nanoCPUs?: number): string {
   const cores = nanoCPUs / 1e9
   return `${Number.isInteger(cores) ? cores : cores.toFixed(1)} vCPU`
 }
-// Swarm members with no Miabi agent: they run tasks fine, but apps placed on them
-// have no metrics, stats or shell — there is no Docker connection to read through.
+// Without a Miabi agent there is no Docker connection, so apps there have no metrics, stats or shell.
 const unmanagedMembers = computed(() => clusterMembers.value.filter((m) => !m.managed).length)
 
-// Availability is what makes a node safe to reboot. Without drain, Swarm keeps
-// scheduling tasks onto a host that is about to disappear.
+// Without drain, Swarm keeps scheduling onto a host about to disappear.
 const availBusy = ref('')
-// Drain evicts the node's tasks, so it is confirmed rather than applied on a stray
-// click of a dropdown. active/pause are harmless and apply immediately.
+// Drain evicts tasks, so it is confirmed; active/pause apply immediately.
 const pendingDrain = ref<ClusterMember | null>(null)
 function onAvailabilityChange(m: ClusterMember, e: Event) {
   const v = (e.target as HTMLSelectElement).value
@@ -182,9 +172,7 @@ async function setAvailability(m: ClusterMember, availability: 'active' | 'pause
   }
 }
 
-// The tasks the scheduler placed on THIS node. Only the manager can enumerate them —
-// the containers live on the node, which Miabi may hold no Docker client for — so
-// this is the only view of an unmanaged member's real workload.
+// Only the manager can enumerate them, so this is the only view of an unmanaged member's workload.
 const nodeTasks = ref<SwarmTask[]>([])
 const tasksLoading = ref(false)
 // This Miabi node's swarm id, resolved from the membership list.
@@ -217,10 +205,7 @@ async function load() {
       notify.error(t('notify.common.nodeNotFound'))
       return
     }
-    // Membership is a manager-side fact, but every node's page needs it: the full
-    // table is shown on the manager, and any node needs its own swarm id to list the
-    // tasks the scheduler placed there (the containers live on the node, which Miabi
-    // may hold no Docker client for — the manager is the only one who can see them).
+    // Every node needs its own swarm id from the manager to list the tasks placed on it.
     await loadClusterMembers()
     await loadNodeTasks()
     await loadStorageClasses()
@@ -248,9 +233,7 @@ async function load() {
   }
 }
 
-// Live reachability. The badge flipping is the least of it: a node that was offline when the page
-// opened has no stats, containers or gateway loaded, so coming online reloads the page's data
-// rather than leaving an "offline" shell behind a green badge.
+// A node offline at page open has no data loaded, so coming online reloads it rather than just flipping the badge.
 function applyStatus(e: NodeStatusEvent) {
   if (e.id !== id || !node.value) return
   const was = connected.value
@@ -426,20 +409,14 @@ async function removeNetwork(n: DockerNetwork) {
   } catch (e) { notify.apiError(e) }
 }
 
-// Live stats for Miabi's own runtime container on this node (manager/agent),
-// picked from the polled container-stats by the id the backend reports.
 const selfStat = computed(() =>
   stats.value?.self_container ? cstats.value[stats.value.self_container.id] : undefined,
 )
 
-// Real host CPU/memory for the local node, read from procfs by the backend.
 // available is false only when the node could not be read or sampled.
 const hostMetrics = ref<NodeHostMetrics | null>(null)
 
-// Node resource usage: aggregated live from the running containers' stats we
-// already poll, against the node's total cores/memory. cpu_percent is Docker-CLI
-// style (100% = one core), so dividing the sum by the core count gives node
-// utilization. Null until container stats arrive (or none are running).
+// cpu_percent is Docker-CLI style (100% = one core), so divide the sum by the core count.
 const nodeUsage = computed(() => {
   const list = Object.values(cstats.value)
   if (!list.length || !stats.value) return null
@@ -460,8 +437,7 @@ const nodeUsage = computed(() => {
   }
 })
 
-// Where the figure came from, and whose machine it describes — a node that is itself a container
-// reports its physical host, which is worth seeing but must not be read as the node's own.
+// A containerised node reports its physical host, which must not be read as the node's own usage.
 function hostUsageNote(h: NodeHostMetrics): string {
   if (h.physical_host) return 'Physical host this node runs on'
   if (h.source === 'agent') return `Reported by the node agent, ${formatAge(h.age_seconds ?? 0)}`
@@ -475,8 +451,6 @@ function formatAge(seconds: number): string {
   return `${Math.floor(seconds / 60)}m ago`
 }
 
-// Unified resource usage for the card: prefer real host metrics (procfs) when the
-// node reports them, otherwise fall back to the container-stats aggregate.
 const usage = computed(() => {
   const h = hostMetrics.value
   if (h?.available) {
@@ -513,9 +487,7 @@ const storage = computed(() => {
   return { total, free, used, percent: (used / total) * 100 }
 })
 
-// The built-in class is the data-root disk already shown under Resource usage. A shared class is
-// registered on one node but asserted to be the same filesystem across that node's cluster; the
-// class's own cluster_id is not reliably set, so the owning node's cluster is used instead.
+// A class's cluster_id is not reliably set, so the owning node's cluster is used instead.
 const storageClasses = ref<StorageClass[]>([])
 const nodeClusters = ref(new Map<number, number>())
 const nodeStorageClasses = computed(() => {
@@ -542,10 +514,7 @@ function classUsedPercent(c: StorageClass): number | null {
 
 // Helpers
 function cname(c: Container) { return ((c.names && c.names[0]) || c.id).replace(/^\//, '') }
-// Platform labels — mirror of internal/docker/labels.go. The prefix is `io.miabi.`
-// (reverse-DNS of miabi.io); this used to test `miabi.`, which matches nothing, so
-// isManaged() was false for every Miabi container: the "managed" badge never
-// rendered and Remove was never disabled.
+// Mirrors internal/docker/labels.go; the prefix is reverse-DNS `io.miabi.`, not `miabi.`.
 const LABEL_PREFIX = 'io.miabi.'
 const LABEL_ROLE = 'io.miabi.role'
 const LABEL_PART_OF = 'io.miabi.part-of'
@@ -556,14 +525,12 @@ function isManaged(labels?: Record<string, string>) {
   return Object.keys(labels ?? {}).some((k) => k.startsWith(LABEL_PREFIX))
 }
 
-// Part of Miabi's own stack (control plane, its Postgres/Redis, the gateway, an
-// agent) rather than something Miabi merely created.
+// Part of Miabi's own stack, rather than something Miabi merely created.
 function isPlatform(labels?: Record<string, string>) {
   return labels?.[LABEL_PART_OF] === 'miabi'
 }
 
-// The server refuses stop/restart/remove on these with a 409. Gate the buttons so
-// the refusal is visible before the click, not after it.
+// The server refuses stop/restart/remove on these with a 409, so gate the buttons up front.
 function isProtected(labels?: Record<string, string>) {
   return labels?.[LABEL_PROTECTED] === 'true'
 }
@@ -579,8 +546,6 @@ const PLATFORM_ROLE_NAMES: Record<string, string> = {
   'node-gateway-redis': "the edge gateway's Redis",
 }
 
-// Why a destructive action is unavailable — shown as the button's tooltip, so an
-// admin reads the reason instead of discovering it as an error toast.
 function lockReason(labels?: Record<string, string>): string {
   if (isProtected(labels)) {
     const what = PLATFORM_ROLE_NAMES[labels?.[LABEL_ROLE] ?? ''] ?? 'part of the Miabi platform'
@@ -621,14 +586,10 @@ async function deployGateway() {
   } catch (e) { notify.apiError(e) } finally { gwBusy.value = false }
 }
 
-// --- Safe gateway update (test container → observe → promote) ---
-// The gateway is the node's single ingress, so an update is rolled out by first
-// validating the new image as a throwaway test container, then promoting it.
-// Progress streams over SSE and is mirrored to gateway.update.
+// The gateway is the node's single ingress, so a new image is validated as a throwaway container before promotion.
 const gwUpdate = ref<GatewayUpdateProgress | null>(null)
 
-// The badge says whether the config is encrypted; the tooltip says what that buys, because "shared
-// key" and "this node's own" are not the same guarantee and the difference is the whole point.
+// A shared key and this node's own key are different guarantees, so the tooltip spells it out.
 const configEncryptionTitle = computed(() => {
   if (!gateway.value?.config_encrypted) {
     return 'Middleware rules and inline TLS material are served to this gateway in plain text. Set GOMA_CONFIG_ENCRYPTION_KEY on the control plane to encrypt them.'
@@ -818,13 +779,7 @@ const editForm = ref<CreateNodePayload>({
 function openEdit() {
   if (!node.value) return
   const n = node.value
-  // Seed every field from the node — the Edit modal only exposes the safe
-  // metadata (display name); the reachability fields ride
-  // along unchanged so this save never resets them. Credentials are write-only
-  // (never returned), so they stay blank = "keep".
-  //
-  // The handle is deliberately absent: it is fixed at creation, and sending a
-  // changed one is rejected by the server.
+  // Reachability fields ride along unchanged and blank credentials mean "keep"; the handle is fixed at creation.
   editForm.value = {
     display_name: n.display_name || n.name, address: n.address || '',
     connectivity: n.connectivity || 'edge-gateway',
@@ -859,10 +814,7 @@ async function submitEdit() {
   } catch (e) { notify.apiError(e) } finally { editSaving.value = false }
 }
 
-// --- Change connectivity (impactful: how the control plane reaches this node
-// and how its workloads are exposed). Split out of Edit and gated behind an
-// explicit acknowledgement, because a change here can briefly interrupt the
-// apps and databases already running on the node. ---
+// Split from Edit and acknowledged because a change can briefly interrupt the node's running workloads.
 const showConnectivity = ref(false)
 const connSaving = ref(false)
 const connAck = ref(false)
@@ -884,8 +836,7 @@ async function openConnectivity() {
   // Fetch the blast radius so the warning can name what's at stake.
   connImpact.value = null
   nodesApi.workloads(id).then((r) => { connImpact.value = r.data.data }).catch(() => { connImpact.value = null })
-  // Seed every field so the reachability save preserves the node's metadata
-  // (display name) alongside the connectivity changes.
+  // Seed every field so the reachability save preserves the node's metadata.
   connForm.value = {
     display_name: n.display_name || n.name, address: n.address || '',
     connectivity: n.connectivity || 'edge-gateway',
@@ -921,11 +872,7 @@ async function submitConnectivity() {
   } catch (e) { notify.apiError(e) } finally { connSaving.value = false }
 }
 
-// --- Agent join command ---
-// The same modal serves a fresh join and an in-place upgrade; they differ only in which command the
-// server built and what the footnote warns about.
-// The install script always takes a join token, so an upgrade, which reuses the running agent's,
-// has no script form.
+// An upgrade reuses the running agent's token, and the install script always takes one, so it has no script form.
 const joinCmd = ref<{ command: string; script?: string; hint: string; upgrade: boolean } | null>(null)
 const joinMethod = ref<'docker' | 'script'>('docker')
 const joinShown = computed(() =>
@@ -940,9 +887,7 @@ async function showJoinCommand(upgrade = false) {
   } catch (e) { notify.apiError(e) }
 }
 
-// agentBadge describes how this node's agent stands, or null when there is nothing to say. The
-// unsupported case is decided locally against MIN_AGENT_VERSION, so it survives an install that
-// cannot reach GitHub; outdated needs the release check and is only ever a hint.
+// unsupported is decided locally (survives no GitHub access); outdated needs the release check and is only a hint.
 const agentBadge = computed(() => {
   const st = node.value?.agent_state
   const to = node.value?.agent_latest_version
@@ -1007,8 +952,7 @@ const gwBadge = computed(() => {
         <router-link to="/admin/nodes" class="back-link"><span class="mdi mdi-arrow-left"></span> Nodes</router-link>
         <h1>
           {{ node?.display_name || node?.name || 'Node' }}
-          <!-- Both names on the detail page: the label is what an admin reads,
-               the handle is what URLs and the agent are keyed on. -->
+          <!-- The label is what an admin reads; the handle is what URLs and the agent key on. -->
           <code v-if="node?.name" class="node-handle" title="Name (fixed at creation)">{{ node.name }}</code>
         </h1>
       </div>
@@ -1113,8 +1057,6 @@ const gwBadge = computed(() => {
           </div>
         </div>
 
-        <!-- Resource usage: real host CPU/memory when available, else aggregated
-             live from the running containers' stats. -->
         <div class="card mb-4 usage-card">
           <div class="card-header">
             <h2>Resource usage</h2>
@@ -1192,8 +1134,7 @@ const gwBadge = computed(() => {
         </div>
       </div>
 
-      <!-- GPUs: discovered devices + admin enable/share policy. Only rendered when
-           platform GPU support is on. Devices arrive disabled until opted in. -->
+      <!-- Devices arrive disabled until opted in. -->
       <template v-if="gpuInfo && gpuInfo.enabled">
         <h2 class="section-title">GPUs</h2>
         <div class="card mb-4">
@@ -1296,8 +1237,7 @@ const gwBadge = computed(() => {
         </div>
       </div>
 
-      <!-- Cluster nodes (manager only): the swarm's real membership from
-           `docker node ls`, including members that are not Miabi nodes. -->
+      <!-- Manager only; includes swarm members that are not Miabi nodes. -->
       <div v-if="node.is_local && clusterMembers.length" class="card mb-4">
         <div class="card-header">
           <h2>Cluster nodes <span class="text-muted" style="font-weight: 400">{{ clusterMembers.length }}</span></h2>
@@ -1324,9 +1264,7 @@ const gwBadge = computed(() => {
                   <span class="badge" :class="memberRoleClass(m)">{{ memberRole(m) }}</span>
                   <span v-if="m.leader" class="badge badge-info" style="margin-left: 4px" title="Raft leader">leader</span>
                 </td>
-                <!-- Capacity the scheduler packs against. It comes from the node's own
-                     report over the swarm control plane, so it is known even for an
-                     unmanaged member, where host metrics are unavailable. -->
+                <!-- Reported over the swarm control plane, so known even for an unmanaged member without host metrics. -->
                 <td class="cell-sub">
                   <template v-if="m.nano_cpus || m.memory_bytes">
                     <span v-if="m.nano_cpus"><span class="mdi mdi-cpu-64-bit"></span> {{ fmtCores(m.nano_cpus) }}</span>
@@ -1336,8 +1274,6 @@ const gwBadge = computed(() => {
                   <template v-else>—</template>
                 </td>
                 <td class="cell-sub" :title="`${m.tasks} running service task(s) scheduled here`">{{ m.tasks }}</td>
-                <!-- Availability is what makes a node safe to reboot: without drain,
-                     Swarm keeps scheduling onto a host that is about to disappear. -->
                 <td>
                   <select
                     class="avail-select form-select"
@@ -1365,8 +1301,7 @@ const gwBadge = computed(() => {
             </tbody>
           </table>
         </div>
-        <!-- The consequence of an unmanaged member is not obvious and bites at the
-             worst moment (an app that runs but shows no metrics), so state it once. -->
+        <!-- An unmanaged member's app runs but shows no metrics, which is not obvious, so state it once. -->
         <div v-if="unmanagedMembers > 0" class="card-body text-muted text-sm" style="padding-top: 0">
           <span class="mdi mdi-information-outline"></span>
           {{ unmanagedMembers }} swarm member(s) have no Miabi agent. They run tasks normally, and
@@ -1375,10 +1310,7 @@ const gwBadge = computed(() => {
         </div>
       </div>
 
-      <!-- What the scheduler actually placed here. This comes from the MANAGER, not
-           from this node's Docker — so it works even when the node is offline or has
-           no Miabi agent, which is exactly when the containers list below is empty
-           and you would otherwise conclude the node is doing nothing. -->
+      <!-- Sourced from the manager, so it works when the node is offline or agentless and the containers list is empty. -->
       <div v-if="swarmNodeID" class="card mb-4">
         <div class="card-header">
           <h2>Cluster tasks <span class="text-muted" style="font-weight: 400">{{ nodeTasks.length }}</span></h2>
@@ -1464,8 +1396,6 @@ const gwBadge = computed(() => {
             </p>
             <div v-if="gateway?.image || node.gateway_deployed_at || gateway?.imported || gateway?.redis_enabled || gateway" class="gw-meta">
               <span v-if="gateway?.imported" class="badge badge-info" title="Adopted from an existing container">imported</span>
-              <!-- Whether this gateway's config — middleware rules and inline TLS — travels and
-                   rests encrypted, and under whose key. -->
               <span v-if="gateway?.config_encrypted" class="badge badge-success" :title="configEncryptionTitle">
                 <span class="mdi mdi-lock-outline"></span> encrypted{{ gateway.config_key_scope === 'shared' ? ' · shared key' : '' }}
               </span>
@@ -1571,8 +1501,6 @@ const gwBadge = computed(() => {
                   <td>
                     <div class="name-cell">
                       <span class="trunc" :title="cname(c)">{{ cname(c) }}</span>
-                      <!-- Miabi's own stack reads differently from a container Miabi
-                           merely created: it cannot be touched from here at all. -->
                       <span v-if="isPlatform(c.labels)" class="badge badge-warning" :title="lockReason(c.labels)">platform</span>
                       <span v-else-if="isManaged(c.labels)" class="badge badge-info" title="Managed by Miabi">managed</span>
                     </div>
@@ -1584,10 +1512,7 @@ const gwBadge = computed(() => {
                   <td class="cell-sub">{{ fmtPorts(c) }}</td>
                   <td class="trunc cell-sub" :title="c.image">{{ c.image }}</td>
                   <td class="cell-sub">{{ c.status }}</td>
-                  <!-- Protected containers (the Miabi stack) are refused server-side
-                       with a 409 on stop/restart/remove alike, so all three are
-                       disabled here and say why. Stopping the platform's Postgres
-                       from this list took the whole panel down. -->
+                  <!-- The server refuses all three with a 409 on protected containers; stopping the platform's Postgres once took the panel down. -->
                   <td class="text-right table-actions" @click.stop>
                     <button class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Restart'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'restartContainer', 'Restarted')"><span class="mdi mdi-restart"></span></button>
                     <button v-if="c.state === 'running'" class="btn-icon btn-icon-muted" :title="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :aria-label="isProtected(c.labels) ? lockReason(c.labels) : 'Stop'" :disabled="cbusy === c.id || isProtected(c.labels)" @click="containerAction(c, 'stopContainer', 'Stopped')"><span class="mdi mdi-stop"></span></button>
@@ -1714,9 +1639,7 @@ const gwBadge = computed(() => {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">Display name</label>
-              <!-- Only the label is editable here. The handle is fixed at
-                   creation (an edge gateway polls a URL built from it) and is
-                   shown in the page header, so it is not repeated in the form. -->
+              <!-- The handle is fixed at creation because an edge gateway polls a URL built from it. -->
               <input v-model="editForm.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
             </div>
             <p class="conn-note" style="margin-bottom: 0">
@@ -1931,11 +1854,7 @@ const gwBadge = computed(() => {
       </AppModal>
     </Teleport>
 
-    <!-- Drain evicts the node's tasks now, and — the part Swarm never tells you —
-         does not put them back when the node returns to active. Setting a node active
-         only makes it eligible again; existing tasks stay where they were rescheduled
-         until something forces a move. Drain a node for a reboot, bring it back, and
-         your cluster is quietly lopsided with no indication why. -->
+    <!-- Swarm never moves tasks back after drain; reactivating only makes the node eligible, leaving the cluster lopsided. -->
     <ConfirmDialog
       :open="!!pendingDrain"
       :title="`Drain ${pendingDrain?.hostname || 'node'}?`"

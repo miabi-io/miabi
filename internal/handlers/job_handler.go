@@ -44,8 +44,6 @@ func NewJobHandler(svc *job.Service, auditLog *audit.Logger) *JobHandler {
 	return &JobHandler{svc: svc, audit: auditLog}
 }
 
-// SetLogStore wires the shared execution-log store so a job's full output can be
-// downloaded from the store (falling back to the DB tail). nil keeps tail-only.
 func (h *JobHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 // LogsDownload streams a job's full captured output as a file download.
@@ -63,13 +61,9 @@ type RunJobRequest struct {
 		Name          string   `json:"name"`
 		Command       []string `json:"command" required:"true"`
 		Entrypoint    []string `json:"entrypoint"`
-		// Image optionally overrides the app's active-release image (custom image
-		// run in the app's runtime). RegistryID authenticates its pull.
-		Image      string `json:"image"`
-		RegistryID *uint  `json:"registry_id"`
-		// RunAsUser pins this run to an account ("1000", "1000:1000", "node"), like
-		// `docker run --user`. Empty inherits the app's; a workspace under the
-		// restricted security profile must give a non-root numeric uid.
+		Image         string   `json:"image"`
+		RegistryID    *uint    `json:"registry_id"`
+		// Empty inherits the app's; a restricted-profile workspace must give a non-root numeric uid.
 		RunAsUser   string `json:"run_as_user"`
 		TimeoutSecs int    `json:"timeout_secs"`
 	} `json:"body"`
@@ -134,18 +128,15 @@ func (h *JobHandler) Delete(c *okapi.Context) error {
 
 type CronJobRequest struct {
 	Body struct {
-		ApplicationID uint `json:"application_id"`
-		// Name is the workspace-unique slug (free text is slugified); DisplayName
-		// is the label shown in the UI.
-		Name        string   `json:"name"`
-		DisplayName string   `json:"display_name"`
-		Schedule    string   `json:"schedule" required:"true"`
-		Command     []string `json:"command" required:"true"`
-		Entrypoint  []string `json:"entrypoint"`
-		Image       string   `json:"image"`
-		RegistryID  *uint    `json:"registry_id"`
-		// RunAsUser pins spawned runs to an account; empty inherits the app's when
-		// each run fires. See RunJobRequest.
+		ApplicationID uint     `json:"application_id"`
+		Name          string   `json:"name"`
+		DisplayName   string   `json:"display_name"`
+		Schedule      string   `json:"schedule" required:"true"`
+		Command       []string `json:"command" required:"true"`
+		Entrypoint    []string `json:"entrypoint"`
+		Image         string   `json:"image"`
+		RegistryID    *uint    `json:"registry_id"`
+		// Empty inherits the app's when each run fires.
 		RunAsUser         string `json:"run_as_user"`
 		TimeoutSecs       int    `json:"timeout_secs"`
 		Enabled           bool   `json:"enabled"`
@@ -246,8 +237,6 @@ func ownedErr(kind, owner string) error {
 	return fmt.Errorf("this %s is managed by %s; change it in its manifest (run now, pause and resume stay available here)", kind, owner)
 }
 
-// ListJobDefinitions lists the workspace's declared Jobs (optionally ?app_id=),
-// with their last run status.
 func (h *JobHandler) ListJobDefinitions(c *okapi.Context) error {
 	list, err := h.svc.ListDefinitions(middlewares.WorkspaceID(c), queryUint(c, "app_id"))
 	if err != nil {
@@ -256,8 +245,7 @@ func (h *JobHandler) ListJobDefinitions(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// RunJobDefinition runs a declared Job again by hand. The next sync doesn't run
-// it a second time: its fingerprint is unchanged.
+// The next sync doesn't run it again: its fingerprint is unchanged.
 func (h *JobHandler) RunJobDefinition(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	actor := middlewares.UserID(c)

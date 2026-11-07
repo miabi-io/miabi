@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 )
 
-// pipelineCronScheduler adapts the generic cron Manager to the pipeline
-// service's Scheduler port: each scheduled pipeline's `on.schedule` cron fires a
-// run via TriggerScheduled. Keyed "pipeline:<id>" so it shares the one cron loop.
+// Keyed "pipeline:<id>" so it shares the one cron loop.
 type pipelineCronScheduler struct {
 	cron *cronpkg.Manager
 	svc  *pipeline.Service

@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Usage lists both volumes and database instances on a class, largest first, and nothing from other classes;
-// a database never sized (NULL) reads as 0.
 func TestStorageClassUsage(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "usage.db")), &gorm.Config{})
 	if err != nil {

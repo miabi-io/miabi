@@ -37,8 +37,7 @@ const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
 const stableWeight = computed(() => (canaryActive.value ? 100 - canaryWeight.value : 100))
 let poll: ReturnType<typeof setInterval> | null = null
 
-// Middleware attach/detach (works without editing the route — including on
-// generated external-access routes).
+// Works without editing the route, including on generated external-access routes.
 const allMiddlewares = ref<Middleware[]>([])
 const selectedMw = ref('')
 const mwBusy = ref(false)
@@ -76,11 +75,8 @@ const port = computed(() => item.value?.target_port || app.value?.port || 80)
 const stableEndpoint = computed(() => item.value?.backends?.[0] || (app.value ? `http://mb-app-${app.value.id}:${port.value}` : ''))
 const canaryEndpoint = computed(() => item.value?.backends?.[1] || (app.value ? `http://mb-app-${app.value.id}-canary:${port.value}` : ''))
 
-// DNS guidance: where the route's hosts should point. dns_target is the public
-// IP of the gateway that terminates this route (resolved server-side).
+// dns_target is the public IP of the gateway terminating this route, resolved server-side.
 const hosts = computed(() => (item.value?.hosts || []).filter((h: string) => !!h.trim()))
-// Browser URL for a host (https when the route has TLS), so users can open the
-// app directly from here.
 function hostUrl(host: string): string {
   const scheme = item.value && item.value.tls_mode !== 'none' ? 'https' : 'http'
   const path = item.value?.path && item.value.path !== '/' ? item.value.path : ''
@@ -178,8 +174,7 @@ async function load(force = false) {
   }
 }
 
-// Middleware catalog for the attach picker. Loaded once per workspace, kept
-// out of the 5s route poll.
+// Kept out of the 5s route poll.
 async function loadMiddlewares() {
   const wid = currentWorkspaceId.value
   if (!wid) return

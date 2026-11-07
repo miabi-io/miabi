@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// infoOnly answers Info and nothing else: any other call would panic, which is the assertion that
-// the local node is measured without starting a container.
+// Any call besides Info panics, asserting the local node is measured without starting a container.
 type infoOnly struct {
 	docker.Client
 	memTotal int64
@@ -74,8 +73,7 @@ func TestLocalNodeIsReadFromProcfsNotAContainer(t *testing.T) {
 	}
 }
 
-// The configured bind is the host's view; when it disagrees with Docker the reading is still flagged,
-// exactly as for a remote node.
+// A configured bind that disagrees with Docker is flagged, exactly as for a remote node.
 func TestLocalNodeReadingOfAnotherMachineIsFlagged(t *testing.T) {
 	s := NewService(localClients{dc: infoOnly{memTotal: 2 << 30}})
 	s.SetHostProc(fakeHostProc(t, "96461444"))

@@ -7,8 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
 import AppModal from '@/components/AppModal.vue'
 
-// Create/edit modal for a storage class, shared by the list and the detail page. Name, node and path
-// are set on create only: volumes and manifests point at them.
+// Name, node and path are set on create only: volumes and manifests point at them.
 const props = defineProps<{ open: boolean; editing: StorageClass | null; nodes?: Server[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 

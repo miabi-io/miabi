@@ -27,8 +27,7 @@ import (
 	"testing"
 )
 
-// The GeoIP directory is bound into the gateway only once it has been created —
-// binding a missing host path would make Docker create it as root.
+// Binding a missing host path would make Docker create it as root.
 func TestGatewaySpecBindsGeoIPOnlyWhenProvisioned(t *testing.T) {
 	m := Defaults("miabi/miabi:1.4.0")
 

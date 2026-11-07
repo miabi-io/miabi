@@ -28,8 +28,7 @@ func gatewayEnv(m *Manifest) []string {
 	return gatewaySpec(m, ContainerGateway, m.Images.Gateway).Env
 }
 
-// Unset, the control plane believes X-Forwarded-For from any peer. The private network is the only one it
-// sits on, so that is exactly the set of peers it should believe.
+// The private network is the only one it sits on, so it is exactly the set of peers to believe.
 func TestTheControlPlaneTrustsOnlyThePrivateNetwork(t *testing.T) {
 	m := testManifest()
 	want := envTrustedProxies + "=" + DefaultInternalSubnet

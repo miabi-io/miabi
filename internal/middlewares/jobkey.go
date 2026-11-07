@@ -27,21 +27,15 @@ import (
 	"github.com/jkaninda/okapi"
 )
 
-// AppIDResolver turns an application's portable uid into its numeric id. Satisfied by the
-// application repository.
 type AppIDResolver interface {
 	IDByUID(uid string) (uint, error)
 }
 
-// AppRefResolver resolves an app reference (id, uid or name) within a workspace. The application
-// repository satisfies it; a resolver without it accepts ids and uids only.
 type AppRefResolver interface {
 	IDByRef(workspaceID uint, ref string) (uint, error)
 }
 
-// ephemeralKeyRefusal says why a job credential may not make this request, or nil when it may. It
-// returns the refusal instead of aborting: an aborted response returns a nil error, and the caller
-// would go on to c.Next().
+// Returns the refusal instead of aborting: an aborted response returns nil and the caller would c.Next().
 func ephemeralKeyRefusal(c *okapi.Context, boundApp uint, apps AppIDResolver, workspaceID uint) error {
 	if boundApp == 0 {
 		return errors.New("this job credential cannot be used on the API")

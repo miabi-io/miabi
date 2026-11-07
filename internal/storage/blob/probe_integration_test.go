@@ -27,9 +27,7 @@ import (
 	"time"
 )
 
-// These exercise the object client and probe against a REAL S3-compatible store, so the "Test
-// connection" round trip is proven end to end. They skip unless MIABI_S3_IT_ENDPOINT (or, for
-// AWS, MIABI_S3_IT_BUCKET) is set, so the default `go test` stays hermetic and offline.
+// Skips unless MIABI_S3_IT_ENDPOINT (or MIABI_S3_IT_BUCKET for AWS) is set, so go test stays offline.
 func itConfig(t *testing.T) Config {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")
@@ -71,8 +69,7 @@ func TestProbeRoundTrip_Integration(t *testing.T) {
 	}
 	t.Logf("probe ok: wrote, read back and removed %s", p.Key)
 
-	// Nothing may be left behind: a test that litters the operator's bucket is a
-	// test they stop running.
+	// A test that litters the operator's bucket is a test they stop running.
 	store, err := New(cfg)
 	if err != nil {
 		t.Fatalf("client: %v", err)
@@ -96,8 +93,6 @@ func TestProbeAtBucketRoot_Integration(t *testing.T) {
 	}
 }
 
-// A wrong bucket must be reported as a wrong bucket — the failure an operator
-// can act on — and not as a generic 404 or, worse, a pass.
 func TestProbeRejectsAWrongBucket_Integration(t *testing.T) {
 	cfg := itConfig(t)
 	cfg.Bucket += "-does-not-exist"
@@ -112,8 +107,7 @@ func TestProbeRejectsAWrongBucket_Integration(t *testing.T) {
 	}
 }
 
-// Wrong credentials are the other half of what the old structural check could
-// never catch: it had a secret, so it said the settings looked valid.
+// The old structural check passed wrong credentials because a secret was present.
 func TestProbeRejectsWrongCredentials_Integration(t *testing.T) {
 	cfg := itConfig(t)
 	cfg.SecretKey = "definitely-not-the-secret-key"
@@ -133,8 +127,6 @@ func TestProbeRejectsWrongCredentials_Integration(t *testing.T) {
 	}
 }
 
-// List is what the bundle listing is built on: it must see an object written
-// under a prefix, and stop at that prefix.
 func TestListSeesWhatWasWritten_Integration(t *testing.T) {
 	cfg := itConfig(t)
 	ctx := itContext(t)
@@ -167,8 +159,7 @@ func TestListSeesWhatWasWritten_Integration(t *testing.T) {
 		t.Fatalf("List(%q) did not return %q (got %d objects)", prefix, key, len(objects))
 	}
 
-	// A neighbouring prefix must not be swept in: the bundle listing reads every
-	// index under its prefix and would otherwise pick up another install's.
+	// The bundle listing reads every index under its prefix and would otherwise pick up another install's.
 	if others, err := store.List(ctx, "miabi-it/list-elsewhere"); err != nil {
 		t.Fatalf("list: %v", err)
 	} else if len(others) != 0 {

@@ -40,8 +40,7 @@ const locks = ref<RegistryLocks>({
 })
 const s3SecretSet = ref(false)
 
-// The whole editable surface. Sent as one payload — the server ignores whatever
-// the environment pins, so a locked field round-trips harmlessly.
+// The server ignores env-pinned fields, so a locked field round-trips harmlessly.
 const form = ref<Required<Omit<RegistrySettingsPayload, 'confirm'>>>({
   delete_enabled: false,
   per_workspace_quota_mb: 0,
@@ -103,8 +102,7 @@ async function loadRuntime() {
   }
 }
 
-// Polled only while the Overview tab is open: a stats sample costs the daemon two
-// seconds of streaming, and nothing else on the page reads it.
+// A stats sample costs the daemon two seconds of streaming, so poll only on the Overview tab.
 function syncPolling() {
   if (poll) { clearInterval(poll); poll = undefined }
   if (tab.value === 'overview') {
@@ -172,8 +170,7 @@ async function load() {
       delete_enabled: s.delete_enabled,
       per_workspace_quota_mb: s.per_workspace_quota_mb,
       enabled: s.enabled,
-      // Show the stored host, not the derived one: editing a field pre-filled
-      // with a value you never set would silently pin the derived name.
+      // Show the stored host: pre-filling the derived one would silently pin it on save.
       host: s.host ?? '',
       storage_type: s.storage_type,
       storage_class: s.storage_class ?? '',
@@ -191,8 +188,7 @@ async function load() {
   }
 }
 
-// The server answers 409 with the sentence to show when a change strands data;
-// confirming re-sends the identical payload with confirm set.
+// Confirming re-sends the identical payload with confirm set.
 const pendingConfirm = ref('')
 
 async function save(confirm = false) {
@@ -286,8 +282,7 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
           </div>
           <p v-if="runtimeError" class="form-hint">Live status unavailable: {{ runtimeError }}</p>
 
-          <!-- Usage is the point of this tab: the registry belongs to no workspace,
-               so this is the only place its cost is visible. -->
+          <!-- The registry belongs to no workspace, so this is the only place its cost is visible. -->
           <div v-if="runtime?.running" class="stat-grid">
             <div class="stat">
               <span class="stat-label">CPU</span>

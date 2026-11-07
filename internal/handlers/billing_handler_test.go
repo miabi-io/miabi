@@ -66,9 +66,6 @@ func TestBillingAPIState(t *testing.T) {
 	}
 }
 
-// TestBillingAPIAccess drives the real authentication path: only a billing key reaches the Billing
-// API, a billing key reaches nothing else, the licence is checked per request, and a disabled group
-// answers 404.
 func TestBillingAPIAccess(t *testing.T) {
 	dsn := os.Getenv("MIABI_TEST_POSTGRES_DSN")
 	if dsn == "" {
@@ -178,9 +175,6 @@ func TestBillingAPIAccess(t *testing.T) {
 	}
 }
 
-// TestBillingIdempotentWrites drives account writes over HTTP: a retry with the same
-// Idempotency-Key replays the stored answer, the same key on another request is refused, and
-// 402s are not stored.
 func TestBillingIdempotentWrites(t *testing.T) {
 	dsn := os.Getenv("MIABI_TEST_POSTGRES_DSN")
 	if dsn == "" {

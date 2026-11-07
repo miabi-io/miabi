@@ -91,8 +91,7 @@ func TestIngestAppendsOwnedRoutes(t *testing.T) {
 	}
 }
 
-// The workspace is parsed straight out of the route name, so a node reporting a
-// route it does not serve is claiming another tenant's traffic.
+// The workspace is parsed from the route name, so a foreign route claims another tenant's traffic.
 func TestIngestRejectsForeignRoutes(t *testing.T) {
 	ing, _, rdb := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	now := time.Now().UnixMilli()
@@ -114,8 +113,7 @@ func TestIngestRejectsForeignRoutes(t *testing.T) {
 	}
 }
 
-// A replayed batch must not double-count: the aggregator sums counters, so a
-// duplicate would inflate the dashboards invisibly.
+// A replayed batch must not double-count: the aggregator sums counters.
 func TestIngestDeduplicatesBatch(t *testing.T) {
 	ing, _, rdb := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	b := Batch{BatchID: "same", Events: []Event{event("mb-ws1-web", time.Now().UnixMilli())}}
@@ -155,8 +153,7 @@ func TestIngestBatchIDIsScopedToNode(t *testing.T) {
 	}
 }
 
-// A node with a broken clock would file traffic in the wrong minute bucket, but
-// dropping it loses real traffic — stamp arrival time and count it instead.
+// Dropping skewed events loses real traffic, so they are restamped with arrival time instead.
 func TestIngestReclocksSkewedEvents(t *testing.T) {
 	ing, _, rdb := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	now := time.Now()
@@ -194,8 +191,7 @@ func TestIngestKeepsZeroTimestamp(t *testing.T) {
 	}
 }
 
-// These are permanent: the forwarder has to drop the batch, so they must be
-// distinguishable from a transient failure.
+// These are permanent: the forwarder must drop the batch, so they must differ from transient failures.
 func TestIngestRejectsMalformedBatches(t *testing.T) {
 	ing, _, _ := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	big := make([]Event, MaxBatch+1)
@@ -220,8 +216,7 @@ func TestIngestRejectsMalformedBatches(t *testing.T) {
 	}
 }
 
-// A batch of only foreign routes must not claim its id: nothing was stored, so a
-// corrected retry has to be able to land.
+// Nothing was stored, so the id must stay unclaimed for a corrected retry to land.
 func TestIngestAllRejectedDoesNotClaimBatch(t *testing.T) {
 	ing, _, rdb := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	res, err := ing.Ingest(context.Background(), 7, Batch{
@@ -253,9 +248,7 @@ func TestIngestOwnerFailureIsTransient(t *testing.T) {
 	}
 }
 
-// The consumer reads exactly one field name. Appending under any other drops
-// every forwarded event with no error anywhere — the failure this feature exists
-// to remove, reintroduced one layer down.
+// Any other field name drops every forwarded event with no error anywhere.
 func TestIngestWritesTheFieldTheConsumerReads(t *testing.T) {
 	ing, _, rdb := newIngester(t, ownedRoutes{"mb-ws1-web": true})
 	if _, err := ing.Ingest(context.Background(), 7, Batch{

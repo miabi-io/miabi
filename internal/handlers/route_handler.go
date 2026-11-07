@@ -153,8 +153,6 @@ type SetRouteEnabledRequest struct {
 	} `json:"body"`
 }
 
-// SetEnabled flips only the route's enabled flag (partial update), leaving its
-// hosts/methods/middlewares/etc. untouched.
 func (h *RouteHandler) SetEnabled(c *okapi.Context, req *SetRouteEnabledRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -227,9 +225,7 @@ type AttachRouteMiddlewareRequest struct {
 	} `json:"body"`
 }
 
-// AttachMiddleware adds a workspace middleware to a route's chain. Unlike Update it does NOT
-// block generated routes: layering middleware onto a platform-generated external-access route is
-// an explicitly supported flow, so users can secure auto-generated routes without editing them.
+// Unlike Update it allows generated routes, so users can secure auto-generated routes without editing them.
 func (h *RouteHandler) AttachMiddleware(c *okapi.Context, req *AttachRouteMiddlewareRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -251,9 +247,7 @@ type SetRouteMiddlewaresRequest struct {
 	} `json:"body"`
 }
 
-// SetMiddlewares replaces the route's chain in the order given. The gateway runs
-// middlewares in array order, so this is the ordering control, not a bulk
-// attach. Allowed on generated routes, mirroring AttachMiddleware.
+// The gateway runs middlewares in array order, so this is the ordering control.
 func (h *RouteHandler) SetMiddlewares(c *okapi.Context, req *SetRouteMiddlewaresRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -268,8 +262,6 @@ func (h *RouteHandler) SetMiddlewares(c *okapi.Context, req *SetRouteMiddlewares
 	return ok(c, rt)
 }
 
-// DetachMiddleware removes a middleware (named in the path) from a route's chain.
-// Idempotent and allowed on generated routes, mirroring AttachMiddleware.
 func (h *RouteHandler) DetachMiddleware(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -300,9 +292,7 @@ func (h *RouteHandler) Delete(c *okapi.Context) error {
 	return message(c, "route deleted")
 }
 
-// guardGenerated blocks user edits and deletes of a platform-generated external-access route.
-// These are reconciled by the platform from the application's External Access card. Writes a 409
-// and returns true when blocked; a failed lookup is ignored so the op surfaces its own not-found.
+// Writes a 409 and returns true when blocked; a failed lookup is ignored so the op surfaces its own 404.
 func (h *RouteHandler) guardGenerated(c *okapi.Context, wsID, id uint) bool {
 	rt, err := h.svc.Get(wsID, id)
 	if err != nil {
@@ -331,8 +321,6 @@ func (h *RouteHandler) appID(c *okapi.Context) (uint, error) {
 	return uint(id), nil
 }
 
-// ExternalAccess returns an app's external-access state (feature enabled,
-// subdomain label, currently exposed ports + URLs).
 func (h *RouteHandler) ExternalAccess(c *okapi.Context) error {
 	appID, err := h.appID(c)
 	if err != nil {
@@ -352,8 +340,6 @@ type SetExternalAccessRequest struct {
 	} `json:"body"`
 }
 
-// SetExternalAccess reconciles the app's externally-exposed ports: generates a
-// public hostname + Gateway route per selected port and removes the rest.
 func (h *RouteHandler) SetExternalAccess(c *okapi.Context, req *SetExternalAccessRequest) error {
 	appID, err := h.appID(c)
 	if err != nil {

@@ -47,9 +47,7 @@ func dbEvent(dbID uint) *models.AppEvent {
 	return &models.AppEvent{WorkspaceID: 1, SubjectType: models.SubjectDatabase, DatabaseID: dbID, Type: models.EventDatabaseStarted}
 }
 
-// TestEventSubjectIsolation is the load-bearing test for putting both subjects in one table:
-// an app's timeline must never show database events and vice versa. Both kinds carry 0 in the
-// other subject's id column, so a query that forgot its subject filter would match everything.
+// Both subjects share one table with 0 in the other's id column, so a missing subject filter matches everything.
 func TestEventSubjectIsolation(t *testing.T) {
 	repo := newEventDB(t)
 	for _, e := range []*models.AppEvent{appEvent(7), dbEvent(7), appEvent(7), dbEvent(9), dbEvent(7)} {
@@ -86,8 +84,6 @@ func TestEventSubjectIsolation(t *testing.T) {
 	}
 }
 
-// TestDeleteByDatabaseLeavesOtherSubjects pins that a delete takes only that instance's events,
-// not the same-numbered application's nor another instance's.
 func TestDeleteByDatabaseLeavesOtherSubjects(t *testing.T) {
 	repo := newEventDB(t)
 	for _, e := range []*models.AppEvent{appEvent(7), dbEvent(7), dbEvent(9)} {

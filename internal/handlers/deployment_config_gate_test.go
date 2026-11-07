@@ -21,8 +21,7 @@ package handlers
 
 import "testing"
 
-// The registry mirror needs private_registry to CHANGE, not to keep. Everything
-// here is about not punishing a Community admin for the mirror's mere existence.
+// The registry mirror needs private_registry to change it, not to keep it.
 func TestMirrorChangeRefused(t *testing.T) {
 	cases := []struct {
 		name               string
@@ -36,12 +35,10 @@ func TestMirrorChangeRefused(t *testing.T) {
 
 		{"community: may not set one", "", "registry.acme.example", false, true},
 		{"community: may not change one", "old.example", "new.example", false, true},
-		// Clearing is still a change: it would silently stop an air-gapped install
-		// resolving images through the registry it can actually reach.
+		// Clearing is a change: it would stop an air-gapped install resolving images through its mirror.
 		{"community: may not clear one", "old.example", "", false, true},
 
-		// The form round-trips the stored value on every save. Refusing here would
-		// stop a Community admin editing per-image overrides, which are theirs.
+		// The form round-trips the stored value on every save; per-image overrides are Community.
 		{"community: unchanged mirror passes", "old.example", "old.example", false, false},
 		{"community: no mirror at all passes", "", "", false, false},
 

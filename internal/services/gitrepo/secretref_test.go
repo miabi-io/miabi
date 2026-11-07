@@ -71,8 +71,7 @@ func TestAuthForResolvesVaultReference(t *testing.T) {
 		t.Errorf("password = %q, want the current vault value", basic.Password)
 	}
 
-	// The credential holds no copy, so rotating the secret rotates the credential
-	// with no edit to it at all.
+	// The credential holds no copy, so rotating the secret rotates it with no edit.
 	vault["GH_TOKEN"] = "ghp_rotated"
 	auth, _ = AuthFor(g, vault)
 	if basic := auth.(*githttp.BasicAuth); basic.Password != "ghp_rotated" {
@@ -80,8 +79,7 @@ func TestAuthForResolvesVaultReference(t *testing.T) {
 	}
 }
 
-// A dangling or unresolvable reference must fail loudly. Cloning anonymously
-// instead would surface as a confusing "repository not found" much later.
+// An unresolvable reference must fail loudly; anonymous cloning would surface later as "repository not found".
 func TestAuthForFailsOnUnresolvableReference(t *testing.T) {
 	g := &models.GitRepository{Name: "acme-api", AuthType: models.GitAuthToken, SecretRef: "GONE"}
 

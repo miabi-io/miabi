@@ -28,9 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/application"
 )
 
-// fakeApp returns a preset error per app id; nil means success. It implements
-// the stack.AppService interface (lifecycle methods used here, the rest are
-// no-ops for these tests).
 type fakeApp struct {
 	errByID  map[uint]error
 	stops    []uint
@@ -58,8 +55,6 @@ func (f *fakeApp) Deploy(app *models.Application, _ *uint, _ string, _ models.De
 	return &models.Deployment{ApplicationID: app.ID}, nil
 }
 
-// MarkRedeployRequired mirrors the real one: an app that has never been deployed
-// has no stale container, so nothing is marked.
 func (f *fakeApp) MarkRedeployRequired(app *models.Application) (bool, error) {
 	if app.CurrentReleaseID == nil {
 		return false, nil

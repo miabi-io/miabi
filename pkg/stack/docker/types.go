@@ -16,9 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package docker is the Docker seam the platform-stack engine talks through. It declares the
-// narrow client interface the engine needs and the types that cross it — deliberately none of
-// them from the Docker SDK, so a caller may back this with any implementation.
+// Package docker is the stack engine's Docker seam; no Docker SDK types cross it.
 package docker
 
 import (
@@ -44,21 +42,14 @@ type Container struct {
 	Networks     []ContainerNetwork `json:"networks,omitempty"` // populated by InspectContainer
 }
 
-// ContainerNetwork is a container's attachment to a Docker network (its
-// in-network IP). IPs are ephemeral — they change when the container is
-// recreated; prefer the network alias for stable addressing.
+// IPs change on recreate; prefer the network alias for stable addressing.
 type ContainerNetwork struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ip_address"`
-	// IPv6Address is empty on a single-stack network. It answers the one question enabling IPv6
-	// creates that nothing else can: the network detail shows the v6 SUBNET, this shows whether a
-	// container was actually given an address out of it — a container started before the switch was
-	// flipped has none.
+	// Shows whether a container actually got a v6 address; ones started before IPv6 was enabled have none.
 	IPv6Address string `json:"ipv6_address,omitempty"`
 	Gateway     string `json:"gateway,omitempty"`
-	// Aliases are the container's DNS aliases on this network — the only stable way to address it, so
-	// moving a container between networks (see the bridge -> overlay migration in services/network)
-	// must carry them across verbatim rather than recomputing them.
+	// The only stable address, so moving networks must carry aliases verbatim rather than recompute them.
 	Aliases []string `json:"aliases,omitempty"`
 }
 
@@ -69,9 +60,6 @@ type Port struct {
 	Protocol    string `json:"protocol"`
 }
 
-// ContainerConfig is the full inspected configuration of a container, used by the import flow to
-// adopt a pre-existing container as a Miabi app. It carries the runtime fields a summary
-// Container omits (env, mounts, command, limits, restart policy).
 type ContainerConfig struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
@@ -90,8 +78,6 @@ type ContainerConfig struct {
 	NanoCPUs      int64             `json:"nano_cpus"`
 }
 
-// ContainerMount is a mount on an inspected container. For Type "volume", Name
-// is the Docker volume name; Source is the host path for binds.
 type ContainerMount struct {
 	Type        string `json:"type"` // "volume" | "bind" | ...
 	Name        string `json:"name,omitempty"`
@@ -100,8 +86,6 @@ type ContainerMount struct {
 	ReadOnly    bool   `json:"read_only"`
 }
 
-// PortMapping is a container port and the host port it is published on (0 = not
-// published).
 type PortMapping struct {
 	ContainerPort int    `json:"container_port"`
 	Protocol      string `json:"protocol"`
@@ -110,85 +94,55 @@ type PortMapping struct {
 
 // RunSpec describes a container to create and start.
 type RunSpec struct {
-	Name       string
-	Image      string
-	Hostname   string   // container hostname (uname -n); blank = Docker default
-	Env        []string // KEY=VALUE
-	Entrypoint []string // optional entrypoint override
-	Cmd        []string // optional command override
-	// WorkingDir sets the container's working directory (Docker WORKDIR). Blank
-	// uses the image default. Pipeline steps set it to the shared workspace
-	// (/workspace) so commands run against the checked-out repository.
-	WorkingDir string
-	Labels     map[string]string
-	Networks   []string // networks to attach
-	// NetworkMode is the container's network mode; "host" shares the node's network namespace and
-	// ignores Networks. Blank = Docker's default.
-	NetworkMode string
-	// NetworkAliases are DNS aliases applied on each attached network, giving
-	// the container a stable name the reverse proxy can target across deploys.
+	Name           string
+	Image          string
+	Hostname       string   // container hostname (uname -n); blank = Docker default
+	Env            []string // KEY=VALUE
+	Entrypoint     []string // optional entrypoint override
+	Cmd            []string // optional command override
+	WorkingDir     string
+	Labels         map[string]string
+	Networks       []string // networks to attach
+	NetworkMode    string
 	NetworkAliases []string
-	// AliasesByNetwork sets extra DNS aliases on specific networks only (network
-	// name -> aliases). Used to expose an app by its service name within its
-	// stack network without leaking that name onto the shared gateway network.
+	// Exposes the service name on the stack network without leaking it onto the shared gateway network.
 	AliasesByNetwork map[string][]string
 	// Ports maps "containerPort/proto" -> "hostPort" (e.g. "80/tcp" -> "8080").
 	Ports map[string]string
-	// PortBindIPs optionally maps "containerPort/proto" -> host bind IP, to publish
-	// a port on a specific interface (e.g. a node's private address) instead of
-	// 0.0.0.0. Keys match Ports; a missing/empty entry means all interfaces.
+	// Keys match Ports; a missing or empty entry means all interfaces.
 	PortBindIPs map[string]string
 	// Mounts maps volume name -> container path.
 	Mounts map[string]string
-	// NoCopyVolumes disables Docker's copy-up (image->volume seeding) for the named volumes in Mounts.
-	// Set under the restricted profile, where volumes are already seeded and chowned: copy-up would
-	// re-apply the image mount-dir's ownership on every start, leaving the process unable to write.
+	// Copy-up would re-apply the image's ownership on every start, undoing the restricted-profile chown.
 	NoCopyVolumes bool
-	// ReadOnlyMounts names volumes in Mounts to mount read-only. Backup helpers set it: a container
-	// that only reads the data it archives should not hold a writable handle to the one copy of it.
+	// A container that only reads the data it archives should not hold a writable handle to it.
 	ReadOnlyMounts []string
-	// Binds are host path -> container path bind mounts. Used only for
-	// allow-listed privileged host mounts (e.g. the Docker socket); the source
-	// is a server-resolved host path, never client input.
+	// Only for allow-listed privileged mounts; the source is server-resolved, never client input.
 	Binds []BindMount
 	// Resource limits (0 = unlimited).
 	MemoryBytes int64
 	NanoCPUs    int64
-	// GPUs requests whole-device GPU access via the NVIDIA runtime. Empty = none.
-	// Each entry either pins specific devices by UUID (DeviceIDs) or asks for N
-	// of any kind (Count); -1 Count means "all GPUs" (used by the inventory probe).
+	// Count -1 means all GPUs (used by the inventory probe).
 	GPUs []GPURequest
-	// RestartPolicy is the Docker restart policy ("no", "always",
-	// "unless-stopped", "on-failure"). Empty defaults to "unless-stopped".
+	// Empty defaults to "unless-stopped".
 	RestartPolicy string
 	// Healthcheck is the container health probe; nil disables it.
-	Healthcheck *HealthcheckSpec
-	// Container security (restricted profile). User overrides the user the container runs as ("uid",
-	// "uid:gid", or a name); empty means the image's default. NoNewPrivileges sets that securityOpt;
-	// CapDrop drops the listed Linux capabilities (e.g. "NET_RAW").
+	Healthcheck     *HealthcheckSpec
 	User            string
 	NoNewPrivileges bool
 	CapDrop         []string
-	// CapAdd and Devices are per-application grants, allow-listed before they get
-	// here (models.NormalizeCapabilities / NormalizeDevices).
+	// Allow-listed before reaching here (models.NormalizeCapabilities / NormalizeDevices).
 	CapAdd  []string
 	Devices []string
 	// ReadOnlyRootfs mounts the container's root filesystem read-only (--read-only).
 	ReadOnlyRootfs bool
-	// GroupAdd are supplementary groups (Docker --group-add), by GID or name. The
-	// control plane needs the host's "docker" group to read /var/run/docker.sock when
-	// it does not run as root — the same thing compose.yaml's `group_add` does.
+	// Needed for the docker group so a non-root control plane can read the socket, like compose's group_add.
 	GroupAdd []string
-	// Files are written into the container between create and start, which is how
-	// configuration files are projected without a host bind: no path on the node,
-	// nothing to distribute to a remote engine, and the write is scoped to this
-	// container. Re-applied on every deploy, so an in-place rewrite by the app does
-	// not survive one.
+	// Written between create and start, so no host path or distribution is needed; re-applied on every deploy.
 	Files []FileEntry
 }
 
-// FileEntry is one file materialized inside a container. Mode is a 3- or 4-digit
-// octal string; empty means 0644.
+// Mode is a 3- or 4-digit octal string; empty means 0644.
 type FileEntry struct {
 	Path    string
 	Content string
@@ -200,15 +154,11 @@ type BindMount struct {
 	Source   string // host path
 	Target   string // container path
 	ReadOnly bool
-	// NoCreate refuses the mount when Source does not exist on the host instead of letting the
-	// daemon create an empty directory for it. Storage classes rely on this: a class whose disk is
-	// not mounted must fail loudly, not silently get a directory on the root filesystem.
+	// An unmounted storage-class disk must fail loudly rather than get a directory on the root filesystem.
 	NoCreate bool
 }
 
-// GPURequest describes a set of GPU devices to attach via the NVIDIA runtime (Docker
-// DeviceRequests). Either DeviceIDs (resolved GPU UUIDs) pins exact cards, or Count asks for
-// N-any-of-kind (-1 = all). Capabilities is the driver capability set, [["gpu"]] for NVIDIA.
+// Count -1 means all; Capabilities is [["gpu"]] for NVIDIA.
 type GPURequest struct {
 	DeviceIDs    []string   // resolved GPU UUIDs; nil selects by Count instead
 	Count        int        // used only when DeviceIDs is nil (-1 = all devices)
@@ -230,9 +180,7 @@ type NetworkState struct {
 	EnableIPv6 bool
 }
 
-// NetworkSpec describes a managed network to create. An empty Driver defaults to
-// "bridge". Subnet/Gateway, when set, are passed as explicit IPAM so creation
-// does not draw from Docker's built-in default-address-pools.
+// Explicit IPAM so creation does not draw from Docker's default-address-pools.
 type NetworkSpec struct {
 	Name       string
 	Driver     string // "" = bridge; "overlay" for swarm

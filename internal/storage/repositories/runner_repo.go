@@ -26,8 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// RunnerRepository persists build/pipeline runners. Workspace-owned runners
-// carry a WorkspaceID; platform-shared runners have a nil WorkspaceID.
+// RunnerRepository persists runners; platform-shared runners have a nil WorkspaceID.
 type RunnerRepository struct {
 	db *gorm.DB
 }
@@ -50,8 +49,6 @@ func (r *RunnerRepository) FindByID(id uint) (*models.Runner, error) {
 	return &m, nil
 }
 
-// FindInWorkspace resolves a runner owned by the given workspace, so a caller
-// can only reach its own runners (a shared runner is invisible here).
 func (r *RunnerRepository) FindInWorkspace(workspaceID, id uint) (*models.Runner, error) {
 	var m models.Runner
 	if err := r.db.Where("id = ? AND workspace_id = ?", id, workspaceID).First(&m).Error; err != nil {
@@ -92,8 +89,7 @@ func (r *RunnerRepository) ListShared() ([]models.Runner, error) {
 	return out, err
 }
 
-// FindSharedByName looks a platform-shared runner up by its slug. Plans bind runners by name
-// because the name is the stable handle an operator quotes and it survives a re-register.
+// Plans bind shared runners by name because it is the stable handle and survives a re-register.
 func (r *RunnerRepository) FindSharedByName(name string) (*models.Runner, error) {
 	var m models.Runner
 	if err := r.db.Where("workspace_id IS NULL AND name = ?", name).First(&m).Error; err != nil {
@@ -102,9 +98,7 @@ func (r *RunnerRepository) FindSharedByName(name string) (*models.Runner, error)
 	return &m, nil
 }
 
-// BoundBy returns the plans that offer the named shared runner, so removing one still bound to a
-// plan can be refused instead of silently narrowing that plan to nothing. The lists are JSON
-// columns, so membership is matched here rather than in SQL.
+// BoundBy lets removal of a still-bound runner be refused; the lists are JSON, so membership is matched in Go.
 func (r *RunnerRepository) BoundBy(name string) ([]models.Plan, error) {
 	var plans []models.Plan
 	if err := r.db.Find(&plans).Error; err != nil {
@@ -126,17 +120,12 @@ func (r *RunnerRepository) CountShared() (int64, error) {
 	return count, err
 }
 
-// ListAll returns every runner across all scopes — the alert scanner's view,
-// which has to reason about reachability platform-wide rather than per workspace.
 func (r *RunnerRepository) ListAll() ([]models.Runner, error) {
 	var out []models.Runner
 	err := r.db.Order("id DESC").Find(&out).Error
 	return out, err
 }
 
-// ListSchedulable returns the runners a workspace's jobs may run on: its own
-// runners plus (when includeShared) the platform-shared pool. Used by the
-// scheduler and the "waiting for a runner" surface.
 func (r *RunnerRepository) ListSchedulable(workspaceID uint, includeShared bool) ([]models.Runner, error) {
 	var out []models.Runner
 	q := r.db.Where("workspace_id = ?", workspaceID)
@@ -147,8 +136,6 @@ func (r *RunnerRepository) ListSchedulable(workspaceID uint, includeShared bool)
 	return out, err
 }
 
-// ExistsByName reports whether a runner with the given name already exists in
-// the same scope (workspaceID nil = the shared pool), excluding excludeID.
 func (r *RunnerRepository) ExistsByName(workspaceID *uint, name string, excludeID uint) (bool, error) {
 	q := r.db.Model(&models.Runner{}).Where("name = ? AND id <> ?", name, excludeID)
 	if workspaceID == nil {

@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package nodestats reads real host CPU and memory for every node. The local node is read from the
-// control plane's own procfs; a node whose agent pushes its readings (POST /api/v1/agent/stats) is
-// served from those; any other node — no agent, an older agent, or one whose pushes went stale — is
-// sampled by a short-lived container on the node, whose /proc is the host's.
+// Package nodestats reads host CPU/memory per node: local procfs, agent pushes, or a short-lived sampling container.
 package nodestats
 
 import (
@@ -36,8 +33,7 @@ import (
 )
 
 const (
-	// ttl bounds how often a node is sampled. Each sample costs a container start plus the one
-	// second SampleCommand spends measuring, so this is a dashboard figure, not a live graph.
+	// Each sample costs a container start plus one second of measuring, so this is a dashboard figure.
 	ttl = 60 * time.Second
 	// localTTL is short because reading the local procfs costs nothing: the node page polls it.
 	localTTL = 5 * time.Second
@@ -69,11 +65,7 @@ type ImageResolver interface {
 // Sample is a node's host reading plus whether it actually describes THAT node.
 type Sample struct {
 	hoststats.Stats
-	// DescribesNode is false when /proc reports a different machine than Docker does for this node.
-	// /proc/meminfo and /proc/stat are not cgroup-aware, so a node that is itself a container or a
-	// memory-limited VM reports the physical machine underneath it: informative to show on that
-	// node's page, wrong to add into a fleet total, where several such nodes on one box would count
-	// the same RAM repeatedly and exceed the fleet's real capacity.
+	// /proc is not cgroup-aware: a nested node reports its physical host, which must not be summed into fleet totals.
 	DescribesNode bool
 	// NodeMemTotalBytes is what Docker says this node has, which IS cgroup-aware.
 	NodeMemTotalBytes int64
@@ -105,13 +97,10 @@ func (e entry) ttl() time.Duration {
 	return ttl
 }
 
-// memTolerancePct is how far the sampled MemTotal may sit from Docker's before the sample is
-// treated as describing another machine. They are the same number on an ordinary host, so this only
-// needs to absorb rounding.
+// Same number on an ordinary host, so this only absorbs rounding.
 const memTolerancePct = 5
 
-// describesNode applies the rule above: Docker's MemTotal is the authority on what a node has, and
-// with no figure from Docker there is nothing to contradict the reading.
+// Docker's MemTotal is the authority; with no Docker figure nothing contradicts the reading.
 func describesNode(readTotal uint64, nodeTotal int64) bool {
 	if nodeTotal <= 0 {
 		return true
@@ -139,8 +128,7 @@ type Service struct {
 	now       func() time.Time
 	// hostProc is the procfs the local node is read from (MIABI_HOST_PROC); /proc when unreadable.
 	hostProc string
-	// inflight keeps concurrent readers of the same node behind one sample rather than starting a
-	// container each: the dashboard and the node page can ask at the same moment.
+	// Concurrent readers of one node share a single sample instead of starting a container each.
 	inflight map[uint]*sync.WaitGroup
 }
 
@@ -166,9 +154,7 @@ func (s *Service) helperImage() string {
 	return defaultHelperImg
 }
 
-// Get returns a node's host stats: its agent's latest push when fresh, otherwise a container sample
-// taken at most once per ttl. A failed sample is cached too, so an unreachable node is not retried
-// on every dashboard tick.
+// Get prefers a fresh agent push, else samples at most once per ttl; failures are cached so dead nodes aren't retried per tick.
 func (s *Service) Get(ctx context.Context, serverID uint) (Sample, error) {
 	s.mu.Lock()
 	if p, ok := s.freshPushLocked(serverID); ok {
@@ -202,8 +188,7 @@ func (s *Service) Get(ctx context.Context, serverID uint) (Sample, error) {
 	return sample, err
 }
 
-// Cached returns a node's last sample without triggering one. The bool is false when the node has
-// never been sampled, which a caller renders as "unknown" rather than zero.
+// Cached reports false for a never-sampled node, which callers render as "unknown" rather than zero.
 func (s *Service) Cached(serverID uint) (Sample, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -224,8 +209,7 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 	}
 	if s.isLocal(serverID) {
 		if proc := s.localProc(); proc != "" {
-			// A container on an LXC guest would read the physical machine instead, so there is
-			// nothing to fall back to: unmeasured beats a figure that looks right and is not.
+			// A container on an LXC guest reads the physical machine: unmeasured beats a plausible wrong figure.
 			if hoststats.ServedByLXCFS(proc) {
 				return Sample{}, ErrLXCFS
 			}
@@ -235,9 +219,7 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 	image := s.helperImage()
 	runCtx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
-	// PullImage always contacts the registry, even for an image already on the node. Sampling every
-	// node every minute would mean a Docker Hub round trip per node per minute — latency on every
-	// sweep, and rate limiting on a fleet of any size.
+	// PullImage always hits the registry; per-node per-minute pulls would mean latency and Docker Hub rate limits.
 	if present, perr := dc.ImageExists(runCtx, image); perr != nil || !present {
 		if err := dc.PullImage(runCtx, image, nil); err != nil {
 			return Sample{}, fmt.Errorf("pull helper image: %w", err)
@@ -260,8 +242,7 @@ func (s *Service) sample(ctx context.Context, serverID uint) (Sample, error) {
 		return Sample{}, err
 	}
 
-	// Docker's MemTotal IS cgroup-aware, so it is the authority on what this node has. When the two
-	// disagree, /proc is describing the machine the node runs on rather than the node.
+	// Docker's MemTotal is cgroup-aware; when it disagrees, /proc describes the underlying machine.
 	out2 := Sample{Stats: st, DescribesNode: true, Source: SourceSampled, MeasuredAt: s.now()}
 	if info, ierr := dc.Info(runCtx); ierr == nil && info.MemTotal > 0 {
 		out2.NodeMemTotalBytes = info.MemTotal
@@ -277,8 +258,7 @@ func (s *Service) isLocal(serverID uint) bool {
 	return serverID == 0
 }
 
-// localProc is the readable procfs for the local node, or "" when neither the configured path nor
-// /proc can be read — then the local node is sampled by container like any other.
+// "" when no procfs is readable; the local node is then sampled by container like any other.
 func (s *Service) localProc() string {
 	if s.hostProc != "" && hoststats.Available(s.hostProc) {
 		return s.hostProc
@@ -289,8 +269,7 @@ func (s *Service) localProc() string {
 	return ""
 }
 
-// sampleLocal reads the control plane's own host. The configured bind is the host's /proc, which on an
-// LXC or lxcfs host is the guest's view — unlike a container's /proc, which shows the physical machine.
+// The configured bind shows the guest's view on LXC hosts, unlike a container's /proc.
 func (s *Service) sampleLocal(ctx context.Context, dc docker.Client, proc string) (Sample, error) {
 	st, err := hoststats.Read(ctx, proc)
 	if err != nil {

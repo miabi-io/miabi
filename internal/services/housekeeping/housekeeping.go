@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package housekeeping reconciles a node's real Docker state against what Miabi intends, serving three
-// faces of drift: a disk report, a safe categorized prune with a dry-run preview, and a reconcile that
-// classifies orphan/missing/untracked by joining live Docker against the DB by the miabi.* labels.
+// Package housekeeping reconciles a node's Docker state against Miabi's intent: disk report, safe prune, drift.
 package housekeeping
 
 import (
@@ -40,8 +38,6 @@ type Clients interface {
 	For(serverID uint) (docker.Client, error)
 }
 
-// appLister yields the apps placed on a node, for missing-app detection. Backed
-// by the application repository in production; a fake in tests.
 type appLister interface {
 	ListByServer(serverID uint) ([]models.Application, error)
 }
@@ -51,9 +47,7 @@ type SwarmManagers interface {
 	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 }
 
-// recordExister reports whether the owning DB record for a managed resource (by
-// kind + id) still exists. A soft-deleted record reads as absent — the orphan
-// condition. Backed by the repos in production; a fake in tests.
+// A soft-deleted record reads as absent, which is the orphan condition.
 type recordExister func(kind string, id uint) (bool, error)
 
 // Service computes housekeeping reports and applies reclaim/reconcile actions.
@@ -61,20 +55,15 @@ type Service struct {
 	clients Clients
 	apps    appLister
 	exists  recordExister
-	// configs resolves a workspace config by name, so an orphaned swarm config
-	// object can be told apart from a live one. nil never classifies an orphan.
+	// nil never classifies an orphan.
 	configs configLookup
-	// volumeNamed reports whether a volume row claims a Docker volume name, for
-	// volumes created before they were labelled. nil never classifies an orphan.
+	// For volumes created before they were labelled; nil never classifies an orphan.
 	volumeNamed func(dockerName string) (bool, error)
-	// swarms answers for service apps, whose tasks may run on any node of their
-	// cluster. nil never reports a service app missing.
+	// Service tasks may run on any node of the cluster; nil never reports a service app missing.
 	swarms SwarmManagers
-	// nodes resolves which cluster a node belongs to, so an orphaned swarm service is removed
-	// through that cluster's manager rather than the node's own engine, which may be a worker.
+	// Removal goes through the cluster's manager because the node's own engine may be a worker.
 	nodes nodeLookup
-	// redeployer and appsByID turn a reported missing workload into an actionable one. nil leaves the
-	// missing rows report-only.
+	// nil leaves missing rows report-only.
 	redeployer Redeployer
 	appsByID   appFinder
 	// imageRefs is the referenced-image guard. Empty never offers unused-image reclaim.
@@ -100,9 +89,6 @@ type nodeLookup interface {
 // SetNodes wires the node lookup used to reach a node's swarm manager.
 func (s *Service) SetNodes(n nodeLookup) { s.nodes = n }
 
-// NewService wires the housekeeping service against the node client registry and
-// the repos it joins live Docker state against. The repos are composed into a
-// single existence check so the drift analyzer stays decoupled from GORM.
 func NewService(
 	clients Clients,
 	apps *repositories.ApplicationRepository,
@@ -121,16 +107,13 @@ func NewService(
 		case drift.OwnerStack:
 			return stacks.ExistsByID(id)
 		default:
-			// Unknown owner kind: treat as existing so we never remove something we
-			// cannot positively classify as orphaned.
+			// Treat unknown owner kinds as existing so we never remove what we can't positively classify.
 			return true, nil
 		}
 	}
 	return &Service{clients: clients, apps: apps, exists: exists, volumeNamed: volumes.ExistsByDockerName}
 }
 
-// Report is the full housekeeping analysis for a node: disk usage, the safe
-// reclaim breakdown, and the drift table. Pure read — no mutations.
 type Report struct {
 	NodeID  uint             `json:"node_id"`
 	Disk    docker.DiskUsage `json:"disk"`
@@ -138,9 +121,7 @@ type Report struct {
 	Drift   DriftSummary     `json:"drift"`
 }
 
-// ReclaimBreakdown is the reclaimable set offered in the Reclaim UI. Dangling images and build cache
-// are always safe and go to the daemon as a category. Unused images and volumes are resolved to an
-// explicit list behind their guards first, so neither can take something a record still needs.
+// Unused images and volumes are resolved to an explicit guarded list, so neither can take what a record needs.
 type ReclaimBreakdown struct {
 	DanglingImages CategoryStat `json:"dangling_images"`
 	BuildCache     CategoryStat `json:"build_cache"`
@@ -167,8 +148,7 @@ func (s *Service) Analyze(ctx context.Context, nodeID uint) (*Report, error) {
 	return rep, err
 }
 
-// analyze builds the report and also hands back the guarded reclaim sets behind its unused-image
-// and unused-volume counts, so a preview can name them without measuring the node a second time.
+// Returns the guarded sets so a preview can name them without measuring the node again.
 func (s *Service) analyze(ctx context.Context, nodeID uint) (*Report, []docker.Image, []docker.VolumeUsage, error) {
 	dc, err := s.clients.For(nodeID)
 	if err != nil {
@@ -189,9 +169,7 @@ func (s *Service) analyze(ctx context.Context, nodeID uint) (*Report, []docker.I
 	return rep, images, volumes, nil
 }
 
-// reclaimable fills the report's disk usage and its four reclaim categories, returning the guarded
-// sets it resolved. Docker failures are tolerated — a report missing one category still beats no
-// report — but a guard that cannot be evaluated is an error: a half-evaluated guard under-protects.
+// Docker failures are tolerated, but an unevaluable guard is an error: a half-evaluated guard under-protects.
 func (s *Service) reclaimable(ctx context.Context, dc docker.Client, rep *Report) ([]docker.Image, []docker.VolumeUsage, error) {
 	var volumeUsage []docker.VolumeUsage
 	if du, err := dc.DiskUsage(ctx); err == nil {
@@ -225,9 +203,7 @@ func (s *Service) reclaimable(ctx context.Context, dc docker.Client, rep *Report
 	return images, volumes, nil
 }
 
-// resolveUnused applies the two guards against the node's current state. Both the preview and the
-// apply go through it, so what an admin confirms is what the guard allows at the moment of removal.
-// volumeUsage comes from the caller's disk-usage call, which already paid for the filesystem walk.
+// Shared by preview and apply, so what an admin confirms is what the guard allows at removal time.
 func (s *Service) resolveUnused(ctx context.Context, dc docker.Client, volumeUsage []docker.VolumeUsage) ([]docker.Image, []docker.VolumeUsage, error) {
 	referenced, err := s.referencedImages()
 	if err != nil {
@@ -251,9 +227,6 @@ func (s *Service) resolveUnused(ctx context.Context, dc docker.Client, volumeUsa
 	return images, volumes, nil
 }
 
-// analyzeDrift classifies every live container + volume on the node against the
-// DB by the miabi.* label scheme, then derives missing apps (record exists,
-// nothing running for it).
 func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uint) (*DriftSummary, error) {
 	containers, err := dc.ListContainers(ctx, true) // all states
 	if err != nil {
@@ -265,8 +238,6 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 	}
 
 	out := &DriftSummary{Orphans: []drift.Item{}, Missing: []drift.Item{}, Untracked: []drift.Item{}}
-	// app IDs that have at least one live container, so a record with none can be
-	// flagged missing.
 	liveApps := map[uint]bool{}
 	// Swarm services already reported once, so N task containers yield one row.
 	seenServices := map[string]bool{}
@@ -281,8 +252,6 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 				Name: containerName(c), Image: c.Image, State: c.State, Action: drift.ActionImport,
 			})
 		case !ok:
-			// Managed platform infra (gateway/redis), a job, or a stack-only
-			// container: tracked, never an orphan target. Skip.
 			continue
 		default:
 			if kind == drift.OwnerApp {
@@ -295,8 +264,7 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 			if exists {
 				continue
 			}
-			// A swarm task's container is disposable: removing it only makes Swarm schedule a
-			// replacement, so the service object is the orphan, and its name the handle.
+			// A swarm task's container is disposable: Swarm replaces it, so the service is the orphan.
 			if svc := swarmServiceName(c.Labels); svc != "" {
 				if seenServices[svc] {
 					continue
@@ -317,8 +285,7 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 
 	for i := range volumes {
 		v := volumes[i]
-		// Unmanaged volumes are an import concern, not drift we remove, and infra
-		// volumes (role-labelled) are managed through their own pages.
+		// Unmanaged volumes are an import concern, and infra volumes are managed through their own pages.
 		if isPlatformInfra(v.Labels) {
 			continue
 		}
@@ -348,9 +315,7 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 		}
 	}
 
-	// Swarm config objects whose owning Config row is gone. Docker refuses to
-	// remove one a service still references, so an in-use object can never be
-	// swept out from under a running task even if the classification is stale.
+	// Docker refuses to remove a config a service still references, so a stale classification is harmless.
 	if cfgs, cerr := dc.ListManagedConfigs(ctx); cerr == nil {
 		for _, c := range cfgs {
 			if c.Config == "" || c.Workspace == "" {
@@ -401,8 +366,7 @@ func (s *Service) analyzeDrift(ctx context.Context, dc docker.Client, nodeID uin
 	return out, nil
 }
 
-// swarmManagerFor resolves the manager that drives the swarm the node belongs to. A node may be a
-// worker, which cannot act on services at all, so the node's own engine is never a fallback here.
+// A worker can't act on services, so the node's own engine is never a fallback.
 func (s *Service) swarmManagerFor(ctx context.Context, nodeID uint) (docker.Client, error) {
 	if s.swarms == nil || s.nodes == nil {
 		return nil, errors.New("swarm service removal is not available on this build")
@@ -414,9 +378,7 @@ func (s *Service) swarmManagerFor(ctx context.Context, nodeID uint) (docker.Clie
 	return s.swarms.Manager(ctx, srv.ClusterID)
 }
 
-// serviceMissing reports whether a service app's swarm service is gone. Its tasks run wherever Swarm
-// placed them, often on another node, so this node's containers say nothing about it; only its cluster's
-// manager can. An unreachable manager, or no lookup wired, is unknown — never missing.
+// Only the cluster manager knows; an unreachable manager or no lookup is unknown, never missing.
 func (s *Service) serviceMissing(ctx context.Context, app *models.Application) bool {
 	if s.swarms == nil {
 		return false
@@ -429,9 +391,7 @@ func (s *Service) serviceMissing(ctx context.Context, app *models.Application) b
 	return errors.Is(err, docker.ErrNotFound)
 }
 
-// unlabelledVolumeOrphan classifies a volume that names no owner. Volumes storage created before it
-// wrote io.miabi.volume keep only their Miabi name, and volume rows are hard-deleted, so a Miabi-named
-// volume no row claims is one deleted in Miabi.
+// Volume rows are hard-deleted, so a Miabi-named unlabelled volume no row claims was deleted in Miabi.
 func (s *Service) unlabelledVolumeOrphan(name string) (bool, error) {
 	if s.volumeNamed == nil || !isMiabiVolumeName(name) {
 		return false, nil
@@ -443,8 +403,6 @@ func (s *Service) unlabelledVolumeOrphan(name string) (bool, error) {
 	return !claimed, nil
 }
 
-// configExists reports whether a workspace still has a config by that name; a
-// config object whose row is gone is what makes the object an orphan.
 func (s *Service) configExists(workspaceID uint, name string) (bool, error) {
 	if s.configs == nil {
 		return true, nil // no resolver wired: never classify as an orphan

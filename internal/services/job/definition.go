@@ -53,10 +53,7 @@ type DefinitionInput struct {
 	Annotations models.Metadata
 }
 
-// SaveDefinition creates or updates the named definition and, when run is set,
-// starts a run of it. It returns the definition and the run it started, if any.
-// An onRelease definition created while its app has an active release and no
-// deploy in flight runs against that release, so the first sync isn't a no-op.
+// SaveDefinition runs a new onRelease definition against an active release so the first sync isn't a no-op.
 func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in DefinitionInput, run bool) (*models.JobDefinition, *models.Job, error) {
 	if len(in.Command) == 0 {
 		return nil, nil, ErrNoCommand
@@ -119,9 +116,7 @@ func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in Defin
 	return def, j, err
 }
 
-// RunFailed retries a declared Job's failed run while its backoffLimit allows.
-// Only the definition's latest run retries, so a run superseded by a newer one
-// (a spec change, a manual run) is left as it ended.
+// RunFailed retries only the definition's latest run, so superseded runs are left as they ended.
 func (s *Service) RunFailed(jobID uint) {
 	j, err := s.repo.FindByID(jobID)
 	if err != nil || j.JobDefinitionID == nil || j.Status != models.JobFailed {
@@ -140,8 +135,7 @@ func (s *Service) RunFailed(jobID uint) {
 	}
 }
 
-// runOnActiveRelease runs a new onRelease definition against the app's active
-// release, unless a deploy is in flight: that deploy's activation runs it instead.
+// A deploy in flight runs it on activation instead.
 func (s *Service) runOnActiveRelease(ctx context.Context, def *models.JobDefinition) (*models.Job, error) {
 	if s.deployments != nil {
 		if _, err := s.deployments.InProgressByApp(def.ApplicationID); err == nil {
@@ -159,9 +153,7 @@ func (s *Service) runOnActiveRelease(ctx context.Context, def *models.JobDefinit
 	return s.runDefinition(ctx, def, models.JobSourceRelease, nil)
 }
 
-// ReleaseActivated runs every onRelease definition of the app against a release
-// that just became active. Each release runs a definition once, even when more
-// than one process reports the activation.
+// ReleaseActivated runs each definition once per release, even when several processes report the activation.
 func (s *Service) ReleaseActivated(appID, releaseID uint) {
 	defs, err := s.repo.ListOnReleaseDefinitions(appID)
 	if err != nil {
@@ -180,8 +172,7 @@ func (s *Service) ReleaseActivated(appID, releaseID uint) {
 	}
 }
 
-// runDefinition starts a run of a definition. A waitForDeploy definition run
-// while its app deploys is held until that deploy ends.
+// A waitForDeploy definition run during a deploy is held until that deploy ends.
 func (s *Service) runDefinition(ctx context.Context, def *models.JobDefinition, source string, triggeredBy *uint) (*models.Job, error) {
 	return s.runAttempt(ctx, def, source, triggeredBy, 1)
 }
@@ -219,8 +210,7 @@ func (s *Service) runAttempt(ctx context.Context, def *models.JobDefinition, sou
 	return j, nil
 }
 
-// RunDefinitionNow runs a definition by hand ("Run again"). Its fingerprint is
-// unchanged, so the next sync doesn't run it a second time.
+// RunDefinitionNow leaves the fingerprint unchanged so the next sync doesn't run it again.
 func (s *Service) RunDefinitionNow(ctx context.Context, workspaceID, id uint, triggeredBy *uint) (*models.Job, error) {
 	def, err := s.repo.FindJobDefinitionInWorkspace(workspaceID, id)
 	if err != nil {
@@ -238,8 +228,6 @@ func (s *Service) GetDefinitionByName(workspaceID uint, name string) (*models.Jo
 	return def, nil
 }
 
-// ListDefinitions returns the workspace's definitions (optionally one app's),
-// with their app name and last run status.
 func (s *Service) ListDefinitions(workspaceID, appID uint) ([]models.JobDefinition, error) {
 	list, err := s.repo.ListJobDefinitions(workspaceID, appID)
 	if err != nil {
@@ -262,8 +250,6 @@ func (s *Service) ListDefinitions(workspaceID, appID uint) ([]models.JobDefiniti
 	return list, nil
 }
 
-// LastRunStatus returns the state of a definition's latest run, or "" when it
-// has never run.
 func (s *Service) LastRunStatus(def *models.JobDefinition) models.JobStatus {
 	if def.LastJobID == nil {
 		return ""
@@ -272,8 +258,7 @@ func (s *Service) LastRunStatus(def *models.JobDefinition) models.JobStatus {
 	return status[*def.LastJobID]
 }
 
-// DeleteDefinition removes a definition, cancels its active runs, and keeps its
-// finished runs as history.
+// DeleteDefinition cancels active runs but keeps finished ones as history.
 func (s *Service) DeleteDefinition(ctx context.Context, workspaceID, id uint) error {
 	def, err := s.repo.FindJobDefinitionInWorkspace(workspaceID, id)
 	if err != nil {

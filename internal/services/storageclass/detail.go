@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// NodeDisk is one node's disk under a class: for the built-in class, the filesystem holding that
-// node's Docker data root, as the node capacity sweep last measured it.
 type NodeDisk struct {
 	ServerID       uint       `json:"server_id"`
 	ServerName     string     `json:"server_name"`
@@ -48,8 +46,7 @@ type Detail struct {
 	Databases int                              `json:"databases"`
 }
 
-// dataRootDisks turns the nodes' measured data roots into the built-in class's disks and their
-// totals. A node never measured is listed but left out of the totals, so it does not read as empty.
+// A never-measured node is left out of the totals so it doesn't read as empty.
 func dataRootDisks(servers []models.Server) (disks []NodeDisk, capacity, available int64, at *time.Time) {
 	for i := range servers {
 		srv := &servers[i]
@@ -67,8 +64,7 @@ func dataRootDisks(servers []models.Server) (disks []NodeDisk, capacity, availab
 	return disks, capacity, available, at
 }
 
-// fillBuiltin gives the built-in class the size of the disks it actually uses. It has no path of its
-// own to measure, so without this it reads as 0 bytes on every install.
+// The built-in class has no path to measure, so without this it reads as 0 bytes on every install.
 func (s *Service) fillBuiltin(c *models.StorageClass) []NodeDisk {
 	if c == nil || c.Managed() {
 		return nil

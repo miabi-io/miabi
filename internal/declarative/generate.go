@@ -24,15 +24,7 @@ import (
 	"math/big"
 )
 
-// The alphabet a generated secret draws from. SecretSymbols is character-for-
-// character the console generator's set (web/src/composables/useGenerator.ts):
-// a policy written in a manifest and the same policy set in the UI must produce
-// values from the same alphabet, or `generate:` and the generator are two
-// different features wearing one name.
-//
-// Quotes, backslash and backtick are excluded on both sides: they are what break
-// a value pasted into a shell, a YAML file or a connection string, and dropping
-// them costs about 0.2 bits per character.
+// Must match the console generator's alphabet (useGenerator.ts); quotes, backslash and backtick break shells and YAML.
 const (
 	SecretLower   = "abcdefghijklmnopqrstuvwxyz"
 	SecretUpper   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -40,8 +32,6 @@ const (
 	SecretSymbols = "!#$%&()*+,-./:;<=>?@[]^_{|}~"
 )
 
-// DefaultSecretLength is the length used when a manifest asks to generate a
-// secret without saying how long.
 const DefaultSecretLength = 32
 
 func randIndex(n int) int {
@@ -58,11 +48,7 @@ func randIndex(n int) int {
 
 func randChar(charset string) byte { return charset[randIndex(len(charset))] }
 
-// shuffle is Fisher–Yates over crypto randomness.
-//
-// This is how the minimum counts are met: place the required characters, fill
-// the rest, then shuffle. Regenerating until a constraint happens to hold would
-// skew the distribution toward whichever strings satisfy it most easily.
+// Minimums are met by placing then shuffling; regenerating until a constraint holds would skew the distribution.
 func shuffle(b []byte) {
 	for i := len(b) - 1; i > 0; i-- {
 		j := randIndex(i + 1)
@@ -70,12 +56,7 @@ func shuffle(b []byte) {
 	}
 }
 
-// GenerateSecret produces a value satisfying the spec's generation policy.
-//
-// Conflicts are resolved before generating rather than silently disobeyed: a
-// length shorter than the minimums it demands trims them (symbols first, since
-// a policy is more often "at least N digits"), and the alphabet always includes
-// letters and digits.
+// GenerateSecret trims minimums that exceed the length (symbols first) rather than silently disobeying them.
 func GenerateSecret(spec SecretSpec) string {
 	length := spec.Length
 	if length <= 0 {

@@ -21,9 +21,7 @@ package logstore
 
 import "fmt"
 
-// Object keys form one flat, predictable namespace so an operator can browse, ship or rotate logs
-// by prefix; `ws_<id>` mirrors the registry's rename-proof workspace namespace. Keys are relative
-// to the store root and carry NO leading "logs/"; old keys with that prefix still resolve.
+// ws_<id> mirrors the registry's rename-proof namespace; old keys with a "logs/" prefix still resolve.
 
 // DeploymentRef is the key for an application deployment's build/deploy log.
 func DeploymentRef(workspaceID, appID, deploymentID uint) string {
@@ -55,8 +53,7 @@ func VolumeBackupRef(workspaceID, backupID uint) string {
 	return fmt.Sprintf("volume-backup/ws_%d/vbackup-%d.log", workspaceID, backupID)
 }
 
-// PlatformBackupRef is the key for a platform (disaster-recovery) backup run's
-// output. Platform backups have no workspace — they are admin-only.
+// Platform backups have no workspace: they are admin-only.
 func PlatformBackupRef(backupID uint) string {
 	return fmt.Sprintf("platform/pbackup-%d.log", backupID)
 }

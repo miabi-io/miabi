@@ -34,24 +34,18 @@ import (
 
 const (
 	exportPath = "/v1/export"
-	// maxBundleBytes caps the response body so a misbehaving or hostile endpoint
-	// can't exhaust memory. The real catalog is a few hundred KiB.
+	// Caps the body so a hostile endpoint can't exhaust memory.
 	maxBundleBytes = 32 << 20 // 32 MiB
 )
 
 var errBundleTooLarge = errors.New("marketplace export: response exceeds size limit")
 
-// Client fetches the marketplace export bundle over the Okapi HTTP client. The
-// base URL is operator-configured (MIABI_MARKETPLACE_URL), so it is trusted; the
-// transport negotiates and transparently decompresses gzip.
+// The base URL is operator-configured, so it is trusted.
 type Client struct {
 	url  string // the resolved bundle URL (static export.json, or a server's /v1/export)
 	http *client.Client
 }
 
-// NewClient builds a client for the marketplace at base. base may be either a
-// static bundle URL (a CDN export.json, used directly) or a server base URL (the
-// /v1/export path is appended) — see resolveExportURL.
 func NewClient(base string) *Client {
 	httpClient := &http.Client{
 		Transport: &capTransport{base: http.DefaultTransport, max: maxBundleBytes},
@@ -66,9 +60,7 @@ func NewClient(base string) *Client {
 	}
 }
 
-// resolveExportURL picks the bundle URL: a direct .json (e.g. the jsDelivr export.json) is used as-is;
-// anything else is treated as a server base and gets the /v1/export path appended. This lets
-// MIABI_MARKETPLACE_URL point at either static git/CDN or a self-hosted marketplace service.
+// Lets MIABI_MARKETPLACE_URL point at a static CDN export.json or a self-hosted marketplace service.
 func resolveExportURL(base string) string {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if strings.HasSuffix(strings.ToLower(base), ".json") {
@@ -77,9 +69,6 @@ func resolveExportURL(base string) string {
 	return base + exportPath
 }
 
-// Fetch does a conditional GET of the bundle. When etag is non-empty it is sent
-// as If-None-Match; a 304 yields notModified=true with no body (the cached
-// bundle is still current). A 200 returns the body and the new ETag.
 func (c *Client) Fetch(ctx context.Context, etag string) (data []byte, newETag string, notModified bool, err error) {
 	rb := c.http.Get(c.url).WithContext(ctx)
 	if etag != "" {
@@ -99,8 +88,6 @@ func (c *Client) Fetch(ctx context.Context, etag string) (data []byte, newETag s
 	}
 }
 
-// capTransport wraps a RoundTripper to bound each response body, so the Okapi
-// client's full-body read can never consume more than max bytes.
 type capTransport struct {
 	base http.RoundTripper
 	max  int64
@@ -115,9 +102,7 @@ func (t *capTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// capReader fails closed once more than the configured budget has been read,
-// rather than silently truncating (which would surface as a confusing decode
-// error downstream).
+// Fails closed rather than truncating, which would surface as a confusing decode error.
 type capReader struct {
 	rc        io.ReadCloser
 	remaining int64

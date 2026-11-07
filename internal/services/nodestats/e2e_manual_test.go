@@ -33,10 +33,7 @@ type localClients struct{ cli docker.Client }
 
 func (l localClients) For(uint) (docker.Client, error) { return l.cli, nil }
 
-// Behind a build tag: needs a live daemon. It is the only check that binding the daemon's own data
-// root and parsing df agree end to end.
-//
-//	go test -tags dockere2e ./internal/services/nodestats/ -run DataRoot -v
+// Needs a live daemon: go test -tags dockere2e ./internal/services/nodestats/ -run DataRoot -v
 func TestMeasureDataRootOnALiveDaemon(t *testing.T) {
 	cli, err := docker.New()
 	if err != nil {

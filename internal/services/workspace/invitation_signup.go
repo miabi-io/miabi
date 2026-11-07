@@ -57,9 +57,7 @@ func (s *Service) PreviewInvitation(rawToken string) (*InvitationPreview, error)
 	return p, nil
 }
 
-// RegisterFromInvitation creates user from a pending invitation and joins them to its workspace in
-// one step. The account takes the invited email, the workspace's organization and the invitation
-// signup source. Every refusal that would reveal whether the address is registered is ErrInvalidInvite.
+// Every refusal that would reveal whether the address is registered is ErrInvalidInvite.
 func (s *Service) RegisterFromInvitation(rawToken string, user *models.User) (*models.Workspace, error) {
 	inv, err := s.PendingInvitationByToken(rawToken)
 	if err != nil {

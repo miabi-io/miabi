@@ -64,8 +64,7 @@ func (r *EnvironmentRepository) CreateApproval(a *models.ReleaseApproval) error 
 	return r.db.Create(a).Error
 }
 
-// CountApprovals returns how many positive approvals a release has for an
-// environment (env nil counts workspace-level approvals).
+// A nil environment counts workspace-level approvals.
 func (r *EnvironmentRepository) CountApprovals(releaseID uint, environmentID *uint) (int64, error) {
 	q := r.db.Model(&models.ReleaseApproval{}).
 		Where("release_id = ? AND approved = ?", releaseID, true)

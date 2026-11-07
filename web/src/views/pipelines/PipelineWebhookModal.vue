@@ -27,11 +27,7 @@ const revealed = ref(false)
 type Provider = 'github' | 'gitlab' | 'other'
 const provider = ref<Provider>('github')
 
-/**
- * The webhook URL a Git provider posts to. The path from the API is absolute
- * from the root and already carries /api/v1, so it is resolved against the API's
- * origin — which is the console's origin unless the API is hosted elsewhere.
- */
+/** The API path already carries /api/v1, so it resolves against the API's origin. */
 function absoluteUrl(path: string) {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? new URL(base).origin : window.location.origin
@@ -42,12 +38,7 @@ const webhookUrl = computed(() => (info.value ? absoluteUrl(info.value.path) : '
 const secret = computed(() => info.value?.secret ?? '')
 const maskedSecret = computed(() => (secret.value ? '•'.repeat(Math.min(secret.value.length, 40)) : ''))
 
-// --- What the spec actually declares ---
-//
-// A webhook that is wired correctly but fires nothing is the worst outcome here:
-// the provider reports a 200, and the pipeline never runs. So the spec's triggers
-// are read up front and any mismatch is stated before the user leaves to go
-// configure the provider.
+// A correctly wired webhook whose spec triggers nothing gets a 200 and never runs, so mismatches are stated up front.
 
 interface Triggers {
   push: boolean
@@ -124,8 +115,6 @@ function repoSlug(url: string): { host: string; path: string } | null {
   }
 }
 
-// Pick the provider tab that matches the repository, so the right instructions
-// are showing before the user picks anything.
 watch(repoUrl, (url) => {
   const slug = repoSlug(url)
   if (!slug) return
@@ -148,8 +137,7 @@ async function load() {
   } finally {
     loading.value = false
   }
-  // The bound app's repository drives the deep link. Best-effort: without it the
-  // modal still shows everything needed to configure the hook by hand.
+  // Best-effort: without it the modal still shows everything needed to configure the hook by hand.
   if (p.application_id) {
     try {
       repoUrl.value = (await appApi.get(wid, p.application_id)).data.data.git_repo ?? ''

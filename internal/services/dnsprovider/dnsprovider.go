@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dnsprovider manages workspace DNS provider connections: connect, test, list, delete.
-// Credentials are encrypted at rest and never returned, and connecting is gated by the AllowDNSProviders
-// plan capability. It also resolves a stored connection into a usable dns.Provider for automation.
+// Package dnsprovider manages workspace DNS provider connections; credentials are encrypted and never returned.
 package dnsprovider
 
 import (
@@ -55,8 +53,6 @@ var (
 // ConsoleProviderName is the fixed name of the provider the billing console pushes into a workspace.
 const ConsoleProviderName = "miabi-console"
 
-// Service manages DNS provider connections and the records Miabi creates through
-// them (the managed-record ledger).
 type Service struct {
 	repo    *repositories.DNSProviderRepository
 	records *repositories.DNSRecordRepository
@@ -71,12 +67,9 @@ func NewService(repo *repositories.DNSProviderRepository, records *repositories.
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// ConnectInput is the payload to connect (or replace) a provider. TestZone, when
-// set, is a zone (a domain on the provider) validated before the credential is
-// stored — so an invalid token fails without persisting.
+// ConnectInput.TestZone, when set, is validated before storing so an invalid token is never persisted.
 type ConnectInput struct {
-	// Name is the desired unique slug handle; it is normalized to canonical slug
-	// form. DisplayName is the free-text label (falls back to Name when blank).
+	// Name is normalized to a slug; DisplayName falls back to Name when blank.
 	Name        string
 	DisplayName string
 	Type        string
@@ -112,8 +105,7 @@ func (s *Service) Connect(ctx context.Context, workspaceID uint, in ConnectInput
 	if taken, _ := s.repo.ExistsByName(workspaceID, name); taken {
 		return nil, ErrNameTaken
 	}
-	// Build the provider and (optionally) validate the credential against a zone
-	// before persisting, so a bad token never gets stored.
+	// Validate before persisting so a bad token never gets stored.
 	prov, err := dns.Build(in.Type, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidType, err)
@@ -144,8 +136,7 @@ type UpdateInput struct {
 	TestZone    string
 }
 
-// Update rotates credentials and/or renames a provider. A credential that fails to build, or
-// fails TestZone, leaves the stored one untouched.
+// Update leaves the stored credential untouched if the new one fails to build or fails TestZone.
 func (s *Service) Update(ctx context.Context, workspaceID, id uint, in UpdateInput) (*models.DNSProvider, error) {
 	p, err := s.get(workspaceID, id)
 	if err != nil {
@@ -182,8 +173,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in UpdateInp
 	return p, nil
 }
 
-// PropagationTimeout is the DNS-01 ceiling for a provider, from its catalog descriptor.
-// Zero leaves the ACME client's default in place.
+// PropagationTimeout is the provider's DNS-01 ceiling; zero keeps the ACME client's default.
 func (s *Service) PropagationTimeout(workspaceID, providerID uint) time.Duration {
 	p, err := s.repo.FindInWorkspace(workspaceID, providerID)
 	if err != nil {
@@ -209,8 +199,6 @@ func (s *Service) PublicCredentials(p *models.DNSProvider) map[string]string {
 	return d.Public(creds)
 }
 
-// Test re-validates a stored provider against a zone and records the result on
-// its Status / LastError.
 func (s *Service) Test(ctx context.Context, workspaceID, id uint, zone string) (*models.DNSProvider, error) {
 	p, err := s.get(workspaceID, id)
 	if err != nil {
@@ -256,8 +244,6 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	return s.repo.Delete(p.ID)
 }
 
-// Provider resolves a stored connection into a usable dns.Provider (decrypting
-// the credential). Used by the automation paths and the cert engine.
 func (s *Service) Provider(workspaceID, id uint) (dns.Provider, error) {
 	p, err := s.get(workspaceID, id)
 	if err != nil {

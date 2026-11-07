@@ -29,8 +29,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeClasses is a storage-class catalog backed by a map, recording the directory calls the
-// service makes so a test can assert that a create provisions one and a delete reclaims it.
 type fakeClasses struct {
 	byName      map[string]*models.StorageClass
 	nodeDefault string
@@ -80,8 +78,6 @@ func catalog() *fakeClasses {
 	}
 }
 
-// With no class service wired at all, nothing resolves — the pre-storage-class behaviour, where
-// every volume lands wherever Docker puts it.
 func TestResolveClassWithoutCatalog(t *testing.T) {
 	s := &Service{}
 	c, err := s.resolveClass(1, 0, "ssd-fast")
@@ -115,8 +111,7 @@ func TestResolveClassNamedAndDefaulted(t *testing.T) {
 func TestReclaimSkipsTheBuiltinClass(t *testing.T) {
 	f := catalog()
 	s := &Service{classes: f}
-	// The built-in class owns no directory of its own: `docker volume rm` already removed
-	// everything, so there is nothing to reclaim and nothing to look up.
+	// The built-in class owns no directory: docker volume rm already removed everything.
 	s.reclaim(context.Background(), &models.Volume{
 		StorageClassName: models.DefaultStorageClassName, DockerName: "mb-vol-1-data",
 	})
@@ -128,8 +123,7 @@ func TestReclaimSkipsTheBuiltinClass(t *testing.T) {
 func TestReclaimRemovesAManagedClassDirectory(t *testing.T) {
 	f := catalog()
 	s := &Service{classes: f}
-	// Without this, `docker volume rm` would drop the volume record and leave every byte of its
-	// data sitting on the operator's SSD.
+	// Without this, docker volume rm would leave every byte of data on the operator's SSD.
 	s.reclaim(context.Background(), &models.Volume{
 		StorageClassName: "ssd-fast", DockerName: "mb-vol-1-data",
 	})
@@ -153,8 +147,7 @@ type localOnlyClients struct{ local uint }
 func (l localOnlyClients) For(uint) (docker.Client, error) { return nil, errors.New("offline") }
 func (l localOnlyClients) LocalID() uint                   { return l.local }
 
-// A volume on a deleted node used to be undeletable: removing it went through that node's Docker
-// engine, and there is no engine left to ask.
+// A volume on a deleted node used to be undeletable: there is no engine left to ask.
 func TestVolumeNodeGone(t *testing.T) {
 	s := &Service{
 		clients:    localOnlyClients{local: 1},

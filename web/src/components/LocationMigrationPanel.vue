@@ -18,9 +18,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Live location migration (Enterprise): move this app, with its volumes and databases, to another location.
-// The wizard only ever shows what the server planned; the server plans again when the move starts, so a
-// stale page cannot start a move a new blocker would stop.
+// Enterprise; the server replans when the move starts, so a stale page cannot bypass a new blocker.
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { locationApi, type Location } from '@/api/locations'

@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts the secret values in each notification channel's config
-// (bot token, webhook URL) under the workspace's active DEK. Idempotent.
+// Reencrypt re-encrypts channel secrets (bot token, webhook URL) under the active DEK; idempotent.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	chs, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

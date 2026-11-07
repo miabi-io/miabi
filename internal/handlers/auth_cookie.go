@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 )
 
-// setSessionCookie stores the JWT in an HttpOnly, SameSite=Strict cookie so a browser never
-// exposes it to JavaScript. CLI and API clients keep using the token from the response body.
-// Secure is set whenever the request is HTTPS, so the cookie still works over plain HTTP in dev.
+// HttpOnly so JavaScript never sees the JWT; Secure only on HTTPS so plain-HTTP dev still works.
 func setSessionCookie(c *okapi.Context, token string) {
 	http.SetCookie(c.ResponseWriter(), &http.Cookie{
 		Name:     middlewares.SessionCookieName,
@@ -56,16 +54,13 @@ func clearSessionCookie(c *okapi.Context) {
 	})
 }
 
-// oauthStateCookie binds an SSO authorization request to the browser that started it, so a callback
-// carrying someone else's code and state (login-CSRF) is refused.
+// Binds the SSO request to the browser that started it, refusing login-CSRF callbacks.
 const oauthStateCookie = "miabi_oauth_state"
 
-// oauthTwoFactorCookie carries a parked SSO sign-in to the second-factor step without exposing its id
-// in a URL.
+// Keeps the parked sign-in id out of URLs.
 const oauthTwoFactorCookie = "miabi_oauth_2fa"
 
-// setFlowCookie stores a short-lived HttpOnly cookie for the SSO flow. The state cookie must be Lax: it
-// is read on the top-level redirect back from the identity provider, which Strict would withhold.
+// The state cookie must be Lax: it is read on the IdP's top-level redirect, which Strict would withhold.
 func setFlowCookie(c *okapi.Context, name, value string, ttl time.Duration, sameSite http.SameSite) {
 	maxAge := int(ttl.Seconds())
 	if value == "" {

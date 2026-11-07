@@ -116,14 +116,11 @@ func TestManagerProbe(t *testing.T) {
 	}
 }
 
-// taskClient reports the swarm task containers this engine can see. An engine that
-// isn't running the task returns ErrNotFound — which is exactly what the manager
-// does for a task the scheduler placed on a worker.
+// An engine not running the task returns ErrNotFound, exactly as the manager does for a task on a worker.
 type taskClient struct {
 	docker.Client
 	containerID string // "" = this engine is not running the task
-	// runningTasks is what the MANAGER's swarm view reports. It is what tells a
-	// running-but-unreachable task apart from nothing running at all.
+	// The manager's swarm view distinguishes running-but-unreachable from nothing running.
 	runningTasks uint64
 }
 
@@ -138,9 +135,7 @@ func (t *taskClient) ServiceInspect(context.Context, string) (docker.ServiceStat
 	return docker.ServiceStatus{RunningTasks: t.runningTasks}, nil
 }
 
-// Regression: a single-replica service placed on a worker. The manager can list the task but not
-// see its container, so resolving through the manager returned "no active container" and the app
-// showed no logs, metrics or uptime while `docker service ls` reported 1/1.
+// Regression: a 1/1 service on a worker showed no logs or metrics because the manager cannot see its container.
 func TestForServiceTaskFindsATaskOnARemoteNode(t *testing.T) {
 	manager := &taskClient{}                          // not running the task
 	node1 := &taskClient{containerID: "1ab857b7d825"} // running it
@@ -159,8 +154,7 @@ func TestForServiceTaskFindsATaskOnARemoteNode(t *testing.T) {
 	}
 }
 
-// The manager wins when it is running the task (single-node, or a replica landed
-// there) — that path must stay free of remote round-trips.
+// The local engine must win when it runs the task, with no remote round-trips.
 func TestForServiceTaskPrefersTheLocalEngine(t *testing.T) {
 	manager := &taskClient{containerID: "local-abc"}
 	c := NewClients(1, manager)
@@ -175,8 +169,6 @@ func TestForServiceTaskPrefersTheLocalEngine(t *testing.T) {
 	}
 }
 
-// Nothing is running (the service is scaled to zero, or was never deployed): the
-// manager reports no tasks, so this is a genuine not-found.
 func TestForServiceTaskNotFound(t *testing.T) {
 	c := NewClients(1, &taskClient{runningTasks: 0})
 	c.SetRemote(2, &taskClient{})
@@ -185,9 +177,7 @@ func TestForServiceTaskNotFound(t *testing.T) {
 	}
 }
 
-// The service IS running, but on a swarm node with no Miabi agent, so no engine we hold can see
-// its container. That must NOT be reported as "nothing is running": the honest answer is "we
-// cannot reach it", which tells the user to install the agent rather than hunt a phantom crash.
+// Must report "cannot reach" rather than "nothing running", so the user installs the agent instead of chasing a crash.
 func TestForServiceTaskRunningOnAnUnmanagedNode(t *testing.T) {
 	// The manager sees no container of its own, but its swarm view says 1 task is up.
 	c := NewClients(1, &taskClient{runningTasks: 1})
@@ -202,8 +192,7 @@ func TestForServiceTaskRunningOnAnUnmanagedNode(t *testing.T) {
 	}
 }
 
-// Regression: a service in a remote swarm, its task on an agentless node. The local engine manages
-// another swarm (or none), so asking it reported "nothing running" for a healthy service.
+// Regression: the local engine manages another swarm, so asking it reported "nothing running" for a healthy service.
 func TestForServiceTaskAsksTheServicesOwnSwarm(t *testing.T) {
 	local := &taskClient{runningTasks: 0}
 	remoteManager := &taskClient{runningTasks: 1}

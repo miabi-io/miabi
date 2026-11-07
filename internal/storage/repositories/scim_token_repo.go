@@ -28,8 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// HashSCIMToken hashes a bearer token for storage/lookup (SHA-256 hex). Shared by
-// the admin mint path and the enterprise SCIM authenticator so they agree.
+// HashSCIMToken is shared by the admin mint path and the enterprise SCIM authenticator so they agree.
 func HashSCIMToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

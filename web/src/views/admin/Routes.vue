@@ -68,8 +68,7 @@ async function runResync() {
   }
 }
 
-// Config-sync status: live = served; offline = synced but not served (disabled or
-// host not verified); error = gateway write failed; pending = never synced.
+// offline means synced but not served (disabled or host unverified).
 function statusBadge(s: RouteSyncStatus): string {
   if (s === 'live') return 'badge-success'
   if (s === 'error') return 'badge-danger'

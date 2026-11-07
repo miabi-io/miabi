@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// PlatformBackupSet.Items declares a real foreign key, so SetID must be NULL for an artifact belonging to
-// no recovery point. Stored as 0 it is not "no set" — it references a row that cannot exist, and Postgres
-// refuses the insert with SQLSTATE 23503. This pins the distinction that bug turned on.
+// Items has a real foreign key, so SetID must be NULL, not 0, or Postgres refuses the insert (23503).
 func TestSetIDIsNilForAdHocBackups(t *testing.T) {
 	adhoc := models.PlatformBackup{Subject: models.PlatformBackupDatabase}
 	if adhoc.SetID != nil {
@@ -41,9 +39,7 @@ func TestSetIDIsNilForAdHocBackups(t *testing.T) {
 	}
 }
 
-// Retention must skip set-owned artifacts: PruneSets retains recovery points as
-// a unit, and deleting one artifact here would hollow out a set that still
-// reports itself restorable.
+// PruneSets retains sets as a unit; deleting one artifact here would hollow out a restorable set.
 func TestPruneSkipsSetOwnedArtifacts(t *testing.T) {
 	setID := uint(3)
 	rows := []models.PlatformBackup{

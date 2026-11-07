@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package billing serves the Billing API (/api/v1/billing): an external billing platform, such
-// as the Miabi Console, drives plans, quotas and restrictions with a billing-only key. The API is
-// off unless MIABI_BILLING_API_ENABLED is set and the licence grants the billing flag
-// (plans/billing-api-v1.md).
+// Package billing serves the Billing API, off unless MIABI_BILLING_API_ENABLED and the billing licence flag are set.
 package billing
 
 import (
@@ -41,8 +38,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ServiceUserEmail is the platform billing service user: it owns the billing keys and is the
-// actor of billing audit entries, so offboarding an admin never breaks billing.
+// A service user owns billing keys so offboarding an admin never breaks billing.
 const ServiceUserEmail = "billing@" + models.ServiceAccountEmailDomain
 
 // Service holds what the Billing API needs.
@@ -77,8 +73,7 @@ func (s *Service) SetLocked(locked bool) { s.locked = locked }
 // Locked reports whether the console connection is locked.
 func (s *Service) Locked() bool { return s.locked }
 
-// GuardServiceUser refuses to suspend, deactivate or delete the billing service user while the
-// connection is locked: its key is the connection, so losing the user is a disconnect.
+// Its key is the connection, so losing the user while locked is a disconnect.
 func (s *Service) GuardServiceUser(u *models.User) error {
 	if s.locked && u != nil && strings.EqualFold(u.Email, ServiceUserEmail) {
 		return ErrConnectionLocked
@@ -92,8 +87,7 @@ func NewService(db *gorm.DB, users *repositories.UserRepository, keys *auth.APIK
 	return &Service{db: db, users: users, keys: keys, plans: plans, settings: settings, info: info, now: func() time.Time { return time.Now().UTC() }}
 }
 
-// EnsureServiceUser returns the billing service user, creating it on first use. It cannot sign
-// in: its password is random and unknown, and it is a service account.
+// It cannot sign in: its password is random and unknown, and it is a service account.
 func (s *Service) EnsureServiceUser() (*models.User, error) {
 	if u, err := s.users.FindByEmail(ServiceUserEmail); err == nil {
 		return u, nil
@@ -138,8 +132,7 @@ type Plan struct {
 	LimitsHash   string           `json:"limits_hash"`
 }
 
-// Plans lists the plans a billing platform may map its packages to. System plans, which only
-// the platform's own workspace uses, are left out.
+// System plans, used only by the platform workspace, are left out.
 func (s *Service) Plans() ([]Plan, error) {
 	all, _, err := s.plans.ListPaged("", 1000, 0)
 	if err != nil {
@@ -159,8 +152,7 @@ func (s *Service) Plans() ([]Plan, error) {
 	return out, nil
 }
 
-// ToPlan reads a plan's numeric max_* limits and allow_* capabilities from its JSON form, so a
-// new plan field is reported without touching this code.
+// Read via the JSON form so a new plan field is reported without touching this code.
 func ToPlan(p *models.Plan) (Plan, error) {
 	raw, err := json.Marshal(p)
 	if err != nil {
@@ -197,8 +189,7 @@ func ToPlan(p *models.Plan) (Plan, error) {
 	return out, nil
 }
 
-// unusablePassword hashes a random secret nobody knows, so the account signs in only by SSO or
-// after setting a password.
+// The account signs in only by SSO or after setting a password.
 func unusablePassword() (string, error) {
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {

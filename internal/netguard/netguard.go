@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package netguard provides SSRF-resistant HTTP clients for outbound requests to user-supplied
-// URLs. It validates the *resolved* IP at dial time, so DNS rebinding cannot smuggle a request to
-// an internal address. Loopback and link-local are always blocked; private ranges by default.
+// Package netguard checks the resolved IP at dial time so DNS rebinding cannot reach internal addresses.
 package netguard
 
 import (
@@ -35,8 +33,7 @@ import (
 // allowPrivate toggles whether private (RFC1918/ULA) targets are permitted.
 var allowPrivate atomic.Bool
 
-// Configure sets whether private-range targets are allowed. Call once at
-// startup. Default (unconfigured) blocks private ranges.
+// Call once at startup; unconfigured blocks private ranges.
 func Configure(allow bool) { allowPrivate.Store(allow) }
 
 // ErrBlocked is returned when a destination IP is disallowed.
@@ -64,9 +61,7 @@ func ipBlocked(ip net.IP) bool {
 	return false
 }
 
-// ValidateURL performs an up-front check: the scheme must be http(s), a host
-// must be present, and any IP-literal host must be allowed. Hostnames are
-// re-checked against their resolved IPs at dial time.
+// Hostnames are re-checked against their resolved IPs at dial time.
 func ValidateURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -85,8 +80,6 @@ func ValidateURL(raw string) error {
 	return nil
 }
 
-// safeDialContext resolves the host and dials only an allowed IP, rejecting the
-// connection otherwise.
 func safeDialContext(dialer *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
@@ -117,8 +110,7 @@ func safeDialContext(dialer *net.Dialer) func(ctx context.Context, network, addr
 	}
 }
 
-// Client returns an HTTP client whose dialer enforces the SSRF policy. Redirects
-// are followed but each hop is re-validated by the dialer.
+// Redirects are followed, but the dialer re-validates each hop.
 func Client(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	return &http.Client{

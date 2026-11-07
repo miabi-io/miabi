@@ -30,8 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// newPruneService builds a service over sqlite. Every fixture uses the s3
-// destination so Delete never reaches for a docker client.
+// Every fixture uses the s3 destination so Delete never needs a docker client.
 func newPruneService(t *testing.T) (*Service, *repositories.BackupRepository) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -102,8 +101,7 @@ func TestPruneKeepsPinnedBackupsOverCount(t *testing.T) {
 	}
 }
 
-// A pin must not silently shrink the rolling window: "keep last 2" still keeps two
-// unpinned backups, rather than counting the pin as one of them.
+// A pin must not count as one of the "keep last N" slots.
 func TestPruneDoesNotLetAPinConsumeARetentionSlot(t *testing.T) {
 	svc, repo := newPruneService(t)
 	ages := []time.Duration{4 * time.Hour, 3 * time.Hour, 2 * time.Hour, time.Hour}

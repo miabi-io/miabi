@@ -23,8 +23,6 @@ import (
 	"testing"
 )
 
-// homeAt points $HOME at a temp dir and clears the path overrides, so a test sees the resolution
-// rules rather than the developer's own environment.
 func homeAt(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -59,9 +57,7 @@ func TestManifestPath_EnvWins(t *testing.T) {
 	}
 }
 
-// The rule that keeps a working install findable: whichever location holds one wins, whatever this
-// process's privileges are. Without it, installing with sudo and then running a read-only command
-// without it reports "not installed" over a running stack.
+// A location holding an install wins regardless of privilege, so non-sudo commands still find a sudo install.
 func TestPickManifestPath(t *testing.T) {
 	const etc, user = "/etc/miabi/miabi.yaml", "/home/j/.miabi/miabi.yaml"
 	present := func(paths ...string) func(string) bool {
@@ -86,8 +82,6 @@ func TestPickManifestPath(t *testing.T) {
 		// Nothing installed yet: privilege decides where it goes.
 		{"root installs into /etc", present(), true, user, etc},
 		{"a user installs into their home", present(), false, user, user},
-		// No home to resolve — a daemon user, a broken environment. /etc is the only answer left,
-		// and the caller reports that it cannot be written.
 		{"no home falls back to /etc", present(), false, "", etc},
 	}
 	for _, c := range cases {
@@ -99,8 +93,6 @@ func TestPickManifestPath(t *testing.T) {
 	}
 }
 
-// Everything an install needs is resolved from the manifest's directory, so moving the manifest
-// moves the gateway config with it — no second path to configure.
 func TestGatewayConfigFollowsTheManifest(t *testing.T) {
 	home := homeAt(t)
 	s := &Service{manifestPath: filepath.Join(home, ".miabi", "miabi.yaml")}

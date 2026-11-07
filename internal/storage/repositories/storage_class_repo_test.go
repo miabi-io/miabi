@@ -28,8 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// storageClassTable mirrors models.StorageClass without the Postgres-only uid default sqlite
-// cannot parse.
+// Mirrors models.StorageClass without the Postgres-only uid default sqlite cannot parse.
 type storageClassTable struct {
 	ID             uint `gorm:"primaryKey"`
 	UID            string
@@ -65,8 +64,7 @@ func newStorageClassDB(t *testing.T) *StorageClassRepository {
 	return NewStorageClassRepository(db)
 }
 
-// The edition cap bounds the whole catalog, so the seeded built-in class counts: a Community
-// install that already has `default` may register one disk of its own, not two.
+// The edition cap bounds the whole catalog, so the seeded built-in class counts.
 func TestStorageClassCountIncludesTheBuiltin(t *testing.T) {
 	repo := newStorageClassDB(t)
 

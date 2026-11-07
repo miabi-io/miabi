@@ -16,13 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package sealed implements sealed secret values: a secret encrypted to a workspace's public sealing key so
-// it can be committed to git and only Miabi can open it.
-//
-// A sealed value reads "sealed:v1:<keyVersion>:<base64(age ciphertext)>". The ciphertext is an age (X25519)
-// file whose plaintext names the secret it was sealed for, so a value copied into another Secret refuses to
-// open. Each workspace has its own key pair, which binds the value to the workspace as well. keyVersion is a
-// hint for picking the private key; 0 means unknown and every retained key is tried.
+// Package sealed implements git-committable secrets encrypted to a workspace's age key and bound to the secret name.
 package sealed
 
 import (
@@ -49,8 +43,7 @@ const maxPlaintext = 1 << 20
 var (
 	// ErrFormat means the string is not a sealed value of a known format.
 	ErrFormat = errors.New("not a sealed value (expected sealed:v1:<version>:<data>)")
-	// ErrNoKey means none of the given private keys opens the value: it was sealed for another workspace, or
-	// with a sealing key that no longer exists.
+	// The value was sealed for another workspace, or with a sealing key that no longer exists.
 	ErrNoKey = errors.New("sealed value does not open with this workspace's sealing keys")
 )
 
@@ -68,8 +61,6 @@ type payload struct {
 	Value string `json:"value"`
 }
 
-// GenerateKey returns a new key pair: the private identity ("AGE-SECRET-KEY-1…") and its public recipient
-// ("age1…").
 func GenerateKey() (identity, recipient string, err error) {
 	id, err := age.GenerateX25519Identity()
 	if err != nil {
@@ -147,8 +138,6 @@ func Parse(s string) (keyVersion int, ciphertext []byte, err error) {
 	return keyVersion, ciphertext, nil
 }
 
-// Open decrypts a sealed value declared on the secret name, trying each private identity in order, and
-// returns the plaintext and the index of the identity that opened it.
 func Open(s, name string, identities ...string) (value string, used int, err error) {
 	_, ct, err := Parse(s)
 	if err != nil {
@@ -186,8 +175,7 @@ func Open(s, name string, identities ...string) (value string, used int, err err
 	return "", -1, ErrNoKey
 }
 
-// Fingerprint identifies a sealed value without revealing anything about the plaintext. Every seal draws a
-// fresh ephemeral key, so re-sealing the same value yields a different fingerprint.
+// Every seal draws a fresh ephemeral key, so re-sealing the same value yields a different fingerprint.
 func Fingerprint(s string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(s)))
 	return hex.EncodeToString(sum[:16])

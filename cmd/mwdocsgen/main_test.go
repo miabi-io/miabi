@@ -74,9 +74,7 @@ func TestNoOrphanedPages(t *testing.T) {
 	}
 }
 
-// Every curated type gets a page. A type added to the catalog without one is
-// documented nowhere, which is how twenty types went undocumented in the first
-// place.
+// A catalog type without a page is documented nowhere.
 func TestEveryTypeIsDocumented(t *testing.T) {
 	pages, err := Pages()
 	if err != nil {
@@ -89,8 +87,7 @@ func TestEveryTypeIsDocumented(t *testing.T) {
 	}
 }
 
-// The slug is the page's URL, so it has to stay a readable kebab-case name
-// rather than leaking the camelCase type.
+// The slug is the page URL, so it must stay kebab-case rather than leak the camelCase type.
 func TestSlug(t *testing.T) {
 	cases := map[string]string{
 		"basicAuth":        "basic-auth",
@@ -106,9 +103,7 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-// MDX reads `{` as the start of an expression, so a help string mentioning a
-// template would fail the docs build rather than render oddly. This is what that
-// costs us: escaped entities in a table cell.
+// MDX reads `{` as an expression, so an unescaped template would fail the docs build.
 func TestEscapeMDNeutralizesMDX(t *testing.T) {
 	got := escapeMD(`use {{ .claim }} | and <tags>`)
 	for _, unsafe := range []string{"{", "}", "<", ">"} {

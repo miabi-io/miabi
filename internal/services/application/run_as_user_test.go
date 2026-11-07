@@ -45,8 +45,7 @@ func TestValidRunAsUser(t *testing.T) {
 		t.Errorf("expected ErrRunAsUserInvalid, got %v", err)
 	}
 
-	// Under a non-root mandate only a verifiably non-root uid survives. A name is
-	// refused too: the image's own /etc/passwd decides what it maps to.
+	// A name is refused too: the image's own /etc/passwd decides what it maps to.
 	forcedQuota := &quota.Service{}
 	forcedQuota.SetForceNonRoot(true) // the server-level mandate, independent of any plan
 	forced := &Service{quota: forcedQuota}

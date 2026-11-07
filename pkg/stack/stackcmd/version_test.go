@@ -44,8 +44,7 @@ func TestNormalizeVersion(t *testing.T) {
 		}
 	}
 
-	// An image reference is a different flag. Accepting it here would silently produce
-	// "miabi/miabi:miabi/miabi:1.8.0" and fail at the registry with a baffling message.
+	// Accepting an image ref would yield "miabi/miabi:miabi/miabi:1.8.0" and a baffling registry error.
 	for _, in := range []string{"miabi/miabi:1.8.0", "miabi:1.8.0", "ghcr.io/miabi/miabi", "miabi@sha256:abc"} {
 		if _, err := normalizeVersion(in); err == nil {
 			t.Errorf("normalizeVersion(%q): want an error pointing at --image, got none", in)
@@ -59,8 +58,6 @@ func TestRetag(t *testing.T) {
 		{"miabi/miabi", "1.8.0", "miabi/miabi:1.8.0"}, // no tag to replace
 		{"jkaninda/goma-gateway:0.13.1", "0.14.0", "jkaninda/goma-gateway:0.14.0"},
 		{"postgres:17-alpine", "18-alpine", "postgres:18-alpine"},
-		// A private registry must survive, which is the whole point of retagging rather than
-		// rebuilding the reference from a hardcoded repo.
 		{"registry.example.com/miabi:1.7.3", "1.8.0", "registry.example.com/miabi:1.8.0"},
 		// The port is not a tag separator.
 		{"registry.example.com:5000/miabi:1.7.3", "1.8.0", "registry.example.com:5000/miabi:1.8.0"},

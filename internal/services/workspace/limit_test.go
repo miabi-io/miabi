@@ -29,13 +29,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// seedN gives every seed() call a distinct in-memory database (seed is called
-// more than once per test, so a per-test name would leak state between calls).
+// seed runs more than once per test, so a per-test name would leak state between calls.
 var seedN int
 
-// The production models carry Postgres-specific defaults (uid uuid DEFAULT gen_random_uuid()) that sqlite
-// can't migrate, so the test builds a minimal, sqlite-friendly schema for the tables the limit logic reads
-// and lets the real repositories query it (see account_test.go for the same approach).
+// Production models carry Postgres-only uid defaults sqlite can't migrate (see account_test.go).
 
 type wsRow struct {
 	ID     uint `gorm:"primaryKey"`
@@ -61,9 +58,6 @@ type userRow struct {
 
 func (userRow) TableName() string { return "users" }
 
-// seed builds a service over an in-memory DB where user 1 owns `owned`
-// non-system workspaces (plus one system workspace, which must never count) and
-// carries the given per-user override. entitled toggles the Enterprise gate.
 func seed(t *testing.T, owned int, override *int, global int, entitled bool) *Service {
 	t.Helper()
 	seedN++
@@ -103,8 +97,7 @@ func TestGlobalLimitEnforced(t *testing.T) {
 	}
 }
 
-// One convention across every limit: -1 unlimited, 0 none. A stored 0 used to mean unlimited here;
-// the workspace_limit_sentinel upgrade step rewrites those rows to -1 so no install changes meaning.
+// A stored 0 used to mean unlimited; the workspace_limit_sentinel upgrade rewrites those to -1.
 func TestGlobalNegativeIsUnlimitedAndZeroIsNone(t *testing.T) {
 	if err := seed(t, 9, nil, -1, false).canOwnAnother(1); err != nil {
 		t.Errorf("global -1 (unlimited): got %v, want nil", err)
@@ -115,8 +108,6 @@ func TestGlobalNegativeIsUnlimitedAndZeroIsNone(t *testing.T) {
 }
 
 func TestSystemAndNonOwnerRowsDoNotCount(t *testing.T) {
-	// The user owns 1 real workspace (+ a system one they own, + a dev membership);
-	// only the 1 real owned workspace counts, so a cap of 2 still allows one more.
 	if err := seed(t, 1, nil, 2, false).canOwnAnother(1); err != nil {
 		t.Errorf("got %v, want nil (system + non-owner rows excluded)", err)
 	}
@@ -136,8 +127,6 @@ func TestOverrideSupersedesGlobalWhenEntitled(t *testing.T) {
 }
 
 func TestOverrideIgnoredWithoutEntitlement(t *testing.T) {
-	// A generous override is ignored when the license isn't entitled; the strict
-	// global (1) applies, so an already-owning user is blocked.
 	ten := 10
 	if err := seed(t, 1, &ten, 1, false).canOwnAnother(1); err != ErrWorkspaceLimitReached {
 		t.Errorf("override without entitlement: got %v, want ErrWorkspaceLimitReached (global applies)", err)
@@ -153,9 +142,6 @@ func TestUnwiredLimitsAllowEverything(t *testing.T) {
 	}
 }
 
-// seedJoined builds a service where user 1 is a non-owner member of `joined`
-// non-system workspaces — plus one workspace they OWN and the system workspace,
-// neither of which may count toward the membership limit.
 func seedJoined(t *testing.T, joined int, override *int, global int, entitled bool) *Service {
 	t.Helper()
 	seedN++
@@ -193,8 +179,6 @@ func TestMembershipGlobalLimitEnforced(t *testing.T) {
 }
 
 func TestMembershipOwnedAndSystemDoNotCount(t *testing.T) {
-	// User owns 1 workspace and is a member of the system one, but has joined only
-	// 1 real workspace, so a cap of 2 still allows one more.
 	if err := seedJoined(t, 1, nil, 2, false).CanJoinAnother(1); err != nil {
 		t.Errorf("got %v, want nil (owned + system excluded)", err)
 	}

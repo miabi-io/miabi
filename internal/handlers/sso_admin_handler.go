@@ -33,9 +33,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SSOAdminHandler manages the identity realm: the organization's enforced-SSO
-// toggle and SAML 2.0 connections. SAML config and enforcing SSO are gated on
-// the sso_saml entitlement (Enterprise); a Community/unlicensed install gets 402.
+// SAML config and enforcing SSO need sso_saml; a Community install gets 402.
 type SSOAdminHandler struct {
 	orgs       *repositories.OrganizationRepository
 	saml       *repositories.SAMLConfigRepository
@@ -64,9 +62,7 @@ type UpdateOrganizationRequest struct {
 	} `json:"body"`
 }
 
-// UpdateOrganization edits the default org. Turning on enforced SSO requires the
-// sso_saml entitlement (you cannot force SSO without a SAML connection); turning
-// it off is always allowed (lock-out safety valve).
+// Turning enforced SSO off is always allowed as a lock-out safety valve.
 func (h *SSOAdminHandler) UpdateOrganization(c *okapi.Context, req *UpdateOrganizationRequest) error {
 	org, err := h.orgs.FindDefault()
 	if err != nil {
@@ -210,8 +206,7 @@ type CreateSCIMTokenRequest struct {
 	} `json:"body"`
 }
 
-// CreateSCIMToken mints a bearer token, storing only its hash and returning the
-// plaintext once (the IdP configures it as the SCIM credential).
+// Stores only the hash and returns the plaintext once.
 func (h *SSOAdminHandler) CreateSCIMToken(c *okapi.Context, req *CreateSCIMTokenRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagSCIM); err != nil {
 		return entitlementAbort(c, err)

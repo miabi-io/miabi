@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// newGrantGuard re-checks grants at deploy time against the rules the application
-// service applies at write time. Both processes deploy, so both wire it.
+// Both processes deploy, so both wire the deploy-time grant re-check.
 func newGrantGuard(enabled bool, workspaces *repositories.WorkspaceRepository, q *quota.Service) worker.GrantGuard {
 	return worker.GrantGuardFunc(func(workspaceID uint, tier models.CapabilityTier) error {
 		// An app configured while grants were enabled must stop receiving them.

@@ -31,12 +31,7 @@ import (
 	"time"
 )
 
-// TestContainerCreateInspect locks in that a RunSpec's resource caps and security
-// fields actually reach the created container — a wrong zero value here silently
-// ships an uncapped or over-privileged container, which "no error on create"
-// would never catch. Only the fields RunSpec models are asserted; pids-limit and
-// read-only-rootfs are deliberately not, because the spec exposes no field for
-// them and there is nothing to characterize.
+// A wrong zero value silently ships an uncapped or over-privileged container that create would not reject.
 func TestContainerCreateInspect(t *testing.T) {
 	cli := newClient(t)
 	const (
@@ -86,8 +81,6 @@ func TestContainerCreateInspect(t *testing.T) {
 	}
 }
 
-// TestContainerLifecycle exercises stop/start/restart/remove and the summary vs
-// config inspect paths.
 func TestContainerLifecycle(t *testing.T) {
 	cli := newClient(t)
 	id := run(t, cli, sleeper(t))
@@ -121,9 +114,6 @@ func TestContainerLifecycle(t *testing.T) {
 	}
 }
 
-// TestLogsNonTTYFraming asserts that a non-TTY container's stdout and stderr are
-// demultiplexed onto the right LogLine.Stream — the classic silent regression if
-// stdcopy framing breaks.
 func TestLogsNonTTYFraming(t *testing.T) {
 	cli := newClient(t)
 	id := run(t, cli, RunSpec{
@@ -153,10 +143,7 @@ func TestLogsNonTTYFraming(t *testing.T) {
 	}
 }
 
-// TestLogsFollowCancelNoLeak follows a chatty container's logs, cancels
-// mid-stream, and asserts the follow goroutine unwinds — no leaked reader on the
-// hijacked stream. goleak is the whole point: a follow that ignores ctx would
-// pass every functional assertion and leak forever.
+// A follow that ignores ctx would pass every functional assertion and leak forever.
 func TestLogsFollowCancelNoLeak(t *testing.T) {
 	expectNoGoroutineLeak(t)
 	cli := newClient(t)
@@ -193,16 +180,12 @@ func TestLogsFollowCancelNoLeak(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 }
 
-// TestExecNonTTYAndExitCode drives a non-TTY exec: the raw stream is
-// stdcopy-framed, so a plain read sees 8-byte frame headers, and the payload
-// carries the command output. Also covers TTY exec and resize.
 func TestExecNonTTYAndExitCode(t *testing.T) {
 	cli := newClient(t)
 	id := run(t, cli, sleeper(t))
 	ctx := bg(t, 30*time.Second)
 
-	// Non-TTY: read raw and confirm stdcopy framing is present (first byte is the
-	// stream type 1=stdout, bytes 1..3 are zero padding) and the payload follows.
+	// Non-TTY output is stdcopy-framed: first byte is the stream type, bytes 1..3 are zero padding.
 	st, err := cli.Exec(ctx, id, ExecOptions{Cmd: []string{"echo", "hello-exec"}, Tty: false})
 	if err != nil {
 		t.Fatalf("Exec non-tty: %v", err)
@@ -219,8 +202,7 @@ func TestExecNonTTYAndExitCode(t *testing.T) {
 		t.Errorf("non-tty exec payload missing output; frame body=%q", string(raw[8:]))
 	}
 
-	// TTY: raw un-multiplexed stream. The command sleeps briefly so the exec
-	// instance is still alive when Resize runs (resizing a finished exec errors).
+	// The command sleeps so the exec is still alive when Resize runs; resizing a finished exec errors.
 	tst, err := cli.Exec(ctx, id, ExecOptions{Cmd: []string{"sh", "-c", "sleep 1; echo hello-tty"}, Tty: true})
 	if err != nil {
 		t.Fatalf("Exec tty: %v", err)
@@ -235,8 +217,6 @@ func TestExecNonTTYAndExitCode(t *testing.T) {
 	}
 }
 
-// TestStatsBusyVsIdle asserts a busy container reports >0% CPU and an idle one
-// reports near-0% — flat stats graphs are noticed a week late, not in a unit test.
 func TestStatsBusyVsIdle(t *testing.T) {
 	cli := newClient(t)
 	busy := run(t, cli, RunSpec{

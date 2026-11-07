@@ -81,8 +81,7 @@ func TestValidateContainerLabels_Limits(t *testing.T) {
 }
 
 func TestCustomLabelsAllowed_NoDepsIsPermissive(t *testing.T) {
-	// With neither settings nor quota wired (e.g. unit context), the gate is a
-	// no-op so the feature is available.
+	// With neither settings nor quota wired, the gate is a no-op.
 	s := &Service{}
 	if err := s.customLabelsAllowed(1); err != nil {
 		t.Errorf("expected no error with nil deps, got %v", err)

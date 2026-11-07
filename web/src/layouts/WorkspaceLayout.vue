@@ -22,10 +22,7 @@ const ws = useWorkspaceStore()
 const notify = useNotificationStore()
 const license = useLicenseStore()
 
-// Pending invitations addressed to the current user. The Dashboard renders these
-// too, but a user with no workspaces never reaches it — the empty state below
-// replaces <router-view>. Without this, an invitee's only way out is to create a
-// workspace they don't need.
+// A user with no workspaces never reaches the Dashboard, so invitations are shown here too.
 const invitations = ref<PendingInvitation[]>([])
 const acceptingId = ref<number | null>(null)
 
@@ -57,8 +54,7 @@ function createWorkspace() {
 }
 
 onMounted(async () => {
-  // A cached profile from an older build lacks fields only a current /me carries (preferences,
-  // workspace_creation), which the workspace store, the theme and the create actions read.
+  // A cached profile from an older build lacks fields only a current /me carries.
   if (!auth.user || !auth.user.preferences || !auth.user.workspace_creation) await auth.fetchUser()
   license.load().catch(() => { })
   try {
@@ -66,8 +62,7 @@ onMounted(async () => {
   } catch {
     notify.error(t('notify.workspaceLayout.failedToLoadWorkspaces'))
   }
-  // Only when the empty state is what the user will actually see; with a
-  // workspace present the Dashboard fetches these itself.
+  // With a workspace present the Dashboard fetches these itself.
   if (ws.workspaces.length === 0) await loadInvitations()
 })
 </script>

@@ -33,13 +33,8 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// auditExportBatch is the page size used while streaming so memory stays flat
-// regardless of how many rows the export spans.
 const auditExportBatch = 1000
 
-// AuditExportHandler streams the audit log out as JSON or CSV (gated on the
-// audit_export entitlement — 402 in Community). Reading the in-app audit log is
-// unchanged and remains open-source.
 type AuditExportHandler struct {
 	repo *repositories.AuditLogRepository
 	ee   enterprise.EE
@@ -77,9 +72,7 @@ func (h *AuditExportHandler) WorkspaceExport(c *okapi.Context) error {
 	return streamAudit(c, c.Query("format"), "audit-workspace", fetch)
 }
 
-// streamAudit pages through fetch and writes a chunked JSON array or CSV. Headers
-// are written before the first row; once streaming begins a mid-stream DB error
-// ends the output gracefully (the response is already committed).
+// Once streaming begins, a mid-stream DB error ends the output: the response is already committed.
 func streamAudit(c *okapi.Context, format, name string, fetch func(offset, limit int) ([]models.AuditLog, error)) error {
 	w := c.ResponseWriter()
 	if strings.EqualFold(format, "csv") {

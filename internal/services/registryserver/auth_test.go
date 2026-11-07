@@ -65,8 +65,6 @@ func (f fakeWS) FindMember(workspaceID, userID uint) (*models.WorkspaceMember, e
 	return nil, errors.New("not a member")
 }
 
-// fixture: acme (id 7), other (id 8); user 42 is a developer in acme, user 99 a
-// viewer in acme. Nobody is a member of other.
 func wsFixture() fakeWS {
 	acme := &models.Workspace{ID: 7, Name: "acme"}
 	other := &models.Workspace{ID: 8, Name: "other"}
@@ -157,8 +155,7 @@ func TestAuthorize(t *testing.T) {
 }
 
 func TestAuthorizePlatformToken(t *testing.T) {
-	// The platform token (build/deploy worker) authorizes any namespace; keys are
-	// never consulted (Verify would fail here, proving the short-circuit).
+	// Keys are never consulted: Verify would fail here, proving the short-circuit.
 	svc := &Service{cfg: config.RegistryConfig{PlatformToken: "plat-secret"}, ws: wsFixture(), keys: fakeKeys{err: errors.New("nope")}}
 
 	cases := []struct {
@@ -188,9 +185,7 @@ func TestAuthorizePlatformToken(t *testing.T) {
 	}
 }
 
-// A cross-repository blob mount names its source in the query string, which the gateway's namespace
-// rewrite (a path regex) never touches. Without an explicit check a member of one workspace could push
-// into their own namespace while lifting layers out of another tenant's, needing only a digest.
+// The mount source sits in the query string the gateway rewrite never touches; without a check layers leak across tenants.
 func TestAuthorizeBlobMount(t *testing.T) {
 	rw := []string{models.ScopeRead, models.ScopeWrite}
 	const uploads = "/v2/acme/web/blobs/uploads/"
@@ -209,8 +204,7 @@ func TestAuthorizeBlobMount(t *testing.T) {
 		{"plain upload is unaffected", wsToken(rw), uploads, http.StatusOK},
 		{"upload state param is not a mount", wsToken(rw), uploads + "uuid?_state=abc", http.StatusOK},
 		{"mount with no source is not a cross-repo mount", wsToken(rw), uploads + "?mount=sha256:abc", http.StatusOK},
-		// An account-wide token is bound by the same rule: membership of the target
-		// workspace says nothing about the source one.
+		// Membership of the target workspace says nothing about the source one.
 		{"user token cannot mount across workspaces", userToken(42, rw), uploads + "?mount=sha256:abc&from=other/api", http.StatusForbidden},
 	}
 	for _, tc := range cases {
@@ -223,8 +217,7 @@ func TestAuthorizeBlobMount(t *testing.T) {
 	}
 }
 
-// The platform principal pushes on any workspace's behalf, but a build only ever
-// mounts inside the namespace it is pushing to — so the same rule applies.
+// A build only mounts inside the namespace it pushes to, so the same rule applies.
 func TestAuthorizePlatformTokenBlobMount(t *testing.T) {
 	svc := &Service{cfg: config.RegistryConfig{PlatformToken: "plat-secret"}, ws: wsFixture(), keys: fakeKeys{err: errors.New("nope")}}
 	auth := basic("_miabi", "plat-secret")
@@ -276,9 +269,7 @@ func TestFirstSegmentAndIDNamespace(t *testing.T) {
 	}
 }
 
-// A token for one workspace must not reach another's namespace by smuggling the target through path
-// traversal. The gateway normalizes the path it proxies upstream, so authorizing the raw form would
-// approve "a" and serve "b" — a confirmed cross-tenant write, not a theoretical one.
+// The gateway normalizes proxied paths, so authorizing the raw form would approve "a" and serve "b".
 func TestParseRepoNormalizesTraversal(t *testing.T) {
 	cases := []struct {
 		uri  string
@@ -301,8 +292,6 @@ func TestParseRepoNormalizesTraversal(t *testing.T) {
 	}
 }
 
-// A path that climbs out of /v2 belongs to no namespace and must never resolve
-// to the first segment it happens to contain.
 func TestParseRepoRefusesEscapingPath(t *testing.T) {
 	for _, uri := range []string{"/v2/../../etc/passwd", "/v2/%2e%2e/%2e%2e/etc"} {
 		repo, isBase, isCatalog := parseRepo(uri)
@@ -318,8 +307,7 @@ func TestParseRepoRefusesEscapingPath(t *testing.T) {
 // The mount source rides in the query string, where the same trick applies.
 func TestMountSourceTraversalIsRefused(t *testing.T) {
 	svc := &Service{ws: wsFixture()}
-	// tenant-a is workspace 1 in the fixture; a source that cleans to another
-	// tenant must not pass by naming tenant-a first.
+	// A source that cleans to another tenant must not pass by naming tenant-a first.
 	if reason := svc.authorizeMountSource(
 		"/v2/tenant-a/app/blobs/uploads/?mount=sha256:x&from=tenant-a/../tenant-b/app", 1); reason == "" {
 		t.Error("a traversing blob mount source was accepted")
@@ -336,9 +324,7 @@ func (f fakeApps) FindByID(id uint) (*models.Application, error) {
 	return nil, errors.New("application not found")
 }
 
-// A pipeline's registry token is minted for one application, and the docs say the login is limited
-// to that app's repository. Nothing enforced it: the token could push over any repository in its
-// workspace, which is enough to replace another app's image and have it deployed.
+// An app-bound pipeline token could push over any repo in its workspace and replace another app's image.
 func TestAuthorizeHoldsAppBoundTokenToItsRepository(t *testing.T) {
 	ws := uint(7)
 	app := uint(3)
@@ -370,8 +356,7 @@ func TestAuthorizeHoldsAppBoundTokenToItsRepository(t *testing.T) {
 	}
 }
 
-// With no resolver wired the binding cannot be checked, so an app-bound key is refused rather than
-// waved through.
+// Without a resolver the binding cannot be checked, so an app-bound key is refused.
 func TestAuthorizeRefusesAppBoundTokenWithoutResolver(t *testing.T) {
 	ws := uint(7)
 	app := uint(3)
@@ -397,8 +382,6 @@ func TestAuthorizeLeavesUnboundTokensAlone(t *testing.T) {
 	}
 }
 
-// A workspace-bound token is cut off when its owner leaves the workspace or lacks the role, and
-// admin-scoped tokens use the registry like the API's scope ladder says.
 func TestAuthorizeWorkspaceTokenFollowsMembership(t *testing.T) {
 	ws := uint(7)
 	cases := []struct {

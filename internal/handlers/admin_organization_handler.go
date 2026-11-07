@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AdminOrganizationHandler manages tenant realms: the workspaces they own, their workspace cap and
-// the cluster they are dedicated to. Reading is always allowed — a Community install has exactly one
-// organization and the page should still show it — while creating a SECOND one is the gated action.
+// Reading is never gated (Community has one org); creating a second one is the gated action.
 type AdminOrganizationHandler struct {
 	svc        *organization.Service
 	users      *repositories.UserRepository
@@ -48,8 +46,6 @@ func NewAdminOrganizationHandler(svc *organization.Service, users *repositories.
 	return &AdminOrganizationHandler{svc: svc, users: users, clusters: clusters, workspaces: workspaces, ee: ee, audit: auditLog}
 }
 
-// organizationView is everything the detail page shows, in one call: the organization, the clusters
-// dedicated to it, and the workspaces it holds against its cap.
 type organizationView struct {
 	*models.Organization
 	Clusters   []clusterRef   `json:"clusters"`
@@ -73,8 +69,7 @@ type workspaceRef struct {
 	OwnerID     uint   `json:"owner_id"`
 }
 
-// List returns every organization with its workspace count. Never gated: one organization always
-// exists, and hiding it would leave the admin console unable to explain where workspaces live.
+// Never gated: one organization always exists and the console must explain where workspaces live.
 func (h *AdminOrganizationHandler) List(c *okapi.Context) error {
 	orgs, err := h.svc.List()
 	if err != nil {
@@ -133,8 +128,7 @@ type AdminCreateOrganizationRequest struct {
 	} `json:"body"`
 }
 
-// Create makes an organization. This is the entitled action: Community keeps the single default org
-// it has always had, so nothing is taken away, but a second realm is Enterprise.
+// Create is the entitled action; Community keeps its single default org.
 func (h *AdminOrganizationHandler) Create(c *okapi.Context, req *AdminCreateOrganizationRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
 		return entitlementAbort(c, err)
@@ -171,22 +165,17 @@ type AdminUpdateOrganizationRequest struct {
 		DisplayName   *string `json:"display_name" maxLength:"120"`
 		OwnerUserID   *uint   `json:"owner_user_id"`
 		MaxWorkspaces *int    `json:"max_workspaces" min:"-1"`
-		// Per-user caps. Null leaves one as it is; -1 is unlimited and 0 none. Inherit* clears one
-		// back to the platform default, which a null cannot express.
+		// Null leaves a cap as it is; -1 is unlimited, 0 none; Inherit* resets to the platform default.
 		MaxWorkspacesPerUser               *int  `json:"max_workspaces_per_user" min:"-1"`
 		MaxWorkspaceMembershipsPerUser     *int  `json:"max_workspace_memberships_per_user" min:"-1"`
 		InheritWorkspacesPerUser           *bool `json:"inherit_workspaces_per_user"`
 		InheritWorkspaceMembershipsPerUser *bool `json:"inherit_workspace_memberships_per_user"`
-		// MaxWorkspacesPerOwner caps the org's owner instead of the per-user cap; -1 is unlimited.
-		// OwnerSameAsUsers clears it so the per-user cap applies to the owner again. Enterprise
-		// (user_workspace_limit).
+		// OwnerSameAsUsers clears it so the per-user cap applies to the owner again (user_workspace_limit).
 		MaxWorkspacesPerOwner *int  `json:"max_workspaces_per_owner" min:"-1"`
 		OwnerSameAsUsers      *bool `json:"owner_same_as_users"`
-		// WorkspaceCreation is who may create workspaces: anyone, except_invited, admins_only, or
-		// inherit to fall back to the platform setting. Null leaves it as it is.
+		// WorkspaceCreation null leaves it as it is; inherit falls back to the platform setting.
 		WorkspaceCreation *string `json:"workspace_creation" enum:"anyone,except_invited,admins_only,inherit"`
-		// DefaultClusterID is the location the org's new workspaces land in. Sending 0 clears it,
-		// which a null cannot express — null means "leave as it is".
+		// DefaultClusterID 0 clears it, which null (leave as is) cannot express.
 		DefaultClusterID *uint `json:"default_cluster_id"`
 	} `json:"body"`
 }
@@ -196,10 +185,7 @@ func (h *AdminOrganizationHandler) Update(c *okapi.Context, req *AdminUpdateOrga
 	if err != nil {
 		return c.AbortNotFound("organization not found")
 	}
-	// Editing the default org's own label is not a multi-tenancy feature, so it stays available in
-	// Community. Its limits are: with a licence an organization's caps govern its tenants, and
-	// without one the platform defaults do — so an unlicensed operator has nothing to set here, and
-	// letting them store a value that would never apply would be the misleading option.
+	// Without a licence the platform defaults govern, so storing org limits would never apply.
 	if !org.IsDefault || touchesOrgLimits(req) || req.Body.DefaultClusterID != nil {
 		if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
 			return entitlementAbort(c, err)
@@ -248,8 +234,6 @@ func (h *AdminOrganizationHandler) Update(c *okapi.Context, req *AdminUpdateOrga
 	return ok(c, updated)
 }
 
-// SetDefault promotes an organization to the one every unassigned workspace, user and provider
-// resolves to.
 func (h *AdminOrganizationHandler) SetDefault(c *okapi.Context) error {
 	if err := h.ee.RequireMutable(enterprise.FlagOrganizations); err != nil {
 		return entitlementAbort(c, err)
@@ -303,8 +287,7 @@ func touchesOwnerLimit(req *AdminUpdateOrganizationRequest) bool {
 	return req.Body.MaxWorkspacesPerOwner != nil || req.Body.OwnerSameAsUsers != nil
 }
 
-// limitChanges records which caps an update moved, and from what. "Who lowered this limit" is the
-// first question asked when a tenant hits one, and a nil metadata blob cannot answer it.
+// "Who lowered this limit" is the first question when a tenant hits one.
 func limitChanges(before, after *models.Organization) map[string]any {
 	out := map[string]any{}
 	if before.MaxWorkspaces != after.MaxWorkspaces {

@@ -28,8 +28,7 @@ import (
 // usageTTL is how long a namespace's computed size is trusted before a refresh.
 const usageTTL = 60 * time.Second
 
-// usageCache memoizes per-workspace registry usage (bytes) with a short TTL, so
-// the per-request quota check is a cheap map lookup rather than a registry walk.
+// A short TTL keeps the per-request quota check a map lookup rather than a registry walk.
 type usageCache struct {
 	mu      sync.Mutex
 	bytes   map[uint]int64
@@ -47,9 +46,7 @@ func newUsageCache() *usageCache {
 	}
 }
 
-// NamespaceUsageBytes computes a workspace's registry usage: the sum of the
-// unique blob sizes across all its repositories' tags (deduped by digest). It is
-// an estimate (manifest-reported sizes), suitable for soft quota enforcement.
+// NamespaceUsageBytes is an estimate from manifest sizes, deduped by digest; fine for soft quotas.
 func (s *Service) NamespaceUsageBytes(ctx context.Context, workspaceID uint) (int64, error) {
 	repos, err := s.ListRepositories(ctx, workspaceID)
 	if err != nil {
@@ -75,9 +72,7 @@ func (s *Service) NamespaceUsageBytes(ctx context.Context, workspaceID uint) (in
 	return total, nil
 }
 
-// quotaExceeded reports whether the workspace is over its registry quota. It is soft and non-blocking: it
-// reads a TTL cache and, on a miss/stale entry, triggers an async refresh and returns false (fail-open) so
-// a push is never blocked on a registry walk. nil-safe for tests that don't wire the cache.
+// Fail-open: a stale entry triggers an async refresh and returns false, so pushes never wait on a registry walk.
 func (s *Service) quotaExceeded(workspaceID uint) bool {
 	if s.usage == nil || s.reg == nil || s.repo == nil {
 		return false
@@ -100,8 +95,7 @@ func (s *Service) quotaExceeded(workspaceID uint) bool {
 	return fresh && bytes >= limit
 }
 
-// quotaMB returns the configured per-workspace quota, cached briefly so the hot
-// path avoids a DB read per request.
+// Cached briefly so the hot path avoids a DB read per request.
 func (s *Service) quotaMB() int {
 	s.usage.mu.Lock()
 	if s.usage.nowFn().Sub(s.usage.quotaAt) < usageTTL {

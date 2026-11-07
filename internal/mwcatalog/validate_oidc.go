@@ -24,16 +24,13 @@ import (
 	"time"
 )
 
-// knownProviders carry their own endpoints, so they need neither an issuer nor a
-// hand-written endpoint block.
 var knownProviders = map[string]bool{
 	"google": true, "github": true, "gitlab": true, "amazon": true, "facebook": true,
 }
 
 var claimSources = map[string]bool{"id_token": true, "userinfo": true, "access_token": true}
 
-// validateOIDC enforces the rules the gateway applies at load, so a policy that
-// could not guard a route is refused here rather than at the next deploy.
+// Mirrors the gateway's load-time rules so a policy that cannot guard a route is refused before deploy.
 func validateOIDC(rule map[string]any) error {
 	issuer := str(rule, "issuer")
 	provider := str(rule, "provider")
@@ -48,8 +45,7 @@ func validateOIDC(rule map[string]any) error {
 	if issuer == "" && !known && (authURL == "" || tokenURL == "") {
 		return fmt.Errorf("%w: set an issuer, choose a known provider, or fill in endpoint.authUrl and endpoint.tokenUrl", ErrInvalidRule)
 	}
-	// Without one of these the gateway cannot tell a real token from a forged
-	// one, and refuses to guard the route at all.
+	// Without one the gateway cannot tell a real token from a forged one and refuses to guard the route.
 	if issuer == "" && !known && jwksURL == "" && userInfoURL == "" {
 		return fmt.Errorf("%w: set an issuer, or endpoint.jwksUrl or endpoint.userInfoUrl, so tokens can be verified", ErrInvalidRule)
 	}

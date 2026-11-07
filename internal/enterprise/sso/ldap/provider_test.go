@@ -43,9 +43,7 @@ func testProvider(t *testing.T, seed ...*models.LDAPConfig) *Provider {
 	return p
 }
 
-// TestAuthenticate_EmptyPasswordRejected guards the classic anonymous-bind
-// bypass: an empty password must never trigger a bind, even with a config that
-// would otherwise match. It returns ErrNoMatch without dialing.
+// An empty password must never bind, guarding the anonymous-bind bypass.
 func TestAuthenticate_EmptyPasswordRejected(t *testing.T) {
 	p := testProvider(t, &models.LDAPConfig{
 		Name: "corp", Host: "ldap.invalid", Port: 389, Enabled: true,

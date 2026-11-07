@@ -23,12 +23,9 @@ import (
 	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// These are Miabi's own types: the Docker SDK's types never cross this
-// package boundary, keeping services and handlers decoupled from the SDK.
+// Miabi's own types: Docker SDK types never cross this package boundary.
 
-// The types the stack engine also speaks are owned by the stack module and aliased here, so both
-// sides use one definition — Go's structural typing needs identical named types for Client to
-// satisfy stackdocker.Client. Aliases are transparent, so every call site is unaffected.
+// Aliased from the stack module because Client must use identical named types to satisfy stackdocker.Client.
 type (
 	Container        = stackdocker.Container
 	ContainerNetwork = stackdocker.ContainerNetwork
@@ -49,8 +46,7 @@ type (
 
 // Info summarizes the Docker engine.
 type Info struct {
-	// Name is the Docker host's hostname (the actual machine name, not the
-	// Miabi container's), as reported by the daemon.
+	// Name is the Docker host's hostname, not the Miabi container's.
 	Name          string `json:"name"`
 	Version       string `json:"version"`
 	APIVersion    string `json:"api_version"`
@@ -61,54 +57,37 @@ type Info struct {
 	Images        int    `json:"images"`
 	CPUs          int    `json:"cpus"`
 	MemTotal      int64  `json:"mem_total"`
-	// DataRoot is where the daemon keeps images, containers and volumes. Sizing the filesystem
-	// behind it is how a node's storage capacity is measured.
+	// DataRoot's filesystem size is how a node's storage capacity is measured.
 	DataRoot string `json:"data_root,omitempty"`
-	// Runtimes are the container runtimes the daemon advertises (docker info). The "nvidia" key is
-	// present exactly when the NVIDIA Container Toolkit is installed, so it is how the control plane
-	// decides a node is GPU-capable before ever probing it.
+	// The "nvidia" runtime is present exactly when the NVIDIA Container Toolkit is installed.
 	Runtimes []string `json:"runtimes,omitempty"`
 }
 
-// Capabilities is a snapshot of what the connected engine supports, derived from
-// Ping + Info. It is what the node engine-version preflight reads to decide
-// whether a daemon is too old, GPU-capable, or a reachable swarm manager.
 type Capabilities struct {
-	// APIVersion is the Docker Engine API version the client negotiated with this
-	// daemon (e.g. "1.51"). A daemon below MinAPIVersion is refused before this.
 	APIVersion string `json:"api_version"`
 	// EngineVersion is the daemon's reported server version (e.g. "27.5.1").
 	EngineVersion string `json:"engine_version"`
 	// OS / Arch are the daemon's platform ("linux", "x86_64"/"aarch64").
-	OS   string `json:"os"`
-	Arch string `json:"arch"`
-	// SwarmActive is true when the engine is in swarm mode; SwarmManager is true
-	// when it is also a reachable manager (can drive cluster operations).
-	SwarmActive  bool `json:"swarm_active"`
-	SwarmManager bool `json:"swarm_manager"`
+	OS           string `json:"os"`
+	Arch         string `json:"arch"`
+	SwarmActive  bool   `json:"swarm_active"`
+	SwarmManager bool   `json:"swarm_manager"`
 }
 
-// EngineEvent is a Docker daemon event for a managed container. Attributes
-// carries the container's labels (e.g. "io.miabi.app") and event metadata
-// (e.g. "exitCode").
 type EngineEvent struct {
 	Action      string // start, die, oom, kill, stop, "health_status: healthy", ...
 	ContainerID string
 	Attributes  map[string]string
 }
 
-// VolumeSpec describes a managed volume to create, including an optional driver and driver options
-// for shared storage (NFS/CIFS). An empty Driver uses Docker's default (local). DriverOpts are the
-// backend mount options (e.g. NFS: type=nfs, o=addr=...,rw, device=:/export).
+// VolumeSpec empty Driver uses Docker's local default; DriverOpts carry the NFS/CIFS mount options.
 type VolumeSpec struct {
 	Name       string
 	Labels     map[string]string
 	SizeBytes  int64
 	Driver     string
 	DriverOpts map[string]string
-	// DevicePath backs the volume with an operator-chosen host directory (a storage class) instead
-	// of the engine's data root, using the local driver's bind options. The volume stays an
-	// ordinary named, labelled Docker volume, so backup, housekeeping and mounts are unchanged.
+	// DevicePath keeps the volume an ordinary named Docker volume, so backup, housekeeping and mounts are unchanged.
 	DevicePath string
 }
 
@@ -119,13 +98,10 @@ type Network struct {
 	Driver string            `json:"driver"`
 	Scope  string            `json:"scope"`
 	Labels map[string]string `json:"labels,omitempty"`
-	// Subnet is the network's first IPv4 IPAM subnet (CIDR), empty if unset. Used by the
-	// subnet allocator to reserve pool subnets already in use by existing networks.
+	// Subnet lets the allocator reserve pool subnets already used by existing networks.
 	Subnet  string `json:"subnet,omitempty"`
 	Gateway string `json:"gateway,omitempty"`
-	// IPv6Subnet and IPv6Gateway are the v6 half of a dual-stack network, empty on an IPv4-only one.
-	// EnableIPv6 is what the daemon reports, which is the honest answer for a network created before
-	// Miabi set the flag explicitly.
+	// EnableIPv6 is what the daemon reports, honest for networks created before Miabi set it explicitly.
 	IPv6Subnet  string `json:"ipv6_subnet,omitempty"`
 	IPv6Gateway string `json:"ipv6_gateway,omitempty"`
 	EnableIPv6  bool   `json:"enable_ipv6"`
@@ -147,17 +123,11 @@ type StatsSample struct {
 	NetworkTxBytes uint64  `json:"network_tx_bytes"`
 }
 
-// ProcessList is the running processes in a container (the "docker top" view):
-// column titles and one row of cells per process. Sourced from the host's ps, so
-// it works even for images that ship no ps binary.
 type ProcessList struct {
 	Titles    []string   `json:"titles"`
 	Processes [][]string `json:"processes"`
 }
 
-// Image summarizes a local Docker image, with the references and usage signals
-// the housekeeping report needs (whether a container uses it, whether it is
-// dangling/untagged).
 type Image struct {
 	ID          string            `json:"id"`
 	RepoTags    []string          `json:"repo_tags,omitempty"`
@@ -170,39 +140,30 @@ type Image struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 }
 
-// ImageInspect is a built or pulled image's identity and size. Digest is the registry repo-digest
-// when the image carries one; for a locally-built, never-pushed image it falls back to the
-// content-addressable image ID, a stable local handle for deploy-by-digest on a single node.
+// ImageInspect Digest falls back to the image ID for a locally-built, never-pushed image.
 type ImageInspect struct {
 	ID     string `json:"id"`     // content-addressable image ID (sha256:…)
 	Digest string `json:"digest"` // repo digest when present, else the image ID
 	Size   int64  `json:"size"`
 }
 
-// DiskUsage is a `docker system df`-style breakdown for a node: per-category
-// counts and total vs reclaimable bytes. It drives the housekeeping report.
 type DiskUsage struct {
 	Images     DiskUsageCategory `json:"images"`
 	Containers DiskUsageCategory `json:"containers"`
 	Volumes    DiskUsageCategory `json:"volumes"`
 	BuildCache DiskUsageCategory `json:"build_cache"`
-	// VolumeItems is the per-volume breakdown behind Volumes. The daemon walks the filesystem for
-	// the totals either way, so it is free here; it is not serialized, as callers reporting a node's
-	// disk want the totals, not a row per volume.
+	// VolumeItems is free (the daemon walks the fs anyway) but unserialized; callers want totals.
 	VolumeItems []VolumeUsage `json:"-"`
 }
 
-// VolumeUsage is one Docker volume's measured on-disk size, keyed by name so it
-// joins to a workspace's Volume rows. RefCount 0 = reclaimable.
+// RefCount 0 means reclaimable.
 type VolumeUsage struct {
 	DockerName string `json:"docker_name"`
 	Bytes      int64  `json:"bytes"`
 	RefCount   int    `json:"ref_count"`
 }
 
-// DiskUsageCategory is one row of the disk-usage breakdown. Reclaimable is an
-// upper-bound estimate (it ignores layer sharing between images), matching how
-// `docker system df` reports it.
+// Reclaimable is an upper bound that ignores layer sharing, as `docker system df` reports it.
 type DiskUsageCategory struct {
 	Count       int   `json:"count"`
 	Active      int   `json:"active"`

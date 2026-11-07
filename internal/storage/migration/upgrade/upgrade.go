@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package upgrade runs ordered, versioned data-upgrade steps. Each step runs at
-// most once (tracked by models.UpgradeStep). Schema DDL belongs in the
-// migration package; this is for data backfills and one-off transformations.
+// Package upgrade runs once-only data backfills; schema DDL belongs in the migration package.
 package upgrade
 
 import (
@@ -45,9 +43,7 @@ type Step struct {
 	Run     func(ctx context.Context, db *gorm.DB) error
 }
 
-// steps is the ordered registry of upgrade steps, filled by each step file's init. Go runs
-// those in filename order, so the steps_YYYY_MM_DD_ prefix is what puts them in chronological
-// order — name a new file for the day it is added.
+// Init runs in filename order, so the steps_YYYY_MM_DD_ prefix sets chronological order.
 var steps []Step
 
 // Run applies any not-yet-applied steps in order.

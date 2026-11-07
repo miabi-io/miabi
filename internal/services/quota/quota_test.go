@@ -39,9 +39,6 @@ func TestResourceLimitFromPlan(t *testing.T) {
 	}
 }
 
-// TestRunnerQuotaWiring covers the runners plan dimension end to end: the
-// numeric MaxRunners limit resolves and overrides like any counted resource, and
-// the platform-runners capability resolves through the plan and its override.
 func TestRunnerQuotaWiring(t *testing.T) {
 	l := limitsFromPlan(&models.Plan{MaxRunners: 2, AllowPlatformRunners: true})
 	if got := resourceLimit(l, ResourceRunners); got != 2 {
@@ -66,9 +63,6 @@ func TestRunnerQuotaWiring(t *testing.T) {
 	}
 }
 
-// TestGPUQuotaWiring covers the GPU capability + MaxGPUs limit resolving through
-// the plan, its override, and the unlimited platform plan — the same triplet as
-// every other metered resource.
 func TestGPUQuotaWiring(t *testing.T) {
 	l := limitsFromPlan(&models.Plan{MaxGPUs: 2, AllowGPU: true})
 	if got := resourceLimit(l, ResourceGPUs); got != 2 {
@@ -91,8 +85,7 @@ func TestGPUQuotaWiring(t *testing.T) {
 	if u := unlimited(); u.MaxGPUs != -1 || !u.AllowGPU {
 		t.Errorf("unlimited gpus = %d / allow=%v, want -1 / true", u.MaxGPUs, u.AllowGPU)
 	}
-	// A disabled service treats the GPU capability as granted (no gating) and
-	// the GPU request check as a no-op.
+	// A disabled service grants the GPU capability and makes the request check a no-op.
 	off := NewService(nil, nil, nil, nil, nil, false)
 	if err := off.Require(1, CapGPU); err != nil {
 		t.Errorf("disabled Require(CapGPU) = %v, want nil", err)
@@ -224,8 +217,7 @@ func TestRequireNonRootUser(t *testing.T) {
 		t.Error("with enforcement off and no mandate, nothing is required")
 	}
 
-	// The server-level mandate is absolute: it applies with enforcement off, and
-	// the official-template exemption does not relax it.
+	// The server-level mandate applies with enforcement off and the official-template exemption never relaxes it.
 	forced := &Service{forceNonRoot: true}
 	if !forced.RequireNonRootUser(1, false) || !forced.RequireNonRootUser(1, true) {
 		t.Error("MIABI_FORCE_NON_ROOT_USER must apply to every workload")
@@ -239,8 +231,7 @@ func TestQuotaErrorMatchesSentinel(t *testing.T) {
 	}
 }
 
-// Quota and capability errors carry a stable machine code for the API envelope
-// while still matching their sentinels via errors.Is.
+// Errors carry a stable code for the API envelope while still matching their sentinels via errors.Is.
 func TestErrorCodes(t *testing.T) {
 	var coder interface{ Code() string }
 
@@ -272,8 +263,7 @@ func (s *Service) capabilityErrForTest() error {
 	return &codedError{code: "CAPABILITY_DENIED", msg: "capability not allowed by plan: custom_tls", base: ErrCapabilityDenied}
 }
 
-// A disabled (or nil) service is a no-op: every check passes without touching
-// the repository, so callers can always invoke it unconditionally.
+// A disabled or nil service passes every check without touching the repo, so callers invoke it unconditionally.
 func TestDisabledServiceIsNoop(t *testing.T) {
 	var s *Service // nil receiver
 	if s.Enabled() {
@@ -300,9 +290,7 @@ type fakeEdition map[string]bool
 
 func (f fakeEdition) Has(flag string) bool { return f[flag] }
 
-// The entitlement gate drives whether the Enterprise-only restricted security
-// profile applies: with no gate wired (Community) the flag reads false, so the
-// resolver later clamps the security profile back to default.
+// With no gate (Community) the flag reads false, so the resolver clamps the profile back to default.
 func TestEntitledGate(t *testing.T) {
 	s := NewService(nil, nil, nil, nil, nil, true)
 	if s.entitled(flagSecurityProfile) {

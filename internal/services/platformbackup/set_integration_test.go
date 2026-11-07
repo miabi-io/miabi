@@ -40,9 +40,7 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// This drives a whole recovery point — settings, identity envelope, control-plane dump, platform volume,
-// tenant database and volume, finalization and the published manifest — against a real object store,
-// because every fault here so far lived in the seams between the pieces. Needs S3/MinIO; skipped without.
+// Exercises a whole recovery point against real S3/MinIO, since every fault so far lived in the seams; skipped without.
 func s3ForTest(t *testing.T) config.PlatformBackupConfig {
 	t.Helper()
 	endpoint := os.Getenv("MIABI_TEST_S3_ENDPOINT")
@@ -90,8 +88,7 @@ func testDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// fakeDocker stands in for the helper containers: it reports the output the real
-// *-bkup tools print, so artifact-name detection is exercised for real.
+// Prints the real *-bkup tools' output, so artifact-name detection is exercised for real.
 type fakeDocker struct {
 	docker.Client
 	runs []docker.RunSpec
@@ -103,8 +100,7 @@ func (f *fakeDocker) CreateVolume(_ context.Context, name string, _ map[string]s
 	return docker.Volume{Name: name}, nil
 }
 
-// ListVolumes backs the exclusion check: the platform volume is genuine infra, so
-// it must be accepted rather than filtered out.
+// The platform volume is genuine infra and must be accepted, not filtered out.
 func (f *fakeDocker) ListVolumes(context.Context) ([]docker.Volume, error) {
 	return []docker.Volume{
 		{Name: "mb-node-gateway-providers", Labels: map[string]string{docker.LabelManaged: "true"}},
@@ -119,8 +115,7 @@ func (f *fakeDocker) RunOneShot(_ context.Context, spec docker.RunSpec) (int, st
 			encrypted = true
 		}
 	}
-	// Mirror the tools' narration: the plain name first, then the encrypted one
-	// they actually upload. Taking the first match here was a real bug.
+	// Tools print the plain name first, then the encrypted one they upload; taking the first match was a real bug.
 	switch {
 	case strings.Contains(spec.Name, "dbbkup"):
 		out := "Dumping database\nBackup file created: miabi_20260731_120000.sql.gz\n"
@@ -203,8 +198,6 @@ func newTestService(t *testing.T, env config.PlatformBackupConfig) (*Service, *f
 	return svc, dc
 }
 
-// The whole flow, encrypted: every artifact completes, the set finalizes, and the
-// manifest and identity envelope are readable from the bucket afterwards.
 func TestRecoveryPointEndToEnd(t *testing.T) {
 	env := s3ForTest(t)
 	env.Passphrase = "correct-horse-9!"
@@ -310,15 +303,12 @@ func TestRecoveryPointEndToEnd(t *testing.T) {
 	if identity.EncryptionKey != "the-master-key" {
 		t.Errorf("identity carries the wrong key: %q", identity.EncryptionKey)
 	}
-	// The fingerprint on the set must match the key inside the envelope, or a
-	// restore would refuse it.
+	// A fingerprint mismatch with the envelope key would make restore refuse the set.
 	if got := crypto.DeriveTokenFrom(identity.EncryptionKey, models.KEKFingerprintLabel); got != set.KEKFingerprint {
 		t.Errorf("KEK fingerprint mismatch: envelope %q vs set %q", got, set.KEKFingerprint)
 	}
 
-	// Verify, scoped to what this test really uploads. The dump and the archives are produced by a fake helper
-	// that writes nothing, so their absence from the bucket is expected here; the identity envelope and the
-	// manifest are written by Miabi itself and are the parts worth asserting.
+	// The fake helper uploads nothing, so only the Miabi-written envelope and manifest are asserted.
 	rep, err := svc.VerifySet(ctx, set, env.Passphrase)
 	if err != nil {
 		t.Fatalf("VerifySet: %v", err)
@@ -331,8 +321,7 @@ func TestRecoveryPointEndToEnd(t *testing.T) {
 	}
 }
 
-// The same flow with no passphrase anywhere: a recovery point must still be
-// produced, unencrypted and without an envelope, rather than failing.
+// With no passphrase a point must still be produced, unencrypted and without an envelope.
 func TestRecoveryPointWithoutPassphrase(t *testing.T) {
 	env := s3ForTest(t)
 	env.RootPath = fmt.Sprintf("it-nopass-%d", time.Now().UnixNano())
@@ -374,16 +363,13 @@ func TestRecoveryPointWithoutPassphrase(t *testing.T) {
 	}
 }
 
-// A stored "encrypt" with the passphrase since removed must degrade to an
-// unencrypted recovery point, not to no recovery point at all.
+// A leftover "encrypt" without a passphrase must degrade to unencrypted, not to no recovery point.
 func TestEncryptionDegradesWhenThePassphraseIsGone(t *testing.T) {
 	env := s3ForTest(t)
 	env.RootPath = fmt.Sprintf("it-degrade-%d", time.Now().UnixNano())
 
 	svc, _ := newTestService(t, env)
-	// The stored row is written directly: SaveSettings refuses this combination,
-	// which is the point — it is reachable only as leftover state from a
-	// passphrase that has since been removed.
+	// Written directly because SaveSettings refuses this combination; it only arises as leftover state.
 	if _, err := svc.SaveSettings(SaveInput{S3Enabled: true}); err != nil {
 		t.Fatalf("save settings: %v", err)
 	}
@@ -408,9 +394,7 @@ func TestEncryptionDegradesWhenThePassphraseIsGone(t *testing.T) {
 	}
 }
 
-// Discovery reads the BUCKET, not this platform's database — which is what makes it usable after a
-// rebuild, when the database knows only the recovery points its own dump contained. This takes a recovery
-// point, forgets it locally, and checks it is still findable and adoptable.
+// Discovery reads the bucket, not the DB, so it still works after a rebuild.
 func TestDiscoverAndImportFromTheBucket(t *testing.T) {
 	env := s3ForTest(t)
 	env.Passphrase = "correct-horse-9!"
@@ -430,9 +414,7 @@ func TestDiscoverAndImportFromTheBucket(t *testing.T) {
 
 	ctx := context.Background()
 
-	// The fake helper reports artifact names without uploading anything, so the
-	// objects are placed here — discovery checks the bucket, and that check is
-	// half of what it reports. One artifact is deliberately left absent.
+	// The fake helper uploads nothing, so objects are placed here; one is deliberately left absent.
 	store, err := blob.New(blob.Config{
 		Endpoint: env.S3Endpoint, Bucket: env.S3Bucket, Region: env.S3Region,
 		AccessKey: env.S3AccessKey, SecretKey: env.S3SecretKey, ForcePathStyle: true,
@@ -499,8 +481,7 @@ func TestDiscoverAndImportFromTheBucket(t *testing.T) {
 		t.Error("nothing was offered as restorable; tenant data should be")
 	}
 
-	// The artifact left out of the bucket must be reported absent and not
-	// offered: selecting it would fail after a wait, for a reason knowable now.
+	// Selecting an absent artifact would fail after a wait for a reason knowable now.
 	for _, a := range got.Artifacts {
 		if a.File != absent {
 			continue

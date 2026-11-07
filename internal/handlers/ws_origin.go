@@ -25,9 +25,7 @@ import (
 	"strings"
 )
 
-// allowWSOrigin builds a websocket CheckOrigin that blocks cross-site WebSocket hijacking while
-// still admitting non-browser clients: requests with no Origin (agents, runners, CLIs) and
-// browser requests same-origin with Host or in the allowlist. A "*" entry disables the check.
+// Admits requests with no Origin (agents, runners, CLIs); a "*" entry disables the check.
 func allowWSOrigin(allowed []string) func(*http.Request) bool {
 	allowSet := make(map[string]struct{}, len(allowed))
 	wildcard := false

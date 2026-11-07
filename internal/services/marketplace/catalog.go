@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package marketplace provides the declarative template catalog (loaded from the
-// embedded official source) and installs templates by orchestrating the
-// application, database, storage and stack services.
+// Package marketplace serves the template catalog and installs templates via the app, database, storage and stack services.
 package marketplace
 
 import (
@@ -38,8 +36,6 @@ const (
 	SourceCustom   = "custom"   // user-imported into a workspace
 )
 
-// CatalogEntry is the listing view of a template (latest version), with enough
-// detail to render the catalog and open the install wizard.
 type CatalogEntry struct {
 	Name         string           `json:"name"`         // unique template handle
 	DisplayName  string           `json:"display_name"` // free-text catalog label
@@ -84,9 +80,7 @@ var (
 
 func key(slug, version string) string { return slug + "@" + version }
 
-// load reads and validates the embedded official catalog once. A digest
-// mismatch or invalid manifest is a hard error (surfaced via loadErr and the
-// catalog test), since the embedded content is shipped with the binary.
+// A digest mismatch or invalid manifest is a hard error, since the embedded content ships with the binary.
 func load() {
 	raw, err := templates.FS.ReadFile("index.yaml")
 	if err != nil {
@@ -147,8 +141,7 @@ func buildEntries() []CatalogEntry {
 	return out
 }
 
-// entryFromManifest builds the listing view of a template version. versions is
-// the full set of available versions (newest first); pass nil for just this one.
+// versions is newest first; nil means just this one.
 func entryFromManifest(m *manifest.Manifest, source string, versions []string) CatalogEntry {
 	if versions == nil {
 		versions = []string{m.Metadata.Version}
@@ -173,8 +166,7 @@ func splitKey(k string) (slug, version string) {
 	return k, ""
 }
 
-// LoadError returns any error encountered loading the embedded catalog (nil on
-// success). Exercised by the catalog test so a broken manifest fails CI.
+// LoadError is exercised by the catalog test so a broken manifest fails CI.
 func LoadError() error {
 	loadOnce.Do(load)
 	return loadErr

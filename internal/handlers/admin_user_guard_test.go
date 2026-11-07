@@ -34,8 +34,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// A guarded account must come out unchanged, not just get a 409: AbortWithError returns nil once
-// the response is written, so a guard that hands its result back as an error lets the change through.
+// AbortWithError returns nil once written, so the guard must prevent the change, not just answer 409.
 func TestUserGuardBlocksTheChange(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

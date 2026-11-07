@@ -30,12 +30,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// Annotation that creates a Job definition without its first run, to adopt a job
-// that has already run elsewhere.
+// AnnotationSkipInitialRun adopts a job that has already run elsewhere without running it again.
 const AnnotationSkipInitialRun = "miabi.io/skip-initial-run"
 
-// defaultJobHistory mirrors the job service's history default, so an omitted
-// historyLimit and a stored 0 compare equal.
+// Mirrors the job service default so an omitted historyLimit and a stored 0 compare equal.
 const defaultJobHistory = 20
 
 // maxBackoffLimit caps retries, so a broken migration can't loop for hours.
@@ -143,8 +141,7 @@ func (c *CronJobSpec) RunAsUser() string {
 	return c.Security.RunAsUser
 }
 
-// Fingerprint hashes what a run executes: a change to any of these is a new run
-// under onChange. Policy, history and app are not part of it.
+// Fingerprint covers what a run executes; policy, history and app are excluded.
 func (j *JobSpec) Fingerprint() string {
 	user, _ := models.NormalizeRunAsUser(j.RunAsUser())
 	h := sha256.New()
@@ -179,9 +176,7 @@ func cronJobFields(c *CronJobSpec, f map[string]string) {
 	}
 }
 
-// diffJob compares a Job definition. The run template is compared only through
-// its fingerprint, as one "spec" field, so the plan says whether it will run
-// rather than listing every changed argument.
+// The run template diffs as one "spec" field so the plan says whether it will run.
 func diffJob(actual, desired Resource) []FieldDiff {
 	a, d := actual.Job, desired.Job
 	if d == nil {

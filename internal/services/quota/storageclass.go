@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// StorageClassBinding is a workspace's resolved storage-class policy: which classes its plan may
-// create volumes on, and which one an unstated create gets. An empty Allowed binds nothing — the
-// node's own default decides, which is how every install without plan enforcement behaves.
+// An empty Allowed binds nothing; the node's own default decides.
 type StorageClassBinding struct {
 	Allowed []string
 	Default string
@@ -47,8 +45,7 @@ func (b StorageClassBinding) Allows(name string) bool {
 	return false
 }
 
-// EffectiveStorageClasses resolves a workspace's storage-class binding (override -> plan). Safe on
-// a nil service and when plan enforcement is off, both of which bind nothing.
+// EffectiveStorageClasses binds nothing on a nil service or with enforcement off.
 func (s *Service) EffectiveStorageClasses(workspaceID uint) StorageClassBinding {
 	if !s.Enabled() {
 		return StorageClassBinding{}
@@ -73,8 +70,7 @@ func (s *Service) EffectiveStorageClasses(workspaceID uint) StorageClassBinding 
 	return b
 }
 
-// RequireStorageClass returns ErrCapabilityDenied when the workspace's plan does not offer the
-// class. It is the gate that makes a fast disk a plan feature rather than an admin convenience.
+// RequireStorageClass makes a fast disk a plan feature rather than an admin convenience.
 func (s *Service) RequireStorageClass(workspaceID uint, name string) error {
 	if !s.Enabled() {
 		return nil

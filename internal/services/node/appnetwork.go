@@ -28,9 +28,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// ResolveAppNetwork returns the proxy network name: configured when set, otherwise the one found on
-// the local engine, so an install created before the rename keeps the network its apps are attached
-// to. Only an engine with no proxy network at all gets stack.DefaultNetwork.
+// ResolveAppNetwork prefers the network found locally so installs from before the rename keep their apps' network.
 func ResolveAppNetwork(ctx context.Context, dc docker.Client, configured string) string {
 	nets, err := dc.ListNetworks(ctx)
 	if err != nil {

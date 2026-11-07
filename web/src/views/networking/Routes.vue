@@ -28,8 +28,7 @@ const presetAppId = ref<number | null>(null)
 const toDelete = ref<Route | null>(null)
 const deleting = ref(false)
 
-// Config-sync status with the gateway (live = Goma is serving it; offline = a
-// host's domain isn't verified or the route is disabled). Not upstream health.
+// Not upstream health.
 function statusBadge(r: Route): string {
   const s = r.status ?? 'pending'
   if (s === 'live') return 'badge-success'
@@ -63,18 +62,14 @@ watch(
   { immediate: true },
 )
 
-// Deep link: /routes?app=<id>&new=1 opens the create form with that app already
-// chosen. The params are consumed once — left in the URL they would re-open the
-// form on every reload and on Back.
+// Params are consumed once; left in the URL they would re-open the form on reload and Back.
 function openFromQuery() {
   if (route.query.new !== '1') return
   const wanted = Number(route.query.app)
   router.replace({ path: route.path })
 
   if (!ws.canEdit || !apps.value.length) return
-  // An app id that isn't in this workspace usually means the workspace was
-  // switched between clicking and landing. Opening the form on some other app
-  // would be worse than not opening it.
+  // Usually a workspace switch mid-click; opening the form on another app would be worse than not opening it.
   if (Number.isFinite(wanted) && wanted > 0) {
     if (!apps.value.some((a) => a.id === wanted)) {
       notify.error(t('notify.routes.thatApplicationIsNotIn'), 'Route not started')

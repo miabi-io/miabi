@@ -37,8 +37,6 @@ func (f fakeCerts) ListExpiringBefore(time.Time) ([]models.Certificate, error) {
 }
 func (f fakeCerts) ListByStatus(string) ([]models.Certificate, error) { return f.failed, nil }
 
-// TestSignalBackupFireResolve exercises the generic Signal pipeline: a
-// backup_failed fires one workspace-scoped alert; a backup_ok resolves it.
 func TestSignalBackupFireResolve(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 
@@ -83,8 +81,6 @@ type fakeAdmins struct{ ids []uint }
 
 func (f fakeAdmins) ListAdminIDs() ([]uint, error) { return f.ids, nil }
 
-// TestNodeAlertFansToSystemAdmins: a platform (node) alert reaches the super-admins,
-// never the workspace members, and auto-resolves on reconnect.
 func TestNodeAlertFansToSystemAdmins(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	eng.SetSystemAdmins(fakeAdmins{ids: []uint{100, 101}})
@@ -116,8 +112,6 @@ func TestNodeAlertFansToSystemAdmins(t *testing.T) {
 	}
 }
 
-// TestRunnerAlertScopes: a workspace runner notifies its members (not admins); a
-// shared runner (Platform) notifies super-admins (not workspace members).
 func TestRunnerAlertScopes(t *testing.T) {
 	eng, _, inbox, _ := newEngineDB(t)
 	eng.SetSystemAdmins(fakeAdmins{ids: []uint{100}})
@@ -153,9 +147,7 @@ func (f *runnerLister) ListAll() ([]models.Runner, error) { return f.r, nil }
 
 func ago(d time.Duration) *time.Time { t := time.Now().UTC().Add(-d); return &t }
 
-// TestRunnerScanDebounce is the whole point of the runner scan: a runner that
-// drops and comes back inside the window must never reach anyone's inbox, and one
-// that flaps must not produce a resolve/re-fire pair per cycle.
+// A runner returning inside the window must never reach an inbox, and flapping must not resolve/re-fire per cycle.
 func TestRunnerScanDebounce(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	ws := uint(1)
@@ -183,8 +175,7 @@ func TestRunnerScanDebounce(t *testing.T) {
 		t.Fatalf("developer should have 1 notification, got %d", c)
 	}
 
-	// Back, but only just: the alert is HELD, not resolved — this is what stops a
-	// flapping runner emitting a recovered/offline pair every cycle.
+	// Held, not resolved: stops a flapping runner emitting recovered/offline pairs every cycle.
 	rl.r[0].Status = models.RunnerStatusOnline
 	rl.r[0].LastSeenAt = ago(time.Second)
 	rl.r[0].ConnectedSince = ago(30 * time.Second)
@@ -201,8 +192,7 @@ func TestRunnerScanDebounce(t *testing.T) {
 	}
 }
 
-// TestRunnerScanSkipsExpectedAbsence: ephemeral runners are torn down by design
-// and disabled ones were switched off on purpose — neither is news.
+// Ephemeral runners are torn down by design and disabled ones on purpose; neither is news.
 func TestRunnerScanSkipsExpectedAbsence(t *testing.T) {
 	eng, alerts, _, _ := newEngineDB(t)
 	ws := uint(1)
@@ -222,8 +212,6 @@ func TestRunnerScanSkipsExpectedAbsence(t *testing.T) {
 	}
 }
 
-// TestRunnerScanSharedGoesToAdmins: a shared runner belongs to the platform, so
-// its alert lands on the system workspace and reaches super-admins.
 func TestRunnerScanSharedGoesToAdmins(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	eng.SetSystemAdmins(fakeAdmins{ids: []uint{100}})
@@ -246,8 +234,7 @@ func TestRunnerScanSharedGoesToAdmins(t *testing.T) {
 	}
 }
 
-// A shared runner with no system workspace resolved has nowhere to hang its
-// alert; it must be skipped rather than written to workspace 0.
+// Must be skipped rather than written to workspace 0.
 func TestRunnerScanSkipsSharedWithoutSystemWorkspace(t *testing.T) {
 	eng, alerts, _, _ := newEngineDB(t)
 	eng.SetRunnerLister(&runnerLister{r: []models.Runner{{
@@ -261,8 +248,6 @@ func TestRunnerScanSkipsSharedWithoutSystemWorkspace(t *testing.T) {
 	}
 }
 
-// TestDiskScanFireAndResolve: a volume ≥95% full fires a critical disk alert;
-// once usage drops below the warning threshold it auto-resolves.
 func TestDiskScanFireAndResolve(t *testing.T) {
 	eng, alerts, _, _ := newEngineDB(t)
 	now := time.Now().UTC()
@@ -285,8 +270,6 @@ func TestDiskScanFireAndResolve(t *testing.T) {
 	}
 }
 
-// TestQuotaScanFireAndResolve: a near-quota breach fires a warning; clearing the
-// breach resolves it.
 func TestQuotaScanFireAndResolve(t *testing.T) {
 	eng, alerts, _, _ := newEngineDB(t)
 	q := &quotaLister{b: []QuotaBreach{{WorkspaceID: 1, Resource: "apps", Used: 9, Limit: 10}}}
@@ -305,9 +288,6 @@ func TestQuotaScanFireAndResolve(t *testing.T) {
 	}
 }
 
-// TestCertScanFireAndResolve proves the self-contained TLS scanner: a cert
-// expiring inside the critical window fires one alert; once it drops out of the
-// scan (renewed), the next scan auto-resolves it.
 func TestCertScanFireAndResolve(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	soon := time.Now().UTC().Add(2 * 24 * time.Hour) // < 3d → critical

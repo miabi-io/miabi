@@ -32,9 +32,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// The production models carry Postgres-specific column defaults sqlite can't migrate. The service and
-// repositories only ever SELECT, delete and update these tables, so the test creates a minimal sqlite-friendly
-// schema under the same table names and lets the real repos query it; missing model fields stay zero.
+// Production models use Postgres-only defaults, so tests create a minimal sqlite schema under the same table names.
 
 type wsRow struct {
 	ID        uint `gorm:"primaryKey"`
@@ -114,9 +112,7 @@ type userRow struct {
 
 func (userRow) TableName() string { return "users" }
 
-// In production these ops drive Docker; here they record calls and mutate the DB so the cascade's effect is
-// observable. fakeDBOps keeps the real service's "refuse while a logical DB is attached" guard, proving
-// DeleteOwned detaches logical databases before deleting the instance.
+// fakeDBOps keeps the real "refuse while a logical DB is attached" guard to prove detach-before-delete.
 
 type fakeAppOps struct {
 	db               *gorm.DB
@@ -190,9 +186,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&userRow{}, &wsRow{}, &memberRow{}, &inviteRow{}, &appRow{}, &instRow{}, &ldbRow{}, &stackRow{}, &volRow{}); err != nil {
 		t.Fatal(err)
 	}
-	// WorkspaceRepository.Delete cascades every workspace-owned table; create the ones this minimal schema
-	// doesn't already have (empty) so the cascade's scoped deletes run instead of erroring on a missing table.
-	// Keep in sync with that cascade's table list. table -> the column it is scoped by.
+	// Delete cascades every workspace table, so create the missing ones empty; keep in sync with that cascade's list.
 	cascadeTables := map[string]string{
 		"application_networks": "application_id", "database_instance_networks": "database_instance_id",
 		"app_env_vars": "application_id", "app_ports": "application_id", "deployments": "application_id",
@@ -298,9 +292,7 @@ func TestDeleteOwned(t *testing.T) {
 	if res.Workspaces != 2 || res.Apps != 2 || res.Databases != 2 || res.Stacks != 1 || res.Volumes != 1 {
 		t.Fatalf("DeleteOwned = %+v, want ws=2 apps=2 db=2 stacks=1 volumes=1", res)
 	}
-	// The attached logical DB must have been detached before its instance was
-	// deleted (the fake refuses to delete an in-use instance, so a missing detach
-	// would have dropped Databases below 2 and failed the assertion above).
+	// The fake refuses to delete an in-use instance, so a missing detach would have failed the assertion above.
 	if len(do.detached) != 1 || do.detached[0] != logical.ID {
 		t.Errorf("detached = %v, want [%d]", do.detached, logical.ID)
 	}

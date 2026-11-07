@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeSettings is an empty settings store — all Reconcile needs to produce a
-// report with nothing in it, which is the case that broke.
+// An empty store is all Reconcile needs for an empty report, the case that broke.
 type fakeSettings struct{}
 
 func (fakeSettings) Get(string) (*models.Setting, error) { return nil, errors.New("not found") }
@@ -42,9 +41,7 @@ type fakeServers struct{}
 func (fakeServers) List() ([]models.Server, error) { return nil, nil }
 func (fakeServers) Update(*models.Server) error    { return nil }
 
-// A nil Go slice marshals to JSON null, and the admin page reads report.failures.length — so a CLEAN
-// reconcile, the case that should be unremarkable, rendered a blank page. "Nothing went wrong" encodes as [],
-// not null, and saying so is the API's job rather than every consumer's.
+// A clean reconcile rendered a blank page because nil lists encoded as null; they must encode as [].
 func TestReconcileReportNeverEncodesNullLists(t *testing.T) {
 	s := New(fakeSettings{}, fakeServers{}, nil, nil)
 

@@ -19,8 +19,6 @@ const keys = ref<ApiKey[]>([])
 const loading = ref(false)
 const appInfo = ref<AppInfo | null>(null)
 
-// Workspace binding: a key scoped to one workspace (the recommended default) vs.
-// 'account' (account-wide — reaches all the user's workspaces).
 const ACCOUNT = 'account' as const
 const workspaceScope = ref<number | typeof ACCOUNT>(ACCOUNT)
 function workspaceName(id?: number | null): string {
@@ -41,8 +39,7 @@ const scopeOptions = [
   { value: 'registry_write', label: 'apiKeys.scope.registry_write', hint: 'apiKeys.scope.registry_writeHint' },
 ]
 
-// A key carrying only registry scopes is limited to docker login/push/pull — it
-// is refused by the rest of the API. Surface that so it isn't a surprise.
+// A registry-only key is refused by the rest of the API, so surface that up front.
 const registryOnly = computed(
   () => scopes.value.length > 0 && scopes.value.every((s) => s.startsWith('registry_')),
 )
@@ -85,8 +82,7 @@ function openCreate() {
   scopes.value = ['read']
   expiry.value = 'never'
   allowedIPs.value = ''
-  // Default to a workspace-scoped key (least privilege) bound to the active
-  // workspace; fall back to account-wide when there is no current workspace.
+  // Least privilege: default to the active workspace, else account-wide.
   workspaceScope.value = currentWorkspaceId.value ?? ACCOUNT
   createdKey.value = null
   copied.value = false

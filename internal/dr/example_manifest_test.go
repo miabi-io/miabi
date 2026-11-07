@@ -24,8 +24,6 @@ import (
 	"time"
 )
 
-// ExampleEncodeManifest shows the info file an operator finds in the bucket: XML,
-// readable, and stating in the file itself why it is not encrypted.
 func ExampleEncodeManifest() {
 	ref := NewRef("mbi_demo", time.Unix(1_760_000_000, 0).UTC())
 	m := &Manifest{

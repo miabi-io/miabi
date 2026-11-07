@@ -38,8 +38,6 @@ func sampleRows() []models.AuditLog {
 	}
 }
 
-// onePageFetch returns all rows on the first page and nothing after, so the
-// streaming loop terminates (rows < batch).
 func onePageFetch(rows []models.AuditLog) func(offset, limit int) ([]models.AuditLog, error) {
 	return func(offset, limit int) ([]models.AuditLog, error) {
 		if offset == 0 {

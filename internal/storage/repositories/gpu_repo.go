@@ -54,16 +54,12 @@ func (r *GPUDeviceRepository) FindByUUID(uuid string) (*models.GPUDevice, error)
 	return &d, nil
 }
 
-// ListByServer returns every discovered device on a node (enabled or not),
-// ordered by host index for a stable admin listing.
 func (r *GPUDeviceRepository) ListByServer(serverID uint) ([]models.GPUDevice, error) {
 	var devices []models.GPUDevice
 	err := r.db.Where("server_id = ?", serverID).Order("\"index\" ASC, id ASC").Find(&devices).Error
 	return devices, err
 }
 
-// ListEnabledByServer returns only the admin-enabled devices on a node — the set
-// an app may be scheduled onto.
 func (r *GPUDeviceRepository) ListEnabledByServer(serverID uint) ([]models.GPUDevice, error) {
 	var devices []models.GPUDevice
 	err := r.db.Where("server_id = ? AND enabled = ?", serverID, true).
@@ -71,9 +67,7 @@ func (r *GPUDeviceRepository) ListEnabledByServer(serverID uint) ([]models.GPUDe
 	return devices, err
 }
 
-// Upsert inserts a newly discovered device or refreshes an existing one (matched by UUID) with
-// its latest hardware facts, stamping LastSeenAt. Admin policy flags are preserved on an
-// existing row; a brand-new device arrives Enabled=false, Shared=true (fail closed).
+// Admin flags are preserved; a new device arrives Enabled=false, Shared=true (fail closed).
 func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error {
 	now := time.Now()
 	existing, err := r.FindByUUID(dev.UUID)

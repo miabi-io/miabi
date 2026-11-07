@@ -16,9 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package platformstack installs and updates Miabi's own stack directly against the Docker API, with
-// every component tagged io.miabi.managed-by=miabi. Compose owns what Compose created, so Miabi could
-// never truly self-update while Compose held the lifecycle. It runs from the CLI, outside the container.
+// Package stack installs Miabi's own stack via the Docker API, since Miabi can't self-update while Compose owns it.
 package stack
 
 import (
@@ -39,19 +37,13 @@ import (
 // CurrentVersion is the manifest schema version this build writes.
 const CurrentVersion = 1
 
-// ErrNotInstalled means there is no stack manifest — nothing was installed by the
-// CLI here. It does NOT mean there is no Miabi: a Compose install has no manifest
-// either, and callers say so.
+// It does not mean there is no Miabi: a Compose install has no manifest either.
 var ErrNotInstalled = errors.New("no Miabi stack manifest found")
 
-// ErrLegacyConfig means the manifest is at the pre-rename LegacyConfigPath. It is deliberately NOT
-// an ErrNotInstalled: this host *is* installed, and telling its operator otherwise sends them
-// looking for a Compose stack that was never there.
+// Not ErrNotInstalled: this host is installed, and saying otherwise sends the operator hunting for Compose.
 var ErrLegacyConfig = errors.New("the stack manifest is at its pre-1.8 path")
 
-// Container names. They match examples/compose/compose.yaml deliberately: an operator's muscle
-// memory (`docker logs miabi`) keeps working across both install paths, and Phase 1's
-// name shield already knows them.
+// Names match examples/compose/compose.yaml so `docker logs miabi` works on both install paths.
 const (
 	ContainerControlPlane = "miabi"
 	ContainerPostgres     = "miabi-postgres"
@@ -59,8 +51,7 @@ const (
 	ContainerGateway      = "miabi-gateway"
 )
 
-// Volumes. The mb- prefix marks them as Miabi's own, which dockerimport's name
-// shield already recognizes, so they are never offered for import.
+// The mb- prefix makes dockerimport's name shield skip them for import.
 const (
 	VolumePGData           = "mb-platform-pgdata"
 	VolumeRedisData        = "mb-platform-redisdata"
@@ -68,9 +59,7 @@ const (
 	VolumeGatewayCerts     = "mb-platform-gateway-certs"
 	VolumeGatewayProviders = "mb-platform-gateway-providers"
 
-	// VolumeGatewayConfig is NO LONGER CREATED: the gateway config is a bind-mounted
-	// file on the host, not a copy in a volume. It survives here only so Teardown can
-	// clean it up on installs that predate the change.
+	// No longer created; kept only so Teardown can clean it up on older installs.
 	VolumeGatewayConfig = "mb-platform-gateway-config"
 )
 
@@ -79,26 +68,18 @@ const helperImage = "busybox:1.36"
 // DefaultGatewayImage is set at build time from versions.miabi.io (see package bundled).
 var DefaultGatewayImage = bundled.GatewayImage()
 
-// Default images. Overridable in the manifest; pinned here so a bare `miabi setup` is reproducible
-// rather than tracking whatever :latest happens to be. NOTE the tags carry no leading "v": git tags do
-// (v0.11.0), Docker tags do not — the git form produced an image reference that does not exist.
+// Pinned for reproducible installs; tags carry no leading "v" because Docker tags don't.
 const (
 	DefaultPostgresImage = bundled.PostgresImage
 	DefaultRedisImage    = bundled.RedisImage
 	DefaultRunnerImage   = "miabi/runner:latest"
 	DefaultNetwork       = "miabi-proxy"
-	// LegacyNetwork is the proxy network's name before it became DefaultNetwork. Installs created
-	// before the rename keep it: their app containers are attached to it by name.
+	// Pre-rename installs keep this name because their app containers are attached to it by name.
 	LegacyNetwork = "miabi"
 	DefaultSubnet = "10.63.0.0/16"
-	// DefaultInternalNetwork carries the platform's own traffic. It is separate from DefaultNetwork
-	// because that one is the shared proxy fabric: every routed app joins it, so anything reachable
-	// there is reachable from a tenant container — and Postgres holds one superuser password for the
-	// whole control plane.
+	// Separate from the shared proxy fabric, where anything is reachable from a tenant container.
 	DefaultInternalNetwork = "miabi-internal"
-	// DefaultInternalSubnet sits BELOW DefaultSubnet, not above: 10.64.0.0/12 is the workspace
-	// allocator's pool (MIABI_NETWORK_POOL_CIDR), so 10.64.0.0/16 would collide with the first
-	// workspace block Miabi hands out.
+	// Below DefaultSubnet because 10.64.0.0/16 would collide with the workspace allocator's pool.
 	DefaultInternalSubnet = "10.62.0.0/16"
 )
 
@@ -106,8 +87,7 @@ const (
 type Service struct {
 	dc  docker.Client
 	log func(format string, args ...any)
-	// manifestPath is where miabi.yaml lives, AS THIS PROCESS SEES IT. The gateway's
-	// config sits beside it, so the Service needs to know the directory.
+	// As this process sees it; the gateway config sits beside it.
 	manifestPath string
 	// recreateNetworks permits converge to recreate a network to turn IPv6 on; see AllowNetworkRecreate.
 	recreateNetworks bool
@@ -120,14 +100,11 @@ func New(dc docker.Client, log func(string, ...any), manifestPath string) *Servi
 	return &Service{dc: dc, log: log, manifestPath: manifestPath}
 }
 
-// Defaults returns a manifest with everything the caller did not supply. miabiImage
-// is the control-plane image, which has no sensible default — it is the version being
-// installed, and the CLI knows it (it is that version).
+// miabiImage has no sensible default: it is the version the CLI is installing.
 func Defaults(miabiImage string) *Manifest {
 	return &Manifest{
 		Version: CurrentVersion,
-		// A fresh install starts on the kinded document. Existing flat files keep their shape until
-		// `miabi upgrade` converts them, so no host changes shape without being told.
+		// Existing flat files keep their shape until `miabi upgrade` converts them.
 		kinded:          true,
 		Network:         NetworkConfig{Name: DefaultNetwork, Subnet: DefaultSubnet},
 		InternalNetwork: NetworkConfig{Name: DefaultInternalNetwork, Subnet: DefaultInternalSubnet},
@@ -141,9 +118,7 @@ func Defaults(miabiImage string) *Manifest {
 	}
 }
 
-// Normalize fills in derived fields and validates what the caller must supply. It is
-// called by Install and Update, so a hand-edited manifest gets the same treatment as
-// a generated one.
+// Called by Install and Update so hand-edited manifests get the same treatment as generated ones.
 func (m *Manifest) Normalize() error {
 	m.Domain = strings.TrimSpace(m.Domain)
 	if m.Domain == "" {
@@ -170,8 +145,7 @@ func (m *Manifest) Normalize() error {
 	if m.InternalNetwork.Subnet == "" {
 		m.InternalNetwork.Subnet = DefaultInternalSubnet
 	}
-	// The two must differ, or the split silently does nothing: every component would land back on the
-	// proxy network and a hand-edited manifest would report a private stack it does not have.
+	// Equal names would silently put every component back on the proxy network.
 	if m.InternalNetwork.Name == m.Network.Name {
 		return fmt.Errorf("internal_network.name and network.name are both %q — the private network "+
 			"exists to keep the platform off the shared proxy network, so they cannot be the same",
@@ -197,8 +171,7 @@ func (m *Manifest) Normalize() error {
 		m.DockerGID = dockerGID()
 	}
 	if m.HostProc == nil {
-		// Absent means on. Resolved here rather than at the use site so Save writes it
-		// back explicitly — the manifest should state what it does, not leave it implied.
+		// Resolved here so Save writes it back and the manifest states what it does.
 		on := true
 		m.HostProc = &on
 	}
@@ -208,8 +181,7 @@ func (m *Manifest) Normalize() error {
 	if err := m.normalizeGateway(); err != nil {
 		return err
 	}
-	// Before normalizeEnv: its probe reads back what the spec emits, so the install settings have to
-	// be valid by the time the reserved-key set is derived from them.
+	// Must run before normalizeEnv, whose probe reads back what the spec emits.
 	if err := m.normalizeInstall(); err != nil {
 		return err
 	}
@@ -219,31 +191,21 @@ func (m *Manifest) Normalize() error {
 	return m.GenerateSecrets()
 }
 
-// Seeded gateway.env defaults, written into the manifest so they are discoverable
-// rather than folklore.
 const (
-	// DefaultGomaLogLevel matches Goma's own default; writing it down makes the knob
-	// visible. Real effect, measured: info emits 28 lines and 0 DEBUG on boot, debug
-	// emits 51 lines and 22 DEBUG.
+	// Matches Goma's own default; written down to make the knob visible.
 	DefaultGomaLogLevel = "info"
 
 	envGomaLogLevel = "GOMA_LOG_LEVEL"
 
-	// DefaultGomaAnalytics turns on the per-request event stream Goma publishes to Redis. On, because the
-	// consumer runs by default and otherwise every analytics dashboard sits empty. Seeded into gateway.env
-	// rather than the spec, since a spec variable becomes reserved and would refuse any operator value.
+	// On because the consumer runs by default; in gateway.env, not the spec, so operators can still override it.
 	DefaultGomaAnalytics = "true"
 
 	envGomaAnalytics = "GOMA_ANALYTICS_ENABLED"
 )
 
-// gomaLogLevels are the values Goma acts on. Validated here because Goma does NOT
-// reject an unknown one — it silently falls back to info, so a typo leaves an operator
-// waiting for debug output that was never coming.
+// Goma silently falls back to info on an unknown level, so validate here.
 var gomaLogLevels = []string{"debug", "trace", "info", "warn", "error", "off"}
 
-// seedGatewayEnvDefaults fills in what the operator should see, without overwriting
-// anything they set.
 func (m *Manifest) seedGatewayEnvDefaults() {
 	if m.Gateway.Env == nil {
 		m.Gateway.Env = map[string]string{}
@@ -256,9 +218,7 @@ func (m *Manifest) seedGatewayEnvDefaults() {
 	}
 }
 
-// normalizeGateway defaults the config file name and validates gateway.env. The reserved set is derived
-// from gatewaySpec, exactly as normalizeEnv derives the control plane's from controlPlaneSpec — so adding
-// a variable to the gateway's spec automatically makes it un-spoofable here, with no list to keep in sync.
+// The reserved set is derived from gatewaySpec, so new spec variables become un-spoofable with no list to sync.
 func (m *Manifest) normalizeGateway() error {
 	if m.Gateway.Config == "" {
 		m.Gateway.Config = DefaultGatewayConfigFile
@@ -299,16 +259,13 @@ func (m *Manifest) normalizeGateway() error {
 	return nil
 }
 
-// Registry storage drivers. Shared with the JSON Schema generator, so the values an editor offers
-// and the values Normalize accepts cannot drift apart.
+// Shared with the JSON Schema generator so editor values and accepted values cannot drift.
 const (
 	registryStorageFilesystem = "filesystem"
 	registryStorageS3         = "s3"
 )
 
-// normalizeInstall validates the settings only the install document carries. They compile into the
-// control plane's environment, so a wrong value is otherwise found at boot — or not at all, having
-// quietly pinned a console field to something nobody meant.
+// Otherwise a wrong value surfaces only at boot, or silently pins a console field.
 func (m *Manifest) normalizeInstall() error {
 	in := &m.Install
 
@@ -344,9 +301,7 @@ func (m *Manifest) normalizeInstall() error {
 	return m.normalizeBackup()
 }
 
-// normalizeServerTrustedProxies gives the document's server.trustedProxies its value: an older
-// server.env entry moves into it, and an empty one resolves to the private network so Save writes the
-// default back where the operator can see it. The flat schema has no field, so it keeps the env entry.
+// An empty value resolves to the private network so Save writes the default back visibly.
 func (m *Manifest) normalizeServerTrustedProxies() error {
 	if !m.kinded {
 		return nil
@@ -371,8 +326,7 @@ func (m *Manifest) normalizeServerTrustedProxies() error {
 	return nil
 }
 
-// normalizeTrustedProxies checks each entry is an IP or a CIDR. Goma would otherwise log the bad entry
-// and drop proxy mode entirely, and every request would quietly carry the CDN's address again.
+// Goma would log a bad entry and drop proxy mode entirely, so requests carry the CDN's address again.
 func normalizeTrustedProxies(in []string) ([]string, error) {
 	var out []string
 	for _, raw := range in {
@@ -399,10 +353,7 @@ func normalizeTrustedProxies(in []string) ([]string, error) {
 	return out, nil
 }
 
-// normalizeBackup enforces the rule the control plane already applies to the destination: it
-// overrides the stored settings only when bucket, access key and secret key are ALL present. A
-// partial block therefore pins nothing and leaves the console in charge — the opposite of what an
-// operator writing it into the manifest is asking for, and silent about it.
+// A partial destination block would silently pin nothing, so it is rejected.
 func (m *Manifest) normalizeBackup() error {
 	b := m.Install.Backup
 	if b == nil {
@@ -424,10 +375,7 @@ func (m *Manifest) normalizeBackup() error {
 	return nil
 }
 
-// reservedEnv are settings the manifest models with a dedicated field, mapped to that field, so setting them
-// through env: would create a second source of truth that can silently disagree with the first. A bare
-// MIABI_REGISTRY_ENABLED in env: would turn the registry on while `miabi stack status` still said it was off.
-// Registry settings the manifest does not model (storage class, S3, image…) are ordinary env entries.
+// Setting these through env would create a second, silently disagreeing source of truth.
 var reservedEnv = map[string]string{
 	"MIABI_REGISTRY_ENABLED":        "registry: {enabled: true, host: …}, or --registry on the command line",
 	"MIABI_REGISTRY_HOST":           "registry: {enabled: true, host: …}, or --registry on the command line",
@@ -435,13 +383,9 @@ var reservedEnv = map[string]string{
 	"MIABI_REGISTRY_PLATFORM_TOKEN": "spec.secrets.registryPlatformToken in the install document",
 }
 
-// Seeded env defaults, written into the manifest rather than applied invisibly, so `env:` shows an
-// operator the two knobs they are most likely to want and where to change them. Both stay ordinary
-// editable entries — neither needs to agree with anything else in the manifest.
+// Seeded into the manifest so `env:` shows the knobs; both stay ordinary editable entries.
 const (
 	DefaultTimezone = "UTC"
-	// DefaultLogLevel matches what the control plane would pick anyway in production;
-	// writing it down makes it discoverable instead of folklore.
 	DefaultLogLevel = "info"
 
 	envTimezone       = "TZ"
@@ -449,13 +393,9 @@ const (
 	envTrustedProxies = "MIABI_TRUSTED_PROXIES"
 )
 
-// logLevels are the values the control plane accepts. Validating here turns a typo into an instant, precise
-// error instead of a control plane that crash-loops until the health gate gives up. "off" is absent
-// deliberately — the logging library cannot honour it. A test asserts this list agrees with the config package's.
+// Validating here beats a crash-looping control plane; "off" is absent because the logger can't honour it.
 var logLevels = []string{"debug", "info", "warn", "warning", "error"}
 
-// seedEnvDefaults fills in the entries an operator should see, without overwriting
-// anything they have set.
 func (m *Manifest) seedEnvDefaults() {
 	if m.Env == nil {
 		m.Env = map[string]string{}
@@ -471,8 +411,7 @@ func (m *Manifest) seedEnvDefaults() {
 	}
 }
 
-// controlPlaneTrustedProxies is the private network: the control plane sits on nothing else, so the gateway
-// is the only peer whose forwarded headers it should believe. Unset, it would believe them from anyone.
+// The gateway is the only peer on the private network; unset, forwarded headers would be believed from anyone.
 func (m *Manifest) controlPlaneTrustedProxies() []string {
 	proxies := []string{m.InternalNetwork.Subnet}
 	if m.InternalNetwork.IPv6 != nil && *m.InternalNetwork.IPv6 {
@@ -482,9 +421,7 @@ func (m *Manifest) controlPlaneTrustedProxies() []string {
 	return proxies
 }
 
-// normalizeEnv validates the operator's extra environment variables and refuses any Miabi sets itself. The
-// reserved set is DERIVED from the control plane's spec, not hand-written, which would be wrong the moment
-// someone adds a variable. Refusing outright means there is never a duplicate key resolved by an ordering rule.
+// The reserved set is derived from the control plane's spec; refusing avoids duplicate keys resolved by order.
 func (m *Manifest) normalizeEnv() error {
 	m.seedEnvDefaults()
 
@@ -515,9 +452,7 @@ func (m *Manifest) normalizeEnv() error {
 		if field, ok := reservedEnv[key]; ok {
 			return fmt.Errorf("env: %s is configured by its own manifest section, not by env (use %s)", key, field)
 		}
-		// The gateway's config-encryption key must reach BOTH containers (Miabi encrypts what Goma decrypts).
-		// Setting it here would give it to the control plane only, and Goma would read a config it cannot decrypt
-		// — routing broken, no obvious cause. It has exactly one home.
+		// The key must reach both containers; set here only the control plane would get it and Goma couldn't decrypt.
 		if key == gomaConfigEncryptionKey {
 			return fmt.Errorf("env: %s has exactly one home — spec.secrets.gomaConfigEncryptionKey "+
 				"in the install document, or gateway.env in the older flat manifest. Set it there and "+
@@ -527,9 +462,7 @@ func (m *Manifest) normalizeEnv() error {
 		clean[key] = v
 	}
 
-	// Validate the seeded knobs. A bad log level would otherwise reach the control
-	// plane, which rejects it at startup — so the container crash-loops and the install
-	// fails two minutes later with "did not become healthy", nowhere near the cause.
+	// A bad level would otherwise crash-loop the control plane and fail the install much later.
 	if lvl, ok := clean[envLogLevel]; ok && lvl != "" {
 		if !slices.Contains(logLevels, strings.ToLower(strings.TrimSpace(lvl))) {
 			return fmt.Errorf("env: %s=%q is not a log level (use %s)",
@@ -555,9 +488,7 @@ func validEnvName(k string) bool {
 	return true
 }
 
-// normalizeEmails resolves the two addresses an install needs — the Let's Encrypt contact and the seeded admin's
-// login — letting each stand in for the other, since in practice one person is both. Only when NEITHER is given
-// do we invent admin@<domain>. admin_email is consumed on FIRST boot only; changing it later renames nothing.
+// Each address stands in for the other; admin_email is consumed on first boot only.
 func (m *Manifest) normalizeEmails() error {
 	acme := strings.TrimSpace(m.ACMEEmail)
 	admin := strings.TrimSpace(m.Secrets.AdminEmail)
@@ -581,18 +512,14 @@ func (m *Manifest) normalizeEmails() error {
 	return nil
 }
 
-// validEmail is deliberately shallow: exactly one @, something either side, and a dot in the domain. Anything
-// stricter rejects perfectly valid addresses, and the real check is that Let's Encrypt accepts it — which
-// happens far from here, so a typo caught now saves an ACME failure that looks nothing like a typo.
+// Deliberately shallow: stricter rejects valid addresses, and Let's Encrypt does the real check.
 func validEmail(s string) bool {
 	local, domain, ok := strings.Cut(s, "@")
 	return ok && local != "" && strings.Contains(domain, ".") &&
 		!strings.Contains(domain, "@") && !strings.ContainsAny(s, " \t")
 }
 
-// normalizeControlURL defaults the control URL to the panel's public URL and checks it is one. A bad value fails
-// far from the mistake: the panel works, and only later does an agent refuse to connect or a gateway fetch no
-// routes. The trailing slash is trimmed because the agent trims it too, so the manifest matches reality.
+// The trailing slash is trimmed because the agent trims it too.
 func (m *Manifest) normalizeControlURL() error {
 	m.ControlURL = strings.TrimRight(strings.TrimSpace(m.ControlURL), "/")
 	if m.ControlURL == "" {
@@ -607,9 +534,7 @@ func (m *Manifest) normalizeControlURL() error {
 	return nil
 }
 
-// normalizeRegistry derives and validates the registry's hostname. The validation is not busywork: the registry
-// host gets a public DNS record and its OWN TLS certificate, so a nonsense value makes the gateway ask Let's
-// Encrypt for a name that cannot exist — burning rate limit and failing far from the mistake.
+// A bad host makes the gateway request an impossible certificate, burning ACME rate limit.
 func (m *Manifest) normalizeRegistry() error {
 	if !m.Registry.Enabled {
 		return nil
@@ -629,8 +554,6 @@ func (m *Manifest) normalizeRegistry() error {
 	return nil
 }
 
-// validHostname accepts a dotted DNS name: at least two labels, alphanumerics and
-// hyphens, no leading/trailing dot or hyphen.
 func validHostname(h string) bool {
 	if len(h) == 0 || len(h) > 253 || !strings.Contains(h, ".") {
 		return false
@@ -650,9 +573,7 @@ func validHostname(h string) bool {
 	return true
 }
 
-// Converge brings the stack to the manifest's desired state in dependency order, and is safe to re-run:
-// a component whose spec already matches is left alone. Postgres and Redis must be *healthy* before the
-// control plane boots; the gateway goes last, so an incomplete stack fails closed.
+// Safe to re-run; Postgres and Redis must be healthy before the control plane, gateway last so it fails closed.
 func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 	if err := m.Normalize(); err != nil {
 		return err
@@ -672,9 +593,7 @@ func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 		return err
 	}
 
-	// Before any component: the gateway config must exist on the host and parse. It is bind-mounted, so it has
-	// to be there before the container is created — and the panel's own route lives in it, so a typo is worth
-	// catching now rather than as a health timeout after the database is already up.
+	// It is bind-mounted and holds the panel's own route, so it must exist and parse before anything is created.
 	if err := s.EnsureGatewayConfig(ctx, m); err != nil {
 		return err
 	}
@@ -687,9 +606,7 @@ func (s *Service) Converge(ctx context.Context, m *Manifest) error {
 	return nil
 }
 
-// ConvergeData brings up only the stateful components the control plane depends on and stops there. It
-// exists for disaster recovery: a restore must load a dump into an EMPTY database, and a control plane
-// booting first would AutoMigrate and collide with the dump's own CREATE TABLE statements.
+// For disaster recovery: a control plane booting first would AutoMigrate and collide with the dump's CREATE TABLEs.
 func (s *Service) ConvergeData(ctx context.Context, m *Manifest) error {
 	if err := m.Normalize(); err != nil {
 		return err
@@ -718,17 +635,11 @@ func (s *Service) ConvergeData(ctx context.Context, m *Manifest) error {
 }
 
 type component struct {
-	Name string
-	// Image is where this component's image lives in the manifest, so update can
-	// write a new pin back to the right field.
+	Name  string
 	Image func(*Manifest) *string
 	Build func(m *Manifest, name, image string) docker.RunSpec
-	// Test says whether a rollout may run a second copy alongside the live one.
-	// False for Postgres (two servers cannot open one data directory) and for the
-	// control plane (a second one would run migrations against the live database).
-	Test bool
-	// WaitHealthy blocks the converge until this component is healthy. True for the
-	// two the control plane depends on.
+	// False for Postgres (one data directory) and the control plane (a second would migrate the live DB).
+	Test        bool
 	WaitHealthy bool
 }
 
@@ -754,9 +665,7 @@ func (s *Service) components(m *Manifest) []component {
 			Image: func(m *Manifest) *string { return &m.Images.Miabi },
 			Build: controlPlaneSpec,
 			Test:  false, // a second control plane would migrate the live database
-			// Without this, converge only checked that `docker run` returned — so a
-			// control plane crash-looping on a bad database password still printed
-			// "✓ Miabi is up". The install reported success while the panel was down.
+			// Without the health gate a control plane crash-looping on a bad DB password still reported success.
 			WaitHealthy: true,
 		},
 		{
@@ -764,16 +673,13 @@ func (s *Service) components(m *Manifest) []component {
 			Image: func(m *Manifest) *string { return &m.Images.Gateway },
 			Build: gatewaySpec,
 			Test:  true, // it holds the ports; prove the new image boots before taking them
-			// Goma answers /healthz, so converge can wait for it to actually SERVE rather than merely not having
-			// exited yet. It is the last component and the only public one: an install that reports success while the
-			// gateway is not routing is an install that reports success while the panel is unreachable.
+			// The gateway is the only public component; reporting success while it isn't routing hides an unreachable panel.
 			WaitHealthy: true,
 		},
 	}
 }
 
-// Component returns the named component, or false. Exported so the CLI can validate
-// `miabi upgrade <component>` before touching anything.
+// Exported so the CLI can validate `miabi upgrade <component>` before touching anything.
 func (s *Service) Component(m *Manifest, name string) (component, bool) {
 	for _, c := range s.components(m) {
 		if c.Name == name {
@@ -793,9 +699,7 @@ func (s *Service) ComponentNames(m *Manifest) []string {
 	return out
 }
 
-// ensureNetwork creates both fabrics: the shared proxy network routed apps join, and the private one
-// the platform's own components talk over. The private one is labelled platform-internal, which is what
-// the app-facing APIs refuse to attach a container to — the name is the operator's to change.
+// The private network is guarded by its platform-internal label, since the name is the operator's to change.
 func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 	for _, n := range []struct {
 		cfg  NetworkConfig
@@ -804,8 +708,7 @@ func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 		{m.Network, docker.RoleProxyNetwork},
 		{m.InternalNetwork, docker.RolePlatformInternal},
 	} {
-		// Set explicitly either way: a network that inherits the daemon's default follows a setting
-		// nobody made in the manifest, which is how IPv6 ended up latent here.
+		// Set explicitly so the network never inherits an unmanifested daemon default, as latent IPv6 once did.
 		ipv6 := n.cfg.IPv6 != nil && *n.cfg.IPv6
 		spec := docker.NetworkSpec{
 			Name:       n.cfg.Name,
@@ -839,19 +742,7 @@ func (s *Service) ensureNetwork(ctx context.Context, m *Manifest) error {
 	return nil
 }
 
-// migrateNetworks moves an already-running stack onto the private network without restarting anything,
-// and is a no-op once every component is where the manifest says.
-//
-// It has to run BEFORE the component loop. Networks are part of specHash, so the split recreates all
-// four containers — but they are recreated in dependency order, and between Postgres and the control
-// plane the old control plane would be talking to a database that had just left its network. Worse,
-// `miabi upgrade miabi-postgres` recreates exactly one component and would leave the panel down until
-// someone ran a full converge. Attaching live first means every component can reach every other one on
-// BOTH networks, so any recreate order — or an interrupted converge — is safe.
-//
-// The trailing disconnect is for the container the loop then leaves alone (spec hash already current,
-// e.g. a converge that died between the attach and the recreate): without it, it would keep an
-// attachment to the proxy network that the manifest says it must not have.
+// Attaches live before the component loop so any recreate order, or an interrupted converge, stays connected.
 func (s *Service) migrateNetworks(ctx context.Context, m *Manifest) error {
 	for _, c := range s.components(m) {
 		cur, err := s.dc.InspectContainer(ctx, c.Name)
@@ -874,8 +765,7 @@ func (s *Service) migrateNetworks(ctx context.Context, m *Manifest) error {
 		if slices.Contains(want, m.Network.Name) || !attachedTo(cur, m.Network.Name) {
 			continue
 		}
-		// Only ever the proxy network, and only when the spec says this component has no business on
-		// it. Disconnecting anything else would be this function guessing at state it did not put there.
+		// Only the proxy network, and only when the spec forbids it; anything else would be guessing.
 		s.log("  %-14s leaving %s", c.Name, m.Network.Name)
 		if err := s.dc.NetworkDisconnect(ctx, m.Network.Name, c.Name, false); err != nil {
 			return fmt.Errorf("detach %s from %s: %w", c.Name, m.Network.Name, err)
@@ -914,9 +804,7 @@ func (s *Service) ensureVolumes(ctx context.Context) error {
 	return nil
 }
 
-// ensureContainer creates the component if absent, replaces it if its spec changed, and leaves it alone
-// otherwise. "Changed" is a hash of the run spec, stamped as a label: comparing field by field would mean
-// re-deriving Docker's normalization, and every miss would be a spurious recreate — a restart for Postgres.
+// Compares a spec-hash label, since re-deriving Docker's normalization would cause spurious recreates.
 func (s *Service) ensureContainer(ctx context.Context, m *Manifest, c component) error {
 	image := *c.Image(m)
 	spec := c.Build(m, c.Name, image)
@@ -940,9 +828,7 @@ func (s *Service) ensureContainer(ctx context.Context, m *Manifest, c component)
 		s.log("  %-14s creating", c.Name)
 	}
 
-	// Accept an image already on the host when the registry is unreachable: an
-	// air-gapped install, or one running a locally built / pre-loaded image, has
-	// nothing to pull from and does not need to.
+	// Accept a local image when the registry is unreachable, e.g. air-gapped or pre-loaded installs.
 	if err := ensureImage(ctx, s.dc, image, s.log); err != nil {
 		return err
 	}
@@ -958,16 +844,12 @@ func (s *Service) ensureContainer(ctx context.Context, m *Manifest, c component)
 	return nil
 }
 
-// ensureImage pulls, falling back to a copy already on the host, and reports the
-// fallback through the install log rather than the global logger.
 func ensureImage(ctx context.Context, dc docker.Client, ref string, log func(string, ...any)) error {
 	return saferollout.EnsureImage(ctx, dc, ref, nil, func(f string, a ...any) {
 		log("  "+f, a...)
 	})
 }
 
-// Rollout replaces one component with a new image and returns the manifest field to
-// persist. It is the update path; Converge is the install path.
 func (s *Service) Rollout(ctx context.Context, m *Manifest, name, newImage string, onPhase func(string, error)) error {
 	if err := m.Normalize(); err != nil {
 		return err

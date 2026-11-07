@@ -253,8 +253,7 @@ async function persistExternal() {
   if (await patch(body, 'External access updated')) showExternal.value = false
 }
 
-// --- Dedication (impactful: it decides who may see and place here, and strands whatever the new
-// owner does not own). Gated behind an explicit acknowledgement, the same way a node's connectivity is. ---
+// Dedication decides who may place here and strands what the new owner doesn't own, so it needs acknowledgement.
 const eeOrgs = computed(() => license.has('organizations'))
 const showDedication = ref(false)
 const dedicationSaving = ref(false)
@@ -377,8 +376,7 @@ async function loadStatus() {
   } catch { /* best-effort; the page works without it */ }
 }
 
-// Normal for an install that was already clustered before it upgraded: the conversion only
-// runs on the enable transition, so it has to be applied explicitly.
+// Conversion only runs on the enable transition, so pre-clustered installs must apply it explicitly.
 const networksPending = computed(() => status.value?.networks_pending ?? 0)
 const showApplyNetworking = ref(false)
 async function applyNetworking() {

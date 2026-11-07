@@ -48,8 +48,6 @@ type composeService struct {
 	Volumes     []string    `yaml:"volumes"`
 }
 
-// composeEnv accepts both the mapping form (KEY: value) and the list form
-// (- KEY=value).
 type composeEnv []struct{ Key, Value string }
 
 func (e *composeEnv) UnmarshalYAML(node *yaml.Node) error {
@@ -90,9 +88,7 @@ type ImportSkip struct {
 	Reason  string `json:"reason"`
 }
 
-// PortConflict records a published compose port whose host port was already in
-// use on the node at import time. The binding is still filed (pending), so the
-// stack imports cleanly; the user can remap the port or have an admin review it.
+// The binding is filed pending so the stack still imports cleanly.
 type PortConflict struct {
 	Service  string `json:"service"`
 	HostPort int    `json:"host_port"`
@@ -110,11 +106,7 @@ type ImportResult struct {
 	Skipped       []ImportSkip   `json:"skipped"`
 }
 
-// ImportCompose creates a stack and one application per Compose service (image-source only). Named volumes
-// are provisioned and mounted; published host ports become pending port-binding requests an admin approves.
-// Apps join the stack network and resolve each other by service name. Bind mounts and builds are skipped.
-// ImportPlacement is where an imported stack runs: its location, and the one node its apps and volumes
-// share, as they would on a single Compose host.
+// ImportPlacement is where an imported stack runs: its location and the single node its apps and volumes share.
 type ImportPlacement struct {
 	ClusterID uint
 	ServerID  uint
@@ -183,8 +175,6 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 	return result, nil
 }
 
-// importPorts files a pending host port-binding request for every published
-// compose port (host:container). Bindings still require admin approval.
 func (s *Service) importPorts(workspaceID, userID uint, svc string, app *models.Application, mappings []portMapping, result *ImportResult) {
 	if s.ports == nil {
 		return
@@ -193,9 +183,7 @@ func (s *Service) importPorts(workspaceID, userID uint, svc string, app *models.
 		if m.Host == 0 {
 			continue // not published to the host
 		}
-		// RequestImport never fails on a host-port conflict — it files the binding
-		// pending and reports the owner, so the stack imports without a container
-		// crashing on a port already taken (often by a non-Miabi container).
+		// Never fails on a conflict, so a stack imports without a container crashing on a taken port.
 		_, conflict, err := s.ports.RequestImport(workspaceID, userID, portbinding.RequestInput{
 			ApplicationID: app.ID, ContainerPort: m.Container, HostPort: m.Host, Protocol: m.Proto,
 		})
@@ -221,8 +209,7 @@ func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint,
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "bind mount not supported: " + raw})
 			continue
 		}
-		// Dedup key: the named volume is shared; anonymous volumes are per
-		// service+path.
+		// The named volume is shared; anonymous volumes are per service+path.
 		key := m.Source
 		if key == "" {
 			key = svc + ":" + m.Target
@@ -247,8 +234,6 @@ func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint,
 	}
 }
 
-// volumeName builds the managed-volume name for a compose volume, namespaced by
-// stack so imports don't collide.
 func volumeName(stackName, source, svc string) string {
 	if source != "" {
 		return stackName + "-" + source
@@ -263,8 +248,6 @@ type composeMount struct {
 	Bind   bool   // host bind mount (unsupported)
 }
 
-// parseComposeVolume parses a short-syntax volume entry: "name:/path[:ro]",
-// "/host:/path" (bind), or "/path" (anonymous).
 func parseComposeVolume(v string) (composeMount, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -285,16 +268,13 @@ func parseComposeVolume(v string) (composeMount, bool) {
 	return composeMount{Source: source, Target: target}, true
 }
 
-// portMapping is a parsed Compose "ports" entry. Host is 0 when the port is
-// only exposed (not published to the host).
+// Host is 0 when the port is only exposed, not published.
 type portMapping struct {
 	Host      int
 	Container int
 	Proto     string
 }
 
-// composePortMappings parses Compose "ports" entries ("8080:80", "80",
-// "53:53/udp", "127.0.0.1:8080:80").
 func composePortMappings(ports []string) []portMapping {
 	out := make([]portMapping, 0, len(ports))
 	for _, p := range ports {

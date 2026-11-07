@@ -58,8 +58,7 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
-// The envelope is the one artifact whose plaintext is the whole platform. If the
-// encryption key ever appears in the sealed bytes, everything else is theatre.
+// If the encryption key ever appears in the sealed bytes, everything else is theatre.
 func TestSealedEnvelopeLeaksNothing(t *testing.T) {
 	in := sample()
 	sealed, err := Seal(in, goodPass)
@@ -83,8 +82,7 @@ func TestOpenWrongPassphrase(t *testing.T) {
 	}
 }
 
-// Every byte of the header is authenticated, so an edited salt or version must
-// fail to open rather than decrypt to something.
+// Every header byte is authenticated, so an edited salt or version must fail to open.
 func TestOpenTamperedEnvelope(t *testing.T) {
 	base, err := Seal(sample(), goodPass)
 	if err != nil {

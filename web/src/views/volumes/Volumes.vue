@@ -31,11 +31,9 @@ const filteredVolumes = computed(() => {
 })
 const usage = ref<WorkspaceUsage | null>(null)
 const storage = ref<WorkspaceStorage | null>(null)
-// Shared storage (NFS/CIFS) is a plan capability — only constrains the UI when
-// enforcement is on; otherwise the server allows any driver.
+// Only constrains the UI when enforcement is on; otherwise the server allows any driver.
 const sharedAllowed = computed(() => !usage.value || !usage.value.enforced || usage.value.capabilities.shared_storage)
-// Host-path volumes need the privileged-host-mount capability (the workspace must
-// also carry the platform-admin privileged flag — enforced server-side).
+// The workspace must also carry the platform-admin privileged flag, enforced server-side.
 const hostAllowed = computed(() => !usage.value || !usage.value.enforced || usage.value.capabilities.privileged_host_mounts)
 const loading = ref(false)
 const showCreate = ref(false)
@@ -44,8 +42,7 @@ const name = ref('')
 const serverId = ref(0)
 const volLocation = ref('')
 const sizeMb = ref<number | null>(null)
-// local = node-local (rwo); nfs/cifs = shared (rwx) for replicated cluster apps;
-// host = bind an operator-managed /mnt/* path present on every node (rwx).
+// nfs/cifs are shared rwx for replicated apps; host binds an operator /mnt/* path present on every node.
 const driver = ref<'local' | 'nfs' | 'cifs' | 'host'>('local')
 const nfsServer = ref('')
 const nfsExport = ref('')
@@ -53,8 +50,7 @@ const cifsShare = ref('')
 const cifsUser = ref('')
 const cifsPass = ref('')
 const hostPath = ref('')
-// The storage classes this workspace may use, i.e. which of the operator's disks a volume can land
-// on. Empty means the install registered none and Docker's own directory is the only option.
+// Empty means the install registered none and Docker's own directory is the only option.
 const storageClasses = ref<StorageClassOption[]>([])
 const storageClass = ref('')
 // name -> display name, for the Storage column.
@@ -76,8 +72,7 @@ async function load(id: number | null) {
   }
 }
 
-// Percent of the plan cap the workspace's measured usage occupies (null when
-// unlimited or unmeasured), for the summary bar.
+// null when unlimited or unmeasured.
 const storagePct = computed(() => {
   const s = storage.value
   if (!s || s.limit_mb < 0 || s.limit_mb === 0) return null
@@ -99,8 +94,7 @@ function openCreate() {
   void loadStorageClasses()
 }
 
-// The offered classes depend on the node, so they are reloaded when the location changes. A failure
-// is not fatal: the field simply disappears and the create falls back to the install's default.
+// Classes depend on the node, so reload with the location; on failure the create uses the install default.
 async function loadStorageClasses() {
   if (!currentWorkspaceId.value) return
   try {
@@ -113,15 +107,12 @@ async function loadStorageClasses() {
 }
 watch(volLocation, () => { if (showCreate.value) void loadStorageClasses() })
 
-// A volume stores its class by name; the readable label lives on the class. A class the workspace
-// can no longer be offered — disabled, or dropped from its plan — simply shows its name.
+// A class no longer offered (disabled, dropped from the plan) simply shows its name.
 function classLabel(name?: string): string {
   if (!name) return '—'
   return classLabels.value[name] || name
 }
 
-// Docker mount options for the selected shared-storage backend (undefined for
-// a node-local volume).
 function driverOpts(): Record<string, string> | undefined {
   if (driver.value === 'nfs') {
     return { o: `addr=${nfsServer.value.trim()},rw`, device: `:${nfsExport.value.trim()}` }

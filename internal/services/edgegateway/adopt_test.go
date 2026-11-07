@@ -112,8 +112,6 @@ func TestAdoptCentralLeavesAnythingAlreadySettledAlone(t *testing.T) {
 	}
 }
 
-// A tracked gateway that no longer exists is drift for the control manager to report — not a reason to leave
-// the live platform gateway unknown.
 func TestAdoptCentralIgnoresAStaleTrackedContainer(t *testing.T) {
 	dc := withContainers(centralContainer())
 	adopter := &fakeAdopter{}

@@ -46,9 +46,7 @@ const loading = ref(true)
 const tagsLoading = ref(false)
 const notFound = ref(false)
 
-// Deleting needs both the role and the platform's registry delete switch —
-// without the switch every delete is rejected, so offering the button would only
-// produce a confusing failure.
+// Without the platform's delete switch every delete is rejected, so the button would only fail.
 const canDelete = computed(
   () => ws.currentRole !== null && ws.currentRole !== 'viewer' && info.value?.delete_enabled === true,
 )
@@ -64,10 +62,7 @@ function pullCommand(tag: string) {
 const latestPull = computed(() =>
   overview.value?.latest_tag ? pullCommand(overview.value.latest_tag.name) : '',
 )
-/**
- * The tag preview, tolerating a null list. A repository whose last tag was
- * deleted still exists in the registry catalog until garbage collection.
- */
+/** A repository whose last tag was deleted stays in the catalog until garbage collection. */
 const recentTags = computed(() => overview.value?.tags ?? [])
 
 const search = ref('')
@@ -107,8 +102,7 @@ async function load() {
 }
 
 const { pageable, goToPage } = usePagination(async (page) => {
-  // Enriching a page of tags costs one registry read per tag, so it only happens
-  // when the Tags tab is actually open — landing on Overview must not pay for it.
+  // Enriching costs one registry read per tag, so only do it on the Tags tab.
   if (!wsId.value || !repo.value || activeTab.value !== 'tags') return
   tagsLoading.value = true
   try {
@@ -124,8 +118,6 @@ const { pageable, goToPage } = usePagination(async (page) => {
 })
 
 watch([wsId, repo], load, { immediate: true })
-// Load the tags the first time the tab is opened, and whenever the image changes
-// while it's open.
 watch([activeTab, repo], () => {
   if (activeTab.value === 'tags') goToPage(pageable.value.current_page)
 })
@@ -170,8 +162,7 @@ async function confirmDelete() {
     await registryApi.deleteTag(wsId.value, repo.value, tag)
     notify.success(t('notify.registry.tagDeleted', { repo: repo.value, tag }))
     confirmTarget.value = null
-    // The newest tag may have changed, so refresh the overview too — quietly,
-    // without blanking the page the user is looking at.
+    // The newest tag may have changed; refresh quietly without blanking the page.
     await Promise.all([loadOverview(), goToPage(pageable.value.current_page)])
   } catch (e) {
     notify.apiError(e)

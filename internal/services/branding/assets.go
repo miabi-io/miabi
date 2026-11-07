@@ -43,12 +43,10 @@ const (
 	AssetFavicon  AssetSlot = "favicon"
 )
 
-// MaxAssetBytes caps an upload. Logos render at 28–48 px and every sign-in page
-// load serves them, so anything larger is an unoptimised export.
+// Logos render at 28-48 px on every sign-in load, so anything larger is an unoptimised export.
 const MaxAssetBytes = 512 << 10
 
-// assetPath is where auth_routes serves uploads. Under /auth because that group is
-// public: the sign-in page shows them before anyone has a session.
+// Under /auth because that group is public: the sign-in page shows them before any session.
 const assetPath = "/api/v1/auth/branding/"
 
 const assetVersionLen = 12
@@ -77,8 +75,7 @@ func ParseAssetSlot(raw string) (AssetSlot, error) {
 	return "", ErrUnknownAsset
 }
 
-// AssetURL is the versioned address of an upload. The version is the content hash,
-// so a replaced image gets a new URL and the old one can be cached for good.
+// The version is the content hash, so a replaced image gets a new URL and old ones cache forever.
 func AssetURL(slot AssetSlot, sha string) string {
 	v := sha
 	if len(v) > assetVersionLen {
@@ -87,8 +84,7 @@ func AssetURL(slot AssetSlot, sha string) string {
 	return assetPath + string(slot) + "?v=" + v
 }
 
-// AssetCacheControl caches a request for good only when it names the current
-// version; a bare or stale URL revalidates, so a replaced image is never pinned.
+// A bare or stale URL revalidates so a replaced image is never pinned.
 func AssetCacheControl(version, sha string) string {
 	if len(version) == assetVersionLen && strings.HasPrefix(sha, version) {
 		return "public, max-age=31536000, immutable"
@@ -96,8 +92,7 @@ func AssetCacheControl(version, sha string) string {
 	return "no-cache"
 }
 
-// DetectImage returns the content type of an accepted image. It is read from the
-// bytes, never from the filename or the upload's header, which the client chooses.
+// Read from the bytes, never the filename or header, which the client chooses.
 func DetectImage(data []byte) (string, error) {
 	switch ct := http.DetectContentType(data); ct {
 	case "image/png", "image/jpeg", "image/webp", "image/x-icon":
@@ -109,9 +104,7 @@ func DetectImage(data []byte) (string, error) {
 	return "", ErrUnsupportedImage
 }
 
-// isSVG reports whether data is an XML document whose root element is <svg>. A
-// prolog, comments and a doctype may come first; an HTML page carrying an inline
-// <svg> is refused, because its root is not one.
+// An HTML page carrying an inline <svg> is refused because its root is not svg.
 func isSVG(data []byte) bool {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	for {
@@ -130,8 +123,7 @@ func isSVG(data []byte) bool {
 	}
 }
 
-// Assets lists the uploaded images by slot. Unreadable means none: the sign-in page
-// falls back to URLs and Miabi's own marks rather than failing.
+// Unreadable means none: the sign-in page falls back rather than failing.
 func (s *Service) Assets() map[AssetSlot]Asset {
 	out := map[AssetSlot]Asset{}
 	rows, err := s.assets.List()

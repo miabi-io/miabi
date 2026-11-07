@@ -150,8 +150,7 @@ func TestObserveModeNeverRedeploys(t *testing.T) {
 	}
 }
 
-// The whole point of the guard: an app whose data is gone is never started again, however loudly its
-// container is missing.
+// An app whose data is gone is never started again, however loudly its container is missing.
 func TestEnforceRefusesWhenTheDataIsGone(t *testing.T) {
 	h := newHarness()
 	e := h.enforcing()

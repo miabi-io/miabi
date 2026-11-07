@@ -33,8 +33,7 @@ func states(entries []PortEntry) map[int]string {
 	return out
 }
 
-// The binding table and the node disagree in both directions, and an admin needs
-// both disagreements named rather than averaged.
+// An admin needs both disagreements named rather than averaged.
 func TestReconcileNamesBothDisagreements(t *testing.T) {
 	s := &Service{}
 	bindings := []models.PortBinding{
@@ -64,8 +63,7 @@ func TestReconcileNamesBothDisagreements(t *testing.T) {
 	}
 }
 
-// A pending request is not published, whatever a container of the same name
-// happens to be doing on that port.
+// Pending is never published, whatever a same-named container does on that port.
 func TestPendingIsNeverPublished(t *testing.T) {
 	s := &Service{}
 	entries := s.reconcile(
@@ -81,13 +79,7 @@ func TestPendingIsNeverPublished(t *testing.T) {
 	}
 }
 
-// An unreachable node yields no information, which must not be reported as a
-// clean node. Claiming "published" would be a guess and claiming "no unmanaged
-// ports" would be a lie.
-//
-// The live map here is deliberately non-empty even though inspectNode returns nil
-// alongside inspected=false today: the flag, not the emptiness of the map, is what
-// decides. A test that leaned on the nil map would pass with both guards deleted.
+// The live map is deliberately non-empty: the inspected flag, not map emptiness, must decide.
 func TestUninspectedNodeClaimsNothing(t *testing.T) {
 	s := &Service{}
 	stale := map[string]string{"8080/tcp": "acme-web", "9000/tcp": "some-other"}

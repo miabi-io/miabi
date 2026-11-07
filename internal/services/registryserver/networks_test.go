@@ -52,9 +52,7 @@ func internalNet(name string) docker.Network {
 	}
 }
 
-// Tenant authorization happens in the gateway's forwardAuth middleware, so the registry belongs on the
-// platform's private network and nowhere else. It also requires Basic auth there (see upstreamauth.go);
-// the network is the first boundary, not the only one.
+// Tenant auth happens in the gateway, so the registry belongs only on the private network (and still requires Basic auth).
 func TestRegistryIsNotOnTheSharedNetwork(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi-internal"}
 	dc := &netDocker{}
@@ -66,8 +64,7 @@ func TestRegistryIsNotOnTheSharedNetwork(t *testing.T) {
 	if slices.Contains(nets, "miabi") {
 		t.Errorf("registry networks = %v, want no attachment to the shared network app containers join", nets)
 	}
-	// The control plane is on the private network and talks to the registry over it — every browse, quota
-	// and GC call goes to http://mb-registry:5000 — and the gateway reaches it there as a route backend.
+	// The control plane and gateway both reach the registry over the private network.
 	if len(nets) != 1 || nets[0] != "miabi-internal" {
 		t.Errorf("registry networks = %v, want only the private network", nets)
 	}
@@ -76,8 +73,7 @@ func TestRegistryIsNotOnTheSharedNetwork(t *testing.T) {
 	}
 }
 
-// MIABI_INTERNAL_NETWORK defaults to empty and most installs never edit it, so the name is
-// discovered from the engine by its role label instead. Configuring nothing must still be safe.
+// MIABI_INTERNAL_NETWORK is usually empty, so the network is discovered by its role label.
 func TestRegistryDiscoversThePrivateNetworkByLabel(t *testing.T) {
 	dc := &netDocker{nets: []docker.Network{
 		{ID: "1", Name: "miabi"},
@@ -95,8 +91,7 @@ func TestRegistryDiscoversThePrivateNetworkByLabel(t *testing.T) {
 	}
 }
 
-// The name is the operator's to choose, so the label is the test — a renamed network is still found,
-// and a network merely NAMED like the platform's is not mistaken for one.
+// The label is the test: a renamed network is found, and a similarly named one without the label is not.
 func TestRegistryDiscoveryIgnoresNamesWithoutTheLabel(t *testing.T) {
 	dc := &netDocker{nets: []docker.Network{{ID: "9", Name: "miabi-internal"}}}
 	if _, err := (&Service{network: "miabi"}).networks(context.Background(), dc); !errors.Is(err, ErrNoInternalNetwork) {
@@ -104,9 +99,7 @@ func TestRegistryDiscoveryIgnoresNamesWithoutTheLabel(t *testing.T) {
 	}
 }
 
-// The fix itself: with no private network the registry REFUSES TO START rather than falling back to the
-// shared proxy network, which every app container can reach. A registry that will not start is a visible
-// failure; the fallback was a silent one.
+// With no private network the registry refuses to start instead of silently falling back to the shared proxy network.
 func TestRegistryRefusesTheSharedNetworkFallback(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -132,8 +125,7 @@ func TestRegistryRefusesTheSharedNetworkFallback(t *testing.T) {
 	}
 }
 
-// An explicit MIABI_INTERNAL_NETWORK still wins, so an operator can name a network discovery would
-// not find (unlabelled, or one of several).
+// An explicit MIABI_INTERNAL_NETWORK wins, for networks discovery would not find.
 func TestRegistryPrefersTheConfiguredNetwork(t *testing.T) {
 	dc := &netDocker{nets: []docker.Network{internalNet("discovered")}}
 	s := &Service{network: "miabi", internalNetwork: "configured"}

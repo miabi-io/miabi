@@ -18,22 +18,13 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The overlay and dialog frame every modal shares. It owns the behaviour rather
-// than the layout: callers keep their own .modal-header / .modal-body /
-// .modal-footer markup in the default slot, so adopting it is a two-line change
-// at each site.
-//
-// Nothing here dismisses the dialog except the caller. Clicking the backdrop
-// does nothing on purpose — an errant click beside a form used to discard
-// everything typed into it.
+// Only the caller dismisses: a backdrop click does nothing, since an errant click used to discard a typed form.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useModal } from '@/composables/useModal'
 
 const props = withDefaults(
   defineProps<{
-    /** Usually left unset: put v-if on the component instead, which keeps the
-     * dialog out of the DOM until it is shown and preserves the type narrowing
-     * its content relies on. */
+    /** Usually left unset: v-if keeps the dialog out of the DOM and preserves its content's type narrowing. */
     open?: boolean
     /** Extra classes for the dialog, e.g. "modal-lg" or a per-view class. */
     dialogClass?: string
@@ -79,8 +70,7 @@ useModal(
   },
 )
 
-// Name the dialog after its own heading. Every modal in the app puts one in its
-// header, and wiring it here spares each caller from inventing an id.
+// Every modal has a header heading, so labelling here spares each caller from inventing an id.
 watch(
   () => props.open,
   async (open) => {

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package sealing manages each workspace's sealing key pairs and opens sealed secret values (pkg/sealed).
-// Private keys are wrapped under the master KEK and never leave the server except inside a passphrase-sealed
-// workspace bundle, so a value in git is readable by Miabi and nobody else.
+// Package sealing manages workspace sealing keys; private keys stay wrapped under the master KEK.
 package sealing
 
 import (
@@ -97,8 +95,7 @@ func (s *Service) Rotate(workspaceID uint) (*models.WorkspaceSealingKey, error) 
 	return k, nil
 }
 
-// Unseal opens a sealed value declared on the secret name and reports the key version that opened it. The
-// version recorded in the value is tried first, then every other retained key.
+// Unseal tries the key version recorded in the value first, then every other retained key.
 func (s *Service) Unseal(workspaceID uint, name, value string) (string, int, error) {
 	hint, _, err := sealed.Parse(value)
 	if err != nil {
@@ -152,9 +149,7 @@ func (s *Service) Export(workspaceID uint) ([]ExportedKey, error) {
 	return out, nil
 }
 
-// Import restores exported keys so values sealed on the source keep opening here. A workspace without keys
-// takes them as they were; one that already has its own keeps its active key and gains the imported ones as
-// retired versions. A key already present is skipped. Returns how many were added.
+// Import keeps an existing active key and adds imported ones as retired versions; duplicates are skipped.
 func (s *Service) Import(workspaceID uint, keys []ExportedKey) (int, error) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()

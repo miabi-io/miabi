@@ -62,26 +62,18 @@ const (
 // Workspace is the multi-tenant root that owns all resources.
 type Workspace struct {
 	UIDModel
-	ID uint `json:"id" gorm:"primaryKey"`
-	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]). It is the
-	// human key for scoped routes and the registry namespace; the numeric ID/UID
-	// remain the stable internal references.
+	ID   uint   `json:"id" gorm:"primaryKey"`
 	Name string `json:"name" gorm:"uniqueIndex;not null"`
 	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string `json:"display_name"`
 	Description string `json:"description"`
 	OwnerID     uint   `json:"owner_id" gorm:"index;not null"`
-	// OrganizationID is the realm this workspace belongs to (nullable → the
-	// default org). Lets SSO/enforced-login/SCIM scope to an org without a
-	// destructive migration when multi-org lands.
+	// Nullable so SSO/SCIM can scope to an org without a destructive migration when multi-org lands.
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
 	Privileged     bool  `json:"privileged" gorm:"not null;default:false"`
-	// System marks the built-in platform workspace ("Miabi System"). It holds platform-managed
-	// apps such as the per-node Goma gateways, is created on first boot, is always privileged,
-	// and cannot be deleted. Only platform admins manage it.
+	// Created on first boot, always privileged, undeletable, and managed only by platform admins.
 	System bool `json:"system" gorm:"not null;default:false"`
-	// PlanID is the assigned plan (nil → the default plan → unlimited). Drives
-	// per-workspace resource quotas when plan enforcement is enabled.
+	// nil means the default plan, then unlimited.
 	PlanID *uint `json:"plan_id,omitempty" gorm:"index"`
 	// DefaultClusterID is the location a create lands in when it names none; nil means the default cluster.
 	DefaultClusterID *uint `json:"default_cluster_id,omitempty" gorm:"index"`
@@ -91,8 +83,7 @@ type Workspace struct {
 	RestrictionUntil  *time.Time           `json:"restriction_until"`
 	RestrictedAt      *time.Time           `json:"restricted_at"`
 	RestrictedBy      *uint                `json:"restricted_by"`
-	// FrozenResources is what was running when the workspace was suspended, so lifting the
-	// suspension restarts exactly that and nothing a user had stopped on purpose.
+	// Lets lifting the suspension restart exactly that, not things a user stopped on purpose.
 	FrozenResources *FrozenResources `json:"-" gorm:"type:text;serializer:json"`
 	// BillingAccountID is the billing account the workspace is billed to (nil = not billed).
 	BillingAccountID *uint `json:"billing_account_id,omitempty" gorm:"index"`
@@ -113,8 +104,7 @@ const (
 	WorkspaceRestrictionReadOnly WorkspaceRestriction = "read_only"
 	// WorkspaceRestrictionSuspended is read-only with apps and databases stopped and CronJobs paused.
 	WorkspaceRestrictionSuspended WorkspaceRestriction = "suspended"
-	// WorkspaceRestrictionFrozen is set by a migration: writes refused and apps stopped, while the
-	// databases keep running so they can be exported. Only a migration sets or lifts it.
+	// Databases keep running so they can be exported; only a migration sets or lifts it.
 	WorkspaceRestrictionFrozen WorkspaceRestriction = "frozen"
 )
 
@@ -129,9 +119,6 @@ type FrozenResources struct {
 	Databases []uint `json:"databases"`
 }
 
-// WorkspaceWithRole is a workspace annotated with the requesting user's role in
-// it. Returned by the list endpoint so the UI can render role badges and gate
-// admin-only affordances without an extra round-trip per workspace.
 type WorkspaceWithRole struct {
 	Workspace
 	Role WorkspaceRole `json:"role"`
@@ -143,11 +130,9 @@ type WorkspaceMember struct {
 	WorkspaceID uint          `json:"workspace_id" gorm:"uniqueIndex:idx_workspace_user;not null"`
 	UserID      uint          `json:"user_id" gorm:"uniqueIndex:idx_workspace_user;not null"`
 	Role        WorkspaceRole `json:"role" gorm:"not null;default:viewer"`
-	// CustomRoleID, when set, overrides Role with an admin-defined permission set
-	// (Enterprise). Role still holds the custom role's BaseRole for rank checks.
+	// Role still holds the custom role's BaseRole for rank checks.
 	CustomRoleID *uint `json:"custom_role_id" gorm:"index"`
-	// ManagedBy names the SSO provider whose groups granted this membership; such a membership is
-	// changed and removed only by that provider's group sync. Empty for memberships made by hand.
+	// Such memberships are changed and removed only by that provider's group sync.
 	ManagedBy string    `json:"managed_by" gorm:"type:varchar(64);not null;default:''"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

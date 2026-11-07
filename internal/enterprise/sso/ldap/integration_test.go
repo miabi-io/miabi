@@ -23,9 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestAuthenticate_Integration binds against a real directory when one is configured via env, so a
-// CI job running an OpenLDAP or Samba-AD container exercises the full dial->search->bind->group
-// path. It skips when MIABI_LDAP_IT_HOST is unset, so the default `go test` stays hermetic.
+// Skips when MIABI_LDAP_IT_HOST is unset so the default `go test` stays hermetic.
 func TestAuthenticate_Integration(t *testing.T) {
 	host := os.Getenv("MIABI_LDAP_IT_HOST")
 	if host == "" {

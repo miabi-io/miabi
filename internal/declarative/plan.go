@@ -54,34 +54,23 @@ type Change struct {
 	Fields []FieldDiff `json:"fields,omitempty"`
 }
 
-// Plan is an ordered set of changes that converges actual state to desired.
-// Creates/updates run in dependency order (volumes/dbs before apps before
-// domains); deletes run in reverse.
 type Plan struct {
 	Changes []Change `json:"changes"`
 }
 
-// LabelManagedBy is the Meta.Labels key that records which subsystem owns an
-// actual resource. The plan engine uses it to keep prune from ever deleting a
-// resource the apply engine did not create.
+// LabelManagedBy keeps prune from ever deleting a resource the apply engine did not create.
 const LabelManagedBy = "miabi.io/managed-by"
 
-// LabelGitOpsSource is the Meta.Labels key recording which GitOps project (source
-// id) created an actual resource, so a single project's resources can be listed
-// or torn down without touching another project's.
+// LabelGitOpsSource lets one GitOps project's resources be torn down without touching another's.
 const LabelGitOpsSource = "miabi.io/gitops-source"
 
 // PlanOptions tunes plan generation.
 type PlanOptions struct {
 	// Prune emits deletes for actual resources absent from desired.
 	Prune bool
-	// PruneManagedBy, when non-empty, restricts prune to actual resources whose
-	// LabelManagedBy label equals it — so a GitOps prune never deletes a
-	// hand-created or otherwise-owned resource. Empty prunes any orphan.
+	// PruneManagedBy keeps a GitOps prune from deleting hand-created resources; empty prunes any orphan.
 	PruneManagedBy string
-	// PruneGitOpsSource, when non-empty, restricts prune to actual resources whose LabelGitOpsSource
-	// equals it, so one project's reconcile never prunes another's. Empty leaves prune unscoped.
-	// Resources with no source label are never matched, so a scoped prune never deletes them.
+	// PruneGitOpsSource scopes prune to one project; resources with no source label are never matched.
 	PruneGitOpsSource string
 	// IncludeNoop keeps in-sync resources in the plan (useful for status views).
 	IncludeNoop bool
@@ -114,20 +103,13 @@ func (p *Plan) Counts() (create, update, del, noop int) {
 	return
 }
 
-// applyRank orders kinds by dependency: a resource of lower rank is created
-// before one that may depend on it. Projects are organizational and excluded
-// from plans entirely.
 func applyRank(k Kind) int {
 	switch k {
 	case KindSecret, KindSealedSecret, KindVolume, KindDomain, KindConfig, KindMiddleware:
-		// Independent, foundational resources. Domains come before the routes that
-		// bind hostnames under them, and so do middlewares: a route naming a chain
-		// is refused until every middleware in it exists.
+		// Middlewares come first because a route naming a chain is refused until every middleware in it exists.
 		return 0
 	case KindDatabase, KindStack, KindRegistry, KindGitRepository:
-		// A registry credential ranks above Secret rather than beside it: its password is typically
-		// "{{ .secrets.x }}", and same-rank changes order by kind name — which would put Registry before
-		// Secret and fail the strict render on a first apply.
+		// Above Secret: its password is usually a secret ref, and same-rank ties order by kind name.
 		return 1
 	case KindApplication:
 		return 2
@@ -144,9 +126,6 @@ func applyRank(k Kind) int {
 
 func planned(k Kind) bool { return k != KindProject }
 
-// matchActual finds the live resource a desired one refers to: by uid when the
-// desired carries metadata.uid (rename-safe), else by kind+name. Returns the
-// match and whether it exists.
 func matchActual(actual *ResourceSet, byUID map[string]Resource, d Resource) (Resource, bool) {
 	if d.Metadata.UID != "" {
 		if r, ok := byUID[string(d.Kind)+"/"+d.Metadata.UID]; ok {
@@ -156,8 +135,7 @@ func matchActual(actual *ResourceSet, byUID map[string]Resource, d Resource) (Re
 	if r, ok := actual.Get(d.Key()); ok {
 		return r, true
 	}
-	// Switching a name between Secret and SealedSecret updates the one vault entry rather than creating
-	// a second, which the vault's unique name would refuse.
+	// Switching between Secret and SealedSecret updates one vault entry; a second would violate the unique name.
 	if alias, ok := vaultAlias(d.Kind); ok {
 		return actual.Get(string(alias) + "/" + d.Metadata.Name)
 	}
@@ -174,15 +152,11 @@ func vaultAlias(k Kind) (Kind, bool) {
 	return "", false
 }
 
-// BuildPlan diffs desired against actual and returns an ordered convergence
-// plan. actual should contain only Miabi-managed resources when Prune is
-// set, so unmanaged resources are never deleted.
+// BuildPlan expects actual to hold only Miabi-managed resources when Prune is set.
 func BuildPlan(desired, actual *ResourceSet, opts PlanOptions) *Plan {
 	plan := &Plan{}
 
-	// Index actual resources by uid so a desired resource carrying metadata.uid matches its live
-	// counterpart even after a rename, instead of a destructive delete+create. Hand-authored
-	// manifests have no uid and fall back to name matching, so their behavior is unchanged.
+	// Match by uid so a rename converges in place instead of a destructive delete+create.
 	actualByUID := map[string]Resource{}
 	for _, a := range actual.All() {
 		if a.Metadata.UID != "" {
@@ -252,9 +226,6 @@ func BuildPlan(desired, actual *ResourceSet, opts PlanOptions) *Plan {
 	return plan
 }
 
-// sortChanges orders creates/updates by ascending dependency rank and deletes by
-// descending rank, so dependencies exist before dependents and are torn down
-// after them. Ties break by kind then name for a stable, readable plan.
 func sortChanges(cs []Change) {
 	sort.SliceStable(cs, func(i, j int) bool {
 		a, b := cs[i], cs[j]
@@ -276,8 +247,7 @@ func sortChanges(cs []Change) {
 	})
 }
 
-// group keeps deletes ahead of creates/updates in the overall ordering so a
-// removed dependent is torn down before a renamed dependency is created.
+// A removed dependent is torn down before a renamed dependency is created.
 func group(a Action) int {
 	if a == ActionDelete {
 		return 0
@@ -285,8 +255,7 @@ func group(a Action) int {
 	return 1
 }
 
-// diffFields compares the actual and desired forms of a resource and returns the
-// changed fields. Secret values are write-only and never diffed (presence only).
+// Secret values are write-only and only compared by presence.
 func diffFields(actual, desired Resource) []FieldDiff {
 	if desired.Kind == KindSecret {
 		return nil // opaque: an existing secret is treated as in-sync
@@ -319,8 +288,7 @@ func diffFields(actual, desired Resource) []FieldDiff {
 			delete(av, f)
 		}
 	}
-	// A stack's shared env is compared only when the manifest states it, so variables set in the console
-	// survive a manifest that predates them.
+	// Stack env is compared only when stated, so console-set variables survive an older manifest.
 	if desired.Stack != nil && desired.Stack.Env == nil {
 		for f := range av {
 			if strings.HasPrefix(f, "env.") {
@@ -354,22 +322,16 @@ var optionalWhenUnset = map[string]bool{
 	"healthcheck.startPeriodSeconds": true, "stack": true,
 }
 
-// optionalWhenUnsetByKind holds the fields compared only when stated for one kind alone. A database's limits may
-// come from the console or a plan's default size, so a manifest silent about them leaves them be; an app's
-// resources keep converging to the manifest.
+// A database's limits may come from the console or plan defaults, so a silent manifest leaves them be.
 var optionalWhenUnsetByKind = map[Kind]map[string]bool{
 	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true, "readOnlyUser": true},
-	// A manifest silent about the storage class takes this install's default, so the same repository
-	// stays portable across installs whose disks differ. Only a class named in the manifest is
-	// enforced — and then it is immutable, so it is refused rather than converged. A silent size
-	// likewise leaves a capacity set or expanded in the console alone.
+	// A silent storage class keeps repos portable; a named one is immutable, so it is refused rather than converged.
 	KindVolume: {"storage.class": true, "size": true},
 	// A pause made in the console survives a manifest that doesn't state suspend.
 	KindCronJob: {"suspend": true},
 }
 
-// normalizedList compares a set the way the app service stores it, so CAP_NET_ADMIN in a manifest does not
-// drift against a stored NET_ADMIN. A set that fails to normalize compares raw; validation has refused it.
+// Normalized so CAP_NET_ADMIN in a manifest does not drift against a stored NET_ADMIN.
 func normalizedList(in []string, normalize func([]string) ([]string, error)) string {
 	if out, err := normalize(in); err == nil {
 		return strings.Join(out, ",")
@@ -377,11 +339,7 @@ func normalizedList(in []string, normalize func([]string) ([]string, error)) str
 	return strings.Join(in, ",")
 }
 
-// diffRegistry compares a registry credential. Server and username are ordinary visible fields;
-// the password is compared through fingerprints stamped on both sides, never the value. It is
-// only compared when the manifest declares one, so an out-of-band token isn't drift every plan.
-// diffSealedSecret compares sealed values by fingerprint, so editing one in git updates the secret, and so
-// does a value later set outside git. The live side may be a plain Secret being adopted.
+// Compared by fingerprint; the live side may be a plain Secret being adopted.
 func diffSealedSecret(actual, desired Resource) []FieldDiff {
 	d := desired.SealedSecret
 	if d == nil || d.SealedFP == "" {
@@ -417,9 +375,7 @@ func diffRegistry(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-// diffMiddleware compares a gateway middleware. Type and paths are ordinary visible fields; the rule
-// is compared through the fingerprint stamped on both sides, because it can carry a password the plan
-// must never print. The rendered rule is what gets fingerprinted, so rotating a secret still converges.
+// The rule may carry a password, so it diffs by fingerprint of the rendered rule, which still catches rotation.
 func diffMiddleware(actual, desired Resource) []FieldDiff {
 	a, d := actual.Middleware, desired.Middleware
 	if d == nil {
@@ -436,17 +392,14 @@ func diffMiddleware(actual, desired Resource) []FieldDiff {
 	if ap != dp {
 		out = append(out, FieldDiff{Field: "paths", From: ap, To: dp})
 	}
-	// Only when both sides carry one, like RegistrySpec.PasswordFP: an install whose
-	// engine did not stamp it must not read as drift on every plan.
+	// An install whose engine did not stamp a fingerprint must not read as drift on every plan.
 	if a.RuleFP != "" && d.RuleFP != "" && a.RuleFP != d.RuleFP {
 		out = append(out, FieldDiff{Field: "rule", From: "(current)", To: "(changed)"})
 	}
 	return out
 }
 
-// diffConfig compares a config. A sensitive config is compared by fingerprint only,
-// so no file content ever reaches a plan; a plain one also diffs per key so a plan
-// names the file that changed.
+// A sensitive config diffs by fingerprint only, so no file content ever reaches a plan.
 func diffConfig(actual, desired Resource) []FieldDiff {
 	a, d := actual.Config, desired.Config
 	if d == nil {
@@ -480,8 +433,6 @@ func diffConfig(actual, desired Resource) []FieldDiff {
 	return out
 }
 
-// present reports a key's state without echoing its content, which keeps a plan
-// readable and safe to log for both sensitive and plain configs.
 func present(m map[string]string, k string) string {
 	if _, ok := m[k]; !ok {
 		return "(absent)"
@@ -489,9 +440,7 @@ func present(m map[string]string, k string) string {
 	return "(present)"
 }
 
-// reservedLabelPrefixes are the container-label namespaces the platform owns. A manifest may name
-// one, but the application service strips it on write, so it can never appear in live state.
-// Excluding it on both sides is what stops such a label reading as drift on every plan.
+// The app service strips these on write, so they must be excluded on both sides or always drift.
 var reservedLabelPrefixes = []string{"io.miabi.", "com.docker."}
 
 func reservedLabelKey(key string) bool {
@@ -503,9 +452,7 @@ func reservedLabelKey(key string) bool {
 	return false
 }
 
-// specFields flattens a resource's comparable spec into field->value. Fields
-// named in an application's secretEnv are masked so secret values never appear
-// in a plan, while still letting presence be compared.
+// Fields named in secretEnv are masked so secret values never appear in a plan.
 func specFields(r Resource) map[string]string {
 	f := map[string]string{}
 	switch {
@@ -515,8 +462,7 @@ func specFields(r Resource) map[string]string {
 		f["image"] = a.Image
 		f["tag"] = a.Tag
 		f["digest"] = a.Digest
-		// What the app is built from is as much its identity as the image it pulls: repointing it at
-		// another repo or ref must converge, not sit as invisible drift.
+		// Repointing the build source at another repo or ref must converge, not sit as invisible drift.
 		if src := a.Source; src != nil {
 			f["source.git"] = src.Git
 			f["source.ref"] = src.Ref
@@ -529,14 +475,11 @@ func specFields(r Resource) map[string]string {
 			}
 		}
 		f["command"] = strings.Join(a.Command, " ")
-		// The credential the image is pulled with is part of the app's identity:
-		// re-pointing it at another registry must converge like any other change.
 		f["registry"] = a.Registry
 		if a.Stack != "" {
 			f["stack"] = a.Stack
 		}
-		// The account, hardening and grants change the container, so a change to any must redeploy. Absent means
-		// the container default, so removing one from a manifest converges too.
+		// Absent means the container default, so removing one from a manifest converges too.
 		f["security.runAsUser"] = a.RunAsUser()
 		f["security.readOnlyRootFilesystem"] = strconv.FormatBool(a.ReadOnlyRootFilesystem())
 		f["security.noNewPrivileges"] = strconv.FormatBool(a.NoNewPrivileges())
@@ -546,8 +489,7 @@ func specFields(r Resource) map[string]string {
 		if loc := a.Location(); loc != "" {
 			f["placement.location"] = loc
 		}
-		// How the app runs and rolls out. Only compared when the manifest states it: an app configured in
-		// the console and a manifest that says nothing about it must not diff.
+		// Only compared when stated, so console-configured rollout settings don't diff.
 		if s := a.Strategy(); s != "" {
 			f["deployment.strategy"] = s
 		}
@@ -564,8 +506,7 @@ func specFields(r Resource) map[string]string {
 			f["deployment.update.parallelism"] = strconv.Itoa(u.Parallelism)
 			f["deployment.update.delaySeconds"] = strconv.Itoa(u.DelaySeconds)
 		}
-		// Only the stated fields are compared, like deployment: a check set in the console survives a
-		// manifest silent about it, and a manifest stating only type and path leaves the timing alone.
+		// Only stated fields compared, so console-set checks and timing survive a silent manifest.
 		if hc := a.Healthcheck; hc != nil {
 			f["healthcheck.type"] = hc.Type
 			setIf := func(k, v string, stated bool) {
@@ -581,14 +522,11 @@ func specFields(r Resource) map[string]string {
 			setIf("retries", strconv.Itoa(hc.Retries), hc.Retries > 0)
 			setIf("startPeriodSeconds", strconv.Itoa(hc.StartPeriodSeconds), hc.StartPeriodSeconds > 0)
 		}
-		// Mounted config content is not visible in any diffed field, so its
-		// fingerprint is what makes an edit converge as an application update.
-		// Only compared when both sides carry one, like RegistrySpec.PasswordFP.
+		// Config content is in no diffed field, so its fingerprint makes an edit converge.
 		if a.ConfigFP != "" {
 			f["configFP"] = a.ConfigFP
 		}
-		// Container labels drive label-reading tooling, so editing one has to redeploy the container.
-		// Compared per key, like env, so a plan names the label that changed instead of one opaque blob.
+		// Compared per key so a plan names the label that changed.
 		for k, v := range a.ContainerLabels {
 			if reservedLabelKey(k) {
 				continue // stripped on write, so it can never be live: skip both sides
@@ -596,8 +534,7 @@ func specFields(r Resource) map[string]string {
 			f["containerLabels."+k] = v
 		}
 		if a.Resources != nil {
-			// Compare resource caps by their canonical numeric value so "512Mi"
-			// and the live byte count (or "0.5" vs nano-CPUs) don't read as drift.
+			// Compare canonical numeric values so "512Mi" vs bytes or "0.5" vs nano-CPUs don't read as drift.
 			mb, _ := a.Resources.MemoryBytes()
 			nc, _ := a.Resources.NanoCPUs()
 			if mb != 0 {
@@ -641,8 +578,7 @@ func specFields(r Resource) map[string]string {
 		if ro := r.Database.ReadOnlyUser; ro != nil {
 			f["readOnlyUser"] = strconv.FormatBool(*ro)
 		}
-		// Compared by canonical value, so "1Gi" matches the byte count the snapshot reports. "0" is stated too:
-		// it removes a limit.
+		// "0" is stated too: it removes a limit.
 		if res := r.Database.Resources; res != nil {
 			if res.Memory != "" {
 				mb, _ := res.MemoryBytes()
@@ -660,9 +596,7 @@ func specFields(r Resource) map[string]string {
 		if loc := r.Volume.Location(); loc != "" {
 			f["placement.location"] = loc
 		}
-		// The class has to appear on BOTH sides of the diff: only on the desired side it would make
-		// every apply a phantom update, and only on the actual side the immutability refusal in
-		// applyVolume could never fire.
+		// Must be on both sides: desired-only makes phantom updates, actual-only disables the immutability refusal.
 		if sc := strings.TrimSpace(r.Volume.StorageClass); sc != "" {
 			f["storage.class"] = sc
 		}
@@ -683,8 +617,7 @@ func specFields(r Resource) map[string]string {
 		f["tlsProvider"] = r.Route.TLSProvider
 		f["port"] = fmt.Sprintf("%d", r.Route.Port)
 		f["rewrite"] = r.Route.Rewrite
-		// Order-independent: the gateway matches on membership, so listing GET before POST is the
-		// same route.
+		// The gateway matches methods by membership, so order is not a change.
 		methods := append([]string(nil), r.Route.Methods...)
 		sort.Strings(methods)
 		f["methods"] = strings.Join(methods, ",")
@@ -694,8 +627,7 @@ func specFields(r Resource) map[string]string {
 			sec = &RouteSecuritySpec{}
 		}
 		f["security.exploitProtection"] = fmt.Sprintf("%t", sec.ExploitProtection)
-		// Flattened to canonical strings so an omitted block and an explicitly
-		// disabled one compare equal, instead of drifting on every plan.
+		// An omitted block and an explicitly disabled one must compare equal.
 		mt := r.Route.Maintenance
 		if mt == nil {
 			mt = &RouteMaintenanceSpec{}
@@ -703,8 +635,7 @@ func specFields(r Resource) map[string]string {
 		f["maintenance.enabled"] = fmt.Sprintf("%t", mt.Enabled)
 		f["maintenance.statusCode"] = fmt.Sprintf("%d", mt.StatusCode)
 		f["maintenance.message"] = mt.Message
-		// Order is behaviour at the gateway, so the chain is compared as an ordered
-		// list — swapping rate-limit and basic-auth is a real change.
+		// Chain order is behaviour at the gateway, so it compares as an ordered list.
 		f["middlewares"] = strings.Join(r.Route.Middlewares, ",")
 	case r.Stack != nil:
 		f["description"] = r.Stack.Description

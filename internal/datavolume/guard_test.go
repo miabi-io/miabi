@@ -126,8 +126,7 @@ func TestCheckAppAllowsIntactAndUnrecordedVolumes(t *testing.T) {
 	}
 }
 
-// An engine that cannot answer is not evidence of loss: the start fails on its own if the node is down,
-// and refusing here would turn every unreachable node into a data-loss report.
+// An unreachable engine is not evidence of loss; refusing would turn every down node into a data-loss report.
 func TestCheckAppAllowsWhenTheEngineCannotAnswer(t *testing.T) {
 	vols := stubVolumes{3: localVolume(3, 2, "uploads", "2026-09-01T10:00:00Z")}
 	app := appWith(models.AppMount{VolumeID: 3, Path: "/data"})
@@ -143,8 +142,6 @@ func TestCheckAppAllowsWhenTheEngineCannotAnswer(t *testing.T) {
 	}
 }
 
-// Host binds, presets and config projections are not Docker volumes, and shared storage lives on the
-// backend rather than in a volume object each node creates on demand.
 func TestCheckAppSkipsWhatItCannotJudge(t *testing.T) {
 	shared := localVolume(5, 1, "media", "2026-09-01T10:00:00Z")
 	shared.Driver, shared.AccessMode = models.VolumeDriverNFS, models.AccessRWX

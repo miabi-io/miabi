@@ -29,15 +29,12 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// StreamEnd is one side of a stream: a one-shot container on a node. The producer writes the data to
-// stdout; the consumer reads it from stdin.
 type StreamEnd struct {
 	ServerID uint
 	Spec     docker.RunSpec
 }
 
-// Stream pipes a producer's stdout into a consumer's stdin, with nothing written to disk in between: a
-// database dump flows straight into its restore. It returns the bytes that crossed.
+// Nothing is written to disk in between: a dump flows straight into its restore.
 func (s *Service) Stream(ctx context.Context, producer, consumer StreamEnd, progress func(int64)) (int64, error) {
 	pdc, err := s.engines.For(producer.ServerID)
 	if err != nil {

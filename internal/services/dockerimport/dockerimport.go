@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dockerimport adopts pre-existing Docker resources into Miabi without tearing down what is
-// running. Discovery lists a node's *unmanaged* resources; import creates the matching records. The
-// default is adopt-in-place: an app record plus a synthetic release pointing at the live container.
+// Package dockerimport adopts unmanaged Docker resources in place, without tearing down what is running.
 package dockerimport
 
 import (
@@ -46,9 +44,7 @@ import (
 type Clients interface {
 	For(serverID uint) (docker.Client, error)
 	LocalID() uint
-	// SelfContainerID is Miabi's own container on the node — the control plane locally, the agent remotely —
-	// or "" when it cannot be determined. Discovery uses it to find the Compose project the platform stack
-	// runs under; see platformComposeProject.
+	// SelfContainerID is Miabi's own container on the node, or "" when unknown; see platformComposeProject.
 	SelfContainerID(serverID uint) string
 }
 
@@ -69,8 +65,6 @@ type Service struct {
 	now          func() time.Time
 }
 
-// Placer checks that the target workspace may hold resources on the node being imported from. Satisfied by
-// the placement service.
 type Placer interface {
 	Place(req placement.Request) (placement.Result, error)
 }
@@ -78,8 +72,6 @@ type Placer interface {
 // SetPlacer wires the location check (nil-safe; nil imports into any workspace, as before locations existed).
 func (s *Service) SetPlacer(p Placer) { s.placer = p }
 
-// PortsPolicy tells an import whether the platform's host-port policy would have denied the ports
-// it adopts. Satisfied by *secpolicy.Service.
 type PortsPolicy interface {
 	PortsView(workspaceID uint) secpolicy.PortsPolicyView
 }
@@ -116,8 +108,6 @@ type Importable struct {
 	Networks   []ImportableNetwork   `json:"networks"`
 }
 
-// ImportableContainer is an unmanaged container enriched from inspect, with its
-// compose grouping and volume/network relationships.
 type ImportableContainer struct {
 	ID              string               `json:"id"`
 	Name            string               `json:"name"`
@@ -139,8 +129,6 @@ type ImportableContainer struct {
 	AlreadyImported bool                 `json:"already_imported"`
 }
 
-// ImportableVolume is an unmanaged Docker volume and the unmanaged containers
-// that use it.
 type ImportableVolume struct {
 	Name            string   `json:"name"`
 	Driver          string   `json:"driver"`
@@ -148,8 +136,6 @@ type ImportableVolume struct {
 	AlreadyImported bool     `json:"already_imported"`
 }
 
-// ImportableNetwork is an unmanaged Docker network and the unmanaged containers
-// attached to it.
 type ImportableNetwork struct {
 	Name            string   `json:"name"`
 	Driver          string   `json:"driver"`
@@ -157,8 +143,6 @@ type ImportableNetwork struct {
 	AlreadyImported bool     `json:"already_imported"`
 }
 
-// Discover lists the node's unmanaged containers/volumes/networks, enriched with
-// inspect data, compose grouping, relationships, and already-imported flags.
 func (s *Service) Discover(ctx context.Context, serverID uint) (*Importable, error) {
 	dc, err := s.clients.For(serverID)
 	if err != nil {
@@ -182,16 +166,12 @@ func (s *Service) Discover(ctx context.Context, serverID uint) (*Importable, err
 	volUsedBy := map[string][]string{}
 	netUsedBy := map[string][]string{}
 
-	// The Compose project Miabi itself runs under, so an UNLABELED stack (installed
-	// before platform labels) is still shielded. Compose stamps the project on the
-	// containers, volumes and networks alike, so this one lookup covers all three.
+	// Shields an unlabeled platform stack; Compose stamps the project on containers, volumes and networks alike.
 	project := s.platformComposeProject(ctx, serverID, dc)
 
 	for i := range containers {
 		c := containers[i]
-		// Skip anything Miabi manages — and anything Miabi IS. Until platform labels
-		// existed this checked only isManaged(), so the unlabeled compose stack
-		// (miabi-postgres, miabi-redis, the control plane) was offered for import.
+		// The platform stack predates labels, so a managed-label check alone offered it for import.
 		if notImportable(c.Labels, containerName(c)) || inPlatformProject(c.Labels, project) {
 			continue
 		}
@@ -266,20 +246,16 @@ func (s *Service) toImportableContainer(cfg docker.ContainerConfig) ImportableCo
 type ImportMode string
 
 const (
-	// ModeAdopt tracks the live container as-is (zero downtime); converge on the
-	// next deploy.
+	// ModeAdopt tracks the live container as-is (zero downtime) and converges on the next deploy.
 	ModeAdopt ImportMode = "adopt"
-	// ModeReconcile adopts, then immediately enqueues a native deploy that
-	// recreates the container under Miabi conventions and removes the old one.
+	// ModeReconcile adopts, then enqueues a native deploy that recreates the container under Miabi conventions.
 	ModeReconcile ImportMode = "reconcile"
 )
 
 // ImportRequest is a selection of resources to import into a workspace.
 type ImportRequest struct {
 	WorkspaceID uint
-	// StackName is a fallback stack for container items that carry no per-item
-	// StackName (e.g. ungrouped containers). Per-item StackName takes precedence,
-	// so a compose project maps to its own stack.
+	// Fallback for items without their own StackName, which takes precedence.
 	StackName string
 	Items     []ImportItem
 }
@@ -290,9 +266,7 @@ type ImportItem struct {
 	Ref     string     // container ID or volume/network name
 	AppName string     // optional app name for containers
 	Mode    ImportMode // containers only; default adopt
-	// StackName groups this container's app under a Stack of that name (created or
-	// reused). Typically the container's compose project, so each compose project
-	// becomes its own stack. Empty = no stack (falls back to request StackName).
+	// Typically the compose project, so each project becomes its own stack; empty falls back to the request StackName.
 	StackName string
 }
 
@@ -307,8 +281,6 @@ type ItemResult struct {
 
 // ImportResult is the aggregate outcome of an import batch.
 type ImportResult struct {
-	// StackIDs lists the IDs of stacks created or reused during the import
-	// (compose project → stack), keyed by stack name.
 	StackIDs map[string]uint `json:"stack_ids,omitempty"`
 	Items    []ItemResult    `json:"items"`
 }
@@ -319,25 +291,19 @@ const (
 	statusFailed   = "failed"
 )
 
-// Import creates Miabi records for the selected resources. Networks and
-// volumes are imported first so containers can attach them. Each item's outcome
-// is reported independently — one failure never aborts the batch.
+// Import reports each item's outcome independently; one failure never aborts the batch.
 func (s *Service) Import(ctx context.Context, actorID, serverID uint, req ImportRequest) (*ImportResult, error) {
 	if _, err := s.clients.For(serverID); err != nil {
 		return nil, err
 	}
 	if s.placer != nil {
-		// The containers already run on this node, so the import follows them: it must not hand a workspace
-		// resources in a location its organization does not own. A cordoned node is fine; nothing new is started.
+		// Must not hand a workspace resources in a location its org does not own; cordoned is fine since nothing starts.
 		if _, err := s.placer.Place(placement.Request{WorkspaceID: req.WorkspaceID, Colocate: serverID, Admin: true}); err != nil {
 			return nil, err
 		}
 	}
 	res := &ImportResult{}
 
-	// resolveStack maps a stack name to a Stack id, creating it once per batch and
-	// reusing an existing one of the same name. Each compose project resolves to
-	// its own stack, so containers attach to the right one.
 	stackCache := map[string]uint{}
 	resolveStack := func(name string) (*uint, error) {
 		name = strings.TrimSpace(name)
@@ -361,8 +327,7 @@ func (s *Service) Import(ctx context.Context, actorID, serverID uint, req Import
 		return &st.ID, nil
 	}
 
-	// Process networks, then volumes, then containers, so a container's
-	// dependencies already have records when it attaches them.
+	// Networks, then volumes, then containers, so dependencies have records before containers attach them.
 	order := map[string]int{"network": 0, "volume": 1, "container": 2}
 	items := append([]ImportItem(nil), req.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return order[items[i].Kind] < order[items[j].Kind] })
@@ -411,10 +376,7 @@ func (s *Service) importNetwork(ctx context.Context, wsID, serverID uint, name s
 		r.Status, r.Message = statusFailed, err.Error()
 		return r
 	}
-	// Discovery already hides Miabi's own networks, but the import call takes a name straight from
-	// the request — so re-check here. Importing the platform's private network as a workspace
-	// network would put tenant containers on the fabric the control plane, its database and the
-	// registry share.
+	// Re-check request names: importing the platform's private network would put tenants on the control-plane fabric.
 	driver := "bridge"
 	if nets, lerr := dc.ListNetworks(ctx); lerr == nil {
 		for _, n := range nets {
@@ -454,9 +416,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		r.Status, r.Message = statusFailed, "inspect: "+err.Error()
 		return r
 	}
-	// Discovery already filters these out, but Import takes container refs straight from the request — so
-	// re-check here rather than trust the caller's list. A stale page, or a hand-made request, must not be
-	// able to import the platform's own database as an application.
+	// Re-check rather than trust the request: a stale or hand-made one must not import the platform's own database.
 	if notImportable(cfg.Labels, strings.TrimPrefix(cfg.Name, "/")) ||
 		inPlatformProject(cfg.Labels, s.platformComposeProject(ctx, serverID, dc)) {
 		r.Status, r.Message = statusFailed, "this container is part of the Miabi platform and cannot be imported"
@@ -508,16 +468,12 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		MemoryBytes:   cfg.MemoryBytes,
 		NanoCPUs:      cfg.NanoCPUs,
 		RestartPolicy: models.RestartPolicy(cfg.RestartPolicy),
-		// Carry the account the adopted container already ran as, so the first native redeploy
-		// doesn't silently move it to the image's default user. A restricted-profile workspace
-		// rejects a root value here rather than importing an app that cannot deploy.
+		// Keep the adopted user so a redeploy doesn't silently switch to the image default; restricted profiles reject root here.
 		RunAsUser:  cfg.User,
 		Ports:      specs,
 		NetworkIDs: networkIDs,
 		StackID:    stackID,
-		// Carry over the source container's custom labels (Traefik, Watchtower, autoheal, …). Create sanitizes
-		// them — the platform (io.miabi.*/miabi.*) and Compose (com.docker.*) keys are stripped, so only genuine
-		// user labels survive onto the imported app.
+		// Create strips platform and Compose keys, so only genuine user labels survive.
 		ContainerLabels: cfg.Labels,
 	})
 	if err != nil {
@@ -530,8 +486,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		return r
 	}
 
-	// Env: import the effective env as plain app vars (secret-looking keys are
-	// surfaced at discovery).
+	// Secret-looking keys are surfaced at discovery.
 	for _, e := range cfg.Env {
 		k, v, ok := strings.Cut(e, "=")
 		if !ok || k == "" {
@@ -554,8 +509,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		}
 	}
 
-	// Published host ports already serve traffic, so record them as approved
-	// PortBindings (not pending) to reflect reality.
+	// Published ports already serve traffic, so they are recorded as approved, not pending.
 	adoptedPorts := 0
 	for _, p := range cfg.Ports {
 		if p.HostPort <= 0 {
@@ -571,8 +525,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 		})
 	}
 
-	// Synthetic succeeded deployment + active adopted release pointing at the live
-	// container, so status/logs/stats/stop/restart resolve to it immediately.
+	// A synthetic deployment and adopted release let status/logs/stats/stop/restart resolve immediately.
 	now := s.now()
 	image := app.ImageRef("")
 	dep := &models.Deployment{
@@ -611,8 +564,6 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 	}
 	defer func() { r.Message += warning }()
 
-	// Reconcile-now: enqueue a native deploy that retires the adopted container
-	// (the active release) and replaces it under Miabi conventions.
 	if it.Mode == ModeReconcile {
 		if _, derr := s.apps.Deploy(app, nil, "", models.DeployRolling); derr != nil {
 			r.Message = "adopted; reconcile deploy failed to enqueue: " + derr.Error()
@@ -623,13 +574,9 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 	return r
 }
 
-// errAlreadyImported signals an idempotent skip (a record already maps the
-// resource); callers translate it to a "skipped" result.
 var errAlreadyImported = errors.New("already imported")
 
-// ensureVolume returns the Volume record for an existing Docker volume, creating
-// it (Imported=true) if absent. Returns errAlreadyImported when a record already
-// exists, with a nil volume (callers look it up if they need it).
+// ensureVolume returns errAlreadyImported with a nil volume when a record already exists.
 func (s *Service) ensureVolume(ctx context.Context, wsID, serverID uint, dockerName string) (*models.Volume, error) {
 	if existing, err := s.volumes.FindByDockerName(dockerName); err == nil {
 		_ = existing
@@ -659,9 +606,6 @@ func (s *Service) ensureVolume(ctx context.Context, wsID, serverID uint, dockerN
 	return v, nil
 }
 
-// ensureNetwork returns the Network record for an existing Docker network,
-// creating it (Imported=true) if absent. Returns errAlreadyImported when a
-// record already exists.
 func (s *Service) ensureNetwork(wsID uint, dockerName, driver string) (*models.Network, error) {
 	if _, err := s.networks.FindByDockerName(dockerName); err == nil {
 		return nil, errAlreadyImported
@@ -701,26 +645,18 @@ func (s *Service) networkImported(dockerName string) bool {
 	return err == nil
 }
 
-// isManaged reports whether a resource carries any platform label (io.miabi.* or
-// legacy miabi.*).
 func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// notImportable reports whether a Docker resource must never be offered for import: it is already managed by
-// Miabi, or it IS Miabi. The second half bites — the stack is deployed by compose from outside, so before
-// platform labels it carried no io.miabi.* key. Name is checked too: an old stack has no labels to read.
+// The compose-deployed platform stack may carry no io.miabi.* label, so names are checked too.
 func notImportable(labels map[string]string, name string) bool {
 	return isManaged(labels) || docker.IsPlatformStack(labels) || isMiabiName(name)
 }
 
-// composeProjectLabel is the key Compose stamps on every container, volume and
-// network it creates.
 const composeProjectLabel = "com.docker.compose.project"
 
-// platformComposeProject returns the Compose project Miabi's own stack runs under on this node, or "" when it
-// cannot be determined. It cannot be done by name — compose generates <project>-<service>-<n> and the project
-// is the install directory — but Miabi knows its OWN container, and siblings share com.docker.compose.project.
+// Can't match by name since the project is the install directory, but siblings of Miabi's own container share it.
 func (s *Service) platformComposeProject(ctx context.Context, serverID uint, dc docker.Client) string {
 	self := s.clients.SelfContainerID(serverID)
 	if self == "" {
@@ -733,8 +669,7 @@ func (s *Service) platformComposeProject(ctx context.Context, serverID uint, dc 
 	return cfg.Labels[composeProjectLabel]
 }
 
-// inPlatformProject reports whether a resource belongs to the Compose project the
-// Miabi stack itself runs under. project == "" disables the check.
+// An empty project disables the check.
 func inPlatformProject(labels map[string]string, project string) bool {
 	if project == "" {
 		return false
@@ -742,8 +677,6 @@ func inPlatformProject(labels map[string]string, project string) bool {
 	return labels[composeProjectLabel] == project
 }
 
-// containerName returns a container's primary name without Docker's leading "/",
-// or "" when it has none.
 func containerName(c docker.Container) string {
 	if len(c.Names) == 0 {
 		return ""
@@ -751,9 +684,7 @@ func containerName(c docker.Container) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// isMiabiName reports whether a container, volume or network name follows a Miabi naming convention, so the
-// platform's own resources are not offered for import even when unlabeled. Compose prefixes volume and network
-// names with the project, so platform volumes surface as e.g. "miabi_pgdata" — hence the miabi_ prefix too.
+// Compose prefixes volume and network names with the project, hence the miabi_ prefix too.
 func isMiabiName(name string) bool {
 	name = strings.TrimPrefix(name, "/") // container names arrive as "/miabi-postgres"
 	switch name {
@@ -774,8 +705,7 @@ func isSecretKey(key string) bool {
 	return strings.HasSuffix(k, "_KEY") || k == "KEY"
 }
 
-// splitImageTag splits "repo:tag" into ("repo", "tag"), leaving digests and
-// untagged refs with an empty tag. A ":" after the last "/" is the tag.
+// A ":" after the last "/" is the tag; digests and untagged refs get an empty tag.
 func splitImageTag(ref string) (string, string) {
 	if strings.Contains(ref, "@") { // digest-pinned
 		return ref, ""

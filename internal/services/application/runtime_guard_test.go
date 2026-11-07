@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// clusterOff reports a platform with no swarm, which is what strands an app that
-// was made a service while there was one.
 type clusterOff struct{}
 
 func (clusterOff) IsSwarm(uint) bool         { return false }
@@ -38,10 +36,7 @@ func (clusterOff) Manager(context.Context, uint) (docker.Client, error) {
 	return nil, docker.ErrNotFound
 }
 
-// The reported bug: an app stored as a service, cluster mode since switched off,
-// and every settings save refused — including the memory limit the user was
-// actually editing. The console never sends runtime_kind, so there was no way out
-// of it from the UI.
+// Regression: with cluster mode off, every settings save on a service app was refused.
 func TestEditingAServiceAppWithClusterOffIsAllowed(t *testing.T) {
 	s := &Service{cluster: clusterOff{}}
 	app := &models.Application{RuntimeKind: models.RuntimeService, Replicas: 1}
@@ -54,8 +49,6 @@ func TestEditingAServiceAppWithClusterOffIsAllowed(t *testing.T) {
 	}
 }
 
-// The rule that still has to hold: nobody may newly ask for a service runtime the
-// platform cannot run.
 func TestTurningAnAppIntoAServiceWithClusterOffIsRefused(t *testing.T) {
 	s := &Service{cluster: clusterOff{}}
 	app := &models.Application{RuntimeKind: models.RuntimeService, Replicas: 1}
@@ -69,9 +62,7 @@ func TestTurningAnAppIntoAServiceWithClusterOffIsRefused(t *testing.T) {
 	}
 }
 
-// An app the platform silently promoted to a service in cluster mode is demoted
-// when that cluster goes away, rather than handed to the user as an error about a
-// decision they never made.
+// A platform-promoted service is demoted, not reported as an error about a choice the user never made.
 func TestAutoPromotedServiceIsDemotedNotRefused(t *testing.T) {
 	s := &Service{cluster: clusterOff{}}
 	app := &models.Application{

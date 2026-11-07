@@ -8,8 +8,7 @@ type ClusterRef = number | string
 
 const base = (id: ClusterRef) => `/admin/clusters/${id}`
 
-// clusterApi drives a cluster's Docker Swarm. Status is always available; the mutations require
-// platform-admin rights.
+// Status is always available; the mutations require platform-admin rights.
 export const clusterApi = {
   status: (id: ClusterRef) => api.get<ApiResponse<ClusterStatus>>(`${base(id)}/swarm`),
   // Swarm membership (docker node ls), including unmanaged members.

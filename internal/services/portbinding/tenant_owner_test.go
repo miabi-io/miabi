@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// A tenant learns the name of a container holding a port only when the container is its own: on a shared
-// node the rest belong to other tenants or to the platform.
+// On a shared node, other containers belong to other tenants or the platform.
 func TestTenantOwnerNamesOnlyTheWorkspacesOwnContainers(t *testing.T) {
 	conts := []docker.Container{
 		{Names: []string{"/mb-app-shop-web"}, Labels: map[string]string{docker.LabelWorkspace: "5"}},

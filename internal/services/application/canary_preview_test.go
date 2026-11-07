@@ -117,8 +117,7 @@ func TestPreviewOperators(t *testing.T) {
 	}
 }
 
-// With no canary running, the preview projects onto the weight the next rollout
-// will start at — the whole point is to trust a rule set before deploying it.
+// With no canary running, the preview uses the weight the next rollout will start at.
 func TestPreviewProjectsWithoutARunningCanary(t *testing.T) {
 	idle := &models.Application{
 		ID: 1, CanaryInitialWeight: 15, CanaryMode: models.CanaryModeManual,

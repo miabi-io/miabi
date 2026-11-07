@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// validate is pure (no repo access), so we exercise the no-escalation invariant
-// directly. An admin actor is the canonical author.
 func TestValidate(t *testing.T) {
 	admin := models.RolePermissions(models.WorkspaceRoleAdmin)
 	developer := models.RolePermissions(models.WorkspaceRoleDeveloper)

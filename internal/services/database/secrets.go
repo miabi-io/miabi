@@ -31,17 +31,13 @@ const (
 	SecretOwnerInstance = "db_instance" // an instance (redis / admin)
 )
 
-// SecretWriter manages the Vault secrets owned by a managed database. Implemented by the secret
-// service; injected after construction. Optional — nil disables auto-provisioning and the cascade,
-// falling back to plaintext env injection.
+// SecretWriter manages Vault secrets owned by a database; nil falls back to plaintext env injection.
 type SecretWriter interface {
 	UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, name, value, description string) (*models.Secret, error)
 	DeleteOwned(workspaceID uint, ownerKind string, ownerID uint) ([]models.Application, error)
 }
 
-// PasswordSecretName / URLSecretName are the canonical Vault names for a logical
-// database's scoped-user password and full connection URL. The instance slug is
-// unique per workspace, so the names don't collide across instances.
+// The instance slug is unique per workspace, so secret names don't collide across instances.
 func PasswordSecretName(inst *models.DatabaseInstance, db *models.Database) string {
 	return secretName(inst.Name, db.Name, "password")
 }
@@ -50,8 +46,6 @@ func URLSecretName(inst *models.DatabaseInstance, db *models.Database) string {
 	return secretName(inst.Name, db.Name, "url")
 }
 
-// InstancePasswordSecretName / InstanceURLSecretName are the names for an
-// instance-level secret (Redis, which has no logical databases).
 func InstancePasswordSecretName(inst *models.DatabaseInstance) string {
 	return secretName(inst.Name, "", "password")
 }

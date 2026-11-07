@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package organization manages tenant realms: the workspaces they own, the workspace cap they carry,
-// and the cluster they are dedicated to. One organization is always the default, and every nullable
-// organization_id in the schema resolves to it.
+// Package organization manages tenant realms; every nullable organization_id resolves to the default one.
 package organization
 
 import (
@@ -48,8 +46,6 @@ var (
 	ErrClusterNotOurs = errors.New("that location is not one this organization can place in")
 )
 
-// Clusters is the slice of the cluster store this service needs: resolving a dedicated cluster and
-// releasing the ones an organization owns when it is deleted.
 type Clusters interface {
 	FindByID(id uint) (*models.Cluster, error)
 	ListByOrganization(orgID uint) ([]models.Cluster, error)
@@ -57,8 +53,6 @@ type Clusters interface {
 	ReleaseOrganization(orgID uint) error
 }
 
-// Workspaces resolves a workspace to the organization that owns it. Satisfied by
-// repositories.WorkspaceRepository.
 type Workspaces interface {
 	FindByID(id uint) (*models.Workspace, error)
 }
@@ -74,12 +68,10 @@ func NewService(repo *repositories.OrganizationRepository) *Service {
 	return &Service{repo: repo}
 }
 
-// SetClusters wires the cluster store (nil-safe; without it an organization cannot be given a
-// dedicated cluster and deleting one leaves its clusters to the caller).
+// SetClusters wires the cluster store; without it orgs cannot get dedicated clusters and Delete leaves them to the caller.
 func (s *Service) SetClusters(c Clusters) { s.clusters = c }
 
-// SetWorkspaces wires the workspace store (nil-safe; without it a workspace cannot be resolved to
-// its organization, which leaves placement on the shared clusters).
+// SetWorkspaces wires the workspace store; without it placement stays on the shared clusters.
 func (s *Service) SetWorkspaces(w Workspaces) { s.workspaces = w }
 
 func (s *Service) List() ([]models.Organization, error) { return s.repo.List() }
@@ -95,8 +87,7 @@ func (s *Service) Get(id uint) (*models.Organization, error) {
 // Default is the organization every nullable organization_id resolves to.
 func (s *Service) Default() (*models.Organization, error) { return s.repo.FindDefault() }
 
-// DefaultID is the default organization's id, or 0 when it cannot be read. Callers use it to resolve
-// a nil organization_id without having to handle the error at every site.
+// DefaultID returns 0 when unreadable, so callers can resolve a nil organization_id without error handling.
 func (s *Service) DefaultID() uint {
 	org, err := s.repo.FindDefault()
 	if err != nil {
@@ -113,26 +104,22 @@ func (s *Service) Resolve(id *uint) uint {
 	return s.DefaultID()
 }
 
-// CreateInput is a new organization. Handle is derived from DisplayName when blank, and a nil
-// MaxWorkspaces means unlimited — the zero value would otherwise read as "no workspaces allowed".
+// A nil MaxWorkspaces means unlimited; the zero value would read as "no workspaces allowed".
 type CreateInput struct {
 	Handle        string
 	DisplayName   string
 	OwnerUserID   uint
 	MaxWorkspaces *int
-	// MaxWorkspacesPerUser and MaxWorkspaceMembershipsPerUser cap the org's individual users; nil
-	// inherits the platform default.
+	// nil inherits the platform default.
 	MaxWorkspacesPerUser           *int
 	MaxWorkspaceMembershipsPerUser *int
-	// MaxWorkspacesPerOwner caps the org's owner instead of MaxWorkspacesPerUser; nil applies the
-	// per-user cap to them too.
+	// nil applies the per-user cap to the owner too.
 	MaxWorkspacesPerOwner *int
 	// WorkspaceCreation is who may create workspaces in the org; nil inherits the platform setting.
 	WorkspaceCreation *string
 }
 
-// Create makes an organization. Unlike a workspace handle it is not auto-suffixed on collision: an
-// admin naming an org means that name, and silently creating "acme-1" would be worse than an error.
+// Create never auto-suffixes on collision: an admin naming an org means that name.
 func (s *Service) Create(in CreateInput) (*models.Organization, error) {
 	name, err := s.validName(in.Handle, in.DisplayName)
 	if err != nil {
@@ -208,8 +195,7 @@ func validMax(n int) error {
 	return nil
 }
 
-// validPerUser normalizes a per-user cap: nil stays nil (inherit the platform default) and anything
-// below -1 is refused, so the only negative that reaches the database is the unlimited sentinel.
+// Only -1 (unlimited) may reach the database as a negative.
 func validPerUser(n *int) (*int, error) {
 	if n == nil {
 		return nil, nil
@@ -221,29 +207,24 @@ func validPerUser(n *int) (*int, error) {
 	return &v, nil
 }
 
-// UpdateInput carries the editable fields. A nil field is left as it is; the handle is not editable
-// (ErrNameImmutable) because it is what admins and the API address the org by.
+// The handle is not editable (ErrNameImmutable): admins and the API address the org by it.
 type UpdateInput struct {
 	DisplayName      *string
 	OwnerUserID      *uint
 	MaxWorkspaces    *int
 	DefaultClusterID *uint
-	// Per-user caps. A nil field is left alone; Inherit*PerUser clears one back to the platform
-	// default, which a nil pointer cannot express on its own.
+	// Inherit*PerUser resets a cap to the platform default, which a nil pointer cannot express.
 	MaxWorkspacesPerUser               *int
 	MaxWorkspaceMembershipsPerUser     *int
 	InheritWorkspacesPerUser           bool
 	InheritWorkspaceMembershipsPerUser bool
-	// MaxWorkspacesPerOwner sets the owner's cap; SameAsUsersForOwner clears it so the per-user cap
-	// applies to the owner again.
+	// SameAsUsersForOwner clears the owner cap so the per-user cap applies again.
 	MaxWorkspacesPerOwner *int
 	SameAsUsersForOwner   bool
-	// WorkspaceCreation sets the org's creation mode; InheritWorkspaceCreation clears it back to
-	// the platform setting.
+	// InheritWorkspaceCreation clears it back to the platform setting.
 	WorkspaceCreation        *string
 	InheritWorkspaceCreation bool
-	// ClearDefaultCluster releases the org's default location, which a nil DefaultClusterID cannot
-	// express on its own.
+	// Needed because a nil DefaultClusterID cannot express "clear".
 	ClearDefaultCluster bool
 }
 
@@ -321,9 +302,7 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 	return org, nil
 }
 
-// usableCluster refuses a default location the organization could never place in: one dedicated to
-// somebody else, or a shared one while this organization runs clusters of its own. Either would seed
-// every new workspace with a default that placement silently skips.
+// Refuses another tenant's cluster, or a shared one while the org owns clusters; placement would silently skip either.
 func (s *Service) usableCluster(orgID, clusterID uint) error {
 	if s.clusters == nil {
 		return nil
@@ -344,11 +323,7 @@ func (s *Service) usableCluster(orgID, clusterID uint) error {
 	return nil
 }
 
-// AlignDefaultCluster repoints the organization's default location when it names a cluster the
-// organization may no longer place in. usableCluster enforces that on edit, but dedicating a
-// cluster changes the answer without anyone editing the organization: its default goes on naming
-// shared hardware that placement now skips for it. prefer is the cluster that just changed hands
-// and wins when it is one of the organization's own; 0 leaves the choice open.
+// AlignDefaultCluster fixes defaults invalidated by dedicating a cluster; prefer (the cluster that changed hands) wins if owned.
 func (s *Service) AlignDefaultCluster(orgID, prefer uint) error {
 	if s.clusters == nil || orgID == 0 {
 		return nil
@@ -372,9 +347,7 @@ func (s *Service) AlignDefaultCluster(orgID, prefer uint) error {
 	return s.repo.Update(org)
 }
 
-// pickDefault chooses the organization's default from the clusters it owns: the one that just
-// changed hands, else the first by name, else none — an organization that owns nothing falls back
-// to the platform default, which it is free to use again.
+// An org that owns nothing falls back to the platform default, which it may use again.
 func pickDefault(owned []models.Cluster, prefer uint) *uint {
 	for i := range owned {
 		if owned[i].ID == prefer {
@@ -394,8 +367,7 @@ func equalClusterID(a *uint, b *uint) bool {
 	return *a == *b
 }
 
-// SetDefault promotes an organization to the default one. Demoting the previous default and
-// promoting the new one happen together, so the fallback is never ambiguous or absent.
+// SetDefault demotes and promotes together, so the fallback is never ambiguous or absent.
 func (s *Service) SetDefault(id uint) error {
 	if _, err := s.Get(id); err != nil {
 		return err
@@ -403,10 +375,7 @@ func (s *Service) SetDefault(id uint) error {
 	return s.repo.SetDefault(id)
 }
 
-// Delete removes an organization. The default one is never removable, and an org still holding
-// workspaces or users is refused rather than silently orphaning them — reassign first, deliberately.
-// Clusters dedicated to it are released back to shared, since a dangling owner would hide a cluster
-// from everyone.
+// Delete refuses the default org or one with workspaces/users; dedicated clusters are released back to shared.
 func (s *Service) Delete(id uint) error {
 	org, err := s.Get(id)
 	if err != nil {
@@ -434,8 +403,7 @@ func (s *Service) Delete(id uint) error {
 	return s.repo.Delete(id)
 }
 
-// CapReached reports whether the organization already holds its maximum workspaces. It fails open on
-// a read error: a transient database fault must not stop a tenant creating a workspace.
+// CapReached fails open: a transient DB fault must not stop a tenant creating a workspace.
 func (s *Service) CapReached(orgID uint) bool {
 	if orgID == 0 {
 		return false
@@ -451,8 +419,7 @@ func (s *Service) CapReached(orgID uint) bool {
 	return n >= int64(org.MaxWorkspaces)
 }
 
-// HomeOrganization is the organization a user belongs to, resolving nil to the default. 0 when it
-// cannot be read at all.
+// HomeOrganization resolves nil to the default; 0 when it cannot be read.
 func (s *Service) HomeOrganization(u *models.User) uint {
 	if u == nil {
 		return s.DefaultID()
@@ -469,12 +436,9 @@ func (s *Service) UserCount(orgID uint) int64 {
 	return n
 }
 
-// The three methods below answer the placement engine's organization questions. They satisfy
-// placement.Orgs structurally, so neither package imports the other.
+// These satisfy placement.Orgs structurally, so neither package imports the other.
 
-// OrganizationOfWorkspace resolves the realm a workspace belongs to, mapping an unassigned
-// workspace to the default organization. 0 when it cannot be read, which leaves the caller on the
-// shared clusters.
+// OrganizationOfWorkspace maps unassigned workspaces to the default org; 0 on read failure keeps shared clusters.
 func (s *Service) OrganizationOfWorkspace(workspaceID uint) uint {
 	if s.workspaces == nil {
 		return 0
@@ -483,18 +447,14 @@ func (s *Service) OrganizationOfWorkspace(workspaceID uint) uint {
 	if err != nil {
 		return 0
 	}
-	// The platform's own workspace belongs to no tenant. It is already pinned to the Unlimited plan
-	// so platform infrastructure is never constrained by tenant quotas, and confining it to whichever
-	// organization happens to be the default would constrain it by tenant geography instead.
+	// The platform workspace belongs to no tenant; confining it to the default org would bind infra to tenant geography.
 	if ws.System {
 		return 0
 	}
 	return s.Resolve(ws.OrganizationID)
 }
 
-// OwnsClusters reports whether the organization runs clusters of its own, which confines it to
-// them. It fails open — a read error must not strand every create — because the per-cluster
-// ownership check still refuses another tenant's cluster on its own.
+// OwnsClusters fails open; the per-cluster ownership check still refuses another tenant's cluster.
 func (s *Service) OwnsClusters(orgID uint) bool {
 	if orgID == 0 || s.clusters == nil {
 		return false
@@ -503,8 +463,6 @@ func (s *Service) OwnsClusters(orgID uint) bool {
 	return err == nil && n > 0
 }
 
-// OrganizationLabel names the organization for the message shown where a workspace's own placement
-// choice used to be.
 func (s *Service) OrganizationLabel(orgID uint) string {
 	org, err := s.Get(orgID)
 	if err != nil {
@@ -516,8 +474,7 @@ func (s *Service) OrganizationLabel(orgID uint) string {
 	return org.Name
 }
 
-// Labels names several organizations at once, for a list annotated with the organization each row
-// belongs to. A read error yields an empty map: a missing label costs a name, not the list.
+// Labels returns an empty map on read error: a missing label costs a name, not the list.
 func (s *Service) Labels(ids []uint) map[uint]string {
 	if s.repo == nil || len(ids) == 0 {
 		return map[uint]string{}

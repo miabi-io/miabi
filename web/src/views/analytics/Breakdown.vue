@@ -4,18 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { Category } from '@/api/analytics'
 import { fmtNum, fmtPct, countryName, countryFlag } from './format'
 
-// A ranked bar-list breakdown (top pages, referrers, countries, …). `kind`
-// 'country' renders a flag + resolved country name from the alpha-2 label.
-//
-// `flat` drops the card chrome so the list can sit inside another card (the
-// dashboard's traffic panel) without nesting one card in another. `limit` shows
-// only the leading N — the ranking is server-side, so this is presentation only.
-// `scroll` keeps the card at a fixed height and scrolls a long list inside it.
-// `share` adds each row's percentage of `total` (default: the items' sum), and
-// `searchable` adds a filter box once the list is longer than SEARCH_MIN rows.
-// `otherKey` (a plural i18n key) adds a pinned "Other" row for what `limit` hides plus
-// `untracked`, the volume the server's top-K dropped. `linked` makes rows emit hover and
-// select, and `active` highlights one row and scrolls it into view.
+// `limit` is presentation only (ranking is server-side); `otherKey` pins an "Other" row covering hidden plus `untracked`.
 const props = withDefaults(
   defineProps<{
     title: string
@@ -42,8 +31,7 @@ const SEARCH_MIN = 15
 const query = ref('')
 
 const shown = computed(() => (props.limit ? props.items.slice(0, props.limit) : props.items))
-// Scaled against the visible leader, so a truncated list still fills its bar. Filtering
-// keeps that scale, so a row's bar doesn't jump while typing.
+// Scaled against the visible leader and kept while filtering so bars don't jump.
 const max = computed(() => Math.max(1, ...shown.value.map((i) => i.count)))
 const total = computed(() => props.total || shown.value.reduce((n, i) => n + i.count, 0) || 1)
 const showSearch = computed(() => props.searchable && shown.value.length > SEARCH_MIN)

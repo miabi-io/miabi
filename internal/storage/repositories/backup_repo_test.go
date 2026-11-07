@@ -39,9 +39,6 @@ func newBackupDB(t *testing.T) *BackupRepository {
 	return NewBackupRepository(db)
 }
 
-// TestBackupSetLogMeta verifies externalizing a backup run's log replaces the
-// DB column with the bounded tail and records the store reference + counters,
-// and that a zero ref is a no-op leaving the full log intact.
 func TestBackupSetLogMeta(t *testing.T) {
 	repo := newBackupDB(t)
 	b := &models.Backup{WorkspaceID: 7, DatabaseID: 1, Logs: "dumping...\ndone\n"}
@@ -68,9 +65,6 @@ func TestBackupSetLogMeta(t *testing.T) {
 	}
 }
 
-// TestBackupNumberPerDatabase verifies the BeforeCreate hook assigns a per-database
-// sequential Number (1, 2, 3…) independent of the global ID, and restarts at 1 for a
-// different logical database.
 func TestBackupNumberPerDatabase(t *testing.T) {
 	repo := newBackupDB(t)
 

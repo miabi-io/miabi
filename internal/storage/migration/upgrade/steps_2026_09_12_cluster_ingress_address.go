@@ -37,10 +37,7 @@ type ingressClusterRow struct {
 	IngressHostname string
 }
 
-// clusterIngressAddressStep moves the address public DNS records point at from nodes onto their clusters. A cluster
-// without one takes its ingress node's, the control-plane node's for the default cluster, and a hostname only when
-// it is a DNS name rather than the machine hostname it was often auto-filled with. A node of the default cluster
-// stops running a gateway of its own, since the control plane serves every app there. Safe to re-run.
+// A hostname is taken only if it's a DNS name, not the machine hostname it was often auto-filled with.
 func clusterIngressAddressStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable("clusters") || !db.Migrator().HasColumn("servers", "public_ip") {
 		return nil

@@ -32,8 +32,7 @@ func withServiceAccount() []models.WorkspaceMember {
 	})
 }
 
-// A service account holds a workspace role, but nobody reads its inbox: an alert or a backup report
-// sent to it is a delivery nobody sees.
+// Nobody reads a service account's inbox, so a delivery to it is one nobody sees.
 func TestServiceAccountsReceiveNoWorkspaceNotifications(t *testing.T) {
 	eng := NewEngine(nil, nil, fakeMembers{m: withServiceAccount()}, fakeNamer{}, nil, NewMemoryCounter(nil))
 	got, err := eng.recipients(9, models.WorkspaceRoleDeveloper, false)

@@ -37,9 +37,7 @@ func TestContainerVolumeMountsDefault(t *testing.T) {
 	}
 }
 
-// Under the restricted profile (NoCopyVolumes) a named volume must use the Mount
-// API with NoCopy set — otherwise Docker re-applies the image dir's ownership and
-// undoes the prep chown, leaving the non-root process unable to write.
+// Without NoCopy Docker re-applies the image dir's ownership and undoes the prep chown.
 func TestContainerVolumeMountsNoCopy(t *testing.T) {
 	binds, mounts := containerVolumeMounts(RunSpec{
 		Mounts:        map[string]string{"mb-vol-7": "/data"},
@@ -62,9 +60,7 @@ func TestContainerVolumeMountsNoCopy(t *testing.T) {
 	}
 }
 
-// A volume named in ReadOnlyMounts must render read-only, so a backup helper cannot write to the
-// data it archives. Both rendering paths matter: bind strings normally, and the Mount API when
-// copy-up is disabled.
+// ReadOnlyMounts must render read-only on both paths so a backup helper cannot write to the data it archives.
 func TestReadOnlyMountsRenderReadOnly(t *testing.T) {
 	spec := RunSpec{Mounts: map[string]string{"mb-vol-1-data": "/data", "scratch": "/tmp/work"}, ReadOnlyMounts: []string{"mb-vol-1-data"}}
 

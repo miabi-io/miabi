@@ -1,10 +1,4 @@
-// Workspace-wide SSE feed of application events. While the dashboard is open,
-// activity and health update in place — no page refresh.
-//
-// Two things happen per event: it is prepended to the timeline immediately (so
-// the feed feels live), and a debounced reconcile re-reads the overview, because
-// counts and per-app health are derived server-side and a burst of events from
-// one deploy should cost one refetch, not six.
+// Events prepend immediately; a debounced reconcile refetches derived counts so one deploy costs one refetch.
 import { onUnmounted, ref } from 'vue'
 import { eventsApi } from '@/api/events'
 import type { AppEvent } from '@/api/types'
@@ -35,8 +29,6 @@ export function useWorkspaceStream(onReconcile: (id: number) => void) {
     timer = setTimeout(() => onReconcile(id), REFRESH_DEBOUNCE_MS)
   }
 
-  // open connects the stream. `onEvent` receives each event so the caller can
-  // splice it into whatever it renders the timeline from.
   function open(id: number | null, onEvent: (e: AppEvent) => void) {
     close()
     if (!id) return

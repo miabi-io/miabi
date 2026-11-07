@@ -11,10 +11,7 @@ import { appApi } from '@/api/apps'
 import { apiUrl } from '@/api/client'
 import { dateLabel, windowLabel } from './timeaxis'
 
-// Shared sticky header for every analytics page: title, sub-page tabs, the app
-// filter and the time-range selector. It owns the (re)load lifecycle so each page
-// only renders the report, and it mirrors the range + app selection into the URL
-// query so a reload or shared link restores the same view.
+// Owns the (re)load lifecycle and mirrors range/app into the URL so reloads and shared links restore the view.
 const { t } = useI18n()
 const store = useAnalyticsStore()
 const { range, appFilter, appIds, appNames, appHandles, report, live, liveWindowSeconds } = storeToRefs(store)
@@ -32,7 +29,6 @@ function rangeLocked(key: string): boolean {
   const cap = report.value?.retention_days ?? -1
   return cap >= 0 && (RANGE_DAYS[key] ?? 0) > cap
 }
-// The absolute window behind the relative range, in the viewer's own timezone —
 // "24h" alone doesn't say where the charts start, and every axis label is local.
 const rangeWindow = computed(() => (report.value ? windowLabel(report.value.range.since, report.value.range.until) : ''))
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time'
@@ -108,19 +104,16 @@ const tabs = [
   { name: 'analytics.tab.webAnalytics', to: '/analytics/web', icon: 'mdi-account-group-outline' },
 ]
 
-// ?range= and ?app= are read here, before the URL mirror below first runs: it would otherwise
-// write the store's default range over the link's. ?app= is an app id or name (app=110, app=gitea).
+// Read before the URL mirror first runs, or it would overwrite the link's range with the store default.
 const initialRange = typeof route.query.range === 'string' ? route.query.range : ''
 if (initialRange && (ANALYTICS_RANGES.some((x) => x.key === initialRange) || isCustomRange(initialRange))) store.range = initialRange
 const initialApp = typeof route.query.app === 'string' ? route.query.app.trim() : ''
-// The ?app= value the URL carries for the current filter. A link keeps the form it was opened
-// with; a pick from the filter writes the app's name.
+// A link keeps the form it was opened with; a pick from the filter writes the app's name.
 let appRef = initialApp
 // True while ?app= is still being resolved, so the mirror doesn't drop it in the meantime.
 let seeding = initialApp !== ''
 
-// Seed the app filter from ?app= on entry (deep-link / reload), before loading. A name is
-// resolved to its id first; one that matches no app leaves the view workspace-wide.
+// A name that matches no app leaves the view workspace-wide.
 async function seedFromQuery() {
   try {
     if (!initialApp) return
@@ -154,8 +147,7 @@ watch(currentWorkspaceId, () => {
   store.loadLive()
 })
 
-// The live pill hides until the first poll answers, so it never flashes a 0 that
-// only means "not asked yet".
+// Hidden until the first poll answers so it never flashes a meaningless 0.
 const liveLabel = computed(() => {
   const m = Math.round(liveWindowSeconds.value / 60)
   return `${live.value} visitor${live.value === 1 ? '' : 's'} active in the last ${m} minute${m === 1 ? '' : 's'}`
@@ -279,8 +271,7 @@ function onAppChange(e: Event) {
 .a-ns { color: var(--text-muted); font-size: 14px; }
 .a-window { color: var(--text-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* Live visitors: a count of who's on the site right now, so it sits with the
-   controls rather than in the report body — it doesn't move with the range. */
+/* Sits with the controls because it doesn't move with the range. */
 .a-live {
   height: 34px; flex-shrink: 0;
   display: inline-flex; align-items: center; gap: 7px;

@@ -25,8 +25,7 @@ import (
 	"testing"
 )
 
-// The sign-in page is shown to unauthenticated visitors, so an admin-supplied href
-// is the most exposed string in the product. These are the cases that matter.
+// The sign-in page is shown to unauthenticated visitors, so admin hrefs are the most exposed strings.
 func TestLinkURLsMustBeHTTP(t *testing.T) {
 	refused := map[string]string{
 		"javascript":           "javascript:alert(1)",
@@ -76,8 +75,7 @@ func TestLinkLabels(t *testing.T) {
 	if _, err := NormalizeLinks([]Link{{Label: long, URL: "https://acme.example"}}); !errors.Is(err, ErrLabelTooLong) {
 		t.Errorf("an over-long label was accepted: %v", err)
 	}
-	// Counted in runes, not bytes: a label of accented characters is not secretly
-	// half the length it looks.
+	// Counted in runes, not bytes.
 	ok := strings.Repeat("é", MaxLabelRunes)
 	if _, err := NormalizeLinks([]Link{{Label: ok, URL: "https://acme.example"}}); err != nil {
 		t.Errorf("a %d-rune label was refused: %v", MaxLabelRunes, err)
@@ -112,8 +110,7 @@ func TestLinkCap(t *testing.T) {
 	}
 }
 
-// Blank is how every install that predates the policy reads, and it must keep
-// letting accounts choose.
+// Blank is how pre-policy installs read, and they must keep letting accounts choose.
 func TestParseAccentPolicy(t *testing.T) {
 	for raw, want := range map[string]AccentPolicy{
 		"": AccentPolicyDefault, "default": AccentPolicyDefault,

@@ -26,9 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// backupEncryptedStep marks the backups already taken under a passphrase. The
-// ".gpg" suffix is what the *-bkup tools append when they encrypt, so the stored
-// filename is the record of what happened — the column just makes it queryable.
+// The ".gpg" suffix the *-bkup tools append is the record of encryption; the column makes it queryable.
 func backupEncryptedStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasColumn(&backupRow{}, "encrypted") {
 		return nil

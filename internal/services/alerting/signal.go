@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Signal is a normalized fact from a non-app-event source (backups, quotas, nodes). Producers emit it
-// and the engine turns it into alerts with the same dedup and fan-out machinery as app events. It is
-// either a condition (Resolve=false) or its clearance (Resolve=true); the engine supplies identity.
+// Signal carries non-app-event facts through the same dedup and fan-out as app events.
 type Signal struct {
 	WorkspaceID uint
 	Kind        string // stable condition id, e.g. "backup_failed", "quota_near"
@@ -39,36 +37,23 @@ type Signal struct {
 	Severity    models.AlertSeverity
 	Title       string
 	Body        string
-	// Platform routes this alert to the super-admins (system workspace) instead of
-	// workspace members — set by producers of platform-scoped conditions whose
-	// scope is only known at runtime (e.g. a shared vs workspace runner).
+	// For producers whose scope is only known at runtime (shared vs workspace runner).
 	Platform bool
 }
 
-// Emitter is the producer-facing handle. The engine implements it; a service that
-// detects a condition just calls Emit.
 type Emitter interface {
 	Emit(sig Signal)
 }
 
-// signalRule declares how a Signal Kind maps to an alert: its category, the
-// lowest role that receives it, and (for a clearance) the fire Kind(s) it closes.
 type signalRule struct {
 	category models.AlertCategory
 	minRole  models.WorkspaceRole
-	// platform forces super-admin fan-out for this Kind regardless of the Signal
-	// (e.g. a node is always platform-scoped). A Kind whose scope varies at runtime
-	// (shared vs workspace runner) leaves this false and lets Signal.Platform decide.
+	// Kinds whose scope varies at runtime leave this false and let Signal.Platform decide.
 	platform bool
-	// resolves lists the fire Kinds this (clearance) Kind closes. Empty for a
-	// fire Kind. A clearance often closes several conditions (a successful backup
-	// clears both "backup_failed" and "backup_overdue").
+	// A clearance often closes several conditions (backup_ok clears backup_failed and backup_overdue).
 	resolves []string
 }
 
-// signalRules is the catalog of Signal-sourced conditions. Fire Kinds carry a category + min role;
-// clearance Kinds list what they resolve. Workspace-scoped categories reuse the member fan-out directly;
-// platform-scoped ones (node) are listed for completeness and wired once a system-admin fan-out exists.
 var signalRules = map[string]signalRule{
 	// Backups (workspace-scoped: a workspace's database/volume backups).
 	"backup_failed":  {category: models.CategoryDatabase, minRole: models.WorkspaceRoleDeveloper},
@@ -95,8 +80,7 @@ var signalRules = map[string]signalRule{
 	"node_offline": {category: models.CategoryNode, minRole: models.WorkspaceRoleViewer, platform: true},
 	"node_online":  {resolves: []string{"node_offline"}},
 
-	// Runners (CI). Scope varies at runtime: a workspace runner notifies its
-	// members; a shared runner is platform-scoped (Signal.Platform=true → admins).
+	// Scope varies at runtime: shared runners set Signal.Platform to notify admins.
 	"runner_offline": {category: models.CategoryCI, minRole: models.WorkspaceRoleDeveloper},
 	"runner_online":  {resolves: []string{"runner_offline"}},
 }
@@ -106,8 +90,6 @@ func signalDedup(kind, subjectRef string) string {
 	return fmt.Sprintf("%s:%s", kind, subjectRef)
 }
 
-// evaluateSignal maps a Signal to alert intents (pure). A fire Signal yields one
-// fire intent; a clearance yields a resolve intent per Kind it closes.
 func evaluateSignal(sig Signal) []intent {
 	rule, ok := signalRules[sig.Kind]
 	if !ok || sig.SubjectRef == "" {

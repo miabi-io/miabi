@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Lists the feat/fix/perf commits that touched a component's code, as a changelog draft.
-#   scripts/components/component-changelog.sh gitops [since-ref]
-# since-ref defaults to the last commit that changed the component's version constant.
+# Usage: component-changelog.sh <component> [since-ref]; since-ref defaults to the last version bump.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 id="${1:?usage: $0 <component> [since-ref]}"

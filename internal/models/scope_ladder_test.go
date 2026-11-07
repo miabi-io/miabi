@@ -21,9 +21,7 @@ package models
 
 import "testing"
 
-// The ladder is * ⊃ admin ⊃ {write, deploy} ⊃ read, with write and deploy as siblings. A deploy
-// key that could also edit, or a write key that could also ship, would make the two scopes
-// decorative.
+// write and deploy are siblings; otherwise the two scopes would be decorative.
 func TestScopeSatisfies(t *testing.T) {
 	for _, tc := range []struct {
 		granted  []string
@@ -67,8 +65,7 @@ func TestScopeSatisfies(t *testing.T) {
 	}
 }
 
-// An unclassified route passes "" as the requirement; refusing it would break every route the
-// classifier has no opinion on.
+// Refusing "" would break every route the classifier has no opinion on.
 func TestScopeSatisfies_EmptyRequirement(t *testing.T) {
 	if !ScopeSatisfies(nil, "") {
 		t.Fatal("an empty requirement must be satisfied by any key")

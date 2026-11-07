@@ -4,8 +4,6 @@ import { Handle, Position } from '@vue-flow/core'
 import type { GitSourceStatus } from '@/api/types'
 import { gitSourceStatusMeta } from './topologyMeta'
 
-// The root node of the graph: the GitOps project itself, with every managed
-// resource fanning out from it (ArgoCD's Application-at-the-root shape).
 interface ProjectData {
   name: string
   status: GitSourceStatus

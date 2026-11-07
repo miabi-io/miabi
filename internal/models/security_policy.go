@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// SecurityPolicy is one Security Center rule: a kind of control, the scope it applies to, whether
-// it is enforced, and a versioned JSON spec the kind's evaluator reads. The most specific scope
-// wins, but may only tighten the platform rule unless that rule sets AllowExceptions.
+// SecurityPolicy: the most specific scope wins but may only tighten the platform rule unless it sets AllowExceptions.
 type SecurityPolicy struct {
 	ID        uint   `json:"id" gorm:"primaryKey"`
 	Kind      string `json:"kind" gorm:"not null;uniqueIndex:idx_secpolicy_scope"`       // ports
@@ -40,8 +38,7 @@ type SecurityPolicy struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// SecurityEvent is one decision a policy made: a denial, an audit-mode "would deny", or a change to
-// a policy itself. Allows are not recorded.
+// SecurityEvent records denials, audit-mode would-denies and policy changes; allows are not recorded.
 type SecurityEvent struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	CreatedAt   time.Time `json:"created_at" gorm:"index"`

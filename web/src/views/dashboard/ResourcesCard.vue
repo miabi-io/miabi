@@ -55,8 +55,6 @@ defineProps<{
   gap: 20px; padding: 16px 20px;
 }
 .resource { display: flex; flex-direction: column; gap: 8px; }
-/* The sparkline is fixed-width by default; let it fill its column so it doesn't
-   sit stranded on the left of a wide card. */
 .resource :deep(.sparkline) { width: 100%; }
 .resource-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .resource-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }

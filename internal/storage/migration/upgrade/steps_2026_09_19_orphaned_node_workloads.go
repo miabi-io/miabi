@@ -34,8 +34,6 @@ type orphanWorkloadRow struct {
 	Status      string
 }
 
-// orphanedNodeWorkloadsStep marks applications and database instances whose node was deleted as
-// stopped.
 func orphanedNodeWorkloadsStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable("servers") {
 		return nil

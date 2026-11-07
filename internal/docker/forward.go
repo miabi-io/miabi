@@ -35,8 +35,6 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// DialNetwork bridges a raw TCP stream to host:port through an ephemeral socat
-// relay container attached to the given network. See the Client interface.
 func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host string, port int) (net.Conn, error) {
 	cfg := &container.Config{
 		Image: image,
@@ -54,9 +52,7 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 		EndpointsConfig: map[string]*network.EndpointSettings{netName: {}},
 	}
 	name := fmt.Sprintf("mb-fwd-%s", randHex(6))
-	// AutoRemove so the relay self-deletes when socat exits, in addition to
-	// explicit removal on Close. The two race harmlessly — removing a gone
-	// container is ignored.
+	// AutoRemove and explicit removal on Close race harmlessly; removing a gone container is ignored.
 	created, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config:           cfg,
 		HostConfig:       &container.HostConfig{AutoRemove: true},
@@ -88,8 +84,6 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 	c := &relayConn{hj: hj, remove: remove}
 	pr, pw := io.Pipe()
 	c.rd = pr
-	// Demultiplex the attach stream: socat's payload arrives on stdout; stderr
-	// (socat diagnostics) is discarded. StdCopy ends when the relay exits.
 	go func() {
 		_, err := stdcopy.StdCopy(pw, io.Discard, hj.Reader)
 		_ = pw.CloseWithError(err)
@@ -97,8 +91,6 @@ func (e *engineClient) DialNetwork(ctx context.Context, netName, image, host str
 	return c, nil
 }
 
-// relayConn is a net.Conn over a Docker attach stream: writes go to the relay's stdin (raw),
-// reads come from its demultiplexed stdout.
 type relayConn struct {
 	hj     client.HijackedResponse
 	rd     *io.PipeReader
@@ -121,8 +113,7 @@ func (c *relayConn) Close() error {
 func (c *relayConn) LocalAddr() net.Addr  { return relayAddr{} }
 func (c *relayConn) RemoteAddr() net.Addr { return relayAddr{} }
 
-// Deadlines apply to the underlying attach connection where supported; the read
-// side is buffered through a pipe, so a read deadline is best-effort.
+// The read side is buffered through a pipe, so a read deadline is best-effort.
 func (c *relayConn) SetDeadline(t time.Time) error      { return c.hj.Conn.SetDeadline(t) }
 func (c *relayConn) SetReadDeadline(t time.Time) error  { return c.hj.Conn.SetReadDeadline(t) }
 func (c *relayConn) SetWriteDeadline(t time.Time) error { return c.hj.Conn.SetWriteDeadline(t) }

@@ -28,9 +28,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// certificatePEM is the shape that prompted this test: several lines, a trailing
-// newline, and content that must survive byte for byte or the certificate it
-// carries is unusable.
 const certificatePEM = `-----BEGIN CERTIFICATE-----
 MIIBkTCB+wIJAKZ0Z0Z0Z0Z0MA0GCSqGSIb3DQEBCwUAMBQxEjAQBgNVBAMMCWxv
 Y2FsaG9zdDAeFw0yNjAxMDEwMDAwMDBaFw0yNzAxMDEwMDAwMDBaMBQxEjAQBgNV
@@ -40,15 +37,13 @@ BAMMCWxvY2FsaG9zdDBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQDZ8Z8Z8Z8Z8Z8Z
 
 func multilineTestService(t *testing.T) *Service {
 	t.Helper()
-	// A DSN per test: the shared cache would otherwise carry one test's table,
-	// and its rows, into the next.
+	// A per-test DSN: the shared cache would otherwise carry one test's rows into the next.
 	dsn := "file:" + t.Name() + "?mode=memory&cache=shared"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	// The Secret model's UIDModel carries a Postgres `gen_random_uuid()` default
-	// that sqlite's AutoMigrate can't parse, so create a compatible table by hand.
+	// The UIDModel's Postgres gen_random_uuid() default breaks sqlite AutoMigrate, so the table is created by hand.
 	if err := db.Exec(`CREATE TABLE secrets (
 		uid text, id integer PRIMARY KEY AUTOINCREMENT, workspace_id integer,
 		name text, display_name text, value_enc text, description text,
@@ -60,8 +55,7 @@ func multilineTestService(t *testing.T) *Service {
 	return NewService(repositories.NewSecretRepository(db))
 }
 
-// A certificate stored and read back must be the same bytes: line breaks are
-// part of the value, not formatting.
+// Line breaks are part of the value, not formatting.
 func TestMultilineValueRoundTrips(t *testing.T) {
 	svc := multilineTestService(t)
 
@@ -106,8 +100,7 @@ func TestMultilineValueSurvivesRotation(t *testing.T) {
 	}
 }
 
-// A value that is only whitespace means "keep the stored value" on update, and
-// must not be mistaken for a rotation to blank.
+// A whitespace-only value means "keep the stored value", not a rotation to blank.
 func TestBlankUpdateKeepsStoredValue(t *testing.T) {
 	svc := multilineTestService(t)
 
@@ -128,9 +121,6 @@ func TestBlankUpdateKeepsStoredValue(t *testing.T) {
 	}
 }
 
-// A certificate referenced from an env var must reach the container as the
-// certificate, not as its first line. ResolveAll is the substitution every
-// deploy and job goes through.
 func TestMultilineValueResolvesIntoEnv(t *testing.T) {
 	svc := multilineTestService(t)
 
@@ -153,9 +143,7 @@ func TestMultilineValueResolvesIntoEnv(t *testing.T) {
 	}
 }
 
-// A secret holding regex replacement syntax must survive substitution literally:
-// the resolver uses ReplaceAllStringFunc precisely so "$1" in a value is not
-// expanded into a capture group.
+// The resolver uses ReplaceAllStringFunc so "$1" in a value isn't expanded as a capture group.
 func TestSecretValueWithDollarIsLiteral(t *testing.T) {
 	svc := multilineTestService(t)
 

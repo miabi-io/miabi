@@ -20,8 +20,7 @@ const (
 	CreationSourcePlatform     = "platform"
 )
 
-// CreationDeniedError is returned when the creation policy refuses a user. Mode is the rule that
-// applied, or empty when a per-user override denied it.
+// Mode is empty when a per-user override denied it.
 type CreationDeniedError struct{ Mode string }
 
 func (e *CreationDeniedError) Error() string {
@@ -60,13 +59,10 @@ type CreationPolicy struct {
 // SetConsoleURL wires the connected billing console's address, shown in console mode.
 func (s *Service) SetConsoleURL(fn func() string) { s.consoleURL = fn }
 
-// SetCreationPolicy wires the platform workspace creation mode. The per-user override follows the
-// same Enterprise entitlement as the per-user workspace limit (see SetLimits), and the organization
-// mode the organizations entitlement. Nil-safe: unwired, anyone may create.
+// Nil-safe: unwired, anyone may create.
 func (s *Service) SetCreationPolicy(platformMode func() string) { s.creationMode = platformMode }
 
-// CreationPolicy resolves whether userID may create a workspace: platform admins always may, then
-// the Enterprise per-user override, the home organization's mode, and the platform mode.
+// Platform admins always may, then the per-user override, the home organization's mode, and the platform mode.
 func (s *Service) CreationPolicy(userID uint) CreationPolicy {
 	// Console mode outranks admins and per-user overrides: a workspace made here would go unbilled.
 	if s.ConsoleOnly() {
@@ -117,8 +113,7 @@ func (s *Service) modeAllows(mode string, u *models.User) bool {
 	}
 }
 
-// CanCreate returns a CreationDeniedError when the creation policy refuses userID. Service accounts
-// are left to canOwnAnother, which refuses them with a clearer error.
+// Service accounts are left to canOwnAnother, which refuses them with a clearer error.
 func (s *Service) CanCreate(userID uint) error {
 	if u, err := s.users.FindByID(userID); err == nil && u.IsService() {
 		return nil

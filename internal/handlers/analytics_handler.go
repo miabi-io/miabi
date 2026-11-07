@@ -35,15 +35,11 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AnalyticsHandler serves the Workspace Analytics dashboards from the minute rollups the
-// consumer builds. The dashboards are open-source; the edition only bounds the retention window
-// and gates CSV export.
+// The dashboards are open-source; the edition only bounds retention and gates CSV export.
 type AnalyticsHandler struct {
 	repo *repositories.AnalyticsRepository
 	ee   enterprise.EE
-	// live is nil when Redis isn't configured; the endpoint then reports zero
-	// rather than failing, since live visitors is an accent on the dashboard and
-	// not something worth erroring a page over.
+	// nil when Redis isn't configured; the endpoint then reports zero rather than failing.
 	live *analytics.LiveTracker
 	// apps resolves an ?app= given as a uid or name; nil accepts numeric ids only.
 	apps middlewares.AppRefResolver
@@ -53,13 +49,9 @@ func NewAnalyticsHandler(repo *repositories.AnalyticsRepository, ee enterprise.E
 	return &AnalyticsHandler{repo: repo, ee: ee, live: live, apps: apps}
 }
 
-// maxAnalyticsRange caps how far back a single query may look, keeping the
-// row scan bounded regardless of the requested window.
 const maxAnalyticsRange = 90 * 24 * time.Hour
 
-// retentionCap returns the entitlement retention cap in days (-1 = unlimited),
-// and maxWindow bounds a requested window to that cap so a Community install can
-// only look back within its retention (extended retention is an EE entitlement).
+// Retention beyond the Community window is an EE entitlement.
 func (h *AnalyticsHandler) retentionCap() int {
 	return h.ee.Entitlements().AnalyticsRetentionDays()
 }
@@ -75,9 +67,7 @@ func (h *AnalyticsHandler) maxWindow() time.Duration {
 	return maxAnalyticsRange
 }
 
-// Report returns the combined analytics report for the workspace over a range. Query params:
-// range = a window ending now (15m, 1h, 24h, 7d, 30d; default 24h) or an absolute
-// "<from>..<to>" (see resolveWindow), and app = an optional application id to filter to a single app.
+// range is a window ending now (15m..30d, default 24h) or "<from>..<to>"; app filters to one app.
 func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -100,9 +90,7 @@ func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	report.RetentionDays = h.retentionCap()
 	report.Exportable = h.ee.Has(enterprise.FlagAnalyticsExport)
 
-	// Period-over-period: totals of the immediately preceding, equal-length window
-	// power the overview's delta indicators. Skipped on the widest window to bound
-	// the scan, and best-effort (a failure just omits the comparison).
+	// Skipped on the widest window to bound the scan; best-effort.
 	if window <= 30*24*time.Hour {
 		if prev, err := h.repo.Range(wsID, appFilter, since.Add(-window), since); err == nil {
 			prevTotals := analytics.BuildReport(prev, since.Add(-window), since).Totals
@@ -112,8 +100,6 @@ func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	return ok(c, report)
 }
 
-// Export streams the analytics time series as CSV. Enterprise-gated
-// (analytics_export) — 402/403 in Community.
 func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagAnalyticsExport); err != nil {
 		return entitlementAbort(c, err)
@@ -157,9 +143,7 @@ func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 	return nil
 }
 
-// Summary returns the dashboard's slice of the report — headline totals, the status split and
-// the request series — without the breakdowns, per-route stats or upstream percentiles. It reads
-// fewer columns too, so the traffic card costs a fraction of a full report. Params match Report.
+// Summary reads fewer columns than Report, so the traffic card costs a fraction of a full report.
 func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -180,9 +164,7 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	}
 	summary := analytics.BuildSummary(rows, since, until)
 
-	// Period-over-period totals power the deltas. Skipped on the widest window to
-	// bound the scan, and best-effort — a failure just omits the comparison. Read
-	// without the country top-K: only the totals of this window are used.
+	// Skipped on the widest window to bound the scan; best-effort, and read without the country top-K.
 	if window <= 30*24*time.Hour {
 		if prev, err := h.repo.RangeSummary(wsID, appFilter, since.Add(-window), since, false); err == nil {
 			prevTotals := analytics.BuildSummary(prev, since.Add(-window), since).Totals
@@ -192,9 +174,7 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	return ok(c, summary)
 }
 
-// Live returns the number of distinct visitors seen in the last few minutes, for the workspace
-// or (with ?app=) one application. Polled by the dashboard, so it stays a single cheap Redis
-// read and never touches the database.
+// Polled by the dashboard, so it stays a single cheap Redis read and never touches the database.
 func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
@@ -211,8 +191,7 @@ func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	if h.live != nil {
 		window = h.live.Window()
 	}
-	// A missing or unreachable Redis means "nobody counted", not an error: the
-	// rest of the dashboard reads from Postgres and is unaffected.
+	// A missing Redis means nobody counted, not an error: the rest of the dashboard reads Postgres.
 	count, err := h.live.Count(c.Request().Context(), wsID, app)
 	if err != nil {
 		count = 0
@@ -223,8 +202,7 @@ func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	})
 }
 
-// appFilterParam reads ?app= as an application id, uid or name. A numeric id is used as is, with
-// no lookup, so the traffic of a deleted app stays filterable; a uid or name resolves in the workspace.
+// A numeric id is used without lookup, so a deleted app's traffic stays filterable.
 func (h *AnalyticsHandler) appFilterParam(c *okapi.Context) (*uint, error) {
 	q := strings.TrimSpace(c.Query("app"))
 	if q == "" {
@@ -246,8 +224,6 @@ func (h *AnalyticsHandler) appFilterParam(c *okapi.Context) (*uint, error) {
 
 var errAppNotFound = errors.New("application not found")
 
-// Apps lists the application ids that have analytics data in the window, so the
-// UI's app filter shows only apps with traffic.
 func (h *AnalyticsHandler) Apps(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	since, until, err := resolveWindow(c.Query("range"), time.Now().UTC(), h.maxWindow())
@@ -264,8 +240,7 @@ func (h *AnalyticsHandler) Apps(c *okapi.Context) error {
 	return ok(c, map[string]any{"application_ids": ids})
 }
 
-// parseRange parses a window string like "15m", "2h", "7d". Bare "d" days are
-// supported (time.ParseDuration can't). Falls back to def on anything invalid.
+// Supports bare "d" days, which time.ParseDuration can't; falls back to def on invalid input.
 func parseRange(s string, def time.Duration) time.Duration {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -283,9 +258,7 @@ func parseRange(s string, def time.Duration) time.Duration {
 	return def
 }
 
-// resolveWindow turns ?range= into [since, until). A relative range ("7d") ends at now; an
-// absolute one is "<from>..<to>", each RFC 3339 or a YYYY-MM-DD date (UTC midnight), with to
-// exclusive and clamped to now. Either way since never reaches back further than max.
+// Absolute ranges are "<from>..<to>" (RFC 3339 or YYYY-MM-DD), to exclusive and clamped to now.
 func resolveWindow(raw string, now time.Time, max time.Duration) (since, until time.Time, err error) {
 	from, to, absolute := strings.Cut(strings.TrimSpace(raw), "..")
 	if !absolute {

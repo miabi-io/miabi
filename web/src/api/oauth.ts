@@ -4,8 +4,7 @@ import type { ApiResponse, AuthStatus, ProvidersResponse, SSODiscovery } from '.
 export const oauthApi = {
   // Public auth feature status (registration / password reset toggles).
   status: () => api.get<ApiResponse<AuthStatus>>('/auth/status'),
-  // Buttoned (non-hidden) providers plus whether hidden providers exist (which
-  // are reachable only via the "Continue with SSO" email-discovery flow).
+  // Hidden providers are reachable only via the "Continue with SSO" email-discovery flow.
   providers: () => api.get<ApiResponse<ProvidersResponse>>('/auth/oauth/providers'),
   // Resolve the SSO provider for an email's domain (hidden-provider discovery).
   discoverSSO: (email: string) => api.post<ApiResponse<SSODiscovery>>('/auth/oauth/discover', { email }),
@@ -13,10 +12,7 @@ export const oauthApi = {
   completeTwoFactor: (code: string) => api.post<ApiResponse<{ redirect: string }>>('/auth/oauth/2fa', { code }),
 }
 
-// authorizeUrl returns the absolute URL that begins the SSO redirect flow for a
-// provider. The browser navigates here directly (full page load), so it must hit
-// the API origin, not the SPA router. Pass intent='login_token' to force a fresh
-// IdP login and mint a CLI token instead of a console session.
+// Must hit the API origin (full page load), not the SPA router; intent='login_token' mints a CLI token instead.
 export function authorizeUrl(slug: string, intent?: string, scopes: string[] = [], next = ''): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
@@ -30,15 +26,12 @@ export function authorizeUrl(slug: string, intent?: string, scopes: string[] = [
   return `${origin}${base}/auth/oauth/${slug}/authorize${qs ? '?' + qs : ''}`
 }
 
-// cliAuthorizeUrl begins the SSO redirect for `miabi login`'s loopback flow: a
-// fresh IdP login that, on callback, hands a single-use code straight to the
-// CLI's local callback (redirectUri) with state echoed back for its CSRF check.
+// On callback a single-use code goes to the CLI's local redirectUri, with state echoed for its CSRF check.
 export function cliAuthorizeUrl(slug: string, redirectUri: string, state: string, scopes: string[] = []): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
   const q = new URLSearchParams({ intent: 'cli_login', cli_redirect: redirectUri, cli_state: state })
-  // Carried through the IdP round-trip so an SSO sign-in honours `miabi login --scopes` too,
-  // rather than quietly handing back a broader token than the CLI asked for.
+  // Carried through the IdP round-trip so SSO honours `miabi login --scopes` instead of returning a broader token.
   if (scopes.length) q.set('cli_scopes', scopes.join(','))
   return `${origin}${base}/auth/oauth/${slug}/authorize?${q.toString()}`
 }

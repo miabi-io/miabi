@@ -80,9 +80,7 @@ func TestRegistryKindParsesAndLinks(t *testing.T) {
 	}
 }
 
-// A registry's password is normally "{{ .secrets.x }}", and the apply engine renders it strictly
-// at execute time, so a Secret declared in the same bundle must be created first. Same-rank
-// changes order by kind name, which would put Registry before Secret; the ranks keep them apart.
+// Same-rank changes order by kind name, which would put Registry before its Secret on a first apply.
 func TestSecretIsCreatedBeforeRegistry(t *testing.T) {
 	src := `apiVersion: miabi.io/v1
 kind: Registry
@@ -110,8 +108,7 @@ spec: { generate: true }`
 	}
 }
 
-// A registry referenced but not declared is legal: it resolves against the
-// workspace's existing credentials at apply time.
+// An undeclared registry resolves against the workspace's existing credentials at apply.
 func TestRegistryReferenceNeedNotBeDeclared(t *testing.T) {
 	src := `apiVersion: miabi.io/v1
 kind: Application
@@ -129,8 +126,6 @@ spec:
 }
 
 func TestRegistryServerNormalizedAndValidated(t *testing.T) {
-	// A scheme is stripped and an omitted host defaults to Docker Hub, so a
-	// manifest converges against what the registry service stores.
 	for _, tc := range []struct{ in, want string }{
 		{"", d.DefaultRegistryServer},
 		{"https://ghcr.io", "ghcr.io"},
@@ -195,8 +190,7 @@ func TestRegistryDiffHidesThePassword(t *testing.T) {
 	}
 }
 
-// A credential whose token is managed out-of-band (declared in git, pasted in the
-// UI) must not read as drift on every plan.
+// An out-of-band token must not read as drift on every plan.
 func TestRegistryWithoutPasswordDoesNotDrift(t *testing.T) {
 	desired := d.NewResourceSet()
 	desired.Add(d.Resource{
@@ -238,9 +232,7 @@ func TestApplicationRegistryChangeIsDrift(t *testing.T) {
 	t.Errorf("re-pointing an app at another credential must show as drift: %+v", plan.Changes)
 }
 
-// A manifest may carry either secret form: "{{ .secrets.x }}" is rendered at apply time into a
-// stored copy, while "${{ secrets.X }}" is stored as a live reference resolved at every pull. The
-// runtime form must survive parsing untouched — Go's template engine would choke on it.
+// The runtime `${{ secrets.X }}` form must survive parsing untouched; Go templates would choke on it.
 func TestRegistryRuntimeSecretReferenceIsNotATemplate(t *testing.T) {
 	src := `apiVersion: miabi.io/v1
 kind: Registry
@@ -271,8 +263,7 @@ spec:
 	}
 }
 
-// GitOps canonicalizes a bundle through Marshal before applying it, so a
-// registry (password included) has to survive the round trip.
+// GitOps canonicalizes through Marshal, so a registry password must survive the round trip.
 func TestRegistryMarshalRoundTrips(t *testing.T) {
 	set, err := d.Parse([]byte(registryBundle))
 	if err != nil {

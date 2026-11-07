@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package transfer moves bytes between two Docker engines through the control plane: a volume with rsync,
-// or a database dump piped straight into a restore. Nodes never talk to each other, so every stream is
-// spliced here, over the connections the control plane already holds (the local socket or an agent
-// tunnel). Nothing is encrypted beyond what that transport provides, by design.
+// Package transfer splices bytes between Docker engines through the control plane; nodes never talk directly.
 package transfer
 
 import (
@@ -48,18 +45,14 @@ type Service struct {
 	syncImage, relayImage func() string
 }
 
-// New builds a transfer service. The image funcs are read per transfer, so an admin override of the
-// catalog applies to the next copy without a restart.
+// The image funcs are read per transfer so a catalog override applies without a restart.
 func New(engines Engines, syncImage, relayImage func() string) *Service {
 	return &Service{engines: engines, syncImage: syncImage, relayImage: relayImage}
 }
 
-// ErrSameNode refuses a copy whose ends are one engine: there is nothing to move, and the target volume
-// would be the source.
 var ErrSameNode = errors.New("transfer: source and target are the same node")
 
-// splice copies both ways between a and b until either side ends, and returns the bytes that flowed from a
-// to b. counted, when set, is updated live so a caller can report progress while the copy runs.
+// counted, when set, is updated live for progress reporting.
 func splice(a, b io.ReadWriter, counted *atomic.Int64) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -121,8 +114,7 @@ func exitErr(what string, code int, err error, stderr string) error {
 	return nil
 }
 
-// pull refreshes an image, and settles for the local copy when the registry cannot be reached: an air-gapped
-// node, or a helper loaded by hand, must not stop a transfer the image is already there for.
+// Falls back to the local copy so an air-gapped node or a hand-loaded helper doesn't block a transfer.
 func pull(ctx context.Context, dc docker.Client, ref string) error {
 	err := dc.PullImage(ctx, ref, nil)
 	if err == nil {

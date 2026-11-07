@@ -17,16 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package updatecheck asks versions.miabi.io, once a day, which releases of Miabi and its components exist,
-// and caches the answer. It notifies; it never upgrades. This process holds the Docker socket and
-// orchestrates every workspace, so restarting itself into a new image is a decision for a human with a
-// shell — and the node agent carries the only remote path to its host, so the same is true there, more so.
-//
-// One request covers every component, and each component keeps its own cached row. They differ in one way
-// that shapes the code. The platform knows the build it is running, so its check can answer "is there
-// anything newer than me". Agents and runners each run their own build, so there is no single current
-// version to compare against: their check records the newest stable release and the comparison happens per
-// node or runner, at read time.
+// Package updatecheck checks versions.miabi.io daily and notifies; it never upgrades anything itself.
 package updatecheck
 
 import (
@@ -44,8 +35,7 @@ import (
 )
 
 const (
-	// IndexURL lists the current release of every component in one file. The request carries nothing
-	// identifying beyond the User-Agent: no install id, no host, no license.
+	// The request carries nothing identifying beyond the User-Agent: no install id, host or license.
 	IndexURL = "https://versions.miabi.io/v1/index.json"
 
 	// httpTimeout bounds the whole exchange. A hung endpoint must never wedge cron.
@@ -87,8 +77,7 @@ type Index struct {
 type Service struct {
 	db        *gorm.DB
 	component string
-	// version is the running build, e.g. "1.0.0-beta.4" or "dev". Empty for a component this process does
-	// not itself run, where the check records the newest stable release rather than a verdict about "me".
+	// Empty for a component this process doesn't run; the check then records the newest stable release.
 	version string
 	enabled bool
 }
@@ -111,9 +100,7 @@ func NewComponentService(db *gorm.DB, component string, enabled bool) *Service {
 // Component names what this cache tracks.
 func (s *Service) Component() string { return s.component }
 
-// Enabled reports whether checks run at all. A `dev` build never checks its own component: its version does
-// not compare meaningfully against any release. A component this process does not run carries no version and
-// is gated on the setting alone.
+// A dev build never checks its own component: its version doesn't compare meaningfully to releases.
 func (s *Service) Enabled() bool {
 	if s.version == "" {
 		return s.enabled
@@ -121,9 +108,7 @@ func (s *Service) Enabled() bool {
 	return s.enabled && normalize(s.version) != ""
 }
 
-// normalize turns a version into a semver string x/mod accepts. Builds are stamped without the leading "v"
-// (the Docker tag, e.g. "1.0.0-beta.4"), as are versions.miabi.io entries. Returns "" when the value is
-// not a version at all — "dev", "unknown", or a commit sha.
+// Returns "" for non-versions such as "dev", "unknown" or a commit sha.
 func normalize(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -138,13 +123,10 @@ func normalize(v string) string {
 	return v
 }
 
-// wantPrerelease reports whether the running build is itself a prerelease. A user on v1.0.0-beta.4 wants to
-// hear about beta.5 AND about stable v1.0.0; a user on stable must never be nudged onto a beta.
+// A prerelease user wants newer betas and stable; a stable user must never be nudged onto a beta.
 func wantPrerelease(current string) bool { return semver.Prerelease(current) != "" }
 
-// IsNewer reports whether latest is a strictly newer release than current. Readers gate the notice on this
-// rather than trusting the cached row: the row is written by a daily cron, so between an upgrade and the next
-// tick it still describes the previous build. Comparing at read time makes offering a downgrade impossible.
+// The cached row lags upgrades until the next daily cron, so comparing at read time prevents offering a downgrade.
 func IsNewer(current, latest string) bool {
 	cur, lat := normalize(current), normalize(latest)
 	if cur == "" || lat == "" {
@@ -153,9 +135,7 @@ func IsNewer(current, latest string) bool {
 	return semver.Compare(lat, cur) > 0
 }
 
-// pick selects the release to cache: for the running platform, the newest entry above this build on the
-// channels it may be offered; for a component it does not run, the stable release. The channel is trusted
-// only as far as the version agrees with it, so a prerelease can never reach a stable install by mistake.
+// The channel is trusted only as far as the version agrees, so a prerelease never reaches a stable install.
 func (s *Service) pick(ch Channels) *Release {
 	if s.version == "" {
 		if r := ch.Stable; r != nil && normalize(r.Version) != "" && semver.Prerelease(normalize(r.Version)) == "" {
@@ -219,8 +199,7 @@ func (s *Service) Status() (*models.UpdateStatus, error) {
 	return &st, nil
 }
 
-// Dismiss silences the notice for a specific version. Recording the version —
-// rather than a boolean — means the next release notifies again.
+// Recording the version rather than a boolean means the next release notifies again.
 func (s *Service) Dismiss(version string) error {
 	st, err := s.Status()
 	if err != nil {
@@ -237,8 +216,6 @@ type Checker struct {
 	services []*Service
 }
 
-// NewChecker builds the daily check for the given components. version is the running build, sent as the
-// User-Agent.
 func NewChecker(version string, services ...*Service) *Checker {
 	c := &Checker{services: services}
 	c.setURL(IndexURL, version)
@@ -265,9 +242,7 @@ func (c *Checker) Enabled() bool {
 	return false
 }
 
-// Check fetches the index and updates every enabled component's row. Errors are stored on the rows rather
-// than returned: an air-gapped install fails this every day, and that must be visible to an admin without
-// being noisy.
+// Errors are stored on the rows, not returned: air-gapped installs fail daily and that must not be noisy.
 func (c *Checker) Check(ctx context.Context) error {
 	var rows []row
 	for _, s := range c.services {
@@ -306,10 +281,7 @@ func (c *Checker) Check(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// replayableETag returns the ETag to send, or "" to force a full read. A cached verdict is a function of two
-// inputs: the index AND the build compared against it. The ETag covers only the first, so it is replayed only
-// when every row shares it and no row's verdict was computed for a different build — otherwise a 304 after an
-// upgrade would preserve a verdict that no longer applies.
+// The ETag covers only the index, not the build, so replaying it after an upgrade would keep a stale verdict.
 func replayableETag(rows []row) string {
 	etag := rows[0].st.ETag
 	for _, r := range rows {

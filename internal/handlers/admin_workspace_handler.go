@@ -42,8 +42,6 @@ type AdminWorkspaceHandler struct {
 	ownsClusters func(orgID uint) bool
 }
 
-// SetOrganizations wires the realm a workspace belongs to and whether that realm pins placement
-// (nil-safe; without it the detail simply omits both).
 func (h *AdminWorkspaceHandler) SetOrganizations(svc *organization.Service, ownsClusters func(orgID uint) bool) {
 	h.orgs, h.ownsClusters = svc, ownsClusters
 }
@@ -78,8 +76,6 @@ type SetWorkspacePrivilegedRequest struct {
 	} `json:"body"`
 }
 
-// AdminWorkspaceDetail is a workspace enriched with its owner, resource counts,
-// members, and recent activity for the admin detail page.
 type AdminWorkspaceDetail struct {
 	models.Workspace
 	OwnerName      string                   `json:"owner_name"`
@@ -94,9 +90,7 @@ type AdminWorkspaceDetail struct {
 	RecentEvents   []models.AuditLog        `json:"recent_events"`
 	// OrganizationName labels the realm the workspace belongs to.
 	OrganizationName string `json:"organization_name,omitempty"`
-	// PlacementPinned reports that the workspace's organization runs its own clusters. Its plan's
-	// location list is then ignored — a tenant on dedicated hardware has left that question behind
-	// — so the console shows the override locked rather than accepting a value with no effect.
+	// PlacementPinned means the org runs its own clusters, so the plan's location list is ignored.
 	PlacementPinned bool `json:"placement_pinned"`
 }
 
@@ -192,8 +186,6 @@ func (h *AdminWorkspaceHandler) SetPrivileged(c *okapi.Context, req *SetWorkspac
 	if err != nil {
 		return c.AbortNotFound("workspace not found")
 	}
-	// The platform system workspace is always privileged (it runs platform-managed
-	// infrastructure like the per-node gateways); refuse to disable it.
 	if ws.System && !req.Body.Privileged {
 		return c.AbortForbidden("the platform system workspace is always privileged")
 	}

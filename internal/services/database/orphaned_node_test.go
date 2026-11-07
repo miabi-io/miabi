@@ -55,8 +55,7 @@ func TestNodeGone(t *testing.T) {
 	if !s.nodeGone(&models.DatabaseInstance{ServerID: 9}) {
 		t.Error("a deleted node must read as gone")
 	}
-	// The control-plane node is never deleted, so it is never treated as gone even if the lookup
-	// were to fail.
+	// The control-plane node is never deleted, so it never reads as gone even if the lookup fails.
 	if s.nodeGone(&models.DatabaseInstance{ServerID: 1}) {
 		t.Error("the local node must never read as gone")
 	}
@@ -66,8 +65,7 @@ func TestNodeGone(t *testing.T) {
 	}
 }
 
-// The deadlock this fixes: Stop needed a Docker client the deleted node could never provide, and
-// Delete refused because the instance was still marked running — so neither could ever succeed.
+// Stop needed a client the deleted node could never provide and Delete refused a running instance: a deadlock.
 func TestDeleteGuardReleasesAnOrphanedInstance(t *testing.T) {
 	gone := &Service{
 		clients:    fakeClients{local: 1},
@@ -91,9 +89,7 @@ func TestDeleteGuardReleasesAnOrphanedInstance(t *testing.T) {
 	}
 }
 
-// LiveStatus falls back to the stored status for an unreachable node, on the theory it is probably
-// still running. A deleted node breaks that theory, and the console was showing "running" for
-// something with no engine behind it.
+// A deleted node must not leave the console showing "running" for something with no engine.
 func TestLiveStatusReportsAnOrphanedInstanceStopped(t *testing.T) {
 	s := &Service{
 		clients:    fakeClients{local: 1},

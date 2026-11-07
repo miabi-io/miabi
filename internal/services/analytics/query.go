@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Report is the combined analytics answer for a workspace (optionally one app)
-// over a time range: the Traffic, Performance and Web Analytics pillars share one
-// pass over the same rollups so the three dashboard tabs come from a single query.
+// Report serves the Traffic, Performance and Web tabs from one pass over the same rollups.
 type Report struct {
 	Range         Window        `json:"range"`
 	Granularity   string        `json:"granularity"` // "minute" | "hour" | "day"
@@ -60,8 +58,6 @@ type Totals struct {
 	P99Latency  float64 `json:"p99_latency_ms"`
 }
 
-// SeriesPoint is one time bucket of the request/latency time series at the chosen
-// granularity.
 type SeriesPoint struct {
 	T          time.Time `json:"t"`
 	Requests   int64     `json:"requests"`
@@ -82,8 +78,6 @@ type StatusBreak struct {
 	S5xx int64 `json:"s5xx"`
 }
 
-// Performance covers the latency pillar: request vs upstream percentiles plus the
-// slowest routes by p95.
 type Performance struct {
 	RequestP50    float64     `json:"request_p50_ms"`
 	RequestP95    float64     `json:"request_p95_ms"`
@@ -105,9 +99,7 @@ type RouteStat struct {
 	ErrorRate float64 `json:"error_rate"`
 }
 
-// WebAnalytics is the cookieless web pillar: uniques plus the categorical
-// breakdowns (paths, referrers, countries, browsers, methods). Countries, paths and user
-// agents return every entry tracked (at most topKCap), for the scrollable lists.
+// Countries, paths and user agents return every tracked entry (at most topKCap).
 type WebAnalytics struct {
 	UniqueVisitors int64      `json:"unique_visitors"`
 	BotRequests    int64      `json:"bot_requests"`
@@ -130,8 +122,7 @@ type Category struct {
 
 type truncFunc func(time.Time) time.Time
 
-// maxSeriesPoints bounds the emitted series regardless of the window, so a wide
-// range can never blow up the response.
+// Bounds the series regardless of window so a wide range cannot blow up the response.
 const maxSeriesPoints = 1500
 
 func granularityFor(span time.Duration) (string, truncFunc, time.Duration) {
@@ -174,9 +165,7 @@ func addSeriesRow(series map[int64]*seriesAgg, key int64, row *models.AnalyticsR
 	}
 }
 
-// emitSeries returns one point per bucket across the whole window, ordered by time. Buckets with no traffic
-// are emitted as zeros rather than skipped, so the series stays evenly spaced: charts plot it against a real
-// time axis, where a quiet hour has to read as a gap rather than disappear between its neighbours.
+// Empty buckets are emitted as zeros so the series stays evenly spaced on a real time axis.
 func emitSeries(series map[int64]*seriesAgg, trunc truncFunc, step time.Duration, since, until time.Time) []SeriesPoint {
 	out := make([]SeriesPoint, 0, len(series)+1)
 	for t := trunc(since); !t.After(trunc(until)) && len(out) < maxSeriesPoints; t = t.Add(step) {
@@ -201,9 +190,7 @@ func emitSeries(series map[int64]*seriesAgg, trunc truncFunc, step time.Duration
 
 const SummaryTopCountries = 8
 
-// Summary is the dashboard's slice of a report: headline totals, the status split, the request series
-// and the top countries. It deliberately omits the remaining breakdowns, per-route stats and upstream
-// percentiles the analytics pages need, so the dashboard's traffic card doesn't pay for them.
+// Summary omits the breakdowns the analytics pages need so the dashboard traffic card doesn't pay for them.
 type Summary struct {
 	Range        Window        `json:"range"`
 	Granularity  string        `json:"granularity"`
@@ -259,9 +246,7 @@ func BuildSummary(rows []models.AnalyticsRollup, since, until time.Time) Summary
 	return sum
 }
 
-// BuildReport reduces the raw minute rollups of a range into the combined dashboard report, with
-// granularity auto-selected from the span. One pass for the totals and breakdowns, a grouped pass for
-// the series, merging latency histograms for percentiles and HLL sketches for uniques.
+// BuildReport auto-selects granularity from the span, merging latency histograms and HLL sketches.
 func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 	gran, trunc, step := granularityFor(until.Sub(since))
 	rep := Report{
@@ -379,8 +364,6 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 	return rep
 }
 
-// slowRoutes returns the routes with the highest p95 latency (top 10), each with
-// its request count and error rate.
 func slowRoutes(routes map[string]*RouteStat, hist map[string][]int64, errs map[string]int64) []RouteStat {
 	out := make([]RouteStat, 0, len(routes))
 	for name, rs := range routes {

@@ -17,19 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dbenvelope seals the data key that encrypts a database recovery point.
-//
-// Each set is encrypted with its own random data key, and that key is sealed here
-// under the workspace's backup passphrase. The indirection is what makes the
-// passphrase rotatable: re-sealing an envelope rewrites a few hundred bytes,
-// whereas encrypting the artifacts with the passphrase directly would strand every
-// existing set behind the secret it was taken with.
-//
-// The construction matches internal/dr's identity envelope — Argon2id to a key,
-// AES-256-GCM over the payload, a self-describing header authenticated as
-// additional data. It is a separate implementation because dr deliberately depends
-// on nothing else in Miabi (its restore path runs on a bare host) and its payload
-// is an Identity, not a key.
+// Package dbenvelope seals per-set data keys under the backup passphrase so the passphrase is cheaply rotatable.
 package dbenvelope
 
 import (
@@ -44,8 +32,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Framing. The header is self-describing so a future format change is a clean
-// refusal rather than a garbled decrypt.
+// Self-describing header so a future format change is a clean refusal rather than a garbled decrypt.
 const (
 	magic     = "MBDK1"
 	formatVer = 1
@@ -54,8 +41,7 @@ const (
 	keyLen    = 32
 	headerLen = len(magic) + 1 + saltLen + nonceLen
 
-	// Argon2id cost. Matches internal/dr so the two envelopes are equally
-	// expensive to attack offline.
+	// Matches internal/dr so both envelopes are equally expensive to attack offline.
 	argonTime   = 3
 	argonMemory = 64 * 1024 // KiB
 	argonLanes  = 4
@@ -65,16 +51,13 @@ const (
 )
 
 var (
-	// ErrBadPassphrase means the envelope did not authenticate: a wrong
-	// passphrase, or a tampered envelope. The two are indistinguishable by design
-	// — saying which would make this a decryption oracle.
+	// Wrong passphrase and tampering are indistinguishable by design, or this would be a decryption oracle.
 	ErrBadPassphrase = errors.New("backup envelope did not decrypt: wrong passphrase or corrupt envelope")
 	// ErrNotEnvelope means the bytes are not a data-key envelope at all.
 	ErrNotEnvelope = errors.New("not a Miabi backup data-key envelope")
 )
 
-// NewDataKey returns a fresh random data key, encoded so it can be handed to the
-// backup tools as a GPG passphrase. Base64 keeps it to one shell-safe token.
+// Base64 keeps the key a single shell-safe token for use as a GPG passphrase.
 func NewDataKey() (string, error) {
 	raw := make([]byte, DataKeyLen)
 	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
@@ -83,10 +66,6 @@ func NewDataKey() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// Seal encrypts a data key under a key derived from passphrase, returning the
-// framed envelope base64-encoded for storage in a text column. A fresh salt and
-// nonce are drawn per call, so sealing the same key twice never produces the same
-// bytes.
 func Seal(dataKey, passphrase string) (string, error) {
 	if dataKey == "" {
 		return "", errors.New("refusing to seal an empty data key")
@@ -120,9 +99,7 @@ func Seal(dataKey, passphrase string) (string, error) {
 	return base64.StdEncoding.EncodeToString(out), nil
 }
 
-// Open recovers the data key from a sealed envelope. Opening IS the passphrase
-// check: it costs one Argon2id derivation and happens before any artifact is
-// fetched, so a wrong passphrase is rejected without downloading anything.
+// Open is the passphrase check and runs before any artifact is fetched.
 func Open(sealed, passphrase string) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(sealed)
 	if err != nil {
@@ -153,9 +130,7 @@ func Open(sealed, passphrase string) (string, error) {
 	return string(plaintext), nil
 }
 
-// Rewrap moves an envelope from one passphrase to another without touching the
-// data key inside it, which is what makes rotation cheap: the artifacts the key
-// encrypts are never re-read.
+// Rewrap never touches the data key, so rotation never re-reads the encrypted artifacts.
 func Rewrap(sealed, oldPassphrase, newPassphrase string) (string, error) {
 	dataKey, err := Open(sealed, oldPassphrase)
 	if err != nil {
@@ -164,8 +139,7 @@ func Rewrap(sealed, oldPassphrase, newPassphrase string) (string, error) {
 	return Seal(dataKey, newPassphrase)
 }
 
-// IsEnvelope reports whether a stored value looks like one of ours, so callers can
-// tell a sealed set from one taken before envelopes existed.
+// IsEnvelope tells a sealed set from one taken before envelopes existed.
 func IsEnvelope(sealed string) bool {
 	raw, err := base64.StdEncoding.DecodeString(sealed)
 	return err == nil && len(raw) >= headerLen && string(raw[:len(magic)]) == magic
@@ -193,9 +167,7 @@ func deriveKey(passphrase string, salt []byte) []byte {
 	return argon2.IDKey([]byte(passphrase), salt, argonTime, argonMemory, argonLanes, keyLen)
 }
 
-// Spec describes the envelope format precisely enough to reimplement it without
-// this code. It exists so a recovery kit documents the real parameters rather than
-// a copy that can drift away from them.
+// Spec documents the real envelope parameters in recovery kits so they cannot drift from the code.
 type Spec struct {
 	Magic         string `json:"magic"`
 	FormatVersion int    `json:"format_version"`

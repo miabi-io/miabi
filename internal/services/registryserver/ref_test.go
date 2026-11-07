@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/config"
 )
 
-// refService builds a service whose registry resolves to host, backed by the
-// acme(7)/other(8) workspace fixture. No settings store: enablement and the host
-// are environment-derived, which is the whole point of the lock.
+// No settings store: enablement and host are environment-derived, which is the point of the lock.
 func refService(host string) *Service {
 	return &Service{cfg: config.RegistryConfig{Enabled: true, Host: host}, ws: wsFixture()}
 }
@@ -44,9 +42,7 @@ func TestResolveImageRef(t *testing.T) {
 		want      string
 		wantErr   error
 	}{
-		// The vulnerability: workspace 7 naming workspace 8's image. Both the
-		// id form and the name form must be refused — an attacker reads the
-		// namespace straight off the other workspace's Connect tab.
+		// Both id and name forms must be refused; the namespace is visible on the other workspace's Connect tab.
 		{"foreign namespace by id", 7, host + "/ws_8/api:latest", "", ErrForeignNamespace},
 		{"foreign namespace by name", 7, host + "/other/api:latest", "", ErrForeignNamespace},
 		{"foreign namespace by digest", 7, host + "/ws_8/api@sha256:abc", "", ErrForeignNamespace},
@@ -58,8 +54,7 @@ func TestResolveImageRef(t *testing.T) {
 		{"own nested repository", 7, host + "/acme/team/api:1", host + "/ws_7/team/api:1", nil},
 		{"own namespace by digest", 7, host + "/acme/api@sha256:abc", host + "/ws_7/api@sha256:abc", nil},
 
-		// A namespace nobody owns is refused rather than passed through: it can be
-		// claimed by a rename, which would turn it into a foreign one silently.
+		// An unowned namespace could be claimed by a rename and silently become foreign.
 		{"unknown namespace", 7, host + "/ghost/api:1", "", ErrUnknownNamespace},
 		{"no namespace segment", 7, host + "/api:1", "", ErrUnknownNamespace},
 
@@ -89,8 +84,7 @@ func TestResolveImageRef(t *testing.T) {
 	}
 }
 
-// Without a workspace finder the ownership of a namespace cannot be established,
-// so an internal reference must fail closed rather than be waved through.
+// Without a workspace finder ownership is unprovable, so internal refs fail closed.
 func TestResolveImageRefFailsClosedWithoutWorkspaceFinder(t *testing.T) {
 	svc := &Service{cfg: config.RegistryConfig{Enabled: true, Host: "registry.example.com"}}
 	if _, err := svc.ResolveImageRef(7, "registry.example.com/ws_7/api:1"); err == nil {
@@ -101,8 +95,7 @@ func TestResolveImageRefFailsClosedWithoutWorkspaceFinder(t *testing.T) {
 	}
 }
 
-// With no registry host there is no internal registry to cross into, so every
-// reference is external and passes through.
+// With no registry host every reference is external and passes through.
 func TestResolveImageRefWithoutHost(t *testing.T) {
 	svc := &Service{cfg: config.RegistryConfig{}, ws: wsFixture()}
 	got, err := svc.ResolveImageRef(7, "registry.example.com/ws_8/api:1")
@@ -168,8 +161,7 @@ func TestNormalizeHost(t *testing.T) {
 	}
 }
 
-// A workspace name can never collide with the ws_<id> storage namespace, which
-// is what makes resolving either form unambiguous.
+// The two forms never collide, so resolving either is unambiguous.
 func TestNamespaceFormsAreDisjoint(t *testing.T) {
 	if _, ok := parseIDNamespace(Namespace(7)); !ok {
 		t.Fatal("Namespace(7) must parse back as an id namespace")

@@ -25,8 +25,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts every secret env var of the workspace's stacks under the
-// workspace's active DEK. Non-secret vars are skipped. Idempotent.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	stacks, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

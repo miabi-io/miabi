@@ -1,10 +1,8 @@
-// Live runner reachability, so a newly enrolled runner shows up online without a reload. The
-// stream opens with a snapshot, so a late or reconnected page is correct without refetching.
+// The stream opens with a snapshot, so a late or reconnected page is correct without refetching.
 import { onUnmounted, ref } from 'vue'
 import type { Runner } from '@/api/runners'
 
-// RECONCILE_MS re-reads the list for what a status event cannot carry: runners added, edited or
-// removed elsewhere.
+// Catches runners added, edited or removed elsewhere, which a status event cannot carry.
 const RECONCILE_MS = 30000
 
 export function useRunnerStatusStream(

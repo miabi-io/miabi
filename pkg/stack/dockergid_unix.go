@@ -26,9 +26,7 @@ import (
 	"syscall"
 )
 
-// dockerGID is the group that owns the Docker socket, so the control plane can talk
-// to it without running as root. Best-effort: an empty result just means the
-// container runs as its image default (root), which still works.
+// Best-effort: an empty result runs the container as its image default (root), which still works.
 func dockerGID() string {
 	fi, err := os.Stat("/var/run/docker.sock")
 	if err != nil {

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package directory turns a successful LDAP/Active-Directory bind into a Miabi user: it just-in-time
-// provisions the account and reconciles directory groups onto platform-admin and per-workspace access.
-// The bind lives behind the enterprise seam, so the enterprise build never touches user/workspace code.
+// Package directory turns a successful LDAP/AD bind into a JIT-provisioned Miabi user with group-mapped access.
 package directory
 
 import (
@@ -43,9 +41,7 @@ const AuthSourceLDAP = models.AuthSourceLDAP
 var (
 	// ErrAccountDisabled is returned when the matched local account is disabled.
 	ErrAccountDisabled = errors.New("account is disabled")
-	// ErrNoEmail is returned when the directory entry has no email (an attr_email
-	// misconfiguration) — surfaced so the admin can fix the mapping.
-	ErrNoEmail = errors.New("directory user has no email address")
+	ErrNoEmail         = errors.New("directory user has no email address")
 )
 
 type Service struct {
@@ -59,9 +55,7 @@ func NewService(ee enterprise.EE, users *repositories.UserRepository, workspaces
 	return &Service{ee: ee, users: users, workspaces: workspaces, ldap: ldap}
 }
 
-// Login attempts directory auth as a fall-through after local password auth fails. (user, nil) means the
-// credentials bound and the account is provisioned; (nil, nil) means no directory matched, so the caller
-// keeps its local result; (nil, err) means the bind failed or the account is disabled.
+// Login: (user, nil) bound and provisioned; (nil, nil) no directory matched; (nil, err) bind failed or account disabled.
 func (s *Service) Login(ctx context.Context, identifier, password string) (*models.User, error) {
 	a := s.ee.LDAP()
 	if a == nil {
@@ -78,27 +72,20 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*mode
 	if err != nil {
 		return nil, err
 	}
-	// Group → access reconciliation is best-effort: a mapping failure must never
-	// block an otherwise-valid login.
+	// Best-effort: a mapping failure must never block an otherwise-valid login.
 	if err := s.reconcile(user, ident); err != nil {
 		logger.Warn("directory: group reconciliation failed", "user", user.ID, "error", err)
 	}
 	return user, nil
 }
 
-// provision matches an existing account (directory uid first, then email) or
-// creates a new directory-managed one. The first user on the platform becomes
-// the admin, mirroring the OAuth/SAML JIT policy.
+// The first platform user becomes admin, mirroring the OAuth/SAML JIT policy.
 func (s *Service) provision(ident enterprise.LDAPIdentity) (*models.User, error) {
-	// Match on the slugified handle, because that is the form BeforeCreate stores:
-	// a plain lowercase misses "J.Doe" (stored as "j-doe") and then collides with
-	// that very row on insert.
+	// BeforeCreate stores the slugified handle, so a plain lowercase match misses "J.Doe" and collides on insert.
 	username := slug.Make(ident.Username, "")
 	email := strings.ToLower(strings.TrimSpace(ident.Email))
 
-	// A matching handle links to the existing account, across auth sources — the
-	// migration case, where local accounts predate the directory and should not be
-	// duplicated (see TestLogin_MatchesExistingByUsername).
+	// Links across auth sources so local accounts that predate the directory are not duplicated.
 	if username != "" {
 		if u, err := s.users.FindByUsername(username); err == nil {
 			return activeOrErr(u)
@@ -129,9 +116,7 @@ func (s *Service) provision(ident enterprise.LDAPIdentity) (*models.User, error)
 	user := &models.User{
 		Name:  name,
 		Email: email,
-		// A directory handle can collide with a local or OAuth account, and
-		// BeforeCreate trusts a supplied username without checking it — an
-		// unchecked collision fails the insert, i.e. fails the sign-in.
+		// BeforeCreate trusts a supplied username, so an unchecked collision would fail the sign-in.
 		Username:        slug.Available(username, s.users.ExistsByUsername),
 		PasswordHash:    unusablePassword(),
 		Role:            role,
@@ -152,9 +137,7 @@ func activeOrErr(u *models.User) (*models.User, error) {
 	return u, nil
 }
 
-// reconcile maps the identity's directory groups onto platform-admin and per-workspace access via the config's
-// LDAPGroupMapping rows. Only accounts managed by the directory are touched, and a workspace counts as
-// directory-managed only if a mapping references it — so manual grants elsewhere are never disturbed.
+// Only workspaces a mapping references count as directory-managed, so manual grants elsewhere are untouched.
 func (s *Service) reconcile(user *models.User, ident enterprise.LDAPIdentity) error {
 	if user.AuthSource != AuthSourceLDAP {
 		return nil
@@ -189,8 +172,7 @@ func (s *Service) reconcile(user *models.User, ident enterprise.LDAPIdentity) er
 		}
 	}
 
-	// System-admin role — only when at least one mapping governs it, so a config
-	// that doesn't manage admin never demotes a manually-promoted admin.
+	// Only when a mapping governs admin, so a config that doesn't manage it never demotes a manual admin.
 	if adminManaged {
 		s.reconcileAdmin(user, wantAdmin)
 	}
@@ -216,8 +198,7 @@ func (s *Service) reconcile(user *models.User, ident enterprise.LDAPIdentity) er
 	return nil
 }
 
-// reconcileAdmin promotes/demotes the platform-admin role, never demoting the
-// last remaining admin (a lock-out safety valve).
+// reconcileAdmin never demotes the last remaining admin.
 func (s *Service) reconcileAdmin(user *models.User, wantAdmin bool) {
 	isAdmin := user.Role == models.SystemRoleAdmin
 	switch {
@@ -246,8 +227,6 @@ func normalizeGroups(groups []string) map[string]bool {
 	return m
 }
 
-// groupMatches reports whether a mapping's group (a full DN or a bare CN) matches
-// any of the user's resolved group DNs, case-insensitively.
 func groupMatches(userGroups map[string]bool, mappingGroup string) bool {
 	g := strings.ToLower(strings.TrimSpace(mappingGroup))
 	if g == "" {
@@ -293,8 +272,7 @@ func roleRank(r models.WorkspaceRole) int {
 	}
 }
 
-// unusablePassword stores a random bcrypt hash so directory accounts can never be
-// signed in with a local password.
+// A random hash ensures directory accounts can never sign in with a local password.
 func unusablePassword() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)

@@ -25,8 +25,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// clusterIngressIPv6Step moves an IPv6 public address out of ingress_ip, which now holds only IPv4, into the
-// ingress_ipv6 column beside it. Safe to re-run.
 func clusterIngressIPv6Step(ctx context.Context, db *gorm.DB) error {
 	m := db.Migrator()
 	if !m.HasTable("clusters") || !m.HasColumn("clusters", "ingress_ipv6") {

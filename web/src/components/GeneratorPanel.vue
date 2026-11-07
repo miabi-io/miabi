@@ -18,12 +18,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The generator UI: tabs, options and output. Deliberately owns no chrome of its
-// own, so the page, the Vault modal and the inline popover all mount the same
-// component rather than three drifting copies.
-//
-// Everything happens in the browser. No value is ever sent to the API unless the
-// user explicitly saves it to the Vault.
+// Owns no chrome so page, modal and popover share it; nothing reaches the API unless saved to the Vault.
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   DEFAULT_PASSPHRASE_OPTIONS,
@@ -53,8 +48,6 @@ export type GeneratorMode = 'password' | 'passphrase' | 'token'
 
 const props = withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 
-// The generated value is exposed so a host (the inline button, the modal) can
-// use it without reaching into the panel.
 const emit = defineEmits<{ (e: 'use', value: string): void; (e: 'save', value: string): void }>()
 
 const OPTIONS_KEY = 'miabi.generator.options'
@@ -70,9 +63,7 @@ const wordlist = ref<readonly string[]>([])
 const wordlistLoading = ref(false)
 const wordlistError = ref('')
 
-// Options are remembered between visits; values never are. A generator history
-// in localStorage is a pile of plaintext secrets, which is a strictly worse
-// place for them than wherever the user was going to put them.
+// Options are remembered, values never: a generator history in localStorage is a pile of plaintext secrets.
 function restoreOptions() {
   try {
     const raw = localStorage.getItem(OPTIONS_KEY)
@@ -141,9 +132,7 @@ onMounted(async () => {
   regenerate()
 })
 
-// Any option change regenerates, so the value on screen always matches the
-// options beside it — a stale value that no longer obeys the visible settings is
-// how someone ends up saving the wrong thing.
+// Any option change regenerates, so the value on screen never disobeys the visible settings.
 watch([password, passphrase, token], () => {
   persistOptions()
   regenerate()

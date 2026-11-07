@@ -8,9 +8,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package enterprise is the commercial-edition seam: one interface, EE, gating licensed features.
-// Community links a deny-all stub; the Enterprise build links the license-verifying one. The HTTP
-// layer is identical, so a CE binary simply returns 402 and contains no verification code.
+// Package enterprise gates licensed features behind EE; Community links a deny-all stub and returns 402.
 package enterprise
 
 import (
@@ -23,16 +21,12 @@ import (
 	"github.com/jkaninda/okapi"
 )
 
-// Edition names. The product ships in two editions: the open-source Community
-// edition and the commercial Enterprise edition.
 const (
 	EditionCommunity  = "community"
 	EditionEnterprise = "enterprise"
 )
 
-// Entitlement flags. These are the capability surfaces a license unlocks; they
-// are referenced by services as stable strings so adding a paid feature is "add
-// a constant + call Require", never a change to the license format.
+// Flags are stable strings, so a paid feature is a constant plus Require, never a license format change.
 const (
 	FlagMultiSSO                     = "multi_sso"           // more than one OAuth/OIDC provider
 	FlagSSOHiddenProvider            = "sso_hidden_provider" // hide a provider from the public login page
@@ -76,8 +70,6 @@ type FlagInfo struct {
 	Desc string
 }
 
-// AllFlags is the canonical, ordered list of entitlement flags a license may
-// grant.
 var AllFlags = []FlagInfo{
 	{FlagMultiSSO, "more than one OAuth/OIDC provider"},
 	{FlagSSOHiddenProvider, "hide a provider from the public login page"},
@@ -115,8 +107,7 @@ var AllFlags = []FlagInfo{
 	{FlagEEFeatures, "baseline Enterprise features granted by every paid tier"},
 }
 
-// AddOnFlags are sold separately: no tier preset includes them, and a license carries one only when
-// it was granted explicitly (the portal offers billing on Enterprise).
+// AddOnFlags are in no tier preset; a license carries one only when granted explicitly.
 var AddOnFlags = []string{FlagBilling}
 
 // IsAddOn reports whether flag is an add-on.
@@ -220,8 +211,6 @@ const LimitNodeLimit = "node_limit"
 // LimitPlanLimit is the entitlement limit key bounding the platform plan catalog.
 const LimitPlanLimit = "plan_limit"
 
-// LimitAnalyticsRetentionDays is the entitlement limit key bounding how many days
-// of workspace-analytics rollups are retained.
 const LimitAnalyticsRetentionDays = "analytics_retention_days"
 
 const CommunityAnalyticsRetentionDays = 7
@@ -230,11 +219,9 @@ const CommunityPlanLimit = 3
 const CommunityNodeLimit = 3
 const CommunityRunnerLimit = 2
 
-// CommunityStorageClassLimit counts the seeded built-in class, so Community can
-// register one disk of its own.
+// CommunityStorageClassLimit counts the seeded built-in class, leaving room for one disk of its own.
 const CommunityStorageClassLimit = 2
 
-// Entitlements is the resolved, point-in-time view of the installed license.
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
 type Entitlements struct {
 	Edition      string `json:"edition"`
@@ -287,10 +274,7 @@ func (e Entitlements) SharedRunnerLimit() int {
 	return -1
 }
 
-// StorageClassLimit bounds how many classes may exist, counting the built-in one. It is
-// the whole of the Community limit — shared classes are not gated separately, because a
-// Community fleet is already node-capped. The storage_classes entitlement lifts the cap;
-// there is no license limit key for it, so a paid edition is always unlimited.
+// StorageClassLimit is the whole Community limit; the storage_classes entitlement makes it unlimited.
 func (e Entitlements) StorageClassLimit() int {
 	if e.Flags[FlagStorageClasses] {
 		return -1
@@ -328,45 +312,30 @@ func ClampAnalyticsRetention(configured, capDays int) int {
 
 // EE gates licensed features. All methods are safe to call on the CE stub.
 type EE interface {
-	// Entitlements resolves the current license against time.Now(), so the
-	// grace/degrade transition takes effect without a restart.
+	// Resolved against time.Now(), so the grace/degrade transition needs no restart.
 	Entitlements() Entitlements
-	// Has reports whether a flag is usable at runtime (true in valid, grace, and
-	// degraded states for an entitled flag; always false in CE).
+	// Has is true in valid, grace and degraded states for an entitled flag; always false in CE.
 	Has(flag string) bool
-	// Mutable reports whether a flag's configuration may be CHANGED (true only in
-	// valid/grace; false once degraded, so paid config goes read-only on expiry).
+	// Mutable is false once degraded, so paid config goes read-only on expiry.
 	Mutable(flag string) bool
-	// Require returns ErrLicenseRequired (community) or ErrEntitlementDenied (a
-	// licensed install lacking this flag) when the flag is not usable; else nil.
 	Require(flag string) error
-	// RequireMutable is Require plus a read-only guard: it returns ErrLicenseExpired
-	// when the flag is entitled but the license has degraded past grace.
+	// RequireMutable returns ErrLicenseExpired when entitled but degraded past grace.
 	RequireMutable(flag string) error
-	// Install verifies and persists a signed license token. requestHost is the host the admin is
-	// installing from; a URL-bound license must match it or the configured instance URL, so a license
-	// for another deployment cannot be installed even when the instance URL is unset.
+	// A URL-bound license must match requestHost or the instance URL, even when the instance URL is unset.
 	Install(ctx context.Context, token string, requestHost string) (Entitlements, error)
 	// Remove deletes the installed license, reverting to community.
 	Remove(ctx context.Context) error
 
-	// InitSSO wires the enterprise SAML/SCIM handlers using core-provided
-	// dependencies. Called once after core services exist. No-op in Community.
 	InitSSO(deps SSODeps)
-	// SAML returns the SAML 2.0 service-provider handler set, or nil in Community
-	// / when sso_saml is not entitled. Routes return 402 when it is nil.
+	// Routes return 402 when SAML is nil.
 	SAML() SAMLProvider
 	// SCIM returns the SCIM 2.0 provisioning handler set, or nil in Community.
 	SCIM() SCIMProvider
-	// LDAP returns the LDAP/Active-Directory authenticator, or nil in Community or when sso_ldap is
-	// not entitled. The core login handler calls it after a failed local-password check — a
-	// fall-through, so local accounts and the bootstrap admin keep working even with LDAP down.
+	// LDAP is a fall-through after local password, so local accounts and the bootstrap admin work with LDAP down.
 	LDAP() LDAPAuthenticator
 }
 
-// LDAPIdentity is a directory user resolved by a successful bind: mapped email and name, the
-// directory uid, and the group DNs the user belongs to. It is plain data, so the enterprise
-// package never touches core auth, user or session code.
+// LDAPIdentity is plain data so the enterprise package never touches core auth, user or session code.
 type LDAPIdentity struct {
 	Email    string
 	Name     string
@@ -380,17 +349,13 @@ type LDAPAuthenticator interface {
 	TestConnection(ctx context.Context, configID uint) (LDAPTestResult, error)
 }
 
-// LDAPTestResult is the outcome of an admin "Test connection": OK plus a human
-// message, or an Error string when the dial/bind/search failed.
 type LDAPTestResult struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
 
-// ErrLDAPNoMatch signals that no enabled LDAP config matched the identifier, so the core login
-// handler falls through to its normal local result rather than treating it as a directory auth
-// failure. It is a plain error, not a gate error, so it is never surfaced to the client.
+// ErrLDAPNoMatch makes login fall through to the local result; it is never surfaced to the client.
 var ErrLDAPNoMatch = errors.New("no matching LDAP configuration")
 
 // SSOIdentity is an authenticated assertion the core turns into a session.
@@ -400,25 +365,17 @@ type SSOIdentity struct {
 	Provider string // SAML config slug
 }
 
-// SSODeps are the core dependencies the enterprise SSO handlers need, passed as
-// closures/values so the enterprise package never imports auth/session/user
-// code (keeping the CE build free of it).
+// SSODeps are closures so the enterprise package never imports auth/session/user code.
 type SSODeps struct {
 	DB        any    // *gorm.DB, type-asserted by the enterprise build
 	BaseURL   string // public base URL for SP entity/ACS/metadata URLs
 	SPKeyPEM  string // SP signing key (PEM); generated in-memory if empty
 	SPCertPEM string // SP certificate (PEM); generated in-memory if empty
-	// Login maps an authenticated SSO identity to a Miabi session and returns the
-	// post-login redirect URL (the SPA callback carrying the token).
-	Login func(ctx context.Context, ident SSOIdentity) (redirectURL string, err error)
-	// Decrypt reverses the core crypto service (used to read the LDAP bind
-	// password stored encrypted at rest). Passed as a closure so the enterprise
-	// package never imports the crypto service directly.
+	Login     func(ctx context.Context, ident SSOIdentity) (redirectURL string, err error)
+	// Passed as a closure so the enterprise package never imports the crypto service.
 	Decrypt func(stored string) (string, error)
 }
 
-// SAMLProvider is the SAML 2.0 service-provider handler set, implemented only in
-// the enterprise build. Methods are okapi handlers mounted by the routes layer.
 type SAMLProvider interface {
 	Metadata(c *okapi.Context) error // SP metadata XML
 	Login(c *okapi.Context) error    // initiate (redirect to IdP)
@@ -431,9 +388,7 @@ type SCIMProvider interface {
 	Groups(c *okapi.Context) error
 }
 
-// gateError carries a stable machine code and the HTTP status handlers should
-// use. The Code() method is picked up by the custom error handler for the
-// {success,data,error} envelope; Status() drives entitlementAbort in handlers.
+// Code() feeds the API error envelope; Status() drives entitlementAbort in handlers.
 type gateError struct {
 	code   string
 	msg    string
@@ -444,8 +399,7 @@ func (e *gateError) Error() string { return e.msg }
 func (e *gateError) Code() string  { return e.code }
 func (e *gateError) Status() int   { return e.status }
 
-// Sentinel gate errors. They are package-level pointers so errors.Is matches by
-// identity, and they expose Code()/Status() for the API envelope mapping.
+// Package-level pointers so errors.Is matches by identity.
 var (
 	ErrLicenseRequired        = &gateError{code: "LICENSE_REQUIRED", msg: "this feature requires an Enterprise license", status: 402}
 	ErrEntitlementDenied      = &gateError{code: "ENTITLEMENT_DENIED", msg: "your license does not include this feature", status: 403}
@@ -458,13 +412,10 @@ var (
 	ErrLicenseUnknownKey      = &gateError{code: "LICENSE_UNKNOWN_KEY", msg: "this license is signed by a key this version of Miabi does not trust; upgrade Miabi or download the license again", status: 402}
 )
 
-// StateUnknownSigningKey is the Entitlements.State when the installed license is signed by a key
-// missing from this build's keyring, so no features are granted until Miabi is upgraded.
+// StateUnknownSigningKey grants nothing until Miabi is upgraded with the signing key.
 const StateUnknownSigningKey = "unknown_signing_key"
 
-// StateBindingMismatch is the Entitlements.State when the license is valid and signed but bound to
-// a different instance than this one, so no features are granted. It is surfaced with the bound
-// values and BindingError so an admin can see exactly why enterprise features are off.
+// StateBindingMismatch grants nothing and is surfaced with BindingError so admins see why.
 const StateBindingMismatch = "binding_mismatch"
 
 // Binding-error reasons (Entitlements.BindingError).

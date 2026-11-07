@@ -32,14 +32,11 @@ func NewNetworkAllocationRepository(db *gorm.DB) *NetworkAllocationRepository {
 	return &NetworkAllocationRepository{db: db}
 }
 
-// Create reserves an allocation. The unique indexes on docker_name and subnet
-// make concurrent allocation of the same subnet fail for all but one caller.
+// Unique indexes on docker_name and subnet make concurrent allocation fail for all but one caller.
 func (r *NetworkAllocationRepository) Create(a *models.NetworkAllocation) error {
 	return r.db.Create(a).Error
 }
 
-// FindByDockerName returns the allocation pinned to a Docker network name, or
-// gorm.ErrRecordNotFound.
 func (r *NetworkAllocationRepository) FindByDockerName(dockerName string) (*models.NetworkAllocation, error) {
 	var a models.NetworkAllocation
 	if err := r.db.Where("docker_name = ?", dockerName).First(&a).Error; err != nil {
@@ -60,16 +57,13 @@ func (r *NetworkAllocationRepository) ExistsBySubnet(subnet string) (bool, error
 	return n > 0, err
 }
 
-// AllSubnets returns every allocated/reserved subnet — the used-set the allocator
-// scans against to find the next free one.
 func (r *NetworkAllocationRepository) AllSubnets() ([]string, error) {
 	var subnets []string
 	err := r.db.Model(&models.NetworkAllocation{}).Pluck("subnet", &subnets).Error
 	return subnets, err
 }
 
-// Count returns how many subnets are allocated or reserved (for pool-utilization
-// metrics). Reserved rows are included since they consume pool capacity.
+// Reserved rows are included since they consume pool capacity.
 func (r *NetworkAllocationRepository) Count() (int64, error) {
 	var n int64
 	err := r.db.Model(&models.NetworkAllocation{}).Count(&n).Error

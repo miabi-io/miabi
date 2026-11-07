@@ -29,9 +29,6 @@ import (
 
 const testConfigKey = "shared-goma-miabi-key"
 
-// TestRenderMiddlewareEncryptsRule verifies that, with the shared key set, a
-// middleware rule is emitted as an encrypted scalar that decrypts back to the
-// original rule mapping — the exact round-trip Goma performs at load.
 func TestRenderMiddlewareEncryptsRule(t *testing.T) {
 	t.Setenv(ConfigEncryptionKeyEnv, testConfigKey)
 
@@ -71,8 +68,6 @@ func TestRenderMiddlewareEncryptsRule(t *testing.T) {
 	}
 }
 
-// TestRenderTLSEncryptsCert verifies inline certificate material is encrypted and
-// decrypts back to the base64-encoded PEM Goma expects.
 func TestRenderTLSEncryptsCert(t *testing.T) {
 	t.Setenv(ConfigEncryptionKeyEnv, testConfigKey)
 
@@ -92,8 +87,6 @@ func TestRenderTLSEncryptsCert(t *testing.T) {
 	}
 }
 
-// TestRenderWithoutKeyStaysPlaintext verifies encryption is opt-in: with no key
-// set, the rule mapping is emitted as-is.
 func TestRenderWithoutKeyStaysPlaintext(t *testing.T) {
 	t.Setenv(ConfigEncryptionKeyEnv, "")
 

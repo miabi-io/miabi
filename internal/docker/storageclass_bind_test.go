@@ -21,8 +21,7 @@ package docker
 
 import "testing"
 
-// A NoCreate bind must NOT become a bind string: the daemon silently creates a missing bind-string
-// source, which would turn an unmounted disk into an empty directory on the root filesystem.
+// The daemon silently creates a missing bind-string source, turning an unmounted disk into a root-fs directory.
 func TestNoCreateBindUsesTheMountAPI(t *testing.T) {
 	mounts := []BindMount{
 		{Source: "/var/run/docker.sock", Target: "/var/run/docker.sock"},

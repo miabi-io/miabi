@@ -41,8 +41,7 @@ func (r *recorder) listen(_ uint, _ string, online bool) {
 	r.ch <- struct{}{}
 }
 
-// await waits for n FURTHER notifications and returns everything seen so far, so the assertions do
-// not race the hooks' goroutines.
+// Waits for further notifications so assertions do not race the hooks' goroutines.
 func (r *recorder) await(t *testing.T, n int) []bool {
 	t.Helper()
 	for i := 0; i < n; i++ {
@@ -71,8 +70,7 @@ func newStatusManager() *Manager {
 	return &Manager{sessions: nil, online: map[uint]bool{}}
 }
 
-// The direct-node poller re-confirms every node on every tick. Listeners must hear the transitions,
-// not the ticks: alerting would re-raise, and the console would redraw, on a node that never moved.
+// Listeners must hear transitions, not poller ticks, or alerting re-raises and the console redraws needlessly.
 func TestNotify_OnlyOnTransition(t *testing.T) {
 	m := newStatusManager()
 	r := newRecorder()
@@ -92,8 +90,7 @@ func TestNotify_OnlyOnTransition(t *testing.T) {
 	}
 }
 
-// A node's very first observation is a transition whatever it is: after a control-plane restart the
-// console holds no state at all, so an agent that is already up has to be announced.
+// After a control-plane restart the console holds no state, so an already-up agent must be announced.
 func TestNotify_FirstObservationOffline(t *testing.T) {
 	m := newStatusManager()
 	r := newRecorder()

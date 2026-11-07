@@ -47,8 +47,7 @@ function managedBy(r: GitRepository) { return r.metadata?.['miabi.io/managed-by'
 function openEdit(r: GitRepository) {
   editing.value = r
   form.value = {
-    // The name goes back unchanged: it is permanent, and the API refuses a
-    // rename. display_name is the label that can be edited.
+    // The API refuses a rename; display_name is the editable label.
     name: r.name,
     display_name: r.display_name || r.name,
     url: r.url,
@@ -63,16 +62,13 @@ async function save() {
   if (!currentWorkspaceId.value) return
   saving.value = true
   try {
-    // Saving runs a connection check server-side, and the saved repository comes
-    // back carrying its result — so the outcome is reported here rather than
-    // leaving the user to notice an icon and press Test.
+    // Saving runs a connection check server-side, so its outcome is reported right here.
     const saved = editing.value
       ? (await gitRepositoryApi.update(currentWorkspaceId.value, editing.value.id, form.value)).data.data
       : (await gitRepositoryApi.create(currentWorkspaceId.value, form.value)).data.data
     const edited = !!editing.value
     if (saved?.connection_status === 'failed') {
-      // Saved, but it does not work: an error toast, because it needs fixing —
-      // and the repository is on the list either way, with the reason on its row.
+      // Saved but failing: an error toast because it needs fixing; the reason also shows on its row.
       notify.error(t(edited ? 'notify.gitRepositories.updatedButFailed' : 'notify.gitRepositories.addedButFailed'), {
         detail: saved.connection_error || undefined,
       })
@@ -100,14 +96,12 @@ async function test(r: GitRepository) {
     notify.apiError(e, 'Connection failed')
   } finally {
     testing.value = null
-    // The outcome is recorded server-side either way, so refresh to show it
-    // rather than leaving the row's icon stale.
+    // The outcome is recorded server-side either way, so refresh the row's icon.
     load(currentWorkspaceId.value)
   }
 }
 
-// How the last check is rendered. `unknown` is its own state, not a failure:
-// a credential that has never been checked has not failed anything.
+// `unknown` is not a failure: a never-checked credential has not failed anything.
 const CONNECTION: Record<GitConnectionStatus, { icon: string; cls: string; label: string }> = {
   ok: { icon: 'mdi-check-circle', cls: 'conn-ok', label: 'gitRepos.conn.connected' },
   failed: { icon: 'mdi-alert-circle', cls: 'conn-failed', label: 'gitRepos.conn.failed' },
@@ -118,8 +112,7 @@ function connection(r: GitRepository) {
   return CONNECTION[r.connection_status ?? 'unknown'] ?? CONNECTION.unknown
 }
 
-// The status is a point-in-time observation — a token can be revoked a minute
-// after a green check — so the tooltip always says when it was taken.
+// A token can be revoked a minute after a green check, so the tooltip always says when it was taken.
 function connectionTitle(r: GitRepository): string {
   const when = r.connection_checked_at
     ? ` · ${t('gitRepos.conn.checkedAt', { when: new Date(r.connection_checked_at).toLocaleString() })}`
@@ -185,8 +178,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                       <span v-if="managedBy(r) === 'gitops'" class="mdi mdi-source-branch text-muted" :title="$t('gitRepos.gitopsHint')" :aria-label="$t('gitRepos.gitopsHint')"></span>
                       <span v-else-if="managedBy(r) === 'apply'" class="mdi mdi-console text-muted" :title="$t('gitRepos.appliedHint')" :aria-label="$t('gitRepos.appliedHint')"></span>
                     </router-link>
-                    <!-- The handle is what apps and pipelines reference, so it
-                         stays visible even when a display name is set. -->
+                    <!-- The handle is what apps and pipelines reference, so it stays visible. -->
                     <span class="cell-sub">
                       <code>{{ r.name }}</code> ·
                       <template v-if="r.secret_ref">
@@ -200,8 +192,6 @@ const authTypes: { value: GitAuthType; label: string }[] = [
               <td class="cell-sub">{{ r.url }}</td>
               <td><span class="badge badge-neutral">{{ r.auth_type }}</span></td>
               <td>
-                <!-- The icon carries the state; the tooltip carries the reason
-                     and when it was observed. -->
                 <span class="conn" :class="connection(r).cls" :title="connectionTitle(r)">
                   <span class="mdi" :class="connection(r).icon"></span>
                   <span class="conn-label">{{ $t(connection(r).label) }}</span>
@@ -304,8 +294,6 @@ const authTypes: { value: GitAuthType; label: string }[] = [
 .conn-ok { color: var(--success-500, #22c55e); }
 .conn-failed { color: var(--danger-500, #ef4444); }
 .conn-unknown { color: var(--text-muted); }
-/* On a narrow viewport the icon alone carries the state; the tooltip still has
-   the detail. */
 @media (max-width: 900px) {
   .conn-label { display: none; }
 }

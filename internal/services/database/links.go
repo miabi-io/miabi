@@ -34,24 +34,19 @@ const (
 )
 
 var (
-	// ErrLinkLogicalDatabase refuses an instance link on an engine whose apps
-	// connect through a logical database with its own scoped user.
+	// ErrLinkLogicalDatabase refuses an instance link where apps connect through a scoped logical database.
 	ErrLinkLogicalDatabase = errors.New("this engine is linked through one of its databases, not the instance")
 	ErrInvalidEnvMap       = errors.New("invalid env mapping")
 	ErrEnvConflict         = errors.New("env vars already injected by another linked database")
 )
 
-// EnvLink is how a link's connection lands in the app env: the prefix and
-// mapping the user chose, and the var names they resolve to.
 type EnvLink struct {
 	Prefix string
 	Map    map[string]string
 	Vars   []string
 }
 
-// ResolveEnvLink validates a prefix and mapping for an engine and refuses var
-// names another of the app's links already injects. skipDB/skipInst exclude the
-// link being (re)attached.
+// ResolveEnvLink refuses var names another app link already injects; skipDB/skipInst exclude the link being reattached.
 func (s *Service) ResolveEnvLink(workspaceID, appID uint, engine models.DBEngine, prefix string, m map[string]string, skipDB, skipInst uint) (EnvLink, error) {
 	norm, err := NormalizeEnvMap(engine, prefix, m)
 	if err != nil {
@@ -75,8 +70,7 @@ func (s *Service) ResolveEnvLink(workspaceID, appID uint, engine models.DBEngine
 	return EnvLink{Prefix: prefix, Map: norm, Vars: keys}, nil
 }
 
-// LinkInstance links a whole instance to an app, or updates an existing link's
-// env. Only engines without per-app logical databases (Redis) link this way.
+// LinkInstance links a whole instance to an app; only engines without logical databases (Redis) link this way.
 func (s *Service) LinkInstance(workspaceID, instanceID, appID uint, env EnvLink) (*models.DatabaseInstanceLink, error) {
 	inst, err := s.repo.FindInWorkspace(workspaceID, instanceID)
 	if err != nil {
@@ -96,8 +90,6 @@ func (s *Service) LinkInstance(workspaceID, instanceID, appID uint, env EnvLink)
 	return l, nil
 }
 
-// UnlinkInstance removes an app's link to an instance and returns it, so the
-// caller can clean up the vars it injected.
 func (s *Service) UnlinkInstance(workspaceID, instanceID, appID uint) (*models.DatabaseInstanceLink, error) {
 	l, err := s.repo.FindInstanceLink(workspaceID, instanceID, appID)
 	if err != nil {
@@ -109,8 +101,6 @@ func (s *Service) UnlinkInstance(workspaceID, instanceID, appID uint) (*models.D
 	return l, nil
 }
 
-// InstanceConnectionForApp reveals a linked instance's connection to an app
-// that holds a link to it.
 func (s *Service) InstanceConnectionForApp(workspaceID, appID, instanceID uint) (ConnectionInfo, error) {
 	if _, err := s.repo.FindInstanceLink(workspaceID, instanceID, appID); err != nil {
 		return ConnectionInfo{}, ErrNotFound

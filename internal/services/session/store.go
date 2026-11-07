@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package session maintains a Redis-backed revocation list for JWT sessions,
-// keyed by the token's jti claim.
+// Package session maintains a Redis-backed JWT revocation list keyed by jti.
 package session
 
 import (
@@ -38,8 +37,6 @@ const resetSessionPrefix = "auth:pwreset:"
 // ResetSessionTTL bounds how long a forced-password-change reset token is valid.
 const ResetSessionTTL = 15 * time.Minute
 
-// ErrResetSession is returned when a reset-session token is missing, expired, or
-// already used.
 var ErrResetSession = errors.New("reset session is invalid or has expired")
 
 type Store struct {
@@ -66,9 +63,7 @@ func (s *Store) IsRevoked(ctx context.Context, jti string) bool {
 	return n > 0
 }
 
-// CreateResetSession stores a short-lived, single-use token authorizing exactly one action — setting a new
-// password for userID — and returns it. Used by the forced-password-change flow, so a user with an admin-set
-// password never receives a full session until they have chosen their own.
+// CreateResetSession lets a user with an admin-set password change it without ever getting a full session.
 func (s *Store) CreateResetSession(ctx context.Context, userID uint) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -81,8 +76,6 @@ func (s *Store) CreateResetSession(ctx context.Context, userID uint) (string, er
 	return token, nil
 }
 
-// ConsumeResetSession atomically validates and deletes a reset token, returning
-// the user it belongs to. Single-use: a second call with the same token fails.
 func (s *Store) ConsumeResetSession(ctx context.Context, token string) (uint, error) {
 	if token == "" {
 		return 0, ErrResetSession

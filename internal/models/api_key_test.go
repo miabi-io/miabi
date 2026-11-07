@@ -64,8 +64,6 @@ func TestBillingScopeNotImplied(t *testing.T) {
 	}
 }
 
-// A migration key hands over every secret of a workspace, which no other key can read, so nothing
-// implies it and it implies nothing.
 func TestMigrationScopeNotImplied(t *testing.T) {
 	for _, g := range [][]string{{ScopeAll}, {ScopeAdmin}, {ScopeWrite}, {ScopeBilling}, nil} {
 		if ScopeSatisfies(g, ScopeMigration) {

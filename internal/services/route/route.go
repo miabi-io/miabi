@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package route manages Goma Gateway routes bound to applications and
-// reconciles them into the proxy provider. The container backend is injected
-// from the application's network alias at render time.
+// Package route manages Goma Gateway routes bound to applications and reconciles them into the proxy provider.
 package route
 
 import (
@@ -62,8 +60,6 @@ var (
 
 const maintenanceMessageMax = 1024
 
-// CertResolver resolves a stored certificate's PEM + decrypted key for proxy
-// rendering. Implemented by the certificate service; injected after construction.
 type CertResolver interface {
 	Resolve(workspaceID, id uint) (certPEM, keyPEM string, err error)
 }
@@ -100,20 +96,14 @@ type ClusterCap interface {
 // SetCluster wires cluster gateways (nil-safe; nil = every cluster is served as the default one).
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
-// EdgeReloader notifies edge-gateway nodes to pull their configuration immediately after a change,
-// instead of waiting for their HTTP-provider poll interval. Calls are best-effort. Optional: when
-// unset, nodes still converge on their next poll.
+// EdgeReloader makes edge gateways pull config now instead of on their next poll; best-effort and optional.
 type EdgeReloader interface {
 	ReloadServers(ctx context.Context, serverIDs []uint)
 }
 
-// SetEdgeReloader wires the edge-gateway reloader used after a workspace proxy
-// sync. Optional.
 func (s *Service) SetEdgeReloader(r EdgeReloader) { s.reloader = r }
 
-// DNSAddresser keeps an app's public A/AAAA/CNAME records in sync with its routed hosts, for hosts
-// under a verified, provider-connected domain. Injected after construction; nil disables app-address
-// automation. Implemented by the dnsprovider service.
+// DNSAddresser keeps an app's public DNS records in sync with routed hosts under provider-connected domains.
 type DNSAddresser interface {
 	ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, target models.PublicAddress) error
 }
@@ -121,9 +111,7 @@ type DNSAddresser interface {
 // SetDNSAddresser wires app-address DNS automation (nil-safe; nil = off).
 func (s *Service) SetDNSAddresser(a DNSAddresser) { s.dnsAddr = a }
 
-// DomainLister lists the workspace's registered domains. A user-created route's host must fall under
-// one of them; platform-generated external-access routes bypass this, as they don't go through Create.
-// Injected after construction; nil disables the check.
+// DomainLister bounds user-created route hosts; generated external-access routes bypass it.
 type DomainLister interface {
 	ListByWorkspace(workspaceID uint) ([]models.Domain, error)
 }
@@ -131,9 +119,7 @@ type DomainLister interface {
 // SetDomains wires the domain registry used to gate route hostnames.
 func (s *Service) SetDomains(d DomainLister) { s.domains = d }
 
-// WorkspacePolicy reports per-workspace serving policy. A privileged workspace may expose routes whose
-// domains are registered but not yet verified — a ban still blocks them. Implemented by the workspace
-// repository; injected after construction (nil means no workspace is treated as privileged).
+// WorkspacePolicy reports whether a workspace may expose routes on registered but unverified domains.
 type WorkspacePolicy interface {
 	IsPrivileged(workspaceID uint) (bool, error)
 }
@@ -141,17 +127,12 @@ type WorkspacePolicy interface {
 // SetWorkspacePolicy wires the privileged-workspace lookup (nil-safe).
 func (s *Service) SetWorkspacePolicy(p WorkspacePolicy) { s.wsPolicy = p }
 
-// privileged reports whether a workspace may bypass the domain-verification gate.
-// A missing policy or a lookup error is treated as not privileged (fail closed).
-// SetSuspended wires the suspended-workspace check used when rendering routes.
 func (s *Service) SetSuspended(f func(workspaceID uint) bool) { s.suspended = f }
 
-// suspendedNotice is what visitors of a suspended workspace's sites see. It never carries the
-// admin's reason, which is for the workspace's members, not the public.
+// Never carries the admin's reason, which is for the workspace's members, not the public.
 const suspendedNotice = "This site is temporarily unavailable. If you run it, sign in to your Miabi workspace for details."
 
-// applySuspension turns a route of a suspended workspace into a 503 notice, whatever its own
-// maintenance setting, without touching the stored route.
+// Turns the route into a 503 notice whatever its maintenance setting, without touching the stored route.
 func (s *Service) applySuspension(rr *proxy.RenderedRoute) {
 	if s.suspended != nil && s.suspended(rr.WorkspaceID) {
 		rr.Maintenance = &proxy.RouteMaintenance{Enabled: true, StatusCode: 503, Message: suspendedNotice}
@@ -170,11 +151,7 @@ func (s *Service) privileged(workspaceID uint) bool {
 	return p
 }
 
-// validateHosts requires every non-empty host to fall under a domain registered
-// in the workspace. A catch-all route (no hosts) and an unset domain registry
-// are both allowed.
-// CoveringDomain returns the workspace domain a host falls under, or nil when none is registered or
-// domain checks are not wired.
+// CoveringDomain returns the workspace domain a host falls under, or nil when none or checks aren't wired.
 func (s *Service) CoveringDomain(workspaceID uint, host string) (*models.Domain, error) {
 	if s.domains == nil {
 		return nil, nil
@@ -215,8 +192,7 @@ func (s *Service) validateHosts(workspaceID uint, hosts []string) error {
 	return nil
 }
 
-// normalizeHosts lowercases, trims, and de-duplicates a route's hostnames so they
-// store and compare canonically (DNS is case-insensitive).
+// DNS is case-insensitive, so hosts are stored and compared canonically.
 func normalizeHosts(hosts []string) []string {
 	out := make([]string, 0, len(hosts))
 	seen := map[string]bool{}
@@ -239,9 +215,7 @@ func normalizePath(p string) string {
 	return p
 }
 
-// ensureHostsAvailable enforces globally-unique route hostnames. A host already routed by a DIFFERENT
-// workspace is rejected, preventing cross-tenant host hijacking; within the same workspace a host may be
-// reused only on a different path. excludeID skips the route being updated.
+// A host routed by another workspace is rejected to prevent cross-tenant hijacking; same workspace needs a new path.
 func (s *Service) ensureHostsAvailable(workspaceID uint, hosts []string, path string, excludeID uint) error {
 	wanted := map[string]bool{}
 	for _, h := range hosts {
@@ -277,8 +251,6 @@ func (s *Service) ensureHostsAvailable(workspaceID uint, hosts []string, path st
 	return nil
 }
 
-// hostUnderDomain reports whether host equals or is a subdomain of a registered
-// domain (e.g. "shop.example.com" is covered by "example.com").
 func hostUnderDomain(host string, domains []models.Domain) bool {
 	for i := range domains {
 		name := strings.ToLower(domains[i].Name)
@@ -289,9 +261,7 @@ func hostUnderDomain(host string, domains []models.Domain) bool {
 	return false
 }
 
-// matchDomain returns the most specific registered domain covering host (the
-// longest matching name), or nil when none does. A wildcard domain matches by
-// name like any other — ownership is proven once for the whole zone.
+// A wildcard domain matches by name like any other: ownership is proven once for the whole zone.
 func matchDomain(host string, domains []models.Domain) *models.Domain {
 	var best *models.Domain
 	for i := range domains {
@@ -314,9 +284,7 @@ func hasHost(hosts []string) bool {
 	return false
 }
 
-// routeServeState computes a route's intended config-sync status and whether the gateway should serve it: only
-// when enabled AND every host clears its covering domain — not banned, and verified unless the workspace is
-// privileged. Platform-generated external-access routes are exempt, serving over the platform's own base domain.
+// Serve only when enabled and every host's domain is unbanned and verified (unless privileged); generated routes exempt.
 func routeServeState(rt *models.Route, domains []models.Domain, gate, privileged bool) (serve bool, status models.RouteStatus, reason string) {
 	if !rt.Enabled {
 		return false, models.RouteStatusOffline, "disabled"
@@ -348,8 +316,6 @@ func routeServeState(rt *models.Route, domains []models.Domain, gate, privileged
 	return true, models.RouteStatusLive, ""
 }
 
-// workspaceDomains loads a workspace's registered domains for the verified-host
-// gate.
 func (s *Service) workspaceDomains(workspaceID uint) []models.Domain {
 	if s.domains == nil {
 		return nil
@@ -362,8 +328,7 @@ func (s *Service) workspaceDomains(workspaceID uint) []models.Domain {
 	return domains
 }
 
-// persistRouteStatus records a route's config-sync status, skipping the write
-// when nothing changed (so node pulls and re-syncs don't churn the row).
+// Skips unchanged writes so node pulls and re-syncs don't churn the row.
 func (s *Service) persistRouteStatus(rt *models.Route, status models.RouteStatus, reason string, syncedAt time.Time) {
 	if rt.Status == status && rt.StatusReason == reason {
 		return
@@ -373,9 +338,7 @@ func (s *Service) persistRouteStatus(rt *models.Route, status models.RouteStatus
 	}
 }
 
-// ProxyAttacher reconciles whether an application's running container(s) are attached to the shared
-// reverse-proxy network, so only route-exposed apps join it. Implemented by the deploy worker, which
-// holds the per-node Docker clients; optional (nil means attachment is decided only at deploy time).
+// ProxyAttacher attaches only route-exposed apps' containers to the shared reverse-proxy network.
 type ProxyAttacher interface {
 	ReconcileProxyAttachment(ctx context.Context, appID uint, attached bool) error
 }
@@ -386,8 +349,6 @@ func (s *Service) SetCertResolver(r CertResolver) { s.certs = r }
 // SetProxyAttacher wires the proxy-network reconciler used when routes change.
 func (s *Service) SetProxyAttacher(a ProxyAttacher) { s.attacher = a }
 
-// RoutesUsingCertificate returns the workspace's routes that reference a stored
-// certificate (for the certificate store's delete guard / usage list).
 func (s *Service) RoutesUsingCertificate(workspaceID, certID uint) ([]models.Route, error) {
 	return s.routes.ListByCertificate(workspaceID, certID)
 }
@@ -461,9 +422,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if err := validateAdvanced(in.AdvancedConfig); err != nil {
 		return nil, err
 	}
-	// The chain is validated here, not only in SetMiddlewares: Create and Update are what the API and
-	// the declarative engine call, and an unchecked name would be stored happily and then render a
-	// gateway config referencing a middleware that does not exist.
+	// Validated here too: an unchecked name would be stored and render a config naming a nonexistent middleware.
 	chain, err := normalizeChain(in.Middlewares, func(n string) (bool, error) {
 		return s.middlewares.ExistsByName(workspaceID, n)
 	})
@@ -510,9 +469,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// Re-link the target application when the caller supplies one. apply/GitOps passes the resolved app on
-	// every reconcile, so a route whose link is stale (e.g. the app was recreated with a new id) or empty
-	// converges instead of drifting forever. The UI edit form leaves ApplicationID 0 to keep the current link.
+	// apply/GitOps passes the app every reconcile so a stale link converges; the UI passes 0 to keep the link.
 	if in.ApplicationID != 0 && in.ApplicationID != rt.ApplicationID {
 		app, aerr := s.apps.FindInWorkspace(workspaceID, in.ApplicationID)
 		if aerr != nil {
@@ -530,8 +487,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	if in.Path != "" {
 		rt.Path = in.Path
 	}
-	// Generated external-access routes manage their own hosts; only user routes
-	// are gated on a registered domain and global hostname uniqueness.
+	// Generated routes manage their own hosts, so only user routes are gated on domain and uniqueness.
 	if !rt.Generated {
 		in.Hosts = normalizeHosts(in.Hosts)
 		if len(in.Hosts) == 0 {
@@ -579,8 +535,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 		}
 		rt.Maintenance = mt
 	}
-	// Re-stamp provenance labels when apply/GitOps supplies them; a UI edit passes
-	// nil so existing labels are preserved.
+	// A UI edit passes nil so existing provenance labels are preserved.
 	if in.Metadata != nil {
 		rt.Metadata = in.Metadata
 	}
@@ -594,8 +549,6 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	return strip(rt), nil
 }
 
-// SetEnabled flips a route's enabled flag without touching any other field
-// (a partial update), then reconciles the proxy.
 func (s *Service) SetEnabled(ctx context.Context, workspaceID, id uint, enabled bool) (*models.Route, error) {
 	rt, err := s.routes.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -647,9 +600,7 @@ func (s *Service) SetMaintenance(ctx context.Context, workspaceID, id uint, in m
 	return rt, nil
 }
 
-// AttachMiddleware adds a workspace middleware to a route's chain without touching any other field,
-// then reconciles the proxy. Idempotent, and the named middleware must exist in the workspace. Unlike a
-// full Update this works on generated external-access routes, so operators can layer middleware on them.
+// AttachMiddleware works on generated external-access routes too, unlike a full Update.
 func (s *Service) AttachMiddleware(ctx context.Context, workspaceID, id uint, name string) (*models.Route, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -678,8 +629,7 @@ func (s *Service) AttachMiddleware(ctx context.Context, workspaceID, id uint, na
 	return rt, nil
 }
 
-// normalizeChain validates a middleware chain and returns it in the caller's
-// order, which is the order the gateway will run it in.
+// The returned order is the order the gateway will run the chain in.
 func normalizeChain(names []string, exists func(string) (bool, error)) ([]string, error) {
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -702,10 +652,7 @@ func normalizeChain(names []string, exists func(string) (bool, error)) ([]string
 	return out, nil
 }
 
-// SetMiddlewares replaces a route's chain with names, in the order given. Order
-// is behaviour, not presentation: the gateway runs middlewares in array order,
-// so rate-limit before basic-auth throttles anonymous requests, and the reverse
-// makes every request authenticate first.
+// SetMiddlewares keeps order: the gateway runs middlewares in array order, so rate-limit vs basic-auth matters.
 func (s *Service) SetMiddlewares(ctx context.Context, workspaceID, id uint, names []string) (*models.Route, error) {
 	rt, err := s.routes.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -732,9 +679,6 @@ func (s *Service) SetMiddlewares(ctx context.Context, workspaceID, id uint, name
 	return rt, nil
 }
 
-// DetachMiddleware removes a middleware from a route's chain (a partial update),
-// then reconciles the proxy. Idempotent: detaching a middleware the route does
-// not carry is a no-op. Works on generated routes too.
 func (s *Service) DetachMiddleware(ctx context.Context, workspaceID, id uint, name string) (*models.Route, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -808,9 +752,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	return nil
 }
 
-// partitionGeneratedOrphans splits an app's routes into the ones to keep and the generated external-access
-// routes whose target port the app no longer exposes. A generated route is valid only while its port is the
-// app's primary or a declared one; user-created routes are always kept, as they may target any port.
+// A generated route is valid only while its port is primary or declared; user routes may target any port.
 func partitionGeneratedOrphans(app *models.Application, routes []models.Route) (keep, orphans []models.Route) {
 	valid := map[int]bool{}
 	if app.Port > 0 {
@@ -829,9 +771,7 @@ func partitionGeneratedOrphans(app *models.Application, routes []models.Route) (
 	return keep, orphans
 }
 
-// RemoveAppRoutes deletes every route of an application — generated external-access routes and
-// user-created ones alike — and removes each from the proxy. Called when the application itself is
-// deleted, so no route is left dangling against a now-removed app, in the database or the gateway.
+// RemoveAppRoutes deletes every route of a deleted app, from the database and the gateway.
 func (s *Service) RemoveAppRoutes(ctx context.Context, appID uint) error {
 	routes, err := s.routes.ListByApp(appID)
 	if err != nil {
@@ -866,9 +806,7 @@ func (s *Service) RemoveAppRoutes(ctx context.Context, appID uint) error {
 	return s.SyncWorkspaceProxy(ctx, workspaceID)
 }
 
-// SyncRoute reconciles all of an application's routes into the proxy. Routes are removed while the app
-// has no active release; otherwise enabled routes are upserted with the backend pointing at the app's
-// alias. Generated routes whose target port the app no longer exposes are torn down first.
+// SyncRoute removes routes while the app has no active release, else upserts enabled routes.
 func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 	app, err := s.apps.FindByID(appID)
 	if err != nil {
@@ -878,9 +816,7 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 	if err != nil {
 		return err
 	}
-	// Tear down generated external-access routes whose target port the app no longer exposes (the port was
-	// removed, or external access disabled for it), so a generated route never outlives the port it fronts.
-	// User-created routes are left untouched — they may legitimately target any port.
+	// A generated route must never outlive the port it fronts; user routes may target any port.
 	kept, orphans := partitionGeneratedOrphans(app, routes)
 	for i := range orphans {
 		_ = s.routes.Delete(orphans[i].ID)
@@ -895,9 +831,7 @@ func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
 	return s.SyncWorkspaceProxy(ctx, app.WorkspaceID)
 }
 
-// renderMiddlewares decrypts each middleware's secret rule fields (e.g. basicAuth
-// passwords) and builds the proxy view. Fail-closed: a middleware whose secrets
-// can't be decrypted is skipped rather than rendering ciphertext as a credential.
+// Fail-closed: a middleware whose secrets can't be decrypted is skipped rather than rendering ciphertext.
 func renderMiddlewares(mws []models.Middleware) []proxy.RenderedMiddleware {
 	out := make([]proxy.RenderedMiddleware, 0, len(mws))
 	for i := range mws {
@@ -914,9 +848,7 @@ func renderMiddlewares(mws []models.Middleware) []proxy.RenderedMiddleware {
 	return out
 }
 
-// SyncWorkspaceProxy re-renders a workspace's entire central Goma config — every middleware plus the
-// routes of its centrally-served apps — as one file. It is the single write path for the central proxy,
-// so a route and the middlewares it references are always published together.
+// SyncWorkspaceProxy is the single central write path, so routes and their middlewares publish together.
 func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error {
 	mws, err := s.middlewares.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -973,8 +905,7 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 	}
 	err = s.proxy.SyncWorkspace(ctx, workspaceID, renderedRoutes, renderedMw)
 	s.commitRouteStatus(pending, err)
-	// Tell affected edge-gateway nodes to pull their (HTTP-provider) config now,
-	// best-effort and detached so a slow/unreachable node never blocks the sync.
+	// Detached so a slow or unreachable node never blocks the sync.
 	if err == nil && s.reloader != nil && len(edgeServers) > 0 {
 		ids := make([]uint, 0, len(edgeServers))
 		for id := range edgeServers {
@@ -985,17 +916,12 @@ func (s *Service) SyncWorkspaceProxy(ctx context.Context, workspaceID uint) erro
 	return err
 }
 
-// routeStatus pairs a route with the config-sync status it should record once the
-// gateway write outcome is known.
 type routeStatus struct {
 	rt     *models.Route
 	status models.RouteStatus
 	reason string
 }
 
-// commitRouteStatus persists the post-sync status for a batch of routes. When the gateway write failed,
-// every route is marked error with the failure reason; otherwise each route gets its computed live/offline
-// status and a fresh synced-at timestamp.
 func (s *Service) commitRouteStatus(pending []routeStatus, syncErr error) {
 	now := time.Now()
 	for _, p := range pending {
@@ -1007,9 +933,7 @@ func (s *Service) commitRouteStatus(pending []routeStatus, syncErr error) {
 	}
 }
 
-// ResyncAllProxy re-renders every workspace that has any route or middleware into
-// the proxy. Run once at startup to populate the per-workspace config files —
-// e.g. after upgrading from the previous one-file-per-resource layout.
+// ResyncAllProxy runs at startup to populate per-workspace files, e.g. after upgrading from the per-resource layout.
 func (s *Service) ResyncAllProxy(ctx context.Context) error {
 	ws := map[uint]bool{}
 	routes, err := s.routes.ListAll()
@@ -1041,9 +965,7 @@ func (s *Service) clusterGateway(clusterID uint) (*models.Cluster, bool) {
 	return s.cluster.OwnGateway(clusterID)
 }
 
-// gatewayServer returns the node whose gateway serves an app, or false when the control-plane gateway does. A
-// remote swarm's ingress node serves every app in its cluster; an edge-gateway node outside the default cluster
-// serves its own containers.
+// A remote swarm's ingress node serves its whole cluster; an edge node outside the default cluster serves its own.
 func (s *Service) gatewayServer(app *models.Application) (uint, bool) {
 	if c, ok := s.clusterGateway(app.ClusterID); ok {
 		return c.IngressNode(), true
@@ -1071,9 +993,6 @@ func gatewayBackends(app *models.Application, port int) []proxy.Backend {
 	return aliasBackends(app, port, scheme)
 }
 
-// reconcileAppDNS upserts/prunes the app's public address records (A/AAAA/CNAME) to match its enabled
-// routes' hosts, pointing at the serving gateway's public address. Best-effort and a no-op when no DNS
-// addresser is wired or no host falls under a managed domain.
 func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, routes []models.Route) {
 	if s.dnsAddr == nil {
 		return
@@ -1083,8 +1002,7 @@ func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, 
 	}
 }
 
-// dnsTarget resolves the public address a route's hosts should point at: the address of the cluster whose gateway
-// terminates the route. Apps the control-plane gateway serves use the default cluster's address.
+// Apps the control-plane gateway serves use the default cluster's address.
 func (s *Service) dnsTarget(app *models.Application) models.PublicAddress {
 	if s.cluster == nil {
 		return models.PublicAddress{}
@@ -1113,8 +1031,6 @@ func routedHosts(routes []models.Route) []string {
 	return hosts
 }
 
-// enrichDNS populates a route's transient DNS-target + backend fields for
-// responses so the UI shows the real upstream.
 func (s *Service) enrichDNS(rt *models.Route) {
 	app, err := s.apps.FindByID(rt.ApplicationID)
 	if err != nil {
@@ -1199,9 +1115,6 @@ func routePort(rt *models.Route, app *models.Application) int {
 	return port
 }
 
-// aliasBackends builds node-local DNS-alias upstreams (control-plane Goma for the
-// local node, or the node's own gateway for edge-gateway nodes), with canary
-// weighting. scheme (http|https) is the app port's application protocol.
 func aliasBackends(app *models.Application, port int, scheme string) []proxy.Backend {
 	stable := fmt.Sprintf("%s://%s:%d", scheme, node.AppAlias(app), port)
 	w := app.CanaryWeight
@@ -1231,7 +1144,6 @@ func aliasBackends(app *models.Application, port int, scheme string) []proxy.Bac
 	}
 }
 
-// canaryMatchRules converts the app's stored match rules to the proxy shape.
 // Returns nil for an empty set so an ordinary canary renders unchanged.
 func canaryMatchRules(app *models.Application) []proxy.MatchRule {
 	if len(app.CanaryMatch) == 0 {
@@ -1244,9 +1156,7 @@ func canaryMatchRules(app *models.Application) []proxy.MatchRule {
 	return out
 }
 
-// portScheme returns the application scheme (http|https) the app declared for a
-// container port, defaulting to http when the port isn't declared. Used to build
-// the Gateway backend URL so an HTTPS-only container is reached over https.
+// Defaults to http so an HTTPS-only container is reached over https only when declared.
 func portScheme(app *models.Application, port int) string {
 	for i := range app.Ports {
 		if app.Ports[i].ContainerPort == port && app.Ports[i].Scheme == "https" {
@@ -1256,10 +1166,7 @@ func portScheme(app *models.Application, port int) string {
 	return "http"
 }
 
-// RouteNamesForNode returns the Goma route names a node serves, as they appear in
-// its gateway's analytics events. Analytics ingest gates on this: the workspace is
-// read out of the route name, so reporting a foreign one would claim another
-// tenant's traffic.
+// RouteNamesForNode gates analytics ingest: the workspace is read from the route name, so foreign ones claim others' traffic.
 func (s *Service) RouteNamesForNode(serverID uint) (map[string]bool, error) {
 	rendered, _, err := s.NodeBundle(serverID)
 	if err != nil {
@@ -1286,20 +1193,13 @@ func (s *Service) SyncCluster(ctx context.Context, clusterID uint) {
 	}
 }
 
-// NodeBundle renders the Goma config a remote node's Gateway pulls over the HTTP provider: the
-// routes for apps that node's gateway serves (see gatewayServer), plus ONLY the middlewares those
-// routes reference.
-//
-// Only those: a middleware's rule is rendered with its secrets decrypted — a forwardAuth bearer, a
-// basicAuth user list — so shipping the whole install's middlewares to every edge node handed each
-// one every other workspace's credentials, for routes it does not serve and cannot serve.
+// NodeBundle ships only referenced middlewares, since they render with decrypted secrets.
 func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
 	apps, err := s.bundleApps(serverID)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Verified-domain gate, same as the central sync. Apps on a node can span
-	// workspaces, so cache each workspace's domains (and privilege) as we go.
+	// Apps on a node can span workspaces, so each workspace's domains and privilege are cached.
 	gate := s.domains != nil
 	domainCache := map[uint][]models.Domain{}
 	privCache := map[uint]bool{}
@@ -1331,9 +1231,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 		for j := range routes {
 			rt := &routes[j]
 			serve, status, reason := routeServeState(rt, domains, gate, privileged)
-			// Disabled routes are still emitted (with enabled:false) so the node's
-			// gateway stops serving them rather than relying on the route vanishing
-			// from the bundle.
+			// Disabled routes are emitted with enabled:false so the gateway stops serving them.
 			rr := renderedRoute(rt, gatewayBackends(app, routePort(rt, app)), !serve)
 			s.applySuspension(&rr)
 			// Only a served route carries its cert.
@@ -1348,9 +1246,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 		}
 	}
 
-	// Rendered last, from what the routes above actually named. A disabled route still carries its
-	// references, so its middlewares ship too — Goma rejects a config naming a middleware it has no
-	// definition for, and the route has to stay defined in order to be switched off.
+	// Goma rejects a config naming an undefined middleware, so disabled routes' middlewares ship too.
 	mws, err := s.middlewares.ListAll()
 	if err != nil {
 		return nil, nil, err
@@ -1359,9 +1255,7 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 	return renderedRoutes, renderedMw, nil
 }
 
-// referencedMiddlewares keeps the middlewares named by at least one of these routes. Matching is per
-// workspace as well as by name, because two workspaces may each define "auth" and they are not the
-// same middleware.
+// Matching is per workspace as well as name: two workspaces may each define "auth".
 func referencedMiddlewares(mws []models.Middleware, routes []proxy.RenderedRoute) []models.Middleware {
 	wanted := make(map[uint]map[string]bool, len(routes))
 	for i := range routes {
@@ -1383,8 +1277,6 @@ func referencedMiddlewares(mws []models.Middleware, routes []proxy.RenderedRoute
 	return out
 }
 
-// bundleApps lists the apps a node's gateway may serve: its own, or the whole cluster's on a remote swarm's
-// ingress node.
 func (s *Service) bundleApps(serverID uint) ([]models.Application, error) {
 	if srv, err := s.servers.FindByID(serverID); err == nil {
 		if c, ok := s.clusterGateway(srv.ClusterID); ok && c.IngressNode() == serverID {
@@ -1394,9 +1286,6 @@ func (s *Service) bundleApps(serverID uint) ([]models.Application, error) {
 	return s.apps.ListByServer(serverID)
 }
 
-// certPair resolves a custom-TLS route's certificate for proxy rendering from
-// the stored certificate it references. Returns false when no usable cert is
-// available.
 func (s *Service) certPair(rt *models.Route) (proxy.CertPair, bool) {
 	if rt.TLSMode != models.RouteTLSCustom || rt.CertificateID == nil || s.certs == nil {
 		return proxy.CertPair{}, false
@@ -1408,8 +1297,6 @@ func (s *Service) certPair(rt *models.Route) (proxy.CertPair, bool) {
 	return proxy.CertPair{CertPEM: cert, KeyPEM: key}, true
 }
 
-// applyCert validates a route's certificate selection: custom TLS requires a
-// stored certificate reference; other modes carry none.
 func (s *Service) applyCert(rt *models.Route, _ Input) error {
 	if rt.TLSMode != models.RouteTLSCustom {
 		rt.CertificateID = nil // only custom TLS carries a cert reference
@@ -1426,8 +1313,6 @@ func strip(rt *models.Route) *models.Route {
 	return rt
 }
 
-// trimPtr is the create-side counterpart of the nil check on update: an unset pointer leaves the
-// field empty rather than dereferencing nothing.
 func trimPtr(p *string) string {
 	if p == nil {
 		return ""

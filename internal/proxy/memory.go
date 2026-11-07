@@ -24,8 +24,6 @@ import (
 	"sync"
 )
 
-// Memory is an in-process Manager used when no real gateway is configured
-// (dev/tests). It records the desired routes and middlewares per workspace.
 type Memory struct {
 	mu          sync.RWMutex
 	routes      map[uint]RenderedRoute      // by route id, across workspaces
@@ -40,8 +38,6 @@ func NewMemory() *Memory {
 	}
 }
 
-// SyncWorkspace replaces the recorded state for a workspace: it drops the
-// workspace's previous routes/middlewares and stores the supplied set.
 func (m *Memory) SyncWorkspace(_ context.Context, workspaceID uint, routes []RenderedRoute, mws []RenderedMiddleware) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -64,8 +60,6 @@ func (m *Memory) SyncWorkspace(_ context.Context, workspaceID uint, routes []Ren
 	return nil
 }
 
-// SyncRegistry records the registry proxy config (no-op store for the in-memory
-// manager; the Goma manager writes the actual gateway file).
 func (m *Memory) SyncRegistry(_ context.Context, cfg RegistryProxy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

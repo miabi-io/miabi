@@ -34,8 +34,7 @@ func names(mws []models.Middleware) []string {
 	return out
 }
 
-// The finding: an edge node's bundle carried EVERY workspace's middlewares, rendered with their
-// secrets decrypted, for routes that node does not serve. Only what its own routes name may ship.
+// An edge bundle must carry only middlewares its own routes name; others ship decrypted secrets.
 func TestReferencedMiddlewaresKeepsOnlyWhatTheRoutesName(t *testing.T) {
 	mws := []models.Middleware{
 		{ID: 1, WorkspaceID: 1, Name: "auth"},
@@ -60,8 +59,7 @@ func TestReferencedMiddlewaresKeepsOnlyWhatTheRoutesName(t *testing.T) {
 	}
 }
 
-// Two workspaces may each define "auth"; they are different middlewares with different secrets, so
-// the match is on workspace AND name. Matching on name alone would hand one tenant the other's.
+// Two workspaces may each define "auth", so matching on name alone would hand one tenant the other's secrets.
 func TestReferencedMiddlewaresMatchesPerWorkspace(t *testing.T) {
 	mws := []models.Middleware{
 		{ID: 1, WorkspaceID: 1, Name: "auth"},
@@ -75,9 +73,7 @@ func TestReferencedMiddlewaresMatchesPerWorkspace(t *testing.T) {
 	}
 }
 
-// A disabled route is still emitted so the gateway stops serving it, and it still names its
-// middlewares. Goma rejects a config referencing a middleware it has no definition for, so those
-// have to ship too — dropping them would break the whole bundle, not just that route.
+// Goma rejects a config referencing an undefined middleware, so disabled routes' middlewares must ship too.
 func TestReferencedMiddlewaresIncludesDisabledRoutes(t *testing.T) {
 	mws := []models.Middleware{{ID: 1, WorkspaceID: 1, Name: "auth"}}
 	got := referencedMiddlewares(mws, []proxy.RenderedRoute{

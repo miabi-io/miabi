@@ -50,8 +50,7 @@ func TestResolveSubstitutesBothNamespaces(t *testing.T) {
 	}
 }
 
-// A secret of the same name wins, so promoting a value into the vault needs no
-// edit to the config that reads it.
+// A secret wins, so promoting a value into the vault needs no config edit.
 func TestSecretTakesPriorityOverEnv(t *testing.T) {
 	r := testResolver(
 		map[string]string{"API_KEY": "from-vault"},

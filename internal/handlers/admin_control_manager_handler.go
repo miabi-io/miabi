@@ -33,8 +33,7 @@ func NewAdminControlManagerHandler(svc *controlmanager.Service) *AdminControlMan
 	return &AdminControlManagerHandler{svc: svc}
 }
 
-// Status returns the last sweep: the mode, the workloads found missing, and the nodes and clusters that could
-// not be observed. A standby control plane never sweeps, so it reports no sweep.
+// A standby control plane never sweeps, so it reports no sweep.
 func (h *AdminControlManagerHandler) Status(c *okapi.Context) error {
 	return ok(c, h.svc.Status())
 }

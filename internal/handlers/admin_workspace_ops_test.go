@@ -39,9 +39,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestAdminWorkspaceLifecycle drives the admin API an external system uses: create a workspace for
-// a new owner, refuse a taken name, make it read-only (members' writes refused, reads and the
-// exempt writes still accepted), then lift it.
 func TestAdminWorkspaceLifecycle(t *testing.T) {
 	dsn := os.Getenv("MIABI_TEST_POSTGRES_DSN")
 	if dsn == "" {

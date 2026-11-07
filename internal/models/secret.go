@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// Secret is a workspace-scoped named secret (the Vault). Env values reference it by name
-// (`${{ secrets.NAME }}`); the reference is resolved into a container's environment at
-// deploy/job time and never returned by the API. The value is encrypted at rest.
+// Secret values are encrypted at rest; ${{ secrets.NAME }} resolves at deploy/job time and is never returned by the API.
 type Secret struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -38,15 +36,12 @@ type Secret struct {
 	Version     int   `json:"version" gorm:"not null;default:1"`
 	UpdatedByID *uint `json:"updated_by_id,omitempty"`
 
-	// Managed marks a secret auto-created and owned by a platform resource (e.g.
-	// a managed database). Its value is derived (rotate via the owner, not by
-	// hand) and its lifecycle follows the owner. OwnerKind/OwnerID identify it.
+	// Owned by a platform resource: rotate via the owner, not by hand; lifecycle follows the owner.
 	Managed   bool   `json:"managed" gorm:"not null;default:false"`
 	OwnerKind string `json:"owner_kind,omitempty" gorm:"index:idx_secret_owner"`
 	OwnerID   uint   `json:"owner_id,omitempty" gorm:"index:idx_secret_owner"`
 
-	// SealedFP fingerprints the SealedSecret value a manifest last set, so a changed value in git plans as an
-	// update. SealedKeyVersion is the sealing key that opened it. Both clear when the value is set any other way.
+	// Lets a changed sealed value in git plan as an update; both clear when the value is set any other way.
 	SealedFP         string `json:"-" gorm:"column:sealed_fp"`
 	SealedKeyVersion int    `json:"sealed_key_version,omitempty" gorm:"not null;default:0"`
 

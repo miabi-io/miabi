@@ -30,8 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// ErrHostVolumeImmovable refuses to move a host-path volume: its data is a directory on the node that
-// Miabi does not own.
 var ErrHostVolumeImmovable = errors.New("a host-path volume cannot be moved: its data is an operator-managed directory on the node")
 
 // MoveTarget is the copy of a volume prepared on another node.
@@ -86,8 +84,7 @@ func (s *Service) PrepareMove(ctx context.Context, v *models.Volume, serverID ui
 	return target, nil
 }
 
-// DropCopy removes a volume's copy from a node that no longer holds it: the source after a move is
-// finalized, or the target after one is rolled back. Best-effort on the class directory, like Delete.
+// Best-effort on the class directory, like Delete.
 func (s *Service) DropCopy(ctx context.Context, serverID uint, dockerName, className string) error {
 	dc, err := s.clients.For(serverID)
 	if err != nil {
@@ -105,8 +102,6 @@ func (s *Service) VolumeConsumers(workspaceID, volumeID uint) ([]VolumeUsage, er
 	return s.usedByApps(workspaceID, volumeID)
 }
 
-// classOn resolves a storage class by name on a node, or nil for the built-in class or a node that does
-// not register it.
 func (s *Service) classOn(serverID uint, name string) *models.StorageClass {
 	if s.classes == nil || name == "" || name == models.DefaultStorageClassName {
 		return nil

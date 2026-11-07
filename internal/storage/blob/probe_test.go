@@ -36,8 +36,6 @@ func (e apiErr) ErrorCode() string             { return e.code }
 func (e apiErr) ErrorMessage() string          { return e.code }
 func (e apiErr) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
 
-// The point of the probe is that a failure names the setting to fix. A 403 is
-// not an answer; "the secret key does not match the access key" is.
 func TestExplainNamesTheSettingToFix(t *testing.T) {
 	cfg := Config{Bucket: "acme-backups", Region: "eu-central-1"}
 	cases := []struct{ code, want string }{
@@ -57,9 +55,6 @@ func TestExplainNamesTheSettingToFix(t *testing.T) {
 	}
 }
 
-// A self-hosted store addressed virtual-host style fails as a DNS error, which
-// tells an operator nothing. It is also the single most common way a working
-// MinIO looks broken, so the hint is worth more than the error.
 func TestExplainSuggestsPathStyleOnDNSFailure(t *testing.T) {
 	dnsErr := &net.DNSError{Err: "no such host", Name: "acme-backups.minio.internal"}
 	cfg := Config{Bucket: "acme-backups", Endpoint: "minio.internal:9000"}
@@ -72,8 +67,7 @@ func TestExplainSuggestsPathStyleOnDNSFailure(t *testing.T) {
 		t.Fatalf("the hint does not name the endpoint tried: %v", got)
 	}
 
-	// With path-style already on, the DNS failure is a genuine networking problem
-	// and must not be explained away as a setting.
+	// With path-style already on, a DNS failure is a genuine networking problem, not a setting.
 	cfg.ForcePathStyle = true
 	got = explain(dnsErr, cfg)
 	if strings.Contains(got.Error(), "path-style") {
@@ -84,8 +78,6 @@ func TestExplainSuggestsPathStyleOnDNSFailure(t *testing.T) {
 	}
 }
 
-// An error the probe has no advice for is passed through unchanged rather than
-// wrapped in a guess.
 func TestExplainPassesThroughWhatItCannotImprove(t *testing.T) {
 	base := errors.New("connection reset by peer")
 	if got := explain(base, Config{}); !errors.Is(got, base) {

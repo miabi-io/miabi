@@ -1,14 +1,8 @@
-// Live node reachability. One SSE connection carries every node's connect/disconnect, so the node
-// list and a node's detail page both show a node coming up without a reload — the case that needs
-// it being the minutes between pasting the join command and the agent actually dialling back.
-//
-// The stream opens with a snapshot of every node, so a page that connects late, or reconnects after
-// a dropped connection, is correct without also refetching.
+// One SSE stream for every node, opening with a snapshot, so late or reconnected pages need no refetch.
 import { onUnmounted, ref } from 'vue'
 import { nodesApi, type NodeStatusEvent } from '@/api/nodes'
 
-// RECONCILE_MS is the safety net: the stream is the live path, but a full list re-read catches what
-// a status event cannot carry — nodes added or removed elsewhere, swarm role changes, a version bump.
+// Safety net for what a status event cannot carry: nodes added/removed elsewhere, role changes, version bumps.
 const RECONCILE_MS = 30000
 
 export function useNodeStatusStream(onStatus: (e: NodeStatusEvent) => void, onReconcile?: () => void) {

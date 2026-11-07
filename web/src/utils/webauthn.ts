@@ -1,6 +1,4 @@
-// Browser side of passkeys. The server speaks WebAuthn's JSON encoding (base64url for binary fields);
-// navigator.credentials wants ArrayBuffers, so options are decoded on the way in and credentials
-// encoded on the way out.
+// The server speaks WebAuthn JSON (base64url); navigator.credentials wants ArrayBuffers.
 
 export function passkeysSupported(): boolean {
   return typeof window !== 'undefined' && !!window.PublicKeyCredential && !!navigator.credentials

@@ -24,8 +24,7 @@ const roles = ref<CustomRole[]>([])
 
 const baseRoles: WorkspaceRole[] = ['admin', 'developer', 'viewer']
 
-// The current admin's own permissions (from their built-in role preset). Used to
-// disable permissions they cannot grant — mirroring the server's no-escalation.
+// Disables permissions the admin cannot grant, mirroring the server's no-escalation rule.
 const myPermissions = computed<Set<string>>(() => new Set(presets.value[props.myRole] ?? []))
 
 // Permissions grouped by resource for the matrix.

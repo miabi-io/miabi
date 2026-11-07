@@ -1,11 +1,5 @@
 <script setup lang="ts">
-// Shortcuts to the things people come here to start. Everything here is also in
-// the sidebar, so these stay compact chips rather than cards.
-//
-// One flat list, ordered so related actions sit next to each other (create →
-// expose → configure → automate) and the accent colour follows that run. The
-// list is deliberately short: quick actions are for what you *start* often, not
-// everything you can manage — the rest is a sidebar click away.
+// Everything here is also in the sidebar, so the list stays short: what you start often.
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'

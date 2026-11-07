@@ -61,8 +61,6 @@ func newFixture(t *testing.T) fixture {
 	return fixture{svc: NewService(db, redis.NewClient(&redis.Options{Addr: mr.Addr()}), notices), db: db, mr: mr, notices: notices}
 }
 
-// lockedOutAdmin is an admin with 2FA, recovery codes, a live session, a disabled account and a
-// console-unlock lockout: every way out of the console closed at once.
 func (f fixture) lockedOutAdmin(t *testing.T) *models.User {
 	t.Helper()
 	u := &models.User{

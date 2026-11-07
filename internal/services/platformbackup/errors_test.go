@@ -25,9 +25,7 @@ import (
 	"testing"
 )
 
-// RunOneShot returns a NIL error when the helper itself exits non-zero, so the original `%w` on that nil
-// produced "exited with code 1: %!w(<nil>)" — a message that reported the one thing nobody needed and
-// discarded the tool's output, which is the whole diagnosis.
+// RunOneShot returns nil on non-zero exit, so %w produced "%!w(<nil>)" and dropped the tool's output.
 func TestOneShotErrorCarriesTheOutput(t *testing.T) {
 	err := oneShotError("control-plane database backup", 1,
 		"pg_dump: error: connection to server at \"miabi-postgres\" failed", nil)
@@ -44,8 +42,7 @@ func TestOneShotErrorCarriesTheOutput(t *testing.T) {
 	}
 }
 
-// A real Docker failure (the container could not be created at all) must stay
-// wrappable, so callers can still match on it.
+// Real Docker failures must stay wrappable so callers can match on them.
 func TestOneShotErrorWrapsARealError(t *testing.T) {
 	sentinel := errors.New("no such image")
 	err := oneShotError("volume backup", 0, "", sentinel)
@@ -68,9 +65,7 @@ func TestOneShotErrorTruncatesLongOutput(t *testing.T) {
 	}
 }
 
-// A loopback database host can never work from inside the helper container: it
-// resolves to the container. Saying so beats a connection-refused that reads
-// like the database is down.
+// Loopback resolves to the helper container itself; say so instead of a misleading connection-refused.
 func TestAssertDBReachableRejectsLoopback(t *testing.T) {
 	for _, host := range []string{"localhost", "127.0.0.1", "::1", "", "LOCALHOST"} {
 		s := &Service{db: DBConn{Host: host}}

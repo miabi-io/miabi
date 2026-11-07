@@ -29,29 +29,20 @@ import (
 
 var (
 	// ErrNotFound is returned when a repository, tag, or manifest is absent.
-	ErrNotFound = errors.New("registry: not found")
-	// ErrDeleteDisabled is returned when the registry's delete API is off
-	// (REGISTRY_STORAGE_DELETE_ENABLED=false / the DeleteEnabled setting).
+	ErrNotFound       = errors.New("registry: not found")
 	ErrDeleteDisabled = errors.New("registry: delete is not enabled")
-	// ErrTagInUse is returned when the tag resolves to an image a live deployment or a pinned release still
-	// holds. Deleting it would leave that release unpullable, and the failure would surface later, on a node,
-	// as a mystery.
+	// Deleting it would leave that release unpullable, failing later on a node.
 	ErrTagInUse = errors.New("registry: this image is used by a live deployment or a pinned release")
 )
 
-// SetCatalog wires the image catalog: in-use protection for tag deletion, and
-// build provenance on tag listings. See Catalog in browse.go.
 func (s *Service) SetCatalog(c Catalog) { s.catalog = c }
 
-// Repository is a workspace repository and its tags, with the immutable ws_<id>
-// storage namespace stripped so callers see the user-facing image name.
+// The ws_<id> namespace is stripped so callers see the user-facing name.
 type Repository struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
 }
 
-// ListRepositories returns the workspace's repositories (its ws_<id> namespace,
-// filtered from the registry catalog) with their tags.
 func (s *Service) ListRepositories(ctx context.Context, workspaceID uint) ([]Repository, error) {
 	prefix := Namespace(workspaceID) + "/"
 	all, err := s.reg.Catalog(ctx)
@@ -75,9 +66,7 @@ func (s *Service) ListRepositories(ctx context.Context, workspaceID uint) ([]Rep
 	return out, nil
 }
 
-// SortTags orders a repository's tags for display: "latest" first, then newest version first. Plain
-// lexicographic order puts v10 before v9 and buries "latest" in the middle. Runs of digits are compared
-// numerically and reversed; tags with no digits end up reverse-alphabetical, which is arbitrary but stable.
+// SortTags puts "latest" first, then newest version; plain lexicographic order puts v10 before v9.
 func SortTags(tags []string) {
 	sort.Slice(tags, func(i, j int) bool {
 		a, b := tags[i], tags[j]
@@ -88,9 +77,7 @@ func SortTags(tags []string) {
 	})
 }
 
-// naturalLess compares two strings treating runs of digits as numbers, so
-// "v9" < "v10". Equal-valued numeric runs fall back to the literal text, which
-// keeps zero-padded variants ("v01" vs "v1") in a stable order.
+// Equal numeric runs fall back to literal text, keeping "v01" vs "v1" stable.
 func naturalLess(a, b string) bool {
 	for a != "" && b != "" {
 		ad, bd := isDigit(a[0]), isDigit(b[0])
@@ -130,9 +117,7 @@ func splitRun(s string, digits bool) (run, rest string) {
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-// DeleteTag deletes a tag from a workspace repository by resolving it to its manifest digest and deleting
-// the manifest (the registry has no delete-by-tag). image is the user-facing name. A tag a live deployment
-// or pinned release still holds is refused with ErrTagInUse, since the breakage would surface on a node.
+// DeleteTag deletes by manifest digest (no delete-by-tag); tags held by live releases get ErrTagInUse.
 func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag string) error {
 	repo, err := repoPath(workspaceID, image)
 	if err != nil {
@@ -148,8 +133,7 @@ func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag st
 	if s.catalog != nil {
 		protected, perr := s.catalog.ProtectedDigests()
 		if perr != nil {
-			// Can't prove the image is free — refuse rather than risk deleting one
-			// that's live.
+			// Can't prove the image is free, so refuse rather than risk deleting a live one.
 			return fmt.Errorf("check whether the image is in use: %w", perr)
 		}
 		if protected[digest] {

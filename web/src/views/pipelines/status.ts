@@ -13,9 +13,7 @@ export const runStatusMeta: Record<PipelineRunStatus, StatusMeta> = {
 
 const unknownStatusMeta: StatusMeta = { label: 'Unknown', badge: 'badge-neutral', icon: 'mdi-help-circle-outline' }
 
-// statusMeta safely resolves a status to its metadata, falling back to a neutral
-// "Unknown" badge for any status the API may add that the UI doesn't know yet —
-// so an unrecognized value can never crash the template with a null deref.
+// Falls back to "Unknown" so a status the UI doesn't know yet can't crash the template.
 export function statusMeta(status: string): StatusMeta {
   return runStatusMeta[status as PipelineRunStatus] ?? unknownStatusMeta
 }

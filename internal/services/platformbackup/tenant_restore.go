@@ -40,9 +40,7 @@ type TenantRestoreReport struct {
 	Failures          []string `json:"failures"`
 }
 
-// RestoreTenantData restores a recovery point's workload data. It runs LATE, after reconcile has recreated
-// the database containers and volumes: a dump has nowhere to go until its instance exists. Individual
-// failures are collected rather than returned, so an operator learns which workspaces did not come back.
+// Runs after reconcile recreates DB containers and volumes; failures are collected so the operator sees which workspaces failed.
 func (s *Service) RestoreTenantData(ctx context.Context, set *models.PlatformBackupSet) (*TenantRestoreReport, error) {
 	rep := &TenantRestoreReport{Ref: set.Ref, Skipped: []string{}, Failures: []string{}}
 	if s.tenants == nil {
@@ -60,9 +58,7 @@ func (s *Service) RestoreTenantData(ctx context.Context, set *models.PlatformBac
 		return rep, ErrS3NotConfigured
 	}
 
-	// Resolve the live tenant graph once. Artifacts are matched against it by
-	// natural key (workspace slug + database name / volume name), because the
-	// numeric ids in a recovery point belong to the install that produced it.
+	// Matched by natural key because recovery point ids belong to the install that produced it.
 	dbs, err := s.tenants.ListTenantDatabases()
 	if err != nil {
 		return rep, fmt.Errorf("list tenant databases: %w", err)
@@ -126,9 +122,7 @@ func (s *Service) restoreTenantDatabase(ctx context.Context, st *models.Platform
 	return s.tenants.RestoreTenantDatabase(ctx, td, dest, filename)
 }
 
-// resolveArtifactObject returns the object name that is actually in the bucket. Recovery points taken before the
-// artifact-naming fix recorded the plain name while the tool uploaded the encrypted one, so the row points at a
-// key never written. One HEAD request finds it under "<name>.gpg" and makes the recovery point usable.
+// Older points recorded the plain name while the encrypted one was uploaded; a HEAD finds "<name>.gpg".
 func (s *Service) resolveArtifactObject(ctx context.Context, st *models.PlatformBackupSettings, item *models.PlatformBackup) (string, error) {
 	store, err := s.blobStore(st)
 	if err != nil {
@@ -150,8 +144,7 @@ func (s *Service) resolveArtifactObject(ctx context.Context, st *models.Platform
 	return item.Filename, nil
 }
 
-// restoreTenantVolume unpacks a workspace volume archive back into its volume,
-// creating the volume when reconcile has not already done so.
+// Creates the volume when reconcile has not already done so.
 func (s *Service) restoreTenantVolume(ctx context.Context, st *models.PlatformBackupSettings, cfg *backup.S3Config, item *models.PlatformBackup) error {
 	if item.VolumeName == "" {
 		return errors.New("artifact has no target volume")
@@ -206,15 +199,11 @@ func (s *Service) restoreTenantVolume(ctx context.Context, st *models.PlatformBa
 	return nil
 }
 
-// tenantKey identifies a tenant database across installs: the workspace slug and
-// the database name, never the numeric ids, which are meaningless on the host
-// that is doing the recovering.
+// Natural key, never numeric ids, which are meaningless on the recovering host.
 func tenantKey(workspace, database string) string {
 	return slugish(workspace) + "/" + strings.ToLower(strings.TrimSpace(database))
 }
 
-// LatestRestorableSet returns the newest completed recovery point, which is what
-// a post-restore reconcile pulls tenant data from.
 func (s *Service) LatestRestorableSet() (*models.PlatformBackupSet, error) {
 	sets, err := s.sets.List()
 	if err != nil {

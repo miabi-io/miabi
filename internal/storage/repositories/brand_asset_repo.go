@@ -40,8 +40,6 @@ func (r *BrandAssetRepository) Get(slot string) (*models.BrandAsset, error) {
 	return &a, nil
 }
 
-// List returns every asset without its bytes: enough to build URLs on each sign-in
-// page load without reading the images themselves.
 func (r *BrandAssetRepository) List() ([]models.BrandAsset, error) {
 	var out []models.BrandAsset
 	err := r.db.Select("slot", "content_type", "sha256", "size", "updated_at").Order("slot ASC").Find(&out).Error

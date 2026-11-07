@@ -30,9 +30,7 @@ import (
 
 func release(id uint) *uint { return &id }
 
-// A shared env var reaches a member's container only at deploy time, so changing
-// one must leave every already-deployed member marked — and an app that has never
-// been deployed untouched, since it has no stale container to replace.
+// A never-deployed app has no stale container to replace, so it stays unmarked.
 func TestMarkMembersStaleSkipsAppsThatNeverDeployed(t *testing.T) {
 	fake := &fakeApp{}
 	s := NewService(nil, nil, nil, nil, fake, fakeVols{}, nil, nil)
@@ -58,8 +56,7 @@ func TestMarkMembersStaleOnAnEmptyStack(t *testing.T) {
 	}
 }
 
-// Tracking staleness only pays off if acting on it is precise: a shared env change
-// must not become a reason to restart apps that are already current.
+// A shared env change must not become a reason to restart apps that are already current.
 func TestDeployAppsOutdatedOnlySkipsCurrentApps(t *testing.T) {
 	fake := &fakeApp{}
 	s := NewService(nil, nil, nil, nil, fake, fakeVols{}, nil, nil)
@@ -94,8 +91,7 @@ func TestDeployAppsDeploysEverythingWhenNotFiltering(t *testing.T) {
 	}
 }
 
-// overridesFor needs the real application repository, so it is exercised through
-// its own sqlite fixture; app_env_vars carries no Postgres-only column defaults.
+// app_env_vars carries no Postgres-only column defaults, so a plain sqlite fixture works.
 func newOverrideService(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -109,8 +105,7 @@ func newOverrideService(t *testing.T) (*Service, *gorm.DB) {
 	return s, db
 }
 
-// An app-level variable silently wins over the stack's, so the list has to name
-// the members a shared value will never reach.
+// An app-level variable silently wins over the stack's, so the list must name the shadowing members.
 func TestOverridesForNamesTheAppsThatShadowAKey(t *testing.T) {
 	s, db := newOverrideService(t)
 	rows := []models.AppEnvVar{

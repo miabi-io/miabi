@@ -17,13 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package elevation is the admin console unlock ("sudo mode"): signing in gives an admin the
-// workspace side, and the platform console additionally needs a short-lived unlock proved with a
-// second factor. The unlock is an opaque, revocable token bound to the login session's jti, so a
-// stolen unlock is useless without the session, and signing out or revoking the session kills it.
-//
-// It protects against an unattended browser, a stolen session cookie or a phished password alone.
-// It does not protect against XSS on the same origin, which can ride an unlocked session.
+// Package elevation is the admin console unlock (sudo mode): a 2FA-proved token bound to the session jti.
 package elevation
 
 import (
@@ -54,8 +48,7 @@ const (
 	lockPrefix = "admin:elev:lock:"
 )
 
-// CodedError carries a stable machine code into the API error envelope, so the web client can tell
-// "unlock the console" from any other 403 without parsing messages.
+// A stable code lets the web client tell "unlock the console" from any other 403.
 type CodedError struct{ code, msg string }
 
 func (e *CodedError) Error() string { return e.msg }
@@ -116,8 +109,7 @@ type Service struct {
 	now       func() time.Time
 }
 
-// NewService builds the unlock service. community is MIABI_ADMIN_UNLOCK: Community's switch for
-// the TOTP unlock with default timings, which the Enterprise policy supersedes.
+// community is MIABI_ADMIN_UNLOCK, Community's TOTP-unlock switch, superseded by the Enterprise policy.
 func NewService(rdb *redis.Client, policy PolicySource, factor SecondFactor, community bool) *Service {
 	return &Service{rdb: rdb, policy: policy, factor: factor, community: community, now: time.Now}
 }
@@ -125,9 +117,7 @@ func NewService(rdb *redis.Client, policy PolicySource, factor SecondFactor, com
 // SetNotifier wires lockout notices to the other admins.
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
-// Settings resolves the unlock in force: the Enterprise policy when enforced, else Community's
-// switch with default timings, else none. Required=false means the console needs no unlock, though
-// an Enterprise allowlist may still apply.
+// Settings prefers the Enterprise policy, then Community's switch; an Enterprise allowlist may apply even if not required.
 func (s *Service) Settings() secpolicy.AdminAccess {
 	if s == nil {
 		return secpolicy.AdminAccess{}
@@ -166,8 +156,7 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Elevate verifies a second factor and issues an unlock bound to the session jti. The unlock never
-// outlives sessionExp. Every attempt is reported to audit by the caller.
+// Elevate's unlock never outlives sessionExp; the caller audits every attempt.
 func (s *Service) Elevate(ctx context.Context, user *models.User, jti string, sessionExp time.Time, code string) (string, Record, error) {
 	set := s.Settings()
 	if !set.Required {
@@ -255,8 +244,6 @@ func (s *Service) lockedUntil(ctx context.Context, userID uint) time.Time {
 	return time.Unix(v, 0)
 }
 
-// Check validates an unlock for the session and extends its idle window. It returns ErrRequired for
-// anything that is not a live unlock of this user's this session.
 func (s *Service) Check(ctx context.Context, userID uint, jti, token string) (Record, error) {
 	rec, err := s.load(ctx, userID, jti, token)
 	if err != nil {

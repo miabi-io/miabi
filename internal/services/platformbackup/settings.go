@@ -34,13 +34,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// SetEnv wires the environment-supplied platform backup configuration. Values
-// present there override the stored row and are reported as env-locked.
+// SetEnv values override the stored row and are reported as env-locked.
 func (s *Service) SetEnv(cfg config.PlatformBackupConfig) { s.env = cfg }
 
-// GetSettings returns the platform backup settings, or an empty (unsaved) record
-// when none exist yet. Secrets are never included; the *Set booleans report
-// their presence so the UI can render "••••• (set)".
+// GetSettings never includes secrets; the *Set booleans report their presence.
 func (s *Service) GetSettings() (*models.PlatformBackupSettings, error) {
 	st, err := s.getSettings()
 	if err != nil {
@@ -52,9 +49,7 @@ func (s *Service) GetSettings() (*models.PlatformBackupSettings, error) {
 	return st, nil
 }
 
-// getSettings loads the single settings row, applies the environment overlay and normalizes the derived paths.
-// Every read goes through here, which is what makes the environment authoritative rather than a seed: an
-// operator cannot end up with a stored value that disagrees with the process configuration.
+// Every read goes through here, making the environment authoritative rather than a seed.
 func (s *Service) getSettings() (*models.PlatformBackupSettings, error) {
 	st, err := s.settings.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -77,8 +72,7 @@ func (s *Service) applyEnv(st *models.PlatformBackupSettings) {
 		st.S3AccessKey = e.S3AccessKey
 		st.S3UseSSL = e.S3UseSSL
 		st.S3ForcePathStyle = e.S3ForcePathStyle
-		// Held in memory only. Writing an env-supplied secret into the database
-		// would copy it into every backup of that database, for no benefit.
+		// Memory only: storing an env secret would copy it into every backup of that database.
 		st.S3SecretKeyEnc = envSecretMarker
 	}
 	if e.RootPath != "" {
@@ -92,9 +86,7 @@ func (s *Service) applyEnv(st *models.PlatformBackupSettings) {
 	}
 	if e.Passphrase != "" {
 		st.BackupPassphraseEnc = envSecretMarker
-		// Supplying a passphrase is the operator saying "encrypt with this".
-		// Requiring a second variable to act on it would leave artifacts in the
-		// clear on a deployment that plainly asked otherwise.
+		// A supplied passphrase means "encrypt with this"; requiring a second variable would leave artifacts in the clear.
 		if !e.EncryptSet {
 			st.EncryptBackups = true
 		}
@@ -111,9 +103,7 @@ func (s *Service) applyEnv(st *models.PlatformBackupSettings) {
 	if e.RetentionDays > 0 {
 		st.RetentionDays = e.RetentionDays
 	}
-	// An env-supplied passphrase is what makes an unattended install able to seal
-	// identity envelopes without anyone opening the UI — so it implies the
-	// envelope unless the operator explicitly said otherwise.
+	// An env passphrase lets unattended installs seal identity envelopes, so it implies the envelope unless overridden.
 	if e.Passphrase != "" && !e.IncludeIdentitySet {
 		st.IncludeIdentity = true
 	}
@@ -125,13 +115,10 @@ func (s *Service) applyEnv(st *models.PlatformBackupSettings) {
 	}
 }
 
-// envSecretMarker stands in for a secret that lives in the process environment
-// rather than the database, so presence checks and the *Set booleans work
-// without the value ever being stored or returned.
+// Stands in for an env-held secret so presence checks work without storing or returning the value.
 const envSecretMarker = "env:"
 
-// envLockedFields names the settings this deployment takes from the environment,
-// so the UI can disable them instead of accepting an edit that would be ignored.
+// Lets the UI disable these instead of accepting an edit that would be ignored.
 func (s *Service) envLockedFields() []string {
 	e := s.env
 	var out []string
@@ -144,8 +131,7 @@ func (s *Service) envLockedFields() []string {
 		"database_backup_path": e.DatabasePath != "",
 		"volume_backup_path":   e.VolumePath != "",
 		"backup_passphrase":    e.Passphrase != "",
-		// A passphrase implies encryption (see applyEnv), so the toggle is just as
-		// env-controlled as if _ENCRYPT had been set explicitly.
+		// A passphrase implies encryption (see applyEnv), so the toggle is env-controlled too.
 		"encrypt_backups":     e.EncryptSet || e.Passphrase != "",
 		"include_identity":    e.IncludeIdentitySet,
 		"include_tenant_data": e.IncludeTenantDataSet,
@@ -161,8 +147,7 @@ func (s *Service) envLockedFields() []string {
 	return out
 }
 
-// SaveInput carries the desired platform backup settings. S3SecretKey is
-// nil/empty to keep the stored secret unchanged (so the UI never round-trips it).
+// A nil/empty S3SecretKey keeps the stored secret, so the UI never round-trips it.
 type SaveInput struct {
 	S3Enabled        bool
 	S3Endpoint       string
@@ -190,9 +175,7 @@ type SaveInput struct {
 	Volumes         []string
 }
 
-// SaveSettings upserts the platform backup settings, encrypting the S3 secret when a new one is supplied
-// and preserving it otherwise. It writes against the RAW stored row, not the environment-overlaid one, so
-// the first save cannot bake this process's environment into the database.
+// SaveSettings writes against the raw row so the first save cannot bake this process's environment into the DB.
 func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, error) {
 	st, err := s.rawSettings()
 	if err != nil {
@@ -241,9 +224,7 @@ func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, er
 		return nil, err
 	}
 
-	// Validate what will actually run — the stored row plus the environment — rather than what was typed. A
-	// configuration that cannot produce a restorable artifact is refused here, not discovered at the next
-	// backup or, worse, at the restore.
+	// Validate the effective config (stored plus env), so an unrestorable setup is refused now, not at restore.
 	effective, err := s.getSettings()
 	if err != nil {
 		return nil, err
@@ -254,9 +235,7 @@ func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, er
 	if effective.ScheduleEnabled && effective.ScheduleCron == "" {
 		return nil, errors.New("a cron expression is required when the schedule is enabled")
 	}
-	// A passphrase is OPTIONAL: backing up an unencrypted platform is a legitimate choice, and refusing it means no
-	// backup at all, which is strictly worse. What is refused is asking for something impossible — encryption or an
-	// identity envelope with nothing to encrypt them with, which silently ignored would promise protection.
+	// A passphrase is optional; only encryption or an envelope with nothing to encrypt them is refused.
 	if effective.BackupPassphraseEnc == "" {
 		switch {
 		case effective.EncryptBackups:
@@ -271,8 +250,7 @@ func (s *Service) SaveSettings(in SaveInput) (*models.PlatformBackupSettings, er
 	return effective, nil
 }
 
-// rawSettings loads the stored row with no environment overlay and no
-// normalization — the form a save must write back.
+// No overlay or normalization: the form a save must write back.
 func (s *Service) rawSettings() (*models.PlatformBackupSettings, error) {
 	st, err := s.settings.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -284,9 +262,7 @@ func (s *Service) rawSettings() (*models.PlatformBackupSettings, error) {
 	return st, nil
 }
 
-// passphrase returns the decrypted backup passphrase, or "" when none is set.
-// It is never logged and never leaves the process except as GPG_PASSPHRASE in a
-// one-shot container's environment.
+// Never logged; leaves the process only as GPG_PASSPHRASE in a one-shot container's environment.
 func (s *Service) passphrase(st *models.PlatformBackupSettings) (string, error) {
 	switch st.BackupPassphraseEnc {
 	case "":
@@ -298,9 +274,7 @@ func (s *Service) passphrase(st *models.PlatformBackupSettings) (string, error) 
 	}
 }
 
-// gpgEnv returns the encryption environment for a *-bkup one-shot: the tools encrypt to "<artifact>.gpg"
-// when GPG_PASSPHRASE is present, and transparently decrypt a ".gpg" artifact on restore with the same
-// variable. Returns nil (and encrypted=false) when encryption is off, so an unencrypted run is unchanged.
+// The tools encrypt to "<artifact>.gpg" when GPG_PASSPHRASE is set and decrypt transparently on restore.
 func (s *Service) gpgEnv(st *models.PlatformBackupSettings) ([]string, bool, error) {
 	if !st.EncryptBackups {
 		return nil, false, nil
@@ -310,18 +284,14 @@ func (s *Service) gpgEnv(st *models.PlatformBackupSettings) ([]string, bool, err
 		return nil, false, err
 	}
 	if pass == "" {
-		// Degrade rather than fail, matching CreateSet: a passphrase that has gone
-		// missing must not turn every artifact into a failure. The run is recorded
-		// as unencrypted — which is what it is — and the warning names the cause.
+		// Degrade rather than fail, matching CreateSet; the run is recorded as unencrypted.
 		logger.Warn("backup encryption is enabled but no passphrase is set: writing this artifact UNENCRYPTED")
 		return nil, false, nil
 	}
 	return []string{"GPG_PASSPHRASE=" + pass}, true, nil
 }
 
-// restoreGPGEnv supplies the passphrase for restoring an artifact that was
-// written encrypted. It keys off the artifact, not the current setting: turning
-// encryption off must not make yesterday's encrypted backups unrestorable.
+// Keyed off the artifact, so turning encryption off never makes old encrypted backups unrestorable.
 func (s *Service) restoreGPGEnv(b *models.PlatformBackup, st *models.PlatformBackupSettings) ([]string, error) {
 	if !b.Encrypted && !backup.IsEncryptedArtifact(b.Filename) {
 		return nil, nil
@@ -336,9 +306,7 @@ func (s *Service) restoreGPGEnv(b *models.PlatformBackup, st *models.PlatformBac
 	return []string{"GPG_PASSPHRASE=" + pass}, nil
 }
 
-// s3Config returns the decrypted S3 config for the platform target, or nil when
-// S3 is not enabled/configured. The Path is left empty; callers append the
-// database/volume prefix.
+// Path is left empty; callers append the database/volume prefix.
 func (s *Service) s3Config(st *models.PlatformBackupSettings) (*backup.S3Config, error) {
 	if !st.S3Enabled || st.S3Bucket == "" {
 		return nil, nil
@@ -361,9 +329,7 @@ func (s *Service) s3Config(st *models.PlatformBackupSettings) (*backup.S3Config,
 	}, nil
 }
 
-// defaultS3Region is sent when the operator configures none. MinIO ignores the region, so leaving it blank
-// looks harmless — but the AWS SDK inside the *-bkup helpers refuses to start without one, and the failure
-// lands on the artifact rather than the setting. Both the Go client and the helpers use this same value.
+// MinIO ignores the region, but the AWS SDK in the *-bkup helpers refuses to start without one.
 const defaultS3Region = "us-east-1"
 
 func s3Region(configured string) string {
@@ -373,9 +339,7 @@ func s3Region(configured string) string {
 	return defaultS3Region
 }
 
-// effectiveUseSSL resolves the transport when the endpoint states one. "http://minio:9000" with USE_SSL=true is
-// a contradiction that is easy to write, and the scheme is the more specific statement, so it wins. Leaving the
-// two to disagree lets the Go client and the helpers pick different transports.
+// An endpoint's scheme overrides USE_SSL so the Go client and helpers never pick different transports.
 func effectiveUseSSL(endpoint string, configured bool) bool {
 	switch {
 	case strings.HasPrefix(endpoint, "http://"):
@@ -387,8 +351,7 @@ func effectiveUseSSL(endpoint string, configured bool) bool {
 	}
 }
 
-// S3Configured reports whether a usable S3 target is set (the UI uses it to gate
-// volume backups, which have no local destination).
+// Gates volume backups in the UI, which have no local destination.
 func (s *Service) S3Configured() bool {
 	st, err := s.getSettings()
 	if err != nil {

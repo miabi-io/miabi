@@ -29,12 +29,10 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// defaultWorkdir is the checked-out source directory exposed to steps as
-// MIABI_WORKDIR (MIABI_WORKSPACE_NAME/_ID unambiguously mean the tenant).
+// MIABI_WORKSPACE_NAME/_ID already mean the tenant, hence the separate MIABI_WORKDIR.
 const defaultWorkdir = "/workspace"
 
-// JobInputs is the run-derived context a caller supplies to build a JobSpec.
-// The Dispatcher fills in the per-run Deadline, Creds, and runner name.
+// The Dispatcher fills in Deadline, Creds and runner name.
 type JobInputs struct {
 	Run           *models.PipelineRun
 	Pipeline      string // pipeline name (MIABI_PIPELINE)
@@ -48,12 +46,9 @@ type JobInputs struct {
 	Branch        string
 	SourceURL     string // git remote the runner clones + checks out at the commit
 	Workdir       string // defaults to /workspace
-	// Env is the pipeline-level environment, applied to every step. Values may
-	// still carry ${{ secrets.NAME }}; the Dispatcher resolves them.
+	// Values may still carry ${{ secrets.NAME }}; the Dispatcher resolves them.
 	Env map[string]string
-	// CacheGeneration names the app's current build cache; CacheTrunk is the ref whose cache a branch
-	// build may read. CacheCold forces a rebuild after a bump — a runner whose cache is its local
-	// daemon has no ref to rotate, so it has to be told.
+	// CacheCold is needed because a runner whose cache is its local daemon has no ref to rotate.
 	CacheGeneration uint
 	CacheTrunk      string
 	CacheCold       bool
@@ -63,9 +58,7 @@ type JobInputs struct {
 	Deadline time.Time
 }
 
-// BuildJobSpec assembles the wire JobSpec sent to a runner: the predefined, non-secret MIABI_*
-// build context plus the per-job secret credentials (as env, masked from the log stream), and the
-// run's steps. Returns the spec and the secret values to redact from live logs.
+// Returns the spec and the secret values to redact from live logs.
 func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	workdir := in.Workdir
 	if workdir == "" {
@@ -91,12 +84,10 @@ func BuildJobSpec(in JobInputs) (proto.JobSpec, []string) {
 	env = appendKV(env, "MIABI_IMAGE_REPOSITORY", in.Repository)
 	env = append(env, versionEnv(in.Run)...)
 
-	// Pipeline env after the platform context and before the credentials below,
-	// so it can never shadow either.
+	// Placed after the platform context and before the credentials so it can never shadow either.
 	env = append(env, sortedKV(in.Env)...)
 
-	// Per-job secret credentials, injected as env so `docker push`/buildx auth
-	// works with no login step. Their values are redacted from the log stream.
+	// Injected as env so push/buildx auth works without a login step; values are redacted from logs.
 	if in.Creds != nil {
 		env = appendKV(env, "MIABI_REGISTRY_USER", in.Creds.RegistryUser)
 		env = appendKV(env, "MIABI_REGISTRY_TOKEN", in.Creds.RegistryToken)
@@ -152,16 +143,13 @@ func buildConfig(s *models.PipelineStepRun, in JobInputs) *proto.BuildConfig {
 		NoCache: noCache, CacheFrom: cacheFrom, CacheTo: cacheTo, Platforms: s.Platforms,
 	}
 	if df == "" {
-		// nil already meant "Dockerfile at the source root"; a config sent for the cache or platforms alone
-		// must not flip that to auto-detection and turn a broken build into a silent buildpack one.
+		// A config sent only for cache or platforms must not flip nil's "root Dockerfile" into silent buildpack auto-detection.
 		cfg.Method = "dockerfile"
 	}
 	return cfg
 }
 
-// shellCommand wraps a step's `run:` script so the runner executes it in a non-login shell inside
-// the step image — like a GitHub Actions `run:` step, so pipes, && and env expansion work. An
-// empty script yields nil, leaving the image's own entrypoint in charge (for `uses:` steps).
+// Empty yields nil so the image's own entrypoint runs (for `uses:` steps).
 func shellCommand(run string) []string {
 	if strings.TrimSpace(run) == "" {
 		return nil
@@ -169,8 +157,7 @@ func shellCommand(run string) []string {
 	return []string{"sh", "-c", run}
 }
 
-// versionEnv exposes the run's reserved version, so a build can stamp it into the image. The tag itself
-// is written to the registry only once the run succeeds; within the run, MIABI_IMAGE_DIGEST is the ref.
+// The tag is written only once the run succeeds; within the run MIABI_IMAGE_DIGEST is the ref.
 func versionEnv(run *models.PipelineRun) []string {
 	if run.Version == "" {
 		return nil
@@ -186,9 +173,7 @@ func versionEnv(run *models.PipelineRun) []string {
 	return appendKV(env, "MIABI_VERSION_PRERELEASE", pre)
 }
 
-// expandVersionArgs substitutes ${MIABI_VERSION}-style references in build-arg values, so a Dockerfile
-// can be handed the run's version. Only the braced version variables expand; anything else is passed on
-// as written, since the runner never expands build args itself.
+// Only braced version variables expand; the runner never expands build args itself.
 func expandVersionArgs(args map[string]string, run *models.PipelineRun) map[string]string {
 	if len(args) == 0 || run == nil || run.Version == "" {
 		return args
@@ -208,8 +193,7 @@ func expandVersionArgs(args map[string]string, run *models.PipelineRun) map[stri
 
 func kv(k, v string) string { return k + "=" + v }
 
-// sortedKV renders an env map deterministically, so a job spec is comparable
-// across dispatches of the same run.
+// Deterministic so a job spec is comparable across dispatches of the same run.
 func sortedKV(m map[string]string) []string {
 	if len(m) == 0 {
 		return nil
@@ -235,8 +219,7 @@ func appendKV(env []string, k, v string) []string {
 
 func utos(u uint) string { return strconv.FormatUint(uint64(u), 10) }
 
-// minBuildInputsVersion is the first runner release that honours BuildConfig.Context and BuildArgs. They
-// predate feature advertising, and an older runner drops both without a word, so it is gated by version.
+// Context and BuildArgs predate feature advertising and older runners silently drop them, so gate by version.
 const minBuildInputsVersion = "0.0.8"
 
 // requiredRunnerVersion is the oldest runner release the run's steps can run on, or "" for any.

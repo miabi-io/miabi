@@ -21,8 +21,7 @@ package apply
 
 import "testing"
 
-// Go randomizes map iteration, so an unstable fingerprint would make every plan
-// show a rule change on a middleware nobody touched.
+// Go randomizes map iteration, so an unstable fingerprint would show phantom rule changes.
 func TestMiddlewareRuleFPIsStableAcrossMapOrder(t *testing.T) {
 	rule := map[string]any{
 		"realm": "Admin",
@@ -43,8 +42,7 @@ func TestMiddlewareRuleFPIsStableAcrossMapOrder(t *testing.T) {
 	}
 }
 
-// The point of fingerprinting the rendered rule: a rotated secret is invisible in
-// every other diffed field, so without this a rotation would converge to nothing.
+// A rotated secret is invisible in every other diffed field.
 func TestMiddlewareRuleFPChangesWithASecret(t *testing.T) {
 	a := map[string]any{"users": []any{map[string]any{"username": "ops", "password": "old"}}}
 	b := map[string]any{"users": []any{map[string]any{"username": "ops", "password": "new"}}}
@@ -53,8 +51,6 @@ func TestMiddlewareRuleFPChangesWithASecret(t *testing.T) {
 	}
 }
 
-// An empty rule has no fingerprint at all, so a middleware that carries none
-// never compares against a stamped side and invents drift.
 func TestMiddlewareRuleFPIsEmptyForAnEmptyRule(t *testing.T) {
 	if got := middlewareRuleFP(nil); got != "" {
 		t.Errorf("nil rule = %q", got)
@@ -64,8 +60,7 @@ func TestMiddlewareRuleFPIsEmptyForAnEmptyRule(t *testing.T) {
 	}
 }
 
-// Reordering a list is a real change (a middleware chain's order is behaviour),
-// while reordering map keys is not.
+// List order is behaviour (a chain's order); map key order is not.
 func TestMiddlewareRuleFPDistinguishesListOrderFromKeyOrder(t *testing.T) {
 	l1 := map[string]any{"paths": []any{"/a", "/b"}}
 	l2 := map[string]any{"paths": []any{"/b", "/a"}}

@@ -31,8 +31,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
-// EnvChange is a single env key that differs between the installed template
-// version and the target version.
 type EnvChange struct {
 	Key       string `json:"key"`
 	Kind      string `json:"kind"`      // added | removed | changed
@@ -77,9 +75,7 @@ type UpgradeApplyResult struct {
 	Warnings    []string `json:"warnings"`    // items surfaced but not applied
 }
 
-// resolveUpgrade loads the install, the new (target) manifest, and the installed
-// version's manifest, and the name→appID map for the apps it created. target ""
-// means the latest available version.
+// target "" means the latest available version.
 func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (rec *models.TemplateInstall, newM, oldM *manifest.Manifest, byName map[string]uint, err error) {
 	rec, e := s.installs.FindInWorkspace(workspaceID, installID)
 	if e != nil {
@@ -92,12 +88,10 @@ func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (re
 	if !isNewer(m.Metadata.Version, rec.Version) {
 		return nil, nil, nil, nil, ErrAlreadyLatest
 	}
-	// The installed version's manifest powers the diff; tolerate its absence
-	// (an old version pruned from the catalog) by diffing against an empty one.
+	// Tolerate a pruned old version by diffing against an empty manifest.
 	old, _, _ := s.resolveManifest(workspaceID, rec.TemplateName, rec.Version)
 
-	// Apps were created in manifest order at install, so AppIDs line up with the
-	// installed manifest's Applications.
+	// AppIDs line up with the installed manifest's Applications because apps were created in that order.
 	byName = map[string]uint{}
 	if old != nil {
 		for i, app := range old.Applications {
@@ -113,8 +107,6 @@ func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (re
 	return rec, m, old, byName, nil
 }
 
-// PlanUpgrade computes the diff between the installed version and target without
-// changing anything.
 func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*UpgradePlan, error) {
 	rec, newM, oldM, byName, err := s.resolveUpgrade(workspaceID, installID, target)
 	if err != nil {
@@ -176,8 +168,7 @@ func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*Upgr
 	return plan, nil
 }
 
-// upgradeNode is the node an install's apps run on, so a volume an upgrade adds lands where it is mounted.
-// With none of them left it is placed like any create, rather than on the control-plane node.
+// With none of its apps left, a new volume is placed like any create rather than on the control-plane node.
 func (s *Service) upgradeNode(workspaceID uint, appIDs []uint) uint {
 	for _, id := range appIDs {
 		if app, err := s.apps.Get(workspaceID, id); err == nil {
@@ -192,9 +183,7 @@ func (s *Service) upgradeNode(workspaceID uint, appIDs []uint) uint {
 	return 0
 }
 
-// ApplyUpgrade converges an install to the target version: it bumps each matched app's image, adds new
-// env, creates new volumes and attaches their mounts, redeploys, and records the new version. Changed or
-// removed env, new databases and structural app changes are surfaced as warnings, not applied.
+// Changed or removed env, new databases and structural app changes are only warnings, never applied.
 func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint, target string, newInputs map[string]string) (*UpgradeApplyResult, error) {
 	rec, newM, oldM, byName, err := s.resolveUpgrade(workspaceID, installID, target)
 	if err != nil {
@@ -251,13 +240,9 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 	}
 	renderer := manifest.NewRenderer(manifest.Context{Inputs: inputs, Applications: appViews})
 
-	// Configs are created before the app loop so a new config mount has something to
-	// attach to. An existing config is never rewritten — its content may have been
-	// edited since, and a template bump is not a reason to discard that.
+	// An existing config is never rewritten: it may have been edited since.
 	cfgIDs := s.upgradeConfigs(workspaceID, rec, oldM, newM, renderer, res)
 
-	// Tracks apps already redeployed this upgrade, so a later shared-env change
-	// doesn't redeploy the same app twice.
 	deployed := map[uint]bool{}
 
 	for name, ns := range newApps {
@@ -361,9 +346,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		}
 	}
 
-	// Shared stack env is additive, mirroring per-app env: new keys go on the install's
-	// stack and any member not already bumped is redeployed, since shared env only
-	// reaches containers at deploy time.
+	// Shared env reaches containers only at deploy, so members not already bumped are redeployed.
 	s.applyStackEnv(workspaceID, rec, oldM, newM, byName, renderer, deployed, res)
 
 	rec.Version = newM.Metadata.Version
@@ -420,8 +403,7 @@ func (s *Service) upgradeConfigs(workspaceID uint, rec *models.TemplateInstall, 
 			}
 			continue
 		}
-		// New in this version. Name it the way the install names things, so it
-		// sits beside the install's other resources rather than the template's.
+		// Named like the install's other resources rather than after the template.
 		wsName, nerr := s.configName(workspaceID, installLabel(rec, newM), c.Name)
 		if nerr != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("name config %q: %v", c.Name, nerr))
@@ -452,8 +434,7 @@ func (s *Service) upgradeConfigs(workspaceID uint, rec *models.TemplateInstall, 
 			res.Warnings = append(res.Warnings, fmt.Sprintf("config %q was removed from the template — left in place; delete it manually if desired", name))
 		}
 	}
-	// Keep the record in step: the mount pass and the next upgrade both resolve
-	// through it, and this version may have added or dropped entries.
+	// The mount pass and the next upgrade resolve through the record.
 	if s.installs != nil && len(ids) > 0 {
 		rec.ConfigIDs = ids
 	}
@@ -568,8 +549,6 @@ func diffEnv(oldA, newA manifest.AppSpec, warnings *[]string) []EnvChange {
 	return out
 }
 
-// stackEnvOf / stackSecretEnv read a manifest's shared stack env, tolerating a
-// missing stack block (returns nil).
 func stackEnvOf(m *manifest.Manifest) map[string]string {
 	if m == nil || m.Stack == nil {
 		return nil
@@ -628,9 +607,7 @@ func isMountNew(oldA manifest.AppSpec, mt manifest.Mount) bool {
 	return true
 }
 
-// mountKey identifies a mount across two manifest versions. A config mount carries
-// no volume, so keying on the volume name alone collapsed every config mount onto
-// the same empty key — and made each one look new against a version that had any.
+// A config mount carries no volume, so keying on volume name alone collapsed all config mounts.
 func mountKey(m manifest.Mount) string {
 	if m.Config != "" {
 		return "config:" + m.Config + "/" + m.Key
@@ -678,8 +655,7 @@ func sameFiles(a, b map[string]string) bool {
 	return true
 }
 
-// diffConfigs lists the configs the target version adds, warning about ones whose
-// content changed or that it dropped — neither is applied automatically.
+// Changed or dropped configs only warn; neither is applied automatically.
 func diffConfigs(oldM, newM *manifest.Manifest, warnings *[]string) []string {
 	oldCfgs, newCfgs := configsByName(oldM), configsByName(newM)
 	out := []string{} // non-nil so JSON is [] not null (the UI reads .length)
@@ -755,8 +731,6 @@ func newInputs(oldM, newM *manifest.Manifest, answered map[string]string) []mani
 
 func isTemplated(v string) bool { return strings.Contains(v, "{{") }
 
-// renderEnvValue interpolates a single env value, returning an error if it
-// references context that can't be resolved (e.g. a database connection).
 func renderEnvValue(r *manifest.Renderer, appName, key, tmpl string) (string, error) {
 	if !isTemplated(tmpl) {
 		return tmpl, nil

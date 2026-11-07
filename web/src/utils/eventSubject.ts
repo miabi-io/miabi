@@ -1,13 +1,10 @@
-// Helpers for rendering a timeline event's subject. The workspace feed carries both
-// application and database-instance events, so callers must not assume an application:
-// reading application_id on a database event yields 0 ("app #0", a link to /apps/0).
+// The feed mixes app and database events; application_id on a database event is 0.
 import type { AppEvent } from '@/api/types'
 
 // A workspace-feed event also carries the app's resolved names.
 type SubjectEvent = AppEvent & { app_name?: string; app_display_name?: string }
 
-// eventSubjectLabel names the resource an event is about, falling back to "<kind> #<id>"
-// when it has been deleted.
+// Falls back to "<kind> #<id>" when the resource has been deleted.
 export function eventSubjectLabel(e: SubjectEvent): string {
   if (e.subject_type === 'database') {
     return e.database_name || `database #${e.database_id ?? 0}`

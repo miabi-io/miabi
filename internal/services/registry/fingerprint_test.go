@@ -33,8 +33,7 @@ func TestFingerprint(t *testing.T) {
 	if Fingerprint("ghcr", pw) == Fingerprint("ghcr", pw+"!") {
 		t.Error("a rotated password must change the fingerprint")
 	}
-	// Salted by name: the same password under two credentials must not collide,
-	// so a plan can't correlate them.
+	// Salted by name so the same password under two credentials does not correlate.
 	if Fingerprint("ghcr", pw) == Fingerprint("dockerhub", pw) {
 		t.Error("fingerprints must be salted by the credential name")
 	}

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gitrepo manages stored Git credentials used to clone private repositories at build time.
-// Secrets (tokens or SSH keys) are encrypted at rest. It also builds the go-git auth method shared by the
-// test-connection check and the deploy worker.
+// Package gitrepo manages encrypted Git credentials and builds the go-git auth shared by probes and deploys.
 package gitrepo
 
 import (
@@ -50,25 +48,17 @@ var (
 	ErrURLRequired    = errors.New("git repository URL is required")
 	ErrSecretRequired = errors.New("git credential secret is required")
 	ErrNameTaken      = errors.New("a git repository with this name already exists")
-	// ErrNameImmutable rejects renaming a git repository. The name is how the
-	// credential is identified everywhere it is referenced — by applications that
-	// clone through it, and by pipelines that will bind to it as their source — so
-	// it is an identity rather than a label. Edit DisplayName instead; to use a
-	// different name, delete the repository and create it again.
+	// The name identifies the credential to apps and pipelines, so it can't change; edit DisplayName instead.
 	ErrNameImmutable = errors.New("a git repository's name cannot be changed; edit its display name, or delete and recreate it")
 	ErrNotFound      = errors.New("git repository not found")
 	ErrUnknownSecret = errors.New("the referenced secret does not exist in this workspace")
 )
 
-// Secrets resolves a stored credential's secret: its own encrypted value, or the current value of the
-// workspace Secret it references. It is threaded explicitly into AuthFor/CredentialURL rather than held
-// on the Service, because the deploy worker, pipeline runner and GitOps each reach those separately.
+// Passed explicitly to AuthFor/CredentialURL because the deploy worker, pipeline runner and GitOps each reach them.
 type Secrets interface {
 	CredentialSecret(workspaceID uint, enc, ref string) (string, error)
 }
 
-// Vault is the fuller access the Service itself needs: resolution plus the
-// existence check that validates a reference when a credential is saved.
 type Vault interface {
 	Secrets
 	ExistsByName(workspaceID uint, name string) bool
@@ -77,15 +67,10 @@ type Vault interface {
 type Service struct {
 	repo    *repositories.GitRepoRepository
 	secrets Vault
-	// dial performs the reachability check. Swappable so tests can exercise the
-	// status bookkeeping without reaching the network — and so a probe never turns
-	// a unit test into an outbound request to whatever URL a fixture happens to
-	// name.
+	// Swappable so tests never turn a probe into an outbound request to a fixture URL.
 	dial dialFunc
 }
 
-// dialFunc probes a remote with a credential, returning nil when it answers and
-// authenticates.
 type dialFunc func(ctx context.Context, g *models.GitRepository) error
 
 func NewService(repo *repositories.GitRepoRepository) *Service {
@@ -97,13 +82,9 @@ func NewService(repo *repositories.GitRepoRepository) *Service {
 // SetDialer replaces the reachability check. Test-only seam.
 func (s *Service) SetDialer(d dialFunc) { s.dial = d }
 
-// SetSecrets wires the vault, enabling credentials that reference a Secret
-// rather than storing their own copy of the token or key.
 func (s *Service) SetSecrets(v Vault) { s.secrets = v }
 
-// storeSecret decides where an incoming secret lands: a `${{ secrets.NAME }}` value becomes a reference to
-// the vault, anything else is encrypted here. The two are mutually exclusive, so switching a credential
-// from one form to the other always clears the other.
+// The two forms are mutually exclusive, so switching always clears the other.
 func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, err error) {
 	if name := secret.RefName(value); name != "" {
 		if s.secrets != nil && !s.secrets.ExistsByName(workspaceID, name) {
@@ -115,20 +96,15 @@ func (s *Service) storeSecret(workspaceID uint, value string) (enc, ref string, 
 	return enc, "", err
 }
 
-// Input describes a git credential to create or update. Name is the desired
-// unique slug handle; DisplayName is the free-text label (falls back to Name).
 type Input struct {
 	Name        string
 	DisplayName string
 	URL         string
 	AuthType    models.GitAuthType
 	Username    string
-	// Secret is either the token or SSH private key itself, encrypted before storage, or a
-	// `${{ secrets.NAME }}` reference to a workspace Secret, stored as a reference and resolved at every
-	// clone. Blank on update means keep what is stored.
+	// A `${{ secrets.NAME }}` reference is resolved at every clone; blank on update keeps what is stored.
 	Secret string
-	// Metadata and Annotations replace the stored ones when non-nil; a manifest sets them, the console
-	// leaves them alone.
+	// Non-nil replaces the stored values; a manifest sets them, the console leaves them alone.
 	Metadata, Annotations models.Metadata
 }
 
@@ -175,9 +151,7 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 	if err := s.repo.Create(g); err != nil {
 		return nil, err
 	}
-	// Deliberately not a precondition: a credential added before its repository exists,
-	// or during a network blip, is still worth storing. The failure is recorded on the
-	// row, so it is discarded here rather than failing the create.
+	// Not a precondition: a credential added before its repo exists is worth storing; the failure lands on the row.
 	_ = s.Probe(context.Background(), g)
 	return strip(g), nil
 }
@@ -187,16 +161,14 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// Compared against the stored value so a no-op passes through: only an actual
-	// rename is refused, and a client PATCHing the whole object back still works.
+	// Only an actual rename is refused, so a client PATCHing the whole object back still works.
 	if name := slug.Make(in.Name, ""); name != "" && name != g.Name {
 		return nil, ErrNameImmutable
 	}
 	if dn := strings.TrimSpace(in.DisplayName); dn != "" {
 		g.DisplayName = dn
 	}
-	// changed tracks whether anything the connection check depends on moved, so a
-	// pure relabel does not trigger a probe.
+	// So a pure relabel does not trigger a probe.
 	changed := false
 	if in.URL != "" {
 		if url := normalizeGitURL(in.URL); url != g.URL {
@@ -220,8 +192,6 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 		g.Secret, g.SecretRef = "", "" // public repo carries no credential
 	case strings.TrimSpace(in.Secret) != "":
 		changed = true
-		// Switching between a stored token and a vault reference always clears the
-		// other form.
 		enc, ref, err := s.storeSecret(workspaceID, in.Secret)
 		if err != nil {
 			return nil, err
@@ -237,12 +207,9 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 	if err := s.repo.Update(g); err != nil {
 		return nil, err
 	}
-	// Only re-probe when something the check actually depends on moved. Renaming
-	// the label should not cost a round trip to the provider, and should not reset
-	// a known-good status to "checking".
+	// A relabel should not cost a provider round trip or reset a known-good status to "checking".
 	if changed {
-		// As on create: the outcome lands on the row, so a failed check does not
-		// fail the update that saved a corrected credential.
+		// The outcome lands on the row, so a failed check does not fail the update.
 		_ = s.Probe(context.Background(), g)
 	}
 	return strip(g), nil
@@ -256,9 +223,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.GitRepository, error) {
 	return strip(g), nil
 }
 
-// GetByName resolves a repository by its workspace-unique handle, for callers
-// that reference one by name rather than id — a manifest, a CLI flag, a pipeline
-// binding. Safe because the name is immutable.
+// Safe because the name is immutable.
 func (s *Service) GetByName(workspaceID uint, name string) (*models.GitRepository, error) {
 	g, err := s.repo.FindByName(workspaceID, slug.Make(name, ""))
 	if err != nil {
@@ -278,9 +243,7 @@ func (s *Service) List(workspaceID uint) ([]models.GitRepository, error) {
 	return repos, nil
 }
 
-// BundleSecret returns what a portable workspace bundle should carry for a credential: its vault reference
-// when it has one, so the indirection and later rotations survive, else the decrypted token or key. It
-// re-reads the row because List/Get strip the secret, and a listed record would export a blank.
+// BundleSecret prefers the vault reference so rotations survive; it re-reads because List/Get strip the secret.
 func (s *Service) BundleSecret(workspaceID, id uint) (string, error) {
 	g, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -314,13 +277,7 @@ func (s *Service) TestConnection(ctx context.Context, workspaceID, id uint) erro
 
 const probeTimeout = 15 * time.Second
 
-// Probe checks whether the remote answers with this credential and records the
-// result on the row. The returned error is the failure for a caller that wants
-// to surface it; the status is persisted either way.
-//
-// Failures never propagate as a write error: the credential is already stored,
-// and a probe that could not reach the network is not a reason to fail the call
-// that saved it.
+// Probe persists the status either way; a failed probe never fails the call that saved the credential.
 func (s *Service) Probe(ctx context.Context, g *models.GitRepository) error {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -338,17 +295,14 @@ func (s *Service) Probe(ctx context.Context, g *models.GitRepository) error {
 		g.ConnectionStatus = models.GitConnectionOK
 		g.ConnectionError = ""
 	}
-	// Persisted through a targeted update: Save would rewrite the whole row from a
-	// struct the caller may have handed us stripped of its secret.
+	// A targeted update, because Save would rewrite the row from a struct possibly stripped of its secret.
 	if uerr := s.repo.SetConnection(g.ID, g.ConnectionStatus, g.ConnectionError, now); uerr != nil {
 		logger.Warn("gitrepo: failed to record connection status", "id", g.ID, "error", uerr)
 	}
 	return err
 }
 
-// lsRemote is the real reachability check: a `git ls-remote`, the cheapest
-// request that proves both that the host answers and that the credential
-// authenticates.
+// ls-remote is the cheapest request proving both that the host answers and that the credential authenticates.
 func (s *Service) lsRemote(ctx context.Context, g *models.GitRepository) error {
 	auth, err := AuthFor(g, s.secrets)
 	if err != nil {
@@ -361,10 +315,7 @@ func (s *Service) lsRemote(ctx context.Context, g *models.GitRepository) error {
 	return nil
 }
 
-// connectionReason turns a transport error into something a user can act on.
-// go-git's messages are terse and the distinction that matters — "the host did
-// not answer" vs "it answered and said no" — is exactly the one that decides
-// whether to fix the URL or the token.
+// Separates "host did not answer" from "it answered and said no", which decides fixing the URL vs the token.
 func connectionReason(err error) string {
 	msg := err.Error()
 	switch {
@@ -380,9 +331,7 @@ func connectionReason(err error) string {
 	return msg
 }
 
-// CloneURLAuth resolves an explicit repository URL plus an optional stored credential into the normalized
-// clone URL and a go-git auth method, for clones running in-process. Either argument may carry the URL.
-// Unlike CredentialURL the secret stays in the auth method rather than being embedded in the URL.
+// Unlike CredentialURL, the secret stays in the auth method rather than being embedded in the URL.
 func (s *Service) CloneURLAuth(workspaceID uint, rawURL string, credentialID *uint) (string, transport.AuthMethod, error) {
 	var g *models.GitRepository
 	if credentialID != nil && *credentialID > 0 {
@@ -405,9 +354,7 @@ func (s *Service) CloneURLAuth(workspaceID uint, rawURL string, credentialID *ui
 	return normalizeGitURL(rawURL), auth, nil
 }
 
-// Checkout clones url into dir and checks out ref, returning the resolved commit hash; an empty ref uses
-// the cloned HEAD. It is the shared clone-and-checkout path used by both the deploy worker's git build
-// and the pipeline runner's workspace, so the two cannot drift in how they resolve a revision.
+// Checkout is shared by the deploy worker and pipeline runner so they can't drift in resolving a revision.
 func Checkout(ctx context.Context, dir, url, ref string, auth transport.AuthMethod, log func(string)) (string, error) {
 	if strings.TrimSpace(url) == "" {
 		return "", ErrURLRequired
@@ -444,9 +391,6 @@ func Checkout(ctx context.Context, dir, url, ref string, auth transport.AuthMeth
 	return hash.String(), nil
 }
 
-// AuthFor builds a go-git auth method from a stored credential, resolving its
-// secret through vault. Returns nil auth (anonymous) when g is nil. Shared by
-// the deploy worker, GitOps, and the test-connection check.
 func AuthFor(g *models.GitRepository, vault Secrets) (transport.AuthMethod, error) {
 	secretValue, err := credentialSecret(g, vault)
 	if err != nil || secretValue == "" {
@@ -472,9 +416,7 @@ func AuthFor(g *models.GitRepository, vault Secrets) (transport.AuthMethod, erro
 	}
 }
 
-// credentialSecret resolves the token or key a credential authenticates with, from its own encrypted value or
-// from the workspace Secret it references. Returns "" for an anonymous clone. A credential that references the
-// vault with no vault wired is an error — a silent anonymous clone becomes a confusing "repository not found".
+// A vault reference with no vault wired is an error; a silent anonymous clone reads as "repository not found".
 func credentialSecret(g *models.GitRepository, vault Secrets) (string, error) {
 	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {
 		return "", nil
@@ -495,14 +437,10 @@ func credentialSecret(g *models.GitRepository, vault Secrets) (string, error) {
 	return value, nil
 }
 
-// ErrSSHUnsupportedOnRunner is returned when a repo authenticates by SSH key but
-// the clone must happen on a remote runner (which has no way to receive the key
-// via the URL). The user should add an HTTPS token credential instead.
+// Remote runners can't receive an SSH key via the URL; use an HTTPS token credential instead.
 var ErrSSHUnsupportedOnRunner = errors.New("SSH-key git credentials can't be used for runner builds yet; add an HTTPS token credential for this repository")
 
-// CredentialURL returns rawURL with the repository's HTTPS credential embedded, so a remote builder with
-// no local git auth can clone a private repo. A public repo returns the URL unchanged, and an SSH-key
-// credential returns ErrSSHUnsupportedOnRunner. The credential lands only in the ephemeral job workspace.
+// CredentialURL embeds the HTTPS credential for remote builders; it lands only in the ephemeral job workspace.
 func CredentialURL(rawURL string, g *models.GitRepository, vault Secrets) (string, error) {
 	rawURL = normalizeGitURL(rawURL)
 	if g == nil || normalizeAuthType(g.AuthType) == models.GitAuthPublic {
@@ -533,8 +471,7 @@ func CredentialURL(rawURL string, g *models.GitRepository, vault Secrets) (strin
 	return u.String(), nil
 }
 
-// strip clears the ciphertext and flags secret presence for safe responses. A
-// vault reference is a name, not a secret, so it is left in place for the UI.
+// A vault reference is a name, not a secret, so it stays for the UI.
 func strip(g *models.GitRepository) *models.GitRepository {
 	g.HasSecret = g.Secret != "" || g.SecretRef != ""
 	g.Secret = ""
@@ -552,9 +489,6 @@ func normalizeAuthType(t models.GitAuthType) models.GitAuthType {
 	}
 }
 
-// normalizeGitURL trims the URL and appends a ".git" suffix when missing, since
-// users routinely forget it. SSH (git@…) and HTTPS URLs are both handled; an
-// already-".git" URL is left as-is.
 func normalizeGitURL(raw string) string {
 	u := strings.TrimRight(strings.TrimSpace(raw), "/")
 	if u == "" {
@@ -566,8 +500,7 @@ func normalizeGitURL(raw string) string {
 	return u
 }
 
-// ResolveRef resolves a branch, tag or commit in a fresh clone. A clone has a local branch only for
-// the default one; every other branch exists as origin/<name>, so a bare name is tried there too.
+// A clone has a local branch only for the default; others exist as origin/<name>, so that is tried too.
 func ResolveRef(repo *gogit.Repository, ref string) (*plumbing.Hash, error) {
 	ref = strings.TrimSpace(ref)
 	hash, err := repo.ResolveRevision(plumbing.Revision(ref))
@@ -580,9 +513,7 @@ func ResolveRef(repo *gogit.Repository, ref string) (*plumbing.Hash, error) {
 	return nil, err
 }
 
-// RemoteCommit resolves ref to a commit on the remote at url with a single ls-remote, without cloning.
-// An empty ref is the remote's default branch; a branch, a tag or a full ref name are matched in that
-// order, and a full commit hash is returned as is.
+// RemoteCommit matches branch, then tag, then full ref name; a full commit hash is returned as is.
 func RemoteCommit(ctx context.Context, url, ref string, auth transport.AuthMethod) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if plumbing.IsHash(ref) {
@@ -599,8 +530,7 @@ func RemoteCommit(ctx context.Context, url, ref string, auth transport.AuthMetho
 	return "", fmt.Errorf("ref %q not found on the remote", ref)
 }
 
-// matchRemoteRef finds ref among an ls-remote listing. An annotated tag resolves to the commit it
-// points at (its peeled "^{}" entry), not to the tag object.
+// An annotated tag resolves to its peeled "^{}" commit, not the tag object.
 func matchRemoteRef(refs []*plumbing.Reference, ref string) (string, bool) {
 	byName := make(map[plumbing.ReferenceName]*plumbing.Reference, len(refs))
 	for _, r := range refs {

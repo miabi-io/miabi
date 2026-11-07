@@ -1,11 +1,5 @@
 <script setup lang="ts">
-// Add/update one environment variable. Shared by the application Environment tab
-// and the stack's shared environment, so both spell the same rules the same way:
-// the key is immutable on update, a secret's value is never sent back to the
-// browser and has to be re-entered, and either kind can reference a workspace
-// secret.
-//
-// The parent owns the API call and the `saving` flag; this only collects values.
+// Shared by the app and stack env editors so the key-immutable, secret-never-returned rules stay identical.
 import { nextTick, ref, watch } from 'vue'
 import { useDirtyGuard } from '@/composables/useModal'
 import AppModal from '@/components/AppModal.vue'
@@ -19,8 +13,7 @@ const props = defineProps<{
   // Seed values; a secret's value arrives blank because the API never returns it.
   initial: { key: string; value: string; secret: boolean }
   saving: boolean
-  // What happens after saving, e.g. "Applies on the next deploy." Empty when the
-  // change takes effect immediately.
+  // Empty when the change takes effect immediately.
   applyNote?: string
 }>()
 
@@ -99,8 +92,7 @@ function submit() {
               <label class="form-label">
                 {{ $t('envVar.value') }}
                 <span v-if="editingKey && form.secret" class="text-muted">{{ $t('envVar.reEnterHint') }}</span>
-                <!-- Only for a value marked secret: generating a plaintext
-                     config value would be nonsense. -->
+                <!-- Only for a secret value: generating a plaintext config value would be nonsense. -->
                 <GenerateButton v-if="form.secret" :label="$t('envVar.generateLabel')"
                   @generated="form.value = $event" />
               </label>

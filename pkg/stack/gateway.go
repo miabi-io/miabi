@@ -34,8 +34,7 @@ import (
 // DefaultGatewayConfigFile is the gateway config's name beside miabi.yaml.
 const DefaultGatewayConfigFile = "goma.yml"
 
-// configPath is where the gateway config lives AS THIS PROCESS SEES IT — inside the
-// installer container, when that is what we are.
+// The path as this process sees it, i.e. inside the installer container when there.
 func (s *Service) configPath(m *Manifest) string {
 	name := strings.TrimSpace(m.Gateway.Config)
 	if name == "" {
@@ -47,9 +46,7 @@ func (s *Service) configPath(m *Manifest) string {
 	return filepath.Join(filepath.Dir(s.manifestPath), name)
 }
 
-// EnsureGatewayConfig makes sure the gateway config exists, is valid, and is honest about who owns it:
-// absent writes the shipped default and records its digest; a file still matching that digest may be
-// replaced by a newer default; a file that differs was edited by the operator and is never touched.
+// A file that no longer matches the recorded default digest was edited by the operator and is never touched.
 func (s *Service) EnsureGatewayConfig(ctx context.Context, m *Manifest) error {
 	path := s.configPath(m)
 	want := gomaConfig
@@ -79,15 +76,12 @@ func (s *Service) EnsureGatewayConfig(ctx context.Context, m *Manifest) error {
 		}
 
 	default:
-		// Either the operator edited it, or it predates ConfigSHA. Do not touch it —
-		// but say so, because "my gateway config stopped receiving updates" is exactly
-		// the kind of thing nobody notices until it bites.
+		// Say so, because a gateway config that stopped receiving updates otherwise goes unnoticed.
 		s.log("gateway config: using your %s (customized — Miabi will not overwrite it)",
 			s.hostPathFor(ctx, path))
 	}
 
-	// From here on the path leaves this container and goes to the daemon — as the
-	// gateway's bind, and as the validator's. Refuse now if it cannot be mapped.
+	// The path is about to go to the daemon, so refuse now if it cannot be mapped to the host.
 	host, err := s.requireHostPath(ctx, path)
 	if err != nil {
 		return err
@@ -98,24 +92,17 @@ func (s *Service) EnsureGatewayConfig(ctx context.Context, m *Manifest) error {
 }
 
 const (
-	// GeoIPDir holds the GeoIP database, beside goma.yml. The directory is what the gateway mounts, not the
-	// file: a single-file bind stays on the original inode, so an update written by rename (geoipupdate, mv)
-	// would never reach the gateway, and Goma could not hot-reload it.
+	// Mount the directory, not the file: a single-file bind keeps the old inode and misses rename-based updates.
 	GeoIPDir = "geoip"
-	// DefaultGeoIPFile is the name the docs tell operators to give the database they supply. Provider-neutral,
-	// because Miabi does not choose the provider.
+	// Provider-neutral, because Miabi does not choose the provider.
 	DefaultGeoIPFile = "country.mmdb"
-	// LegacyGeoIPFile is accepted too. It is MaxMind's own download name, so an operator following MaxMind's
-	// instructions (or running geoipupdate) lands on it without thinking.
+	// MaxMind's own download name, so operators following MaxMind or geoipupdate land on it.
 	LegacyGeoIPFile = "GeoLite2-Country.mmdb"
 )
 
 var geoIPFiles = []string{DefaultGeoIPFile, LegacyGeoIPFile}
 
-// ensureGeoIP binds the GeoIP directory into the gateway so Goma can resolve client countries, and reload the
-// database when it changes. It is bound even while empty, so a database dropped in later is picked up without
-// touching the gateway. Miabi fetches none deliberately: every database worth having carries a license only the
-// operator can accept. MIABI_GEOIP=off skips the mount without moving the file.
+// Bound even while empty so a later database is picked up; Miabi fetches none since only operators can accept licenses.
 func (s *Service) ensureGeoIP(ctx context.Context, m *Manifest) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("MIABI_GEOIP")), "off") {
 		s.log("GeoIP: disabled (MIABI_GEOIP=off) — analytics runs without country")
@@ -136,13 +123,11 @@ func (s *Service) ensureGeoIP(ctx context.Context, m *Manifest) {
 			return
 		}
 	}
-	// Not an error — analytics works without countries. But name the path anyway: a silent skip is how
-	// "the map is empty" turns into a support thread.
+	// A silent skip turns "the map is empty" into a support thread.
 	s.log("GeoIP: no database in %s — drop a %s there to enable country data (no restart needed)", host, DefaultGeoIPFile)
 }
 
-// moveLegacyGeoIP moves a database from where earlier releases expected it, beside goma.yml, into the GeoIP
-// directory. One that is already there wins: the operator put it there on purpose.
+// A database already in the directory wins: the operator put it there on purpose.
 func (s *Service) moveLegacyGeoIP(base, dir string) {
 	for _, name := range geoIPFiles {
 		from, to := filepath.Join(base, name), filepath.Join(dir, name)
@@ -161,9 +146,7 @@ func (s *Service) moveLegacyGeoIP(base, dir string) {
 	}
 }
 
-// validateGatewayConfig runs `goma config check` before the gateway is ever started. Worth the extra container:
-// the panel's OWN route lives in this file, so a typo does not merely break a feature — it locks the operator
-// out of the UI they would fix it in, and the failure would otherwise read as a health-check timeout.
+// The panel's own route lives in this file, so a typo would lock the operator out of the UI.
 func (s *Service) validateGatewayConfig(ctx context.Context, m *Manifest, host string) error {
 	if err := ensureImage(ctx, s.dc, m.Images.Gateway, s.log); err != nil {
 		return err
@@ -172,17 +155,13 @@ func (s *Service) validateGatewayConfig(ctx context.Context, m *Manifest, host s
 		Name:  "mb-goma-check",
 		Image: m.Images.Gateway,
 		Cmd:   []string{"config", "check", "--config", "/tmp/goma.yml"},
-		// Read-only, and named /tmp/goma.yml rather than its real path: we are checking
-		// the file, not booting a gateway around it.
 		Binds: []docker.BindMount{{Source: host, Target: "/tmp/goma.yml", ReadOnly: true}},
-		// The config interpolates these at parse time; without them the check fails on
-		// the file Miabi itself shipped.
+		// Without these the check fails on the file Miabi itself shipped.
 		Env:    gatewayConfigEnv(m),
 		Labels: map[string]string{docker.LabelPartOf: docker.PartOfMiabi, docker.LabelRole: "config-check"},
 	})
 	if err != nil {
-		// The probe itself broke (no image, no daemon). Do not invent a config error out
-		// of it — the gateway's own health gate still backs us up.
+		// A broken probe is not a config error; the gateway's health gate still backs us up.
 		s.log("gateway config: could not validate it (%v) — continuing", err)
 		return nil
 	}
@@ -194,9 +173,7 @@ func (s *Service) validateGatewayConfig(ctx context.Context, m *Manifest, host s
 	return nil
 }
 
-// requireHostPath resolves the config's host path and refuses to continue if it cannot, which happens exactly
-// when the operator forgot to bind-mount the manifest directory. Without it the file lives only inside this
-// throwaway container, and Docker's silently-created directory makes the install fail complaining about the config.
+// Fails when the manifest dir isn't bind-mounted; otherwise Docker silently creates a directory in its place.
 func (s *Service) requireHostPath(ctx context.Context, path string) (string, error) {
 	host, mapped := s.hostPath(ctx, path)
 	if mapped || selfcontainer.Detect() == "" {
@@ -218,9 +195,7 @@ func (s *Service) hostPathFor(ctx context.Context, path string) string {
 	return host
 }
 
-// hostPath maps a path THIS PROCESS sees to the path the Docker daemon will resolve for a bind mount, and
-// reports whether a bind actually covered it. Handing the daemon our own view would point it at a host path
-// that may not exist — and Docker silently creates a DIRECTORY there, which Goma then finds instead of goma.yml.
+// Docker silently creates a directory at a missing bind source, which Goma then finds instead of goma.yml.
 func (s *Service) hostPath(ctx context.Context, path string) (host string, mapped bool) {
 	id := selfcontainer.Detect()
 	if id == "" {
@@ -248,8 +223,6 @@ func (s *Service) hostPath(ctx context.Context, path string) (host string, mappe
 	return filepath.Join(src, strings.TrimPrefix(path, best)), true
 }
 
-// gatewayConfigEnv is the environment the gateway config interpolates, without the
-// operator's extras — used by the validator, which only needs the file to parse.
 func gatewayConfigEnv(m *Manifest) []string {
 	env := []string{
 		"MIABI_DOMAIN=" + m.Domain,

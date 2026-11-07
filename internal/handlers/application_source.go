@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 )
 
-// SetSourceRequest replaces where an application's image comes from. It is a PUT rather than a
-// field on the general PATCH because it is a whole-source replacement: switching image <-> git
-// changes which fields mean anything, and a partial payload would leave the app claiming both.
+// A PUT, not a PATCH field: switching image <-> git changes which fields mean anything.
 type SetSourceRequest struct {
 	WorkspaceID string `path:"workspaceID"`
 	AppID       string `path:"appID"`
@@ -57,16 +55,12 @@ type SetSourceRequest struct {
 	}
 }
 
-// SetSourceResponse reports what else moved, because none of it is visible in the app record
-// afterwards: whether a repo pipeline was dropped, and whether the running container is now stale.
+// Reported because none of it is visible in the app record afterwards.
 type SetSourceResponse struct {
 	Application *models.Application       `json:"application"`
 	Change      *application.SourceChange `json:"change"`
 }
 
-// SetSource switches an application between a prebuilt image and a Git build, or edits the details
-// of its current source. Previously this needed a delete and recreate, which discarded the app's
-// domains, environment, volumes and deployment history.
 func (h *ApplicationHandler) SetSource(c *okapi.Context, req *SetSourceRequest) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -97,16 +91,7 @@ func (h *ApplicationHandler) SetSource(c *okapi.Context, req *SetSourceRequest) 
 	return c.OK(okapi.M{"success": true, "data": SetSourceResponse{Application: app, Change: ch}})
 }
 
-// sourceLock refuses an interactive source edit on an application whose source is owned
-// elsewhere. A GitOps-managed app would have the change reverted on the next sync, and a
-// marketplace app would lose the upgrade path its template provides — in both cases the edit
-// silently does not stick, which is worse than being told no.
-//
-// It guards the HANDLER only. The GitOps engine and the marketplace installer write through
-// application.Service directly, and must stay able to manage the resources they own.
-//
-// It returns the refusal rather than aborting, because an aborted response returns a nil error and
-// the caller would carry on with the edit.
+// Returns the refusal rather than aborting: an aborted response returns nil and the caller would continue.
 func sourceLock(app *models.Application) error {
 	owner, owned := models.SourceOwnedElsewhere(app.Metadata)
 	if !owned {
@@ -124,21 +109,16 @@ type ResyncPipelineRequest struct {
 	AppID       string `path:"appID"`
 }
 
-// ResyncPipelineResponse reports the pipeline the app ended up bound to. Changed is false when the
-// repository's document already matched what was stored — a successful no-op, not a failure.
+// Changed is false when the repository already matched what was stored: a no-op, not a failure.
 type ResyncPipelineResponse struct {
 	Pipeline *models.PipelineDefinition `json:"pipeline"`
 	Changed  bool                       `json:"changed"`
 	Adopted  bool                       `json:"adopted"`
 }
 
-// resyncTimeout bounds the probe clone. It sits on an interactive request, so it is tighter than
-// the background adoption path — but still has to allow for a cold clone of a large repository.
+// Tighter than background adoption, but must allow a cold clone of a large repository.
 const resyncTimeout = 90 * time.Second
 
-// ResyncPipeline reloads the repository's pipelines.yaml: adopting one when the app has none (the
-// file was added after the app was created, or the app only just became a git app), and re-syncing
-// the stored spec when it already has one.
 func (h *ApplicationHandler) ResyncPipeline(c *okapi.Context, req *ResyncPipelineRequest) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -157,8 +137,7 @@ func (h *ApplicationHandler) ResyncPipeline(c *okapi.Context, req *ResyncPipelin
 		case errors.Is(err, application.ErrNotGitApp), errors.Is(err, pipeline.ErrNotGitApp):
 			return c.AbortBadRequest("this application does not build from a git repository")
 		case errors.Is(err, pipeline.ErrNoPipelineInRepo):
-			// Not an error in the app's configuration: the repository simply carries no pipeline,
-			// which is a perfectly normal way to run. Say which paths were looked at.
+			// A repository with no pipeline is a normal way to run, not a configuration error.
 			return c.AbortWithError(http.StatusNotFound, err)
 		case errors.Is(err, pipeline.ErrInvalidSpec):
 			return c.AbortBadRequest(err.Error())

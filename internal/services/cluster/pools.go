@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// SyncPoolLabel mirrors a node's pool onto its swarm node, where service placement constraints read it. A no-op
-// for a node outside an active swarm.
+// Service placement constraints read the swarm node label.
 func (s *Service) SyncPoolLabel(ctx context.Context, srv *models.Server) error {
 	if srv == nil || srv.SwarmNodeID == "" || !s.IsSwarm(srv.ClusterID) {
 		return nil
@@ -39,8 +38,7 @@ func (s *Service) SyncPoolLabel(ctx context.Context, srv *models.Server) error {
 	return mgr.SwarmNodeSetLabel(ctx, srv.SwarmNodeID, models.PoolLabel, models.PoolOf(srv))
 }
 
-// reassertPoolLabels labels every pooled swarm member, covering a node that joined after its pool was set or a
-// pool set while its swarm was unreachable.
+// Covers nodes that joined after their pool was set or pools set while the swarm was unreachable.
 func (s *Service) reassertPoolLabels(ctx context.Context) {
 	servers, err := s.nodes.List(ctx)
 	if err != nil {

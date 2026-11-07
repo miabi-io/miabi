@@ -33,8 +33,7 @@ func NewStackRepository(db *gorm.DB) *StackRepository { return &StackRepository{
 func (r *StackRepository) Create(s *models.Stack) error { return r.db.Create(s).Error }
 func (r *StackRepository) Update(s *models.Stack) error { return r.db.Save(s).Error }
 
-// Delete hard-deletes a stack and its shared env vars (callers detach or delete
-// member apps first, so no application references the stack at this point).
+// Callers detach or delete member apps first, so no application references the stack here.
 func (r *StackRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("stack_id = ?", id).Delete(&models.StackEnvVar{}).Error; err != nil {
@@ -52,8 +51,6 @@ func (r *StackRepository) FindInWorkspace(workspaceID, id uint) (*models.Stack, 
 	return &s, nil
 }
 
-// FindInWorkspaceWithApps loads a stack together with its member applications,
-// powering the stack detail view.
 func (r *StackRepository) FindInWorkspaceWithApps(workspaceID, id uint) (*models.Stack, error) {
 	var s models.Stack
 	err := r.db.Preload("Apps", func(db *gorm.DB) *gorm.DB {
@@ -85,16 +82,13 @@ func (r *StackRepository) ExistsByName(workspaceID uint, name string) (bool, err
 	return count > 0, err
 }
 
-// ExistsByID reports whether a (non-deleted) stack with this id exists. A
-// soft-deleted stack reads as absent — the housekeeping "orphan" condition.
+// A soft-deleted stack reads as absent, the housekeeping "orphan" condition.
 func (r *StackRepository) ExistsByID(id uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Stack{}).Where("id = ?", id).Count(&count).Error
 	return count > 0, err
 }
 
-// FindByName returns the workspace's stack with the given name. Used by import
-// to reuse one stack across a batch/re-import (one compose project -> one stack).
 func (r *StackRepository) FindByName(workspaceID uint, name string) (*models.Stack, error) {
 	var s models.Stack
 	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&s).Error; err != nil {
@@ -116,8 +110,6 @@ func (r *StackRepository) CountApps(stackID uint) (int64, error) {
 	return count, err
 }
 
-// StatusCounts returns the number of member applications in each status for a
-// stack (status -> count), powering the aggregate health badge.
 func (r *StackRepository) StatusCounts(stackID uint) (map[models.AppStatus]int, error) {
 	var rows []struct {
 		Status models.AppStatus
@@ -144,9 +136,7 @@ func (r *StackRepository) AppIDs(stackID uint) ([]uint, error) {
 	return ids, err
 }
 
-// DetachApps clears the stack assignment from every member application. Used
-// when a stack is deleted so its apps are orphaned (and keep running) rather
-// than destroyed.
+// DetachApps orphans a deleted stack's apps so they keep running rather than being destroyed.
 func (r *StackRepository) DetachApps(stackID uint) error {
 	return r.db.Model(&models.Application{}).
 		Where("stack_id = ?", stackID).Update("stack_id", nil).Error

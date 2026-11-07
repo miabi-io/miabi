@@ -51,12 +51,10 @@ func NewVolumeBackupHandler(svc *volumebackup.Service, volumes *repositories.Vol
 	return &VolumeBackupHandler{svc: svc, volumes: volumes, repo: repo, cron: cron, ee: ee, audit: auditLog}
 }
 
-// VolumeBackupStatus tells the Backups tab what it can offer. Entitlement rides along because a
-// workspace member cannot read the licence view, and a disabled control needs a reason.
+// A workspace member cannot read the licence view, and a disabled control needs a reason.
 type VolumeBackupStatus struct {
 	S3Configured bool `json:"s3_configured"`
-	// Entitled reports that new backups are recovery points: ref, sealing, verification and
-	// schedules. Without it they are plain archives.
+	// Without it backups are plain archives.
 	Entitled bool `json:"entitled"`
 	// Mutable reports that schedules can be created; false once a licence is past grace.
 	Mutable bool `json:"mutable"`
@@ -64,9 +62,6 @@ type VolumeBackupStatus struct {
 	Sealing bool `json:"sealing"`
 }
 
-// SetLogStore wires the shared execution-log store so a volume-backup run's full
-// log can be downloaded from the store (falling back to the DB tail). nil keeps
-// tail-only.
 func (h *VolumeBackupHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 // LogsDownload streams a volume-backup run's full log as a file download.
@@ -82,8 +77,6 @@ func (h *VolumeBackupHandler) LogsDownload(c *okapi.Context) error {
 	return streamLogDownload(c, h.logs, b.LogRef, b.Logs, "volume-backup-"+strconv.FormatUint(uint64(b.ID), 10)+".log")
 }
 
-// Status reports whether volume backups are configured for the workspace (S3
-// enabled + bucket), so the UI can block the action before the user triggers it.
 func (h *VolumeBackupHandler) Status(c *okapi.Context) error {
 	v, err := h.loadVolume(c)
 	if err != nil {
@@ -111,9 +104,7 @@ func (h *VolumeBackupHandler) List(c *okapi.Context) error {
 	return ok(c, items)
 }
 
-// Run records a manual volume backup and enqueues it for the worker. The
-// returned record starts pending; its status advances as the worker runs. With the
-// recovery_points entitlement it is a recovery point; without, a plain archive.
+// With recovery_points it is a recovery point; without, a plain archive.
 func (h *VolumeBackupHandler) Run(c *okapi.Context) error {
 	v, err := h.loadVolume(c)
 	if err != nil {
@@ -183,8 +174,7 @@ func (h *VolumeBackupHandler) Delete(c *okapi.Context) error {
 	return message(c, "backup deleted")
 }
 
-// Verify re-checks a completed backup against the bucket. Ungated: an expired licence must
-// never stop anyone from finding out whether their data is still there.
+// Ungated: an expired licence must never stop anyone checking their data is still there.
 func (h *VolumeBackupHandler) Verify(c *okapi.Context) error {
 	v, err := h.loadVolume(c)
 	if err != nil {
@@ -239,8 +229,7 @@ func (h *VolumeBackupHandler) Update(c *okapi.Context, req *UpdateVolumeBackupRe
 type VolumeBackupScheduleRequest struct {
 	Body struct {
 		Cron string `json:"cron" required:"true"`
-		// MaxPoints keeps at most N points; RetentionDays drops any older than N days. Zero is
-		// unbounded. Pinned points and the newest completed one always survive.
+		// Zero is unbounded; pinned points and the newest completed one always survive.
 		MaxPoints     int  `json:"max_points" min:"0"`
 		RetentionDays int  `json:"retention_days" min:"0"`
 		Enabled       bool `json:"enabled"`
@@ -281,8 +270,7 @@ func (h *VolumeBackupHandler) CreateSchedule(c *okapi.Context, req *VolumeBackup
 	return ok(c, sched)
 }
 
-// UpdateSchedule edits a volume's recovery-point schedule (Enterprise; recovery_points). Pausing
-// is exempt from the gate, like deleting: a lapsed licence must still be able to stop a schedule.
+// Pausing is exempt from the gate: a lapsed licence must still be able to stop a schedule.
 func (h *VolumeBackupHandler) UpdateSchedule(c *okapi.Context, req *VolumeBackupScheduleRequest) error {
 	v, sched, err := h.loadSchedule(c)
 	if err != nil {
@@ -304,8 +292,7 @@ func (h *VolumeBackupHandler) UpdateSchedule(c *okapi.Context, req *VolumeBackup
 	return ok(c, sched)
 }
 
-// DeleteSchedule removes a recovery-point schedule. Ungated, so an expired licence can still
-// stop one.
+// Ungated, so an expired licence can still stop one.
 func (h *VolumeBackupHandler) DeleteSchedule(c *okapi.Context) error {
 	v, sched, err := h.loadSchedule(c)
 	if err != nil {

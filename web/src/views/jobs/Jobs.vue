@@ -29,8 +29,7 @@ let poll: ReturnType<typeof setInterval> | null = null
 
 const hasActive = computed(() => jobs.value.some((j) => j.status === 'pending' || j.status === 'running'))
 
-// Whether this workspace's containers must drop root. Mirrors the server rule so the
-// run-as field explains itself instead of failing the run with a 400.
+// Mirrors the server rule so the run-as field explains itself instead of a 400.
 const requireNonRoot = ref(false)
 function runAsUserError(v: string): string {
   v = v.trim()
@@ -169,8 +168,7 @@ async function saveCron() {
   savingCron.value = true
   const image = cronForm.value.image.trim()
   const orig = editingCron.value
-  // A managed schedule only takes a pause or resume: resend what is stored, so a
-  // command re-split from the text field can't read as an edit.
+  // A managed schedule only takes pause/resume, so resend what is stored rather than a re-split command.
   const input: CronJobInput = cronLocked.value && orig ? {
     application_id: orig.application_id, name: orig.name, display_name: orig.display_name, schedule: orig.schedule,
     command: orig.command, entrypoint: orig.entrypoint, image: orig.image, registry_id: orig.registry_id ?? null,

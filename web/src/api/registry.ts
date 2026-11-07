@@ -21,20 +21,13 @@ export interface RegistrySettings {
   effective_host: string
   /** Whether S3/MinIO storage is licensed (Enterprise); local storage is free. */
   s3_entitled: boolean
-  /**
-   * Fields the environment pins. A locked field is read-only: the server ignores
-   * it on save, so the UI renders it fixed and names the variable that owns it.
-   * Everything unlocked is editable here.
-   */
+  /** The server ignores a locked field on save, so the UI renders it fixed and names the owning variable. */
   locks: RegistryLocks
   /** Where the effective host came from. */
   host_source: 'env' | 'stored' | 'base_domain' | 'unset'
   /** Where the effective storage driver came from. */
   storage_source: 'env' | 'stored' | 'default'
-  /**
-   * Why the configured storage cannot be used (unlicensed S3 driver, missing
-   * bucket) — absent when it is usable. When present the registry does not start.
-   */
+  /** Why the configured storage is unusable; when present the registry does not start. */
   storage_error?: string
 }
 
@@ -51,11 +44,7 @@ export interface RegistryLocks {
   s3_force_path_style: boolean
 }
 
-/**
- * A settings update. The platform fields are optional: omitting one leaves it
- * alone, so a save from one tab never clobbers another's. An env-pinned field is
- * ignored by the server whatever is sent.
- */
+/** Omitted platform fields are left alone so one tab's save never clobbers another's; env-pinned fields are ignored. */
 export interface RegistrySettingsPayload {
   delete_enabled: boolean
   per_workspace_quota_mb: number
@@ -71,10 +60,7 @@ export interface RegistrySettingsPayload {
   /** Blank keeps the stored secret — the API never returns it to re-send. */
   s3_secret_key?: string
   s3_force_path_style?: boolean
-  /**
-   * Acknowledges a change that strands data or breaks stored image references.
-   * Without it the server answers 409 with the prompt to show.
-   */
+  /** Acknowledges a change that strands data or breaks image references; without it the server answers 409. */
   confirm?: boolean
 }
 
@@ -155,10 +141,7 @@ export const registryApi = {
     api.get<PageableResponse<RegistryRepository>>(`/workspaces/${workspaceId}/registry/repositories`, {
       params: { page, size, q: q || undefined, tag_limit: tagLimit },
     }),
-  /**
-   * A single repository's overview. The name travels as a query parameter, not a
-   * path segment, because an image name may itself contain slashes.
-   */
+  /** The name travels as a query parameter because an image name may contain slashes. */
   repository: (workspaceId: number, repo: string) =>
     api.get<ApiResponse<RegistryRepositoryOverview>>(`/workspaces/${workspaceId}/registry/repository`, {
       params: { name: repo },

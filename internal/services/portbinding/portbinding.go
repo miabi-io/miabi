@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package portbinding manages host port binding requests. Host ports are a
-// node-wide shared resource, so bindings stay pending until a platform admin
-// approves them; only approved bindings are published at deploy time.
+// Package portbinding queues host-port requests for admin approval, since host ports are a node-wide shared resource.
 package portbinding
 
 import (
@@ -36,8 +34,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// maxPortNumber is the absolute top of the TCP/UDP port space. A privileged
-// workspace is bounded only by this, not by the configured window.
+// A privileged workspace is bounded only by this, not the configured window.
 const maxPortNumber = 65535
 
 var (
@@ -56,9 +53,7 @@ type Policy interface {
 	CheckPortRequest(req secpolicy.PortRequest) secpolicy.PortDecision
 }
 
-// DockerClients resolves a node's Docker client so host-port conflicts can be
-// checked against the ports actually published on the node — including
-// containers deployed outside Miabi, which the binding table doesn't know.
+// Checks live published ports too, including containers deployed outside Miabi.
 type DockerClients interface {
 	For(serverID uint) (docker.Client, error)
 }
@@ -99,9 +94,7 @@ func (s *Service) decide(b *models.PortBinding, userID uint, privileged bool, ac
 	})
 }
 
-// SetDocker wires the per-node Docker client registry so conflict checks also
-// consult live published ports (not just the binding table). Optional: when nil,
-// checks fall back to the binding table only.
+// SetDocker is optional; when nil, conflict checks use the binding table only.
 func (s *Service) SetDocker(d DockerClients) { s.docker = d }
 
 type RequestInput struct {
@@ -118,9 +111,7 @@ func normProto(p string) string {
 	return "tcp"
 }
 
-// Request creates a pending host-port binding for review. Privileged workspaces
-// skip review and auto-approve — but only when the host port is actually free on
-// the node; otherwise the request is rejected with ErrHostPortTaken.
+// Request auto-approves privileged workspaces only when the port is free, else ErrHostPortTaken.
 func (s *Service) Request(workspaceID, userID uint, in RequestInput) (*models.PortBinding, error) {
 	privileged := s.isPrivileged(workspaceID)
 	b, err := s.newPendingBinding(workspaceID, userID, in, privileged)
@@ -184,8 +175,6 @@ func (s *Service) RequestImport(workspaceID, userID uint, in RequestInput) (bind
 	return b, conflict, nil
 }
 
-// newPendingBinding validates a request and returns a pending binding (not yet
-// persisted). Shared by Request and RequestImport.
 func (s *Service) newPendingBinding(workspaceID, userID uint, in RequestInput, privileged bool) (*models.PortBinding, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, in.ApplicationID)
 	if err != nil {
@@ -230,9 +219,7 @@ func (s *Service) resolveHostPort(serverID uint, want int, proto string, privile
 	return want, nil
 }
 
-// hostPortAllowed reports whether a host port may be requested. The window bounds what an admin may
-// approve for an ordinary workspace; a privileged one publishes infrastructure that has to sit on
-// fixed ports (25, 53, 443), so only the port space bounds it.
+// Privileged workspaces publish infrastructure on fixed ports (25, 53, 443), so only the port space bounds them.
 func hostPortAllowed(port, minPort, maxPort int, privileged bool) bool {
 	if port < 1 || port > maxPortNumber {
 		return false
@@ -243,8 +230,7 @@ func hostPortAllowed(port, minPort, maxPort int, privileged bool) bool {
 	return port >= minPort && port <= maxPort
 }
 
-// SuggestHostPort returns a free host port on an app's node — for the UI to
-// pre-fill when a requested port conflicts. Workspace-scoped via the app.
+// SuggestHostPort is scoped to the workspace via the app.
 func (s *Service) SuggestHostPort(workspaceID, appID uint, proto string, preferred int) (int, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -253,9 +239,7 @@ func (s *Service) SuggestHostPort(workspaceID, appID uint, proto string, preferr
 	return s.FindFreeHostPort(app.ServerID, proto, preferred)
 }
 
-// FindFreeHostPort returns the first host port in the allowed range that is free for proto on the node — per
-// the binding table AND live published ports — preferring `preferred` and scanning upward then wrapping.
-// Returns 0 when the range is exhausted.
+// FindFreeHostPort checks both the table and live ports, scanning up from preferred and wrapping; 0 when exhausted.
 func (s *Service) FindFreeHostPort(serverID uint, proto string, preferred int) (int, error) {
 	proto = normProto(proto)
 	live := s.livePublishedPorts(serverID)
@@ -287,9 +271,7 @@ func (s *Service) FindFreeHostPort(serverID uint, proto string, preferred int) (
 	return 0, nil
 }
 
-// hostPortConflict reports whether host:proto is already claimed on the node — by another approved Miabi
-// binding (the table) or by any container actually publishing it right now (live Docker). The live check
-// is what catches ports held by containers deployed outside Miabi. Returns a human owner label.
+// The live Docker check catches ports held by containers deployed outside Miabi.
 func (s *Service) hostPortConflict(serverID uint, hostPort int, proto string, excludeID uint) (bool, string, error) {
 	inUse, err := s.repo.HostPortInUse(serverID, hostPort, proto, excludeID)
 	if err != nil {
@@ -304,8 +286,7 @@ func (s *Service) hostPortConflict(serverID uint, hostPort int, proto string, ex
 	return false, "", nil
 }
 
-// tenantPortConflict is hostPortConflict as a workspace may see it: the owner is named only when it is one
-// of the workspace's own containers. Anything else on a shared node is another tenant's or the platform's.
+// The owner is named only for the workspace's own containers; others belong to other tenants or the platform.
 func (s *Service) tenantPortConflict(workspaceID, serverID uint, hostPort int, proto string) (bool, string, error) {
 	inUse, owner, err := s.hostPortConflict(serverID, hostPort, proto, 0)
 	if err != nil || !inUse {
@@ -342,17 +323,13 @@ func (s *Service) nodeContainers(serverID uint) []docker.Container {
 	return conts
 }
 
-// livePublishedPorts returns host:proto -> owner for every port published by a
-// running container on the node. Empty when no Docker client is wired or the
-// node is unreachable (the table-only check still applies).
+// Empty when unwired or unreachable; the table-only check still applies.
 func (s *Service) livePublishedPorts(serverID uint) map[string]string {
 	ports, _ := s.inspectNode(serverID)
 	return ports
 }
 
-// inspectNode is livePublishedPorts plus whether the node actually answered. A
-// conflict check treats "unreachable" and "nothing published" the same way, but
-// the admin overview must not: one is a clean node, the other is no information.
+// Conflict checks treat unreachable and empty alike, but the admin overview must not.
 func (s *Service) inspectNode(serverID uint) (map[string]string, bool) {
 	if s.docker == nil {
 		return nil, false
@@ -370,8 +347,6 @@ func (s *Service) inspectNode(serverID uint) (map[string]string, bool) {
 	return publishedPorts(conts), true
 }
 
-// publishedPorts maps host:proto -> owning container name across the given
-// containers. Pure, so it is unit-testable without a Docker daemon.
 func publishedPorts(conts []docker.Container) map[string]string {
 	out := map[string]string{}
 	for _, ct := range conts {
@@ -413,8 +388,6 @@ func containerName(ct docker.Container) string {
 	return "another container"
 }
 
-// autoApprove marks a binding approved without review, or returns ErrHostPortTaken when the host
-// port is already claimed. Pure (no DB) so it can be unit-tested.
 func autoApprove(b *models.PortBinding, reviewer uint, hostPortInUse bool, note string) error {
 	if hostPortInUse {
 		return ErrHostPortTaken
@@ -425,9 +398,7 @@ func autoApprove(b *models.PortBinding, reviewer uint, hostPortInUse bool, note 
 	return nil
 }
 
-// markAppRedeploy flags a deployed app as needing a redeploy after a binding is approved: an approved host
-// port is only published on the app's next deploy, so the UI should show "redeploy required" until then.
-// No-op for an undeployed app (e.g. during import, where there's nothing published yet). Best-effort.
+// An approved port is published only on the next deploy, so the UI shows "redeploy required"; no-op if undeployed.
 func (s *Service) markAppRedeploy(appID uint) {
 	app, err := s.apps.FindByID(appID)
 	if err != nil || app.CurrentReleaseID == nil {
@@ -476,8 +447,7 @@ func (s *Service) ListByStatus(status models.PortBindingStatus) ([]models.PortBi
 	return s.repo.ListByStatus(status)
 }
 
-// Approve publishes a binding (on the app's next deploy), after a node-wide
-// host-port conflict check.
+// Approve takes effect on the app's next deploy, after a node-wide conflict check.
 func (s *Service) Approve(id, reviewerID uint, note string) (*models.PortBinding, error) {
 	b, err := s.repo.FindByID(id)
 	if err != nil {
@@ -560,8 +530,7 @@ func (s *Service) ListApproved() ([]ApprovedBinding, error) {
 	return out, nil
 }
 
-// RevokeApproved rejects every approved binding and flags each app for redeploy, which is when
-// the port stops being published. dryRun lists what would be revoked and changes nothing.
+// RevokeApproved flags apps for redeploy, which is when ports stop being published; dryRun changes nothing.
 func (s *Service) RevokeApproved(reviewerID uint, dryRun bool) ([]ApprovedBinding, error) {
 	list, err := s.ListApproved()
 	if err != nil || dryRun {

@@ -33,12 +33,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 )
 
-// ApplyHandler exposes the declarative apply API: preview (dry run) or converge
-// a workspace to a bundle of miabi.io/v1 manifests.
 type ApplyHandler struct {
 	svc *apply.Service
-	// apps resolves the application an export names. The apply service works in manifest names; the
-	// route addresses an app the way every other app route does, by id or uid.
+	// The route addresses an app by id or uid, while the apply service works in manifest names.
 	apps *application.Service
 	// placer tells a platform admin's apply apart, which may create in restricted locations.
 	placer *Placer
@@ -49,13 +46,7 @@ func NewApplyHandler(svc *apply.Service, apps *application.Service, placer *Plac
 	return &ApplyHandler{svc: svc, apps: apps, placer: placer, audit: auditLog}
 }
 
-// ExportApplication renders one application as a miabi.io/v1 bundle, for moving an app created in
-// the console into Git. The response is the YAML itself, not the JSON envelope: it is meant to be
-// saved to a file, and a caller should not have to unwrap a document to do that.
-//
-// Refused for an application whose source is owned by a marketplace install or by GitOps. The first
-// is described by its template, and the second already has a manifest — handing someone a second
-// copy invites two documents claiming the same app.
+// Returns raw YAML, not the JSON envelope; refused for marketplace or GitOps-owned apps.
 func (h *ApplyHandler) ExportApplication(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	id, err := appRef(c, h.apps.IDByUID)
@@ -95,8 +86,6 @@ type ApplyRequest struct {
 		Prune bool `json:"prune"`
 		// DryRun returns the plan without applying it.
 		DryRun bool `json:"dry_run"`
-		// Delete removes exactly the resources the bundle names (the inverse of an
-		// apply) instead of converging to them. Honors DryRun.
 		Delete bool `json:"delete"`
 		// Force applies changes to resources a GitOps project owns; its next sync reverts them.
 		Force bool `json:"force"`

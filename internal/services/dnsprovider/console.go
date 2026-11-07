@@ -9,8 +9,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// ErrConsoleNameTaken refuses a console push into a workspace where a provider made in Miabi already
-// holds ConsoleProviderName: it is never adopted silently.
+// ErrConsoleNameTaken: a Miabi-made provider holding ConsoleProviderName is never adopted silently.
 var ErrConsoleNameTaken = errors.New("a DNS provider named " + ConsoleProviderName + " already exists in this workspace")
 
 // ConsoleInput is what the billing console pushes. An empty APIToken keeps the stored one.
@@ -20,8 +19,7 @@ type ConsoleInput struct {
 	Zones     []string
 }
 
-// UpsertConsole creates or updates the workspace's console-managed provider. It skips the plan quota:
-// the console sells the DNS hosting, not the workspace's own provider allowance.
+// UpsertConsole skips the plan quota: the console sells the DNS hosting, not the workspace's provider allowance.
 func (s *Service) UpsertConsole(_ context.Context, workspaceID uint, in ConsoleInput) (*models.DNSProvider, error) {
 	p, err := s.repo.FindByName(workspaceID, ConsoleProviderName)
 	if err != nil {
@@ -70,8 +68,7 @@ func (s *Service) ConsoleProvider(workspaceID uint) (*models.DNSProvider, error)
 	return p, nil
 }
 
-// DeleteConsole removes the workspace's console-managed provider; its domains fall back to manual
-// DNS. It reports whether there was one.
+// DeleteConsole removes the console-managed provider; its domains fall back to manual DNS.
 func (s *Service) DeleteConsole(workspaceID uint) (bool, error) {
 	p, err := s.ConsoleProvider(workspaceID)
 	if err != nil || p == nil {
@@ -83,8 +80,6 @@ func (s *Service) DeleteConsole(workspaceID uint) (bool, error) {
 // DeleteAllConsole removes every console-managed provider, when the instance leaves the console.
 func (s *Service) DeleteAllConsole() error { return s.repo.DeleteManagedBy(models.ManagedByConsole) }
 
-// ConsoleProviderFor returns the id of the console-managed provider whose zones cover a domain name,
-// for connecting a new domain to it.
 func (s *Service) ConsoleProviderFor(workspaceID uint, name string) *uint {
 	p, err := s.ConsoleProvider(workspaceID)
 	if err != nil || p == nil || !p.CoversDomain(name) {

@@ -52,8 +52,7 @@ var (
 
 var certProviderPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`)
 
-// ExternalAccess returns the wildcard domain and certificate provider for generated app URLs in a cluster; id 0 is
-// the default cluster. An empty domain means one-click external access is off there.
+// An empty domain means one-click external access is off there.
 func (s *Service) ExternalAccess(clusterID uint) (domain, provider string) {
 	if s.store == nil {
 		return "", ""
@@ -78,14 +77,11 @@ func (s *Service) ExternalApps(clusterID uint) int64 {
 	return n
 }
 
-// SetExternalAccessListener is told when a cluster's external domain or certificate provider changed, so the
-// generated app URLs follow.
 func (s *Service) SetExternalAccessListener(fn func(ctx context.Context, clusterID uint)) {
 	s.externalListener = fn
 }
 
-// PinExternalAccess applies MIABI_EXTERNAL_BASE_DOMAIN and MIABI_EXTERNAL_BASE_PROVIDER to the default cluster. A
-// set variable wins on every boot and locks its field; an empty one leaves the field to the console.
+// A set variable wins on every boot and locks its field; an empty one leaves it to the console.
 func (s *Service) PinExternalAccess(domain, provider string) error {
 	s.externalDomainEnv = normalizeExternalDomain(domain)
 	s.externalProviderEnv = strings.TrimSpace(provider)
@@ -147,8 +143,7 @@ func (s *Service) externalColumns(c *models.Cluster, p ClusterPatch) (map[string
 	return cols, nil
 }
 
-// checkExternalDomain refuses a malformed domain, and one another cluster already uses: both would generate the
-// same hostnames.
+// Two clusters with the same domain would generate the same hostnames.
 func (s *Service) checkExternalDomain(clusterID uint, domain string) error {
 	if domain == "" {
 		return nil
@@ -190,8 +185,6 @@ func normalizeExternalDomain(raw string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(d, "."), ".")
 }
 
-// ExternalCertificates reads the certificates kept in the system workspace. Implemented by
-// services/certificate.
 type ExternalCertificates interface {
 	SystemCertificate(id uint) (*models.Certificate, error)
 	ResolveSystem(id uint) (certPEM, keyPEM string, err error)
@@ -200,9 +193,7 @@ type ExternalCertificates interface {
 // SetExternalCertificates wires the certificates a cluster may serve its generated URLs from.
 func (s *Service) SetExternalCertificates(c ExternalCertificates) { s.externalCerts = c }
 
-// externalCertColumns validates a patch's certificate choice against the domain the cluster will have after
-// the patch. A domain change that leaves the current certificate behind is refused rather than silently
-// falling back to a certificate per app.
+// A domain change that strands the current cert is refused rather than silently falling back.
 func (s *Service) externalCertColumns(c *models.Cluster, p ClusterPatch) (map[string]any, error) {
 	domain := c.ExternalBaseDomain
 	if p.ExternalBaseDomain != nil {
@@ -234,8 +225,7 @@ func (s *Service) externalCertColumns(c *models.Cluster, p ClusterPatch) (map[st
 	return map[string]any{"external_certificate_id": certID}, nil
 }
 
-// externalCertProblem reports why a certificate cannot serve the generated URLs under domain. Those are
-// <label>.<domain> or <label>-<port>.<domain>, one label deep, so only the domain's wildcard covers them all.
+// Generated URLs are one label deep, so only the domain's wildcard covers them all.
 func externalCertProblem(cert *models.Certificate, domain string, now time.Time) error {
 	if domain == "" {
 		return ErrExternalCertNeedsDomain
@@ -257,9 +247,7 @@ func ExternalCertProblem(cert *models.Certificate, domain string) error {
 	return externalCertProblem(cert, domain, time.Now())
 }
 
-// ExternalCertificatePair returns the certificate a cluster serves its generated URLs from. ok is false when
-// it has none or the one chosen can no longer serve them, and the gateway then falls back to a certificate
-// per app rather than presenting an expired or mismatched one.
+// When ok is false the gateway falls back per app rather than presenting an expired or mismatched cert.
 func (s *Service) ExternalCertificatePair(clusterID uint) (certPEM, keyPEM string, ok bool) {
 	if s.store == nil || s.externalCerts == nil {
 		return "", "", false

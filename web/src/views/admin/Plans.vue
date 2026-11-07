@@ -19,8 +19,7 @@ const licenseStore = useLicenseStore()
 // The restricted security profile is Enterprise-only.
 const securityProfile = useEntitlement('security_profile')
 
-// Plan-catalog cap: Community keeps the seeded plans (editable/deletable) but
-// can't add more; an Enterprise license raises or lifts the limit. -1 = unlimited.
+// Community keeps the seeded plans but can't add more; -1 = unlimited.
 const planUsage = computed(() => licenseStore.view?.plan_usage)
 const atPlanCap = computed(() => {
   const u = planUsage.value
@@ -56,8 +55,7 @@ function onSearchInput() {
 }
 onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer) })
 
-// The numeric limit dimensions, rendered as a grid in the form and a summary
-// in the table. -1 = unlimited, 0 = none.
+// -1 = unlimited, 0 = none.
 type LimitKey =
   | 'max_apps' | 'max_database_instances' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members'
@@ -214,9 +212,7 @@ async function setDefault(p: Plan) {
                 <span v-else class="badge badge-dot badge-danger">{{ $t('plans.inactive') }}</span>
               </td>
               <td class="text-right" @click.stop>
-                <!-- Never offered for a system plan: it is the platform's own, and
-                     making it the default would put every unassigned workspace on
-                     unlimited resources. -->
+                <!-- Making the system plan default would give every unassigned workspace unlimited resources. -->
                 <button v-if="!p.is_default && !p.system" class="btn btn-sm btn-secondary" @click="setDefault(p)">{{ $t('plans.setAsDefault') }}</button>
               </td>
             </tr>

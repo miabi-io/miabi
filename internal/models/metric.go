@@ -21,8 +21,6 @@ package models
 
 import "time"
 
-// MetricSample is a point-in-time resource sample for an application, captured
-// by the background scraper for short-term history.
 type MetricSample struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	ApplicationID uint      `json:"application_id" gorm:"index:idx_metric_app_time;not null"`

@@ -34,23 +34,15 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// adoptTimeout bounds the probe clone made while adopting or re-syncing. It is generous relative to the
-// interactive inspect endpoint because these calls sit on a background path (app creation, a run about to
-// start), but it still has to end — a hung clone must not wedge a deploy.
+// Longer than interactive inspect since this is a background path, but a hung clone must not wedge a deploy.
 const adoptTimeout = 60 * time.Second
 
-// SetGitRepos wires git credential resolution, which repository adoption and per-run re-sync both need to
-// clone. Left unset — in tests, or deployments with adoption disabled — AdoptForApp reports
-// ErrAdoptionUnavailable and re-sync is skipped in favour of the stored spec.
+// SetGitRepos is optional; unset, AdoptForApp returns ErrAdoptionUnavailable and re-sync uses the stored spec.
 func (s *Service) SetGitRepos(g *gitrepo.Service) { s.gitRepos = g }
 
-// SetApps wires app lookup, which re-sync needs to resolve a repo-owned
-// pipeline's clone source from the app it is bound to.
 func (s *Service) SetApps(a *repositories.ApplicationRepository) { s.apps = a }
 
-// AdoptForApp probes an app's repository for a pipeline-as-code document and, when it finds one, creates a
-// repo-owned pipeline bound to that app. The definition is named after the app rather than the document's
-// metadata.name, because two apps built from forks of the same repo would otherwise collide.
+// Named after the app, not metadata.name, so apps built from forks of one repo don't collide.
 func (s *Service) AdoptForApp(ctx context.Context, app *models.Application, userID *uint) (*models.PipelineDefinition, error) {
 	if s.gitRepos == nil {
 		return nil, ErrAdoptionUnavailable
@@ -82,9 +74,7 @@ func (s *Service) AdoptForApp(ctx context.Context, app *models.Application, user
 	})
 }
 
-// RepoPipelineForApp returns the enabled, repo-owned pipeline bound to an app, or nil when it has none. It
-// is what makes a deploy of a pipeline-carrying app route through CI instead of building directly. An app
-// may be bound to several pipelines; only a repo-owned one claims the deploy path, and the oldest wins.
+// RepoPipelineForApp routes deploys through CI; only a repo-owned pipeline claims the deploy path, oldest wins.
 func (s *Service) RepoPipelineForApp(appID uint) (*models.PipelineDefinition, error) {
 	defs, err := s.repo.ListEnabledByApp(appID)
 	if err != nil {
@@ -93,9 +83,7 @@ func (s *Service) RepoPipelineForApp(appID uint) (*models.PipelineDefinition, er
 	return pickRepoOwned(defs), nil
 }
 
-// pickRepoOwned returns the oldest repo-owned definition in defs, or nil. Oldest
-// rather than newest so the app's deploy path can't change under it when a
-// second pipeline is bound later.
+// Oldest so the deploy path can't change when a second pipeline is bound later.
 func pickRepoOwned(defs []models.PipelineDefinition) *models.PipelineDefinition {
 	var best *models.PipelineDefinition
 	for i := range defs {
@@ -109,9 +97,7 @@ func pickRepoOwned(defs []models.PipelineDefinition) *models.PipelineDefinition 
 	return best
 }
 
-// TriggerForApp starts a run of an app's repo-owned pipeline on the app's
-// tracked ref. The commit is left unset: the runner resolves the ref's current
-// head, which is what a user asking to deploy means by "the latest".
+// The commit is left unset so the runner resolves the ref's current head.
 func (s *Service) TriggerForApp(app *models.Application, trigger string, userID *uint, noCache bool) (*models.PipelineRun, error) {
 	def, err := s.RepoPipelineForApp(app.ID)
 	if err != nil {
@@ -125,9 +111,7 @@ func (s *Service) TriggerForApp(app *models.Application, trigger string, userID 
 	})
 }
 
-// DeleteForApp removes every repo-owned pipeline bound to an app. Called when the app is deleted: a
-// repo-owned pipeline exists only to serve its app, and left behind it would be an un-runnable definition
-// with a dangling binding. Manual pipelines are unbound instead — a user authored those.
+// DeleteForApp deletes repo-owned pipelines with the app; manual ones are only unbound since a user authored them.
 func (s *Service) DeleteForApp(workspaceID, appID uint) error {
 	defs, err := s.repo.ListByApp(appID)
 	if err != nil {
@@ -150,9 +134,7 @@ func (s *Service) DeleteForApp(workspaceID, appID uint) error {
 	return errors.Join(errs...)
 }
 
-// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository at ref and stores it, so a run
-// always executes the document the commit carries, reporting whether it changed. An unreachable repository
-// is not fatal — the last known-good spec is used — but a spec that no longer parses IS.
+// SyncFromRepo tolerates an unreachable repo (last good spec) but fails on a spec that no longer parses.
 func (s *Service) SyncFromRepo(ctx context.Context, p *models.PipelineDefinition, ref string) (bool, error) {
 	if !p.IsRepoOwned() || s.gitRepos == nil || p.ApplicationID == nil || s.apps == nil {
 		return false, nil
@@ -196,8 +178,7 @@ func (s *Service) SyncFromRepo(ctx context.Context, p *models.PipelineDefinition
 	return changed, nil
 }
 
-// discoverForApp resolves an app's clone URL + credential and probes it. ref
-// overrides the app's tracked ref (a push webhook supplies the pushed commit).
+// ref overrides the app's tracked ref (a push webhook supplies the pushed commit).
 func (s *Service) discoverForApp(ctx context.Context, app *models.Application, ref string) (*Found, error) {
 	url, auth, err := s.gitRepos.CloneURLAuth(app.WorkspaceID, app.GitRepo, app.GitRepositoryID)
 	if err != nil {
@@ -214,10 +195,7 @@ func (s *Service) discoverForApp(ctx context.Context, app *models.Application, r
 // pinCommitTimeout bounds the ls-remote a trigger makes to pin a run; it runs on the request path.
 const pinCommitTimeout = 15 * time.Second
 
-// pinCommit fills in the branch and commit of a run whose trigger named no commit: an app-bound run
-// builds the app's tracked ref, and the head of that branch is resolved, so the run records what it
-// checks out and steps see it as $MIABI_COMMIT. A failed lookup is logged and leaves the run
-// unpinned; the runner then clones the default branch as before.
+// A failed lookup leaves the run unpinned; the runner then clones the default branch.
 func (s *Service) pinCommit(p *models.PipelineDefinition, in *TriggerInput) {
 	if s.gitRepos == nil {
 		return
@@ -256,9 +234,7 @@ func (s *Service) pinCommit(p *models.PipelineDefinition, in *TriggerInput) {
 	in.Commit = commit
 }
 
-// uniqueName returns base, or the first free base-2, base-3, … suffix. Adoption
-// must not fail because the workspace already has a pipeline by that name, and a
-// numeric suffix reads better in the UI than a random token.
+// Adoption must not fail on a name collision; a numeric suffix reads better than a random token.
 func (s *Service) uniqueName(workspaceID uint, base string) string {
 	name := slug.Make(base, "")
 	if name == "" {

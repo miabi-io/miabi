@@ -32,8 +32,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// A callback carrying a valid code and state from someone else's browser is login-CSRF: it must be
-// refused unless this browser started the flow, and the state must survive for its rightful owner.
+// A valid code and state from another browser is login-CSRF and must be refused.
 func TestOAuthCallbackRequiresTheBrowsersState(t *testing.T) {
 	mr := miniredis.RunT(t)
 	if err := mr.Set("oauth:state:abc", "acme-sso"); err != nil {

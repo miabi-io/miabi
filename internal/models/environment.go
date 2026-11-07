@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// Environment is a promotion stage within a workspace (dev → staging → prod). A
-// Release is promoted by updating the target environment's desired state — a Git
-// commit (GitOps) or an API write — so promotion is auditable and reconciled.
+// Environment is a promotion stage; promotion updates its desired state so it is auditable and reconciled.
 type Environment struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_env_ws_name,unique;not null"`
@@ -43,8 +41,7 @@ type Environment struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ReleaseApproval records one approver's decision on promoting a release into an
-// environment. A promotion needs Environment.RequiredApprovals approvals.
+// A promotion needs Environment.RequiredApprovals approvals.
 type ReleaseApproval struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	WorkspaceID   uint      `json:"workspace_id" gorm:"index;not null"`

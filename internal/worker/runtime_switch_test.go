@@ -47,8 +47,7 @@ func newSwitchHarness(t *testing.T) (*DeployHandler, *orderLog, func(any)) {
 	}
 }
 
-// Service -> container: the previous release holds a Swarm service id, which the container calls would
-// silently fail to remove, leaving the service serving next to the new container.
+// Container calls would silently fail to remove a Swarm service id, leaving it serving beside the new container.
 func TestSwapRemovesPreviousServiceRelease(t *testing.T) {
 	h, log, create := newSwitchHarness(t)
 	app := &models.Application{Name: "web", Image: "nginx", Tag: "1", RuntimeKind: models.RuntimeContainer}

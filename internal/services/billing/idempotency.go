@@ -55,9 +55,7 @@ func RequestHash(method, path string, body []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// BeginIdempotent claims key for the request. It returns the stored answer when the same request
-// already finished, ErrKeyReused for a different request, ErrInFlight while it is still running,
-// or (nil, nil) when the caller should run the request and then call FinishIdempotent.
+// (nil, nil) means run the request, then call FinishIdempotent.
 func (s *Service) BeginIdempotent(key, hash string) (*Stored, error) {
 	now := s.now()
 	for attempt := 0; attempt < 2; attempt++ {
@@ -90,8 +88,7 @@ func (s *Service) BeginIdempotent(key, hash string) (*Stored, error) {
 	return nil, ErrInFlight
 }
 
-// FinishIdempotent stores the answer for replay, except server errors and 402s, which are not
-// final: their key is released so a retry runs the request again.
+// Server errors and 402s are not final, so their key is released for a retry.
 func (s *Service) FinishIdempotent(key string, status int, body []byte) error {
 	if status >= 500 || status == 402 {
 		return s.db.Where("key = ? AND done = ?", key, false).Delete(&models.BillingIdempotencyKey{}).Error

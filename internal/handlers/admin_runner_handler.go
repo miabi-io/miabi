@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/runner"
 )
 
-// AdminRunnerHandler exposes platform-admin management of the shared runner pool (WorkspaceID =
-// nil, Scope = shared): runners any workspace with the platform-runners capability may use.
-// Members may use a shared runner but only admins edit it. Reuses RunnerHandler.mapErr.
+// AdminRunnerHandler manages the shared runner pool; members may use a shared runner but only admins edit it.
 type AdminRunnerHandler struct {
 	svc   *runner.Service
 	base  *RunnerHandler
@@ -46,9 +44,7 @@ func NewAdminRunnerHandler(svc *runner.Service, ee enterprise.EE, auditLog *audi
 	return &AdminRunnerHandler{svc: svc, base: NewRunnerHandler(svc, auditLog), ee: ee, audit: auditLog}
 }
 
-// overCreateLimit reports whether the shared pool is already at the edition's cap. It writes no
-// response: entitlementAbort returns nil once it has written one, so the refusal has to be the
-// handler's own return or the runner is registered anyway. A failed count does not block a create.
+// Writes no response: entitlementAbort returns nil, so the refusal must be the handler's own return.
 func (h *AdminRunnerHandler) overCreateLimit() bool {
 	lim := h.ee.Entitlements().SharedRunnerLimit()
 	if lim < 0 {
@@ -58,8 +54,6 @@ func (h *AdminRunnerHandler) overCreateLimit() bool {
 	return err == nil && len(runners) >= lim
 }
 
-// SetConnRegistry wires the live-tunnel lookup used to annotate the shared
-// runners' Connected flag (nil-safe).
 func (h *AdminRunnerHandler) SetConnRegistry(c RunnerConnRegistry) { h.base.SetConnRegistry(c) }
 
 // SetRunnerReleases wires the newest known runner release (nil-safe).
@@ -98,8 +92,7 @@ func (h *AdminRunnerHandler) Create(c *okapi.Context, req *RunnerRequest) error 
 	return created(c, map[string]any{"runner": r, "token": token, "image": h.svc.Image()})
 }
 
-// Update edits a shared runner's mutable fields. Not license-gated — managing a
-// runner already within the pool's allowance is always permitted.
+// Not license-gated: managing a runner already within the pool's allowance is always permitted.
 func (h *AdminRunnerHandler) Update(c *okapi.Context, req *RunnerRequest) error {
 	r, err := h.svc.UpdateShared(h.id(c), req.input())
 	if err != nil {
@@ -122,8 +115,7 @@ func (h *AdminRunnerHandler) Cordon(c *okapi.Context, req *RunnerCordonRequest) 
 	return ok(c, r)
 }
 
-// RegenerateToken issues a fresh registration token for a shared runner. Not
-// license-gated — it manages an existing runner, it does not grow the pool.
+// Not license-gated: it manages an existing runner, it does not grow the pool.
 func (h *AdminRunnerHandler) RegenerateToken(c *okapi.Context) error {
 	token, err := h.svc.RegenerateTokenShared(h.id(c))
 	if err != nil {

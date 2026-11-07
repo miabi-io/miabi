@@ -33,8 +33,7 @@ import (
 // VerifyReport is the outcome of a recovery-point drill.
 type VerifyReport struct {
 	Ref string `json:"ref"`
-	// Restorable is the bottom line: this set can rebuild the platform on a fresh
-	// host. False does not always mean useless — see Findings.
+	// False does not always mean useless; see Findings.
 	Restorable bool            `json:"restorable"`
 	Findings   []VerifyFinding `json:"findings"`
 
@@ -48,8 +47,7 @@ type VerifyReport struct {
 
 // VerifyFinding is one problem, in the operator's terms.
 type VerifyFinding struct {
-	// Severity is "error" (this set cannot restore) or "warning" (it can, with a
-	// caveat the operator should know before they need it).
+	// "error" means the set cannot restore; "warning" means it can, with a caveat.
 	Severity string `json:"severity"`
 	Message  string `json:"message"`
 }
@@ -58,9 +56,7 @@ func (r *VerifyReport) add(severity, format string, args ...any) {
 	r.Findings = append(r.Findings, VerifyFinding{Severity: severity, Message: fmt.Sprintf(format, args...)})
 }
 
-// VerifySet checks a recovery point without restoring anything: every artifact is present in object
-// storage, and the identity envelope opens with the passphrase and carries the master key this platform
-// runs on. A recovery point that has never been opened is a hypothesis.
+// VerifySet checks artifact presence and that the envelope opens with this platform's master key, without restoring.
 func (s *Service) VerifySet(ctx context.Context, set *models.PlatformBackupSet, passphrase string) (*VerifyReport, error) {
 	st, err := s.getSettings()
 	if err != nil {
@@ -78,8 +74,7 @@ func (s *Service) VerifySet(ctx context.Context, set *models.PlatformBackupSet, 
 		return rep, nil
 	}
 
-	// Every artifact the set claims must actually be in the bucket. A row saying
-	// "completed" is a record of what happened months ago, not of what is there.
+	// A "completed" row records the past, not what the bucket holds now.
 	var identityItem *models.PlatformBackup
 	var hasDB bool
 	for i := range set.Items {
@@ -118,8 +113,7 @@ func (s *Service) VerifySet(ctx context.Context, set *models.PlatformBackupSet, 
 		s.verifyIdentity(ctx, store, st, set, identityItem, passphrase, rep)
 	}
 
-	// Encryption coverage is not uniform, and an operator who set a passphrase has
-	// every reason to assume it is. Say which artifacts it did not reach.
+	// Encryption coverage is not uniform, so name the artifacts the passphrase did not reach.
 	if set.Encrypted {
 		var plain []string
 		for i := range set.Items {
@@ -139,9 +133,7 @@ func (s *Service) VerifySet(ctx context.Context, set *models.PlatformBackupSet, 
 	return rep, nil
 }
 
-// verifyIdentity opens the sealed envelope and checks it belongs to this
-// recovery point. Every failure below is recorded rather than returned: the
-// operator wants the whole verdict, not the first thing that went wrong.
+// Failures are recorded, not returned: the operator wants the whole verdict.
 func (s *Service) verifyIdentity(ctx context.Context, store *blob.Store, st *models.PlatformBackupSettings, set *models.PlatformBackupSet, item *models.PlatformBackup, passphrase string, rep *VerifyReport) {
 	pass := passphrase
 	if pass == "" {
@@ -175,9 +167,7 @@ func (s *Service) verifyIdentity(ctx context.Context, store *blob.Store, st *mod
 	rep.InstallID = identity.InstallID
 	rep.MiabiVersion = identity.MiabiVersion
 
-	// Opening the envelope is not enough: it must carry the key this platform's
-	// data is actually encrypted under. A stale envelope from before a key
-	// rotation opens perfectly and restores nothing readable.
+	// A pre-rotation envelope opens fine but restores nothing readable, so the key fingerprint must match.
 	if fp := s.fingerprintOf(identity.EncryptionKey); fp != "" && set.KEKFingerprint != "" {
 		rep.KEKMatches = fp == set.KEKFingerprint
 		if !rep.KEKMatches {
@@ -189,9 +179,7 @@ func (s *Service) verifyIdentity(ctx context.Context, store *blob.Store, st *mod
 	}
 }
 
-// fingerprintOf computes the fingerprint a given master key would produce, so a recovered envelope can be
-// checked against the set that recorded it. It mirrors crypto.DeriveToken but takes the key explicitly,
-// because the key under test is not this process's key.
+// Takes the key explicitly because the key under test is not this process's key.
 func (s *Service) fingerprintOf(key string) string {
 	if s.keyFingerprint == nil {
 		return ""
@@ -218,9 +206,7 @@ func artifactLabel(b *models.PlatformBackup) string {
 	return string(b.Subject)
 }
 
-// objectKey is the artifact's key within the bucket. The identity envelope
-// records its full key; the *-bkup tools record a bare filename under the
-// configured remote path.
+// The envelope records its full key; the *-bkup tools record a bare filename under the remote path.
 func objectKey(b *models.PlatformBackup) string {
 	if b.Subject == models.PlatformBackupIdentity {
 		return b.Filename

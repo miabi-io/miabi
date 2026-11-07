@@ -68,8 +68,6 @@ func TestPostReloadErrorsOnNon2xx(t *testing.T) {
 func TestReloadNoOpForLocalManager(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "img", "miabi", "ops@example.com")
 	s.SetProvidersVolume("mb-platform-gateway-providers") // stack install
-	// Local manager uses the watched file provider; reload must be a no-op even
-	// with no address configured.
 	if err := s.Reload(context.Background(), &models.Server{IsLocal: true}, "tok"); err != nil {
 		t.Fatalf("expected no-op for local manager, got %v", err)
 	}

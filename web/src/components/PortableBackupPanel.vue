@@ -1,11 +1,5 @@
 <script setup lang="ts">
-// Portable backup: export this workspace to a bundle on its S3 target (encrypted when a bundle
-// passphrase is set), and restore one back — here, or into a fresh workspace.
-//
-// The bundle list comes from the bucket, not from this platform's run history:
-// the whole point of the feature is that a bundle outlives the install that
-// wrote it, so what the bucket holds is the truth and the runs below are only
-// what this platform remembers doing.
+// Bundles are listed from the bucket, not run history, because a bundle must outlive the install that wrote it.
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { portableBackupApi, type BundleInfo, type BundleRun } from '@/api/portableBackup'
@@ -29,8 +23,7 @@ const bundles = ref<BundleInfo[]>([])
 const runs = ref<BundleRun[]>([])
 const exporting = ref(false)
 
-// A run in flight is polled: an export dumps databases and archives volumes, so
-// it finishes minutes after the button was pressed.
+// An export dumps databases and archives volumes, so it finishes minutes later.
 const activeRun = computed(() => runs.value.find((r) => r.status === 'pending' || r.status === 'running') ?? null)
 let poll: ReturnType<typeof setInterval> | null = null
 

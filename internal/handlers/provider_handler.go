@@ -33,9 +33,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/route"
 )
 
-// ProviderHandler serves a remote node's Goma Gateway config over Goma's HTTP provider: a node's
-// Gateway polls these endpoints with its join token. The bundle contains every middleware (routes
-// reference them by name) but only the routes for apps that node's gateway serves.
+// The bundle carries every middleware (routes reference them by name) but only this node's routes.
 type ProviderHandler struct {
 	nodes     *node.Service
 	routes    *route.Service
@@ -54,8 +52,7 @@ func NewProviderHandler(n *node.Service, routes *route.Service) *ProviderHandler
 	return &ProviderHandler{nodes: n, routes: routes}
 }
 
-// SetAnalyticsIngest enables POST /provider/{slug}/analytics. Without it the
-// endpoint reports 503 rather than silently dropping a node's events.
+// Without it the endpoint reports 503 rather than silently dropping a node's events.
 func (h *ProviderHandler) SetAnalyticsIngest(i *analytics.Ingester, m AnalyticsIngestMetrics,
 	forwarder func(*models.Server) AnalyticsForwarderConfig) {
 	h.ingest, h.metrics, h.forwarder = i, m, forwarder
@@ -71,8 +68,7 @@ func (h *ProviderHandler) Routes(c *okapi.Context) error { return h.serve(c, tru
 func (h *ProviderHandler) Middlewares(c *okapi.Context) error { return h.serve(c, false, true) }
 
 func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bool) error {
-	// Authenticate by the node's join token or its gateway token (the gateway
-	// polls with the latter, which is recoverable for on-demand redeploys).
+	// The gateway polls with its gateway token, which is recoverable for on-demand redeploys.
 	srv, err := h.nodes.AuthenticateProvider(c.Param("slug"), bearer(c.Header("Authorization")))
 	if err != nil {
 		return c.AbortUnauthorized("invalid node token")
@@ -87,8 +83,7 @@ func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bo
 	if !withMiddlewares {
 		mws = nil
 	}
-	// Under THIS node's key: the bundle is for its gateway alone, and no other node's gateway
-	// should be able to read it if it ever ends up somewhere it should not.
+	// Under this node's key so no other node's gateway can read the bundle.
 	body, err := proxy.RenderBundle(routes, mws, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()))
 	if err != nil {
 		return c.AbortInternalServerError("failed to render node config", err)
@@ -100,8 +95,7 @@ func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bo
 	return nil
 }
 
-// AnalyticsForwarderConfig tells an agent how to drain its node's local analytics
-// stream. Resolved from the agent's own token, so a node cannot ask about another.
+// Resolved from the agent's own token, so a node cannot ask about another.
 type AnalyticsForwarderConfig struct {
 	Enabled       bool   `json:"enabled"`
 	Node          string `json:"node"`
@@ -110,8 +104,6 @@ type AnalyticsForwarderConfig struct {
 	RedisPassword string `json:"redis_password,omitempty"`
 }
 
-// AnalyticsConfig hands the agent its forwarder settings: which local stream its
-// gateway writes to and how to reach the node Redis holding it.
 func (h *ProviderHandler) AnalyticsConfig(c *okapi.Context) error {
 	srv, err := h.nodes.Authenticate(bearer(c.Header("Authorization")))
 	if err != nil {
@@ -130,10 +122,7 @@ type AnalyticsIngestRequest struct {
 	Body analytics.Batch `json:"body"`
 }
 
-// IngestAnalytics accepts one batch of request events from a node's gateway and
-// appends them to the platform stream, so edge traffic lands in the same rollups
-// as the manager's. Authenticated as the node; the node is resolved from the
-// token, never from the body.
+// The node is resolved from the token, never from the body.
 func (h *ProviderHandler) IngestAnalytics(c *okapi.Context, req *AnalyticsIngestRequest) error {
 	if h.ingest == nil {
 		return c.AbortWithError(http.StatusServiceUnavailable, errAnalyticsDisabled)

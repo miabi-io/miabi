@@ -34,8 +34,6 @@ var (
 	ErrStructuralChange = errors.New("template structure changed; upgrade manually")
 )
 
-// InstallAppRef is a lightweight reference to an application an install created,
-// for linking from the installs list.
 type InstallAppRef struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`         // unique slug handle
@@ -43,8 +41,7 @@ type InstallAppRef struct {
 	Status      string `json:"status"`
 }
 
-// InstallView is a template install annotated with upgrade availability and the
-// applications it created (resolved live, so deleted apps drop off).
+// Apps are resolved live, so deleted ones drop off.
 type InstallView struct {
 	models.TemplateInstall
 	Apps            []InstallAppRef `json:"apps"`
@@ -52,9 +49,7 @@ type InstallView struct {
 	UpdateAvailable bool            `json:"update_available"`
 }
 
-// latestVersion returns the newest available version of a template visible to
-// the workspace (custom import preferred), or "" if it is no longer in any
-// catalog.
+// Custom imports are preferred; "" means the template is no longer in any catalog.
 func (s *Service) latestVersion(workspaceID uint, slug string) string {
 	if m, _, ok := s.resolveManifest(workspaceID, slug, ""); ok {
 		return m.Metadata.Version
@@ -62,25 +57,20 @@ func (s *Service) latestVersion(workspaceID uint, slug string) string {
 	return ""
 }
 
-// isNewer reports whether latest is a different, non-empty version than current.
-// (Versions in the catalog are published newest-first, so "different" is enough
-// to flag an available update without a full semver parse.)
+// Catalog versions are published newest-first, so "different" suffices without a semver parse.
 func isNewer(latest, current string) bool {
 	latest, current = strings.TrimSpace(latest), strings.TrimSpace(current)
 	return latest != "" && latest != current
 }
 
-// RemovedResource is one resource a teardown attempted to delete, for the
-// post-delete follow-up. Error is set (and non-fatal) when removal failed.
+// Error is set (non-fatal) when removal failed.
 type RemovedResource struct {
 	Kind  string `json:"kind"` // application | config | database | database server | stack | volume
 	Name  string `json:"name"`
 	Error string `json:"error,omitempty"`
 }
 
-// UninstallResult is the follow-up of an uninstall: every resource the teardown
-// touched and which of them failed (best-effort, so a partial install can always
-// be cleaned up).
+// Best-effort so a partial install can always be cleaned up.
 type UninstallResult struct {
 	Removed []RemovedResource `json:"removed"`
 	Failed  int               `json:"failed"`
@@ -94,9 +84,7 @@ func (r *UninstallResult) err(kind, name string, e error) {
 	r.Failed++
 }
 
-// Uninstall tears down everything a template install created — the logical databases its apps use, the
-// apps and their stack, the instances, configs and volumes it provisioned — then removes the install record.
-// Best-effort: it continues past individual failures and reports them, so a partial install is cleanable.
+// Uninstall continues past individual failures and reports them, so a partial install is cleanable.
 func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*UninstallResult, error) {
 	rec, err := s.installs.FindInWorkspace(workspaceID, installID)
 	if err != nil {
@@ -104,9 +92,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 	}
 	res := &UninstallResult{}
 
-	// Logical databases go first, while their instances are still up so the DROP runs and no
-	// dedicated instance is later blocked by ErrInstanceInUse. This also reaps databases on
-	// shared instances, which are absent from DatabaseIDs and would otherwise orphan.
+	// First, while instances are up so DROP runs; also reaps databases on shared instances absent from DatabaseIDs.
 	for _, id := range rec.AppIDs {
 		dbs, lerr := s.dbs.ListByApp(workspaceID, id)
 		if lerr != nil {
@@ -121,8 +107,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// An app must be stopped before it can be deleted. AppIDs covers grouped and
-	// ungrouped installs; the stack record itself is removed afterwards.
+	// An app must be stopped before it can be deleted.
 	for _, id := range rec.AppIDs {
 		app, err := s.apps.Get(workspaceID, id)
 		if err != nil {
@@ -135,8 +120,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 			res.ok("application", app.Name)
 		}
 	}
-	// Remove the now-empty stack record for a grouped install (apps already gone,
-	// so withApps=false just detaches/deletes the record and reclaims its network).
+	// Apps are already gone, so withApps=false just deletes the record and reclaims its network.
 	if rec.StackID != nil && s.stacks != nil {
 		name := fmt.Sprintf("#%d", *rec.StackID)
 		if err := s.stacks.Delete(ctx, workspaceID, *rec.StackID, false); err != nil {
@@ -146,8 +130,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// Delete refuses while an instance runs, so stop it first; its logical databases
-	// were removed above, so ErrInstanceInUse no longer applies.
+	// Delete refuses a running instance; its logical databases are gone, so ErrInstanceInUse no longer applies.
 	for _, id := range rec.DatabaseIDs {
 		inst, err := s.dbs.Get(workspaceID, id)
 		if err != nil {
@@ -163,9 +146,7 @@ func (s *Service) Uninstall(ctx context.Context, workspaceID, installID uint) (*
 		}
 	}
 
-	// After the apps that mount them: Delete refuses while one still does. Left behind,
-	// a config would be silently adopted and overwritten by the next install of the
-	// same template.
+	// After the apps that mount them; a leftover config would be silently adopted by the next install.
 	for _, id := range rec.ConfigIDs {
 		if s.configs == nil {
 			break

@@ -38,9 +38,7 @@ func targets(nets []swarm.NetworkAttachmentConfig) []string {
 	return out
 }
 
-// Route changes run this on every save, so the answer "nothing to do" is the one that matters: a
-// service update is a rolling restart of the app's tasks, and re-asserting a state it is already in
-// would restart them for nothing.
+// Runs on every route save, and re-asserting the current state would restart tasks for nothing.
 func TestIngressAttachmentsNoChangeWhenAlreadyCorrect(t *testing.T) {
 	on := []swarm.NetworkAttachmentConfig{
 		{Target: "mb-ws-1-overlay", Aliases: []string{"web"}},
@@ -56,8 +54,7 @@ func TestIngressAttachmentsNoChangeWhenAlreadyCorrect(t *testing.T) {
 	}
 }
 
-// Docker may report an attachment by network id rather than the name it was created with. Matching
-// on the name alone would add a second attachment to the same network on every route change.
+// Matching on the name alone would add a duplicate attachment on every route change.
 func TestIngressAttachmentsMatchesByID(t *testing.T) {
 	nets := []swarm.NetworkAttachmentConfig{
 		{Target: "mb-ws-1-overlay"},
@@ -75,8 +72,7 @@ func TestIngressAttachmentsMatchesByID(t *testing.T) {
 	}
 }
 
-// Attaching registers only the globally-unique upstream alias on the shared overlay — the
-// tenant-scoped names stay on the workspace network, where they cannot collide across workspaces.
+// Tenant-scoped names stay on the workspace network, where they cannot collide across workspaces.
 func TestIngressAttachmentsAttachCarriesOnlyTheUpstreamAlias(t *testing.T) {
 	nets := []swarm.NetworkAttachmentConfig{{Target: "mb-ws-1-overlay", Aliases: []string{"web", "mb-app-abc-1"}}}
 
@@ -113,8 +109,7 @@ func TestIngressAttachmentsDetachKeepsTheRest(t *testing.T) {
 	}
 }
 
-// A service that was never routed starts with no ingress attachment at all, which is the point of
-// the deploy-time change: an app nobody can reach from outside stays off the shared overlay.
+// An app nobody can reach from outside stays off the shared overlay.
 func TestBuildSwarmServiceSpecUnroutedStaysOffTheOverlay(t *testing.T) {
 	spec := buildSwarmServiceSpec(ServiceSpec{
 		Name:           "mb-app-abc-1",

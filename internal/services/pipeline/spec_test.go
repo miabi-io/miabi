@@ -168,8 +168,7 @@ steps:
 	}
 }
 
-// A build path is joined against the runner's workdir, so it must not be able to
-// climb out of the checked-out source.
+// Joined against the runner's workdir, so it must not climb out of the source.
 func TestParseSpecRejectsEscapingBuildPaths(t *testing.T) {
 	for _, bad := range []string{"/etc/passwd", "../../etc/passwd", "a/../../.."} {
 		for _, field := range []string{"dockerfile", "context"} {
@@ -194,9 +193,7 @@ func TestParseSpecAcceptsContextAndBuildArgs(t *testing.T) {
 	}
 }
 
-// Build-arg names have to be usable from the Dockerfile. Docker accepts a name
-// with "=" or a space and then produces an ARG nothing can reference, so the
-// pipeline rejects it at parse time instead.
+// Docker accepts "=" or spaces and yields an unreferenceable ARG, so parse rejects it.
 func TestParseSpecValidatesBuildArgNames(t *testing.T) {
 	spec := func(k string) []byte {
 		return []byte("apiVersion: miabi.io/v1\nkind: Pipeline\nmetadata: { name: web }\nsteps:\n" +
@@ -283,9 +280,7 @@ func TestParseSpecRejectsBadEnv(t *testing.T) {
 	}
 }
 
-// Cache busting belongs to the pipeline, not the Dockerfile: `cache: false` on a
-// build step is what a `ARG CACHEBUST` line used to be. Omitting the key caches,
-// because a cold build costs minutes and must never be the accidental choice.
+// Omitting the key caches: a cold build costs minutes and must never be the accidental choice.
 func TestParseSpecBuildCache(t *testing.T) {
 	spec := func(cache string) string {
 		return `
@@ -321,8 +316,7 @@ steps:
 	}
 }
 
-// A container step has no build cache to control, so `cache:` there is a typo
-// worth reporting rather than a key to accept and drop.
+// A container step has no build cache, so `cache:` there is a typo worth reporting.
 func TestParseSpecRejectsCacheOnNonBuildStep(t *testing.T) {
 	_, err := ParseSpec([]byte(`
 apiVersion: miabi.io/v1

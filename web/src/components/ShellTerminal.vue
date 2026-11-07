@@ -6,9 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import { wsUrl } from '@/api/client'
 import AppModal from '@/components/AppModal.vue'
 
-// ShellTerminal opens a live interactive shell into an application's running
-// container over a WebSocket. The connection is authenticated via ?token= and
-// authorized server-side (Admin+ and the plan's shell-exec capability).
+// Authorized server-side: Admin+ and the plan's shell-exec capability.
 const props = defineProps<{
   // base is the app's API path, e.g. /workspaces/3/apps/12
   base: string

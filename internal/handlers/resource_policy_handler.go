@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ResourcePolicyHandler manages per-resource permission grants on applications
-// (Enterprise; gated resource_policies). Enforcement of existing grants lives in
-// RequireResourcePermission and is open-source.
+// Enforcement of existing grants lives in RequireResourcePermission and is open-source.
 type ResourcePolicyHandler struct {
 	repo       *repositories.ResourcePolicyRepository
 	workspaces *repositories.WorkspaceRepository
@@ -68,9 +66,7 @@ func (h *ResourcePolicyHandler) ListApp(c *okapi.Context) error {
 	return ok(c, policies)
 }
 
-// GrantApp grants a user permissions on an application. No-escalation: the
-// granting admin must hold every permission being granted; the grantee must be a
-// workspace member.
+// No-escalation: the granting admin must hold every permission being granted.
 func (h *ResourcePolicyHandler) GrantApp(c *okapi.Context, req *GrantPolicyRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagResourcePolicies); err != nil {
 		return entitlementAbort(c, err)

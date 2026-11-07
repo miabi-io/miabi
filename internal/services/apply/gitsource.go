@@ -39,8 +39,7 @@ type GitSourceInput struct {
 	Metadata, Annotations                                       models.Metadata
 }
 
-// GitSources converges kind: GitSource. Satisfied by the gitops service, which itself drives this
-// package, hence the interface.
+// An interface because the gitops service itself drives this package.
 type GitSources interface {
 	List(workspaceID uint) ([]models.GitSource, error)
 	RepositoryNames(workspaceID uint) (map[uint]string, error)
@@ -141,8 +140,7 @@ func (s *Service) applyGitSource(ctx context.Context, workspaceID uint, ch decla
 	return err
 }
 
-// checkNesting refuses a nested project that would manage one of its own ancestors (itself
-// included), which would loop, or that would nest deeper than maxGitSourceDepth.
+// A project managing its own ancestor would loop.
 func checkNesting(sources []models.GitSource, owner, name string, live *models.GitSource) error {
 	if owner == "" {
 		return nil

@@ -1,34 +1,6 @@
-# Probing an application's health, so a deploy only goes live once the new release
-# answers. A rolling deploy starts the new container, waits for it to report healthy,
-# and only then moves traffic and retires the old one; a release that never turns
-# healthy fails the deploy and the running one keeps serving.
-#
-# `spec.healthcheck.type` is one of:
-#
-#   http     GET `path` on `port` (default: the app's first port). Healthy on 2xx/3xx.
-#            Works in any image, including distroless and scratch ones without a shell.
-#   command  Run `command` in the container. Healthy on exit code 0. Needs a shell in
-#            the image.
-#   image    The image's own HEALTHCHECK, if it declares one. The default. Deploys
-#            don't wait for it.
-#   none     No check at all, not even the image's own. For workers and schedulers
-#            built from a web image, whose baked-in HTTP check would fail.
-#
-# Timing, with the defaults a new app gets:
-#
-#   intervalSeconds: 30     time between probes
-#   timeoutSeconds: 5       a probe slower than this counts as a failure
-#   retries: 3              consecutive failures before the container is unhealthy
-#   startPeriodSeconds: 0   grace period after start; failures in it don't count
-#
-# Only the fields a manifest states are applied. Leave the block out and the app keeps
-# whatever check it has (set in the console, say); state just `type` and `path` and the
-# timing stays as it is. `type: none` turns every check off, the image's included.
-#
-#   miabi apply -f healthcheck.yaml
+# Deploys go live only once the new release is healthy; type is http, command, image (default) or none.
 ---
-# An HTTP check on a dedicated endpoint. The guestbook's /healthz returns 503 until
-# its database is reachable, so traffic waits for the database too.
+# /healthz returns 503 until the database is reachable, so traffic waits for it too.
 apiVersion: miabi.io/v1
 kind: Application
 metadata:
@@ -47,8 +19,7 @@ spec:
     port: 8080
     intervalSeconds: 10
 ---
-# A slow starter: a JVM app that takes a minute to warm up. The start period keeps
-# early failures from marking it unhealthy before it is ready.
+# The start period keeps a slow-warming JVM from being marked unhealthy early.
 apiVersion: miabi.io/v1
 kind: Application
 metadata:
@@ -64,8 +35,7 @@ spec:
     startPeriodSeconds: 60
     timeoutSeconds: 10
 ---
-# A command check, for a process that serves no HTTP. The command runs inside the
-# container through its shell.
+# A command check runs through the container's shell, for a process that serves no HTTP.
 apiVersion: miabi.io/v1
 kind: Application
 metadata:
@@ -80,9 +50,7 @@ spec:
     intervalSeconds: 15
     retries: 2
 ---
-# A queue worker built from a web image (serversideup/php ships an HTTP HEALTHCHECK).
-# The worker serves no HTTP, so that check would fail and, as a service, get its
-# task replaced in a loop. none switches it off.
+# The image's baked-in HTTP check would fail on a worker and loop task replacement; none disables it.
 apiVersion: miabi.io/v1
 kind: Application
 metadata:

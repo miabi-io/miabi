@@ -29,8 +29,7 @@ const (
 	OAuthProviderOIDC   OAuthProviderType = "oidc"   // generic OpenID Connect
 )
 
-// OAuthProvider is a platform-level SSO identity provider. Secrets are stored
-// encrypted at rest (see internal/services/crypto) and never serialized.
+// OAuthProvider secrets are encrypted at rest and never serialized.
 type OAuthProvider struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 	// Name is the globally unique handle used in callback routes.
@@ -53,38 +52,28 @@ type OAuthProvider struct {
 	Enabled      bool `json:"enabled" gorm:"default:true;not null"`
 	Hidden       bool `json:"hidden" gorm:"default:false;not null"`       // hide from login buttons
 	AutoRegister bool `json:"auto_register" gorm:"default:true;not null"` // auto-create users on first login
-	// AllowUnverifiedEmail links an existing account by an email the provider has not verified. Only for a
-	// directory that never sends email_verified: on a public provider anyone can claim any address.
+	// Only for directories that never send email_verified: on a public provider anyone can claim any address.
 	AllowUnverifiedEmail bool `json:"allow_unverified_email" gorm:"default:false;not null"`
 
-	// AllowedDomains is a CSV of email domains permitted to sign in / register
-	// through this provider. Empty means any domain is allowed.
+	// Empty means any domain is allowed.
 	AllowedDomains string `json:"allowed_domains"`
 
 	// OrganizationID is the realm this provider belongs to (nullable → default org).
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
 
-	// EmailClaim / NameClaim / UsernameClaim map a generic OIDC userinfo claim
-	// onto the user's email / display name / handle. Empty falls back to the
-	// standard "email" / "name" / "preferred_username".
+	// Empty falls back to the standard "email" / "name" / "preferred_username".
 	EmailClaim string `json:"email_claim"`
 	NameClaim  string `json:"name_claim"`
-	// UsernameClaim names the claim carrying the handle the user is known by at
-	// the provider. Without it Miabi derives one from the email local part, so an
-	// account whose directory handle differs from its mailbox gets the wrong one.
+	// Without it the handle comes from the email local part, which is wrong when the directory handle differs.
 	UsernameClaim string `json:"username_claim"`
 
-	// DefaultWorkspaceID + DefaultRole auto-join a newly registered SSO user to a
-	// workspace with a role on first login. Nil = no auto-join (user is invited
-	// separately).
+	// Nil means no auto-join.
 	DefaultWorkspaceID *uint         `json:"default_workspace_id" gorm:"index"`
 	DefaultRole        WorkspaceRole `json:"default_role"`
 
-	// GroupsClaim names the userinfo claim holding the user's groups (Enterprise group mapping).
 	// Empty turns group mapping off for this provider.
 	GroupsClaim string `json:"groups_claim"`
-	// GroupPrefix enables structured groups "<prefix>:<workspace>:<role>", each granting that role in
-	// that workspace. Empty accepts only the explicit Mappings.
+	// Empty accepts only the explicit Mappings.
 	GroupPrefix string              `json:"group_prefix"`
 	Mappings    []OAuthGroupMapping `json:"mappings,omitempty" gorm:"foreignKey:ProviderID"`
 
@@ -95,15 +84,12 @@ type OAuthProvider struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ConsoleOAuthProviderName is the fixed handle of the provider a billing console pushes; its
-// back-channel logout URL embeds it, so it never changes.
+// ConsoleOAuthProviderName never changes because the console's back-channel logout URL embeds it.
 const ConsoleOAuthProviderName = "miabi-console"
 
 // ConsoleManaged reports whether a billing console owns this provider's configuration.
 func (p *OAuthProvider) ConsoleManaged() bool { return p != nil && p.ManagedBy == ManagedByConsole }
 
-// OAuthGroupMapping maps one provider group to Miabi access, applied at every sign-in like
-// LDAPGroupMapping: platform admin, or a role in a fixed workspace.
 type OAuthGroupMapping struct {
 	ID         uint   `json:"id" gorm:"primaryKey"`
 	ProviderID uint   `json:"provider_id" gorm:"index;not null"`

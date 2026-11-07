@@ -55,9 +55,7 @@ func (h *MonitoringHandler) AppMetrics(c *okapi.Context) error {
 	}
 	sample, err := h.svc.AppMetrics(c.Request().Context(), middlewares.WorkspaceID(c), appID)
 	if err != nil {
-		// A task on an unmanaged swarm node is a distinct, explainable state — the app
-		// IS running, we just have no engine to read its container through. Saying "no
-		// active container" about a service Swarm reports as 1/1 is simply false.
+		// The app is running on an unmanaged node; claiming "no active container" would be false.
 		if errors.Is(err, monitoring.ErrTaskOnUnmanagedNode) {
 			return c.AbortWithError(409, err)
 		}
@@ -69,8 +67,6 @@ func (h *MonitoringHandler) AppMetrics(c *okapi.Context) error {
 	return ok(c, sample)
 }
 
-// AppMetricsHistory returns stored metric samples for an app. Optional query
-// `since` is a duration window (e.g. 1h, 30m); defaults to 1h.
 func (h *MonitoringHandler) AppMetricsHistory(c *okapi.Context) error {
 	appID, err := appIDParam(c)
 	if err != nil {
@@ -95,8 +91,6 @@ func (h *MonitoringHandler) AppMetricsHistory(c *okapi.Context) error {
 	return ok(c, samples)
 }
 
-// WorkspaceUsageLive returns a single aggregated live resource sample across the
-// workspace's running app and database containers (actual consumption now).
 func (h *MonitoringHandler) WorkspaceUsageLive(c *okapi.Context) error {
 	sample, err := h.svc.WorkspaceLiveUsage(c.Request().Context(), middlewares.WorkspaceID(c))
 	if err != nil {
@@ -105,8 +99,6 @@ func (h *MonitoringHandler) WorkspaceUsageLive(c *okapi.Context) error {
 	return ok(c, sample)
 }
 
-// WorkspaceUsageStream streams aggregated live workspace usage over SSE. Optional
-// query `interval` (e.g. 2s, 5s) sets the cadence; defaults to 3s, clamped 1–30s.
 func (h *MonitoringHandler) WorkspaceUsageStream(c *okapi.Context) error {
 	interval := 3 * time.Second
 	if q := c.Query("interval"); q != "" {
@@ -125,9 +117,6 @@ func (h *MonitoringHandler) WorkspaceUsageStream(c *okapi.Context) error {
 	})
 }
 
-// WorkspaceUsageHistory returns the workspace's aggregated resource usage over time, from stored
-// scraper samples, for the dashboard sparkline. Optional `since` (default 1h) sets the window and
-// `bucket` the resolution.
 func (h *MonitoringHandler) WorkspaceUsageHistory(c *okapi.Context) error {
 	window := time.Hour
 	if q := c.Query("since"); q != "" {

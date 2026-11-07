@@ -30,10 +30,7 @@ import (
 
 // Errors a rejected advanced config returns.
 var (
-	// ErrAdvancedReservedKey is returned when an advanced config sets a field Miabi owns. The fields
-	// that decide WHICH requests reach a route — hosts, path, priority — are the whole isolation
-	// boundary between tenants: a route that can name its own hosts can name somebody else's, and one
-	// that can set its own path can outrank the console's on the platform domain.
+	// Hosts, path and priority are the tenant isolation boundary: a route naming its own hosts can name another's.
 	ErrAdvancedReservedKey = errors.New("advanced config may not set this field")
 	ErrAdvancedUnknownKey  = errors.New("advanced config has an unsupported field")
 )
@@ -65,22 +62,17 @@ type advancedRoute struct {
 	InsecureSkipVerify    bool `yaml:"insecureSkipVerify"`
 }
 
-// advancedSecurity omits `tls`: it carries rootCAs, clientCert and clientKey, which are paths the
-// GATEWAY reads, so a tenant could otherwise point the gateway at files it should never read. The
-// renderer sets the one field that matters (insecureSkipVerify for an https backend) itself.
+// tls is omitted: its rootCAs/clientCert/clientKey are paths the gateway reads, so a tenant could point it anywhere.
 type advancedSecurity struct {
 	ForwardHostHeaders      *bool `yaml:"forwardHostHeaders"`
 	EnableExploitProtection *bool `yaml:"enableExploitProtection"`
 }
 
-// validateAdvanced checks a hand-written advanced route config: every field must be one Miabi does
-// not own, and the whole document must decode strictly.
 func validateAdvanced(cfg string) error {
 	if strings.TrimSpace(cfg) == "" {
 		return nil
 	}
-	// Decode once loosely to name the offending key precisely, before the strict pass turns
-	// everything into "unknown field".
+	// Decode loosely first to name the offending key, before the strict pass reports everything as "unknown field".
 	var raw map[string]any
 	if err := yaml.Unmarshal([]byte(cfg), &raw); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidYAML, err)

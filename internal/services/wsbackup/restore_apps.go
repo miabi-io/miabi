@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// applyApps recreates the workloads. Creation goes through the application service rather than the repository,
-// so an app lands with the alias, placement checks, quota accounting and naming this platform gives its own.
-// What Create does not accept — healthcheck, restart policy, canary, labels — is written straight after.
+// Goes through the application service so apps get this platform's alias, placement, quota and naming.
 func (r *restoreRun) applyApps(ctx context.Context) {
 	existing := map[string]*models.Application{}
 	if apps, err := r.svc.App.List(r.target); err == nil {
@@ -95,9 +93,7 @@ func (r *restoreRun) applyApps(ctx context.Context) {
 			ImagePullPolicy: models.ImagePullPolicy(a.ImagePullPolicy),
 			RuntimeKind:     models.RuntimeKind(a.RuntimeKind),
 			Replicas:        a.Replicas,
-			// PlacementConstraints name node labels this platform may not have; they
-			// are carried because a cluster that does have them wants them, and a
-			// deploy that cannot satisfy one says so plainly.
+			// Carried because a cluster with those labels wants them; an unsatisfiable deploy says so plainly.
 			PlacementConstraints: a.PlacementConstraints,
 			Metadata:             a.Metadata,
 			Annotations:          a.Annotations,
@@ -140,8 +136,6 @@ func (r *restoreRun) applyApps(ctx context.Context) {
 	}
 }
 
-// finishApp writes the parts of an app's spec that Create does not take, and
-// restores its mounts and environment.
 func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsbundle.Application) error {
 	app.HealthcheckType = restoredHealthcheckType(a.HealthcheckType, r.state.Schema)
 	app.HealthcheckHTTPPath = a.HealthcheckHTTPPath
@@ -199,10 +193,7 @@ func (r *restoreRun) finishApp(_ context.Context, app *models.Application, a wsb
 	return nil
 }
 
-// configByName resolves a config the restore created (or found already present)
-// on the target, for rebuilding an app's config mounts. Looked up by name rather
-// than tracked in a map because a mount may point at a config that already
-// existed on the target and was therefore skipped, not created.
+// A mount may point at a config that already existed on the target and was skipped, not created.
 func (r *restoreRun) configByName(name string) (*models.Config, error) {
 	if r.svc.Config == nil {
 		return nil, errConfigsUnavailable
@@ -213,8 +204,7 @@ func (r *restoreRun) configByName(name string) (*models.Config, error) {
 // errConfigsUnavailable reports an install with no config service wired.
 var errConfigsUnavailable = errors.New("configs are not available on this install")
 
-// restoredHealthcheckType reads a bundled healthcheck type. A bundle written before schema 3 meant
-// "keep the image's own check" by "none", which is "image" now.
+// Before schema 3, "none" meant "keep the image's own check", which is "image" now.
 func restoredHealthcheckType(t string, schema int) models.HealthcheckType {
 	if models.HealthcheckType(t) == models.HealthcheckNone && schema < wsbundle.HealthcheckNoneDisables {
 		return models.HealthcheckImage

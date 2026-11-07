@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// The installer validates MIABI_LOG_LEVEL so a typo fails instantly instead of crash-looping the
-// control plane. That holds only while the installer's idea of a valid level matches the control
-// plane's — two lists in two packages, and nothing but this test stops them drifting.
+// Two lists in two packages; only this test stops installer and control plane log levels drifting.
 func TestInstallerAndControlPlaneAgreeOnLogLevels(t *testing.T) {
 	// Everything the installer accepts, the control plane must accept.
 	for _, lvl := range []string{"debug", "info", "warn", "warning", "error"} {
@@ -45,9 +43,7 @@ func TestInstallerAndControlPlaneAgreeOnLogLevels(t *testing.T) {
 		}
 	}
 
-	// And what the control plane refuses, the installer must refuse too. "off" is the
-	// live case: the logging library cannot honour it, so config rejects it — the
-	// installer must not wave it through.
+	// "off" is the live case: the logging library cannot honour it, so the installer must refuse it too.
 	for _, lvl := range []string{"off", "none", "silent", "verbose", "trace"} {
 		if _, err := (&config.Config{LogLevel: lvl}).LogLevelFor(); err == nil {
 			continue // the control plane accepts it, nothing to enforce here

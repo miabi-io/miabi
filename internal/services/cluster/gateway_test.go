@@ -48,8 +48,7 @@ func newGatewayService() *Service {
 	return s
 }
 
-// Recreating the gateway drops the overlay attachment, and right after an agent reconnects the swarm state is still
-// stale, so the attach right after a deploy must decide from the stored cluster.
+// Swarm state is stale right after an agent reconnects, so the attach must use the stored cluster.
 func TestANodeGatewayJoinsTheIngressOverlayRightAfterItStarts(t *testing.T) {
 	s := newGatewayService()
 	for _, tt := range []struct {

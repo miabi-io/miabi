@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// SIEMConfigRepository accesses external audit-streaming targets (Enterprise;
-// empty in CE).
 type SIEMConfigRepository struct{ db *gorm.DB }
 
 func NewSIEMConfigRepository(db *gorm.DB) *SIEMConfigRepository {
@@ -61,16 +59,13 @@ func (r *SIEMConfigRepository) FindEnabled() ([]models.SIEMConfig, error) {
 	return configs, err
 }
 
-// AdvanceCursor records a successful ship: persist the new cursor + timestamp and
-// clear any prior error.
 func (r *SIEMConfigRepository) AdvanceCursor(id, lastShippedID uint) error {
 	now := time.Now()
 	return r.db.Model(&models.SIEMConfig{}).Where("id = ?", id).
 		Updates(map[string]any{"last_shipped_id": lastShippedID, "last_shipped_at": now, "last_error": ""}).Error
 }
 
-// RecordError stores the last sink failure without advancing the cursor (events
-// stay un-shipped and are retried next tick).
+// RecordError stores the last sink failure without advancing the cursor, so events are retried next tick.
 func (r *SIEMConfigRepository) RecordError(id uint, msg string) error {
 	return r.db.Model(&models.SIEMConfig{}).Where("id = ?", id).Update("last_error", msg).Error
 }

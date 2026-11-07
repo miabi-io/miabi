@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package secret is the Vault: workspace-scoped named secrets that env var values reference
-// (`${{ secrets.NAME }}`) and that are resolved into a container's environment at deploy or job time. Values
-// are encrypted at rest and never returned except via an explicit, audited reveal.
+// Package secret is the Vault: encrypted workspace secrets referenced from env and resolved at deploy or job time.
 package secret
 
 import (
@@ -42,9 +40,7 @@ var (
 	ErrManaged     = errors.New("secret is managed by a platform resource; it is removed with its owner, not by hand")
 )
 
-// Consumers resolves which apps reference a secret and triggers their redeploy.
-// Implemented by the application service; optional (nil = no rotation fan-out /
-// no delete guard, e.g. in worker processes that only resolve references).
+// Optional: nil means no rotation fan-out or delete guard, as in workers that only resolve references.
 type Consumers interface {
 	AppsReferencingSecret(workspaceID uint, name string) ([]models.Application, error)
 	AutoRedeploy(app *models.Application) (*models.Deployment, error)
@@ -56,13 +52,9 @@ var nameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,62}$`)
 // refRe matches a `${{ secrets.NAME }}` reference (whitespace-tolerant).
 var refRe = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
 
-// pureRefRe matches a value that is *only* a reference, with nothing around it. Env values interpolate
-// references inside larger strings, but a stored credential is opaque and can contain any bytes, so there it
-// is all-or-nothing — otherwise a token containing "${{ secrets.x }}" would be silently unusable.
+// A stored credential is opaque, so only an all-or-nothing reference counts, unlike env interpolation.
 var pureRefRe = regexp.MustCompile(`^\s*\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}\s*$`)
 
-// RefName returns the secret a value references when the value is exactly one
-// `${{ secrets.NAME }}` reference, or "" when it is a literal.
 func RefName(value string) string {
 	m := pureRefRe.FindStringSubmatch(value)
 	if m == nil {
@@ -71,8 +63,6 @@ func RefName(value string) string {
 	return m[1]
 }
 
-// Ref renders the reference form of a secret name — the value a client stores in
-// a credential field to point at the vault instead of pasting the secret.
 func Ref(name string) string { return "${{ secrets." + name + " }}" }
 
 type Service struct {
@@ -85,8 +75,6 @@ func NewService(repo *repositories.SecretRepository) *Service { return &Service{
 // SetConsumers wires the resolver used for rotation fan-out and the delete guard.
 func (s *Service) SetConsumers(c Consumers) { s.consumers = c }
 
-// ReferencesSecret reports whether an env value contains a `${{ secrets.name }}`
-// reference to the named secret.
 func ReferencesSecret(value, name string) bool {
 	for _, m := range refRe.FindAllStringSubmatch(value, -1) {
 		if m[1] == name {
@@ -100,9 +88,6 @@ func (s *Service) List(workspaceID uint) ([]models.Secret, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// ListPaged returns a searchable, paginated page of a workspace's secrets and
-// the total count of matching rows. managed narrows to platform-owned secrets
-// (true) or hand-created ones (false); nil returns both.
 func (s *Service) ListPaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Secret, int64, error) {
 	return s.repo.ListByWorkspacePaged(workspaceID, search, managed, limit, offset)
 }
@@ -143,8 +128,6 @@ func (s *Service) Create(workspaceID uint, name, value, description string, user
 	return sec, nil
 }
 
-// Update replaces a secret's value (rotation) and/or description. A blank value
-// leaves the stored value unchanged.
 func (s *Service) Update(workspaceID, id uint, value, description string, userID *uint) (*models.Secret, error) {
 	sec, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -172,9 +155,7 @@ func (s *Service) Update(workspaceID, id uint, value, description string, userID
 	return sec, nil
 }
 
-// ApplySealed creates or updates the named secret from an opened sealed value and records the sealed value's
-// fingerprint and key version. A re-seal of an unchanged value only moves the fingerprint: no new version, no
-// redeploy of consumers.
+// A re-seal of an unchanged value only moves the fingerprint: no new version, no redeploy.
 func (s *Service) ApplySealed(workspaceID uint, name, value, fp string, keyVersion int) (*models.Secret, error) {
 	sec, err := s.repo.FindByName(workspaceID, name)
 	if err != nil {
@@ -212,9 +193,7 @@ func (s *Service) ApplySealed(workspaceID uint, name, value, fp string, keyVersi
 	return sec, nil
 }
 
-// UpsertOwned creates or rotates a managed secret owned by a platform resource, such as a managed database.
-// The name is system-generated, so it bypasses the user-facing name validation, and a changed value fans out
-// to consumers. Marks the secret Managed with the given owner.
+// UpsertOwned bypasses name validation for system-generated names; a changed value fans out to consumers.
 func (s *Service) UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, name, value, description string) (*models.Secret, error) {
 	existing, err := s.repo.FindByName(workspaceID, name)
 	if err != nil {
@@ -255,9 +234,7 @@ func (s *Service) UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, 
 	return existing, nil
 }
 
-// DeleteOwned removes every managed secret owned by a resource, cascading from the owner's deletion. This is
-// privileged: it bypasses the referenced-secret delete guard, since a managed secret's lifecycle follows its
-// owner. Returns the apps that still referenced any deleted secret, for the caller to warn.
+// DeleteOwned bypasses the referenced-secret guard since a managed secret's lifecycle follows its owner.
 func (s *Service) DeleteOwned(workspaceID uint, ownerKind string, ownerID uint) ([]models.Application, error) {
 	owned, err := s.repo.ListByOwner(workspaceID, ownerKind, ownerID)
 	if err != nil {
@@ -283,8 +260,6 @@ func (s *Service) DeleteOwned(workspaceID uint, ownerKind string, ownerID uint) 
 	return stillReferenced, nil
 }
 
-// Usage returns the apps that reference a secret (for the "used by" view and the
-// delete guard).
 func (s *Service) Usage(workspaceID, id uint) ([]models.Application, error) {
 	sec, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -296,8 +271,6 @@ func (s *Service) Usage(workspaceID, id uint) ([]models.Application, error) {
 	return s.consumers.AppsReferencingSecret(workspaceID, sec.Name)
 }
 
-// fanOut redeploys every app that references the secret (best-effort) so a
-// rotated value takes effect immediately.
 func (s *Service) fanOut(sec *models.Secret) {
 	if s.consumers == nil {
 		return
@@ -325,9 +298,7 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	if err != nil {
 		return ErrNotFound
 	}
-	// A managed secret's lifecycle follows its owning resource (e.g. a managed
-	// database) — it is only removed via the owner's cascade (DeleteOwned), never
-	// by a hand delete.
+	// A managed secret is only removed via its owner's cascade, never by a hand delete.
 	if sec.Managed {
 		return ErrManaged
 	}
@@ -339,9 +310,7 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	return s.repo.Delete(sec.ID)
 }
 
-// ResolveAll substitutes `${{ secrets.NAME }}` references across all env values for a workspace, loading its
-// secrets once. Returns an error naming the first unknown reference — a deploy must fail loudly rather than
-// inject a blank. When no value contains a reference it is a no-op, with no DB load.
+// ResolveAll fails on an unknown reference: a deploy must fail loudly rather than inject a blank.
 func (s *Service) ResolveAll(workspaceID uint, env []string) ([]string, error) {
 	hasRef := false
 	for _, v := range env {
@@ -388,9 +357,7 @@ func (s *Service) ResolveAll(workspaceID uint, env []string) ([]string, error) {
 	return out, nil
 }
 
-// CredentialSecret resolves a stored credential's secret — the one resolution point shared by registry and
-// Git credentials. When ref names a vault secret its *current* value is read, so rotating that secret rotates
-// every credential pointing at it. Both empty means no secret, which is not an error.
+// CredentialSecret reads a referenced vault secret's current value, so rotating it rotates every credential.
 func (s *Service) CredentialSecret(workspaceID uint, enc, ref string) (string, error) {
 	if ref != "" {
 		sec, err := s.repo.FindByName(workspaceID, ref)
@@ -405,8 +372,6 @@ func (s *Service) CredentialSecret(workspaceID uint, enc, ref string) (string, e
 	return crypto.Decrypt(enc)
 }
 
-// ValueByName returns a secret's decrypted value, for callers resolving a
-// reference by name. Absent or undecryptable reads as not found.
 func (s *Service) ValueByName(workspaceID uint, name string) (string, bool) {
 	sec, err := s.repo.FindByName(workspaceID, name)
 	if err != nil {
@@ -419,9 +384,7 @@ func (s *Service) ValueByName(workspaceID uint, name string) (string, bool) {
 	return v, true
 }
 
-// ExistsByName reports whether a secret of that name exists in the workspace. It
-// backs the validation of a credential's secret reference at create/update time,
-// so a typo surfaces in the form rather than at the next deploy.
+// Validates credential references at save so a typo surfaces in the form, not at the next deploy.
 func (s *Service) ExistsByName(workspaceID uint, name string) bool {
 	_, err := s.repo.FindByName(workspaceID, name)
 	return err == nil

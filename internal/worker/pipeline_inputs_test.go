@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The run carries the pipeline-level env; the job inputs must too, or every step
-// runs without it while the run record says otherwise.
+// Without the run's env every step would run without it while the run record says otherwise.
 func TestJobInputsCarryRunEnv(t *testing.T) {
 	h := &PipelineHandler{}
 	run := &models.PipelineRun{

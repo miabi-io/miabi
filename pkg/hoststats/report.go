@@ -20,8 +20,7 @@ package hoststats
 
 import "errors"
 
-// Report is what a node agent pushes to POST /api/v1/agent/stats. It carries no identity and no
-// timestamp: the control plane takes the node from the bearer token and stamps receipt time itself.
+// Report carries no identity or timestamp: the control plane takes the node from the token and stamps receipt.
 type Report struct {
 	CPUPercent    float64 `json:"cpu_percent"`
 	MemTotalBytes uint64  `json:"mem_total_bytes"`
@@ -42,16 +41,14 @@ func (r Report) Stats() Stats {
 // ErrNoBaseline is returned by Sampler.Sample until it has a previous CPU reading to measure against.
 var ErrNoBaseline = errors.New("hoststats: no cpu baseline yet")
 
-// Sampler measures CPU over the whole interval between successive calls rather than a short fixed
-// window, so a bursty workload is averaged over what actually happened since the last report.
+// Sampler averages CPU over the whole interval since the last call, so bursty workloads are measured honestly.
 type Sampler struct {
 	ProcPath string
 	prev     CPUTimes
 	have     bool
 }
 
-// Sample returns a report covering the time since the previous call. The first call, and any call
-// after the counters went backwards, only records a baseline and returns ErrNoBaseline.
+// The first call, or one after counters went backwards, only records a baseline and returns ErrNoBaseline.
 func (s *Sampler) Sample() (Report, error) {
 	cur, err := ReadCPU(s.ProcPath)
 	if err != nil {

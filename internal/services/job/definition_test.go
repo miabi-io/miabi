@@ -103,8 +103,6 @@ func TestSaveDefinitionRuns(t *testing.T) {
 	}
 }
 
-// A run applied while the app deploys waits for that deploy, even for a git app
-// that has no image to run yet.
 func TestSaveDefinitionWaitsForDeploy(t *testing.T) {
 	s, db, _ := newDefinitionSvc(t)
 	db.Exec(`INSERT INTO deployments (id, application_id, status, number) VALUES (9, 2, 'building', 3)`)
@@ -117,8 +115,6 @@ func TestSaveDefinitionWaitsForDeploy(t *testing.T) {
 	}
 }
 
-// onRelease runs once per release: on create against the active release, then
-// once for each new release, however many times the activation is reported.
 func TestOnReleaseRunsOncePerRelease(t *testing.T) {
 	s, db, enq := newDefinitionSvc(t)
 	db.Exec(`INSERT INTO releases (id, application_id, image, active) VALUES (5, 1, 'ghcr.io/org/api:v1', 1)`)
@@ -179,8 +175,6 @@ func TestDeleteDefinitionKeepsHistory(t *testing.T) {
 	}
 }
 
-// A failed run retries until backoffLimit is spent; a run superseded by a newer
-// one doesn't retry.
 func TestRunFailedRetries(t *testing.T) {
 	s, db, enq := newDefinitionSvc(t)
 	in := definitionInput(1, models.JobRunOnChange)

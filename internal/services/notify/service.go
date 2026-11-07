@@ -62,9 +62,7 @@ func NewService(repo *repositories.NotificationChannelRepository, registry *Regi
 	return &Service{repo: repo, registry: registry}
 }
 
-// Input describes a channel to create or update. Secret values are plaintext;
-// they are encrypted before storage and, on update, an empty value leaves the
-// stored secret unchanged.
+// Input secrets are plaintext; on update an empty value leaves the stored secret unchanged.
 type Input struct {
 	Type    models.NotificationChannelType
 	Name    string
@@ -135,9 +133,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.NotificationCh
 	return mask(ch), nil
 }
 
-// buildConfig validates per-type fields and merges them into base, encrypting
-// secret values. On create, base is empty and required fields are enforced; on
-// update, an empty secret leaves the existing value in place.
+// On update an empty secret leaves the existing value in place; required fields are enforced only on create.
 func (s *Service) buildConfig(workspaceID uint, t models.NotificationChannelType, in Input, base map[string]string) (map[string]string, error) {
 	cfg := map[string]string{}
 	for k, v := range base {
@@ -215,8 +211,6 @@ func (s *Service) Test(ctx context.Context, workspaceID, id uint) error {
 	return s.registry.Validate(ctx, ch)
 }
 
-// mask clears secret config values for safe responses, leaving a presence
-// indicator in place of the stored token.
 func mask(ch *models.NotificationChannel) *models.NotificationChannel {
 	if ch.Config != nil {
 		for _, k := range secretConfigKeys {

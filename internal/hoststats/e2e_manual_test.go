@@ -31,11 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/hoststats"
 )
 
-// Behind a build tag: it needs a live Docker daemon. Run with
-//
-//	go test -tags dockere2e ./internal/hoststats/ -run SampleOnALiveDaemon -v
-//
-// It is the only check that the command, the container and the parser agree end to end.
+// Needs a live Docker daemon: go test -tags dockere2e ./internal/hoststats/ -run SampleOnALiveDaemon
 func TestSampleOnALiveDaemon(t *testing.T) {
 	cli, err := docker.New()
 	if err != nil {

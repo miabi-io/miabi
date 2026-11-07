@@ -27,10 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// newSecurityResolver resolves the security profile for app/job containers: the baseline every
-// workspace gets, plus the restricted profile (RestrictedUID:0, no-new-privileges) for workspaces
-// the quota service says must drop root. An app or job may swap the UID for its own non-root one;
-// the worker applies that on top.
+// An app or job may swap the UID for its own non-root one; the worker applies that on top.
 func newSecurityResolver(cfg *config.Config, q *quota.Service) worker.SecurityResolver {
 	user := ""
 	if cfg.RestrictedUID > 0 {

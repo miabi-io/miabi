@@ -32,8 +32,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/versioning"
 )
 
-// VersioningHandler exposes version policies: how each pipeline-built image repository numbers its
-// builds, the versions handed out so far, and the series a repository releases on.
 type VersioningHandler struct {
 	svc       *versioning.Service
 	pipelines *pipeline.Service
@@ -44,8 +42,7 @@ func NewVersioningHandler(svc *versioning.Service, pipelines *pipeline.Service, 
 	return &VersioningHandler{svc: svc, pipelines: pipelines, audit: auditLog}
 }
 
-// CreateVersionPolicyRequest attaches a policy to a pipeline's image repository: its application's
-// when the pipeline is bound to one, the pipeline's own otherwise.
+// Attaches to the bound application's repository, or the pipeline's own otherwise.
 type CreateVersionPolicyRequest struct {
 	Body struct {
 		// Pipeline is the pipeline's id, uid or name.

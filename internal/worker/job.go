@@ -34,18 +34,14 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// JobHandler runs one-off Jobs: a command executed once in an application's runtime context (same
-// image, env, networks, volumes, node and limits), capturing the exit code and logs. It reuses the
-// deploy pipeline's runtime substrate so a Job's environment can't drift from the real deploy.
+// JobHandler reuses the deploy runtime substrate so a Job's environment can't drift from the real deploy.
 type JobHandler struct {
 	*runtimeBuilder
-	jobs       *repositories.JobRepository
-	apps       *repositories.ApplicationRepository
-	registries *repositories.RegistryRepository
-	clients    NodeDocker
-	logs       *logstore.Store
-	// deployments and releases let a run wait for a deploy and take the image
-	// of the release it activated (declared Jobs with waitForDeploy).
+	jobs        *repositories.JobRepository
+	apps        *repositories.ApplicationRepository
+	registries  *repositories.RegistryRepository
+	clients     NodeDocker
+	logs        *logstore.Store
 	deployments *repositories.DeploymentRepository
 	releases    *repositories.ReleaseRepository
 	waitPoll    time.Duration
@@ -57,16 +53,13 @@ type JobHandler struct {
 // SetFailureHook wires what a declared Job's failed run reports to (backoffLimit retries).
 func (h *JobHandler) SetFailureHook(fn func(jobID uint)) { h.onFailed = fn }
 
-// SetDeployWait wires what a run held for a deploy needs. Without it such a run
-// starts straight away on the image it was enqueued with.
+// Without it a run held for a deploy starts straight away on its enqueued image.
 func (h *JobHandler) SetDeployWait(deployments *repositories.DeploymentRepository, releases *repositories.ReleaseRepository) {
 	h.deployments, h.releases = deployments, releases
 	h.waitPoll, h.waitMax = 5*time.Second, 2*time.Hour
 }
 
-// SetLogStore wires the shared execution-log store. When set, a job's full
-// output is externalized to the store on terminal state and the DB row keeps
-// only a bounded tail + a reference. nil keeps DB-tail-only.
+// When set, full output goes to the store on terminal state and the DB row keeps a bounded tail.
 func (h *JobHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 func NewJobHandler(jobs *repositories.JobRepository, apps *repositories.ApplicationRepository, stackEnv *repositories.StackEnvVarRepository, routeRepo *repositories.RouteRepository, registries *repositories.RegistryRepository, clients NodeDocker, secrets SecretResolver) *JobHandler {
@@ -113,8 +106,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		return
 	}
 
-	// A custom image must be pulled (it may be private/absent on the node); the
-	// app's active-release image is already present from its deploy.
+	// The active-release image is already on the node; a custom one may be private or absent.
 	if j.Pull {
 		auth, aerr := h.registryAuth(app.WorkspaceID, j.RegistryID)
 		if aerr != nil {
@@ -148,8 +140,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		h.finish(j, models.JobFailed, nil, secErr.Error())
 		return
 	}
-	// A job is a one-off task, a migration or an asset build, that may write into the image; only the app's own
-	// containers run read-only.
+	// A job may write into the image (migrations, asset builds); only the app's own containers run read-only.
 	sec.ReadOnlyRootfs = false
 	if sec.HasUser() {
 		if err := h.prepareVolumeOwnership(runCtx, dc, sec, j.Image, rc.Mounts); err != nil {
@@ -165,8 +156,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		Env:        rc.Env,
 		Networks:   rc.Networks,
 		Mounts:     rc.Mounts,
-		// Volumes were seeded+chowned by prepareVolumeOwnership for the pinned
-		// user; skip copy-up so they aren't re-owned from the image.
+		// Volumes are already chowned for the pinned user; copy-up would re-own them from the image.
 		NoCopyVolumes: sec.HasUser(),
 		Binds:         rc.Binds,
 		MemoryBytes:   rc.MemoryBytes,
@@ -185,8 +175,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		_ = h.jobs.AppendLog(j.ID, out)
 	}
 
-	// A concurrent Cancel may have force-removed the container and marked the job
-	// canceled; if so, respect that terminal state.
+	// A concurrent Cancel may already have removed the container and marked the job canceled.
 	if cur, err := h.jobs.FindByID(j.ID); err == nil && cur.Status == models.JobCanceled {
 		h.finish(cur, models.JobCanceled, nil, "canceled")
 		return
@@ -204,8 +193,6 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 	}
 }
 
-// registryAuth resolves pull credentials for a custom image. nil registryID
-// (or no match) means an anonymous pull.
 func (h *JobHandler) registryAuth(workspaceID uint, registryID *uint) (*docker.RegistryAuth, error) {
 	if registryID == nil || h.registries == nil {
 		return nil, nil
@@ -240,9 +227,7 @@ func (h *JobHandler) finish(j *models.Job, status models.JobStatus, exit *int, e
 	}
 }
 
-// externalizeLog moves a terminal job's full output into the shared log store and trims the row to a
-// bounded tail plus a reference. A no-op when the store is disabled; on any error the full log stays
-// in the DB tail. It re-reads the row so it captures the output AppendLog accumulated.
+// Re-reads the row to capture the output AppendLog accumulated; on any error the full log stays in the DB.
 func (h *JobHandler) externalizeLog(j *models.Job) {
 	if !h.logs.Enabled() {
 		return
@@ -262,9 +247,7 @@ func (h *JobHandler) externalizeLog(j *models.Job) {
 	}
 }
 
-// awaitDeploy holds a run until the deployment it waits for ends, then points it
-// at the release that deploy activated. It reports whether the run should go on:
-// a failed deploy skips it, and a cancel while waiting ends it.
+// A failed deploy skips the run, and a cancel while waiting ends it.
 func (h *JobHandler) awaitDeploy(ctx context.Context, j *models.Job) bool {
 	deadline := time.Now().Add(h.waitMax)
 	for {

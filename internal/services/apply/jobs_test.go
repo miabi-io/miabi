@@ -79,8 +79,6 @@ func TestRefuseRunMove(t *testing.T) {
 	}
 }
 
-// An export carries the app's own CronJobs and Jobs, without identity or the
-// fields an apply elsewhere would default anyway.
 func TestExportJobs(t *testing.T) {
 	set, err := d.Parse([]byte(`
 apiVersion: miabi.io/v1

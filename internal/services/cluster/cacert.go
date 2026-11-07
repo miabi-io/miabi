@@ -33,52 +33,35 @@ import (
 	"time"
 )
 
-// Asking an operator to paste a PEM is asking them to go and find one, and the likely outcome is they give up
-// and pick "skip verification" instead — the option we least want. The control plane knows what certificate it
-// serves, so it can fetch it and let the operator confirm: one click rather than a research task.
+// Offering the served cert for one-click confirmation beats operators giving up and skipping verification.
 
-// ControlPlaneCert is the certificate the control plane currently serves, offered so
-// the agents can be pinned to it.
 type ControlPlaneCert struct {
 	// PEM is what goes into MIABI_CA_CERT.
 	PEM string `json:"pem"`
-	// The fields below are for the operator to eyeball before trusting it. A cert fetched over an unverified
-	// connection could, in principle, be an attacker's — showing the subject and fingerprint is what makes
-	// the confirmation meaningful rather than ceremonial.
+	// A cert fetched unverified could be an attacker's; subject and fingerprint make confirmation meaningful.
 	Subject     string `json:"subject"`
 	Issuer      string `json:"issuer"`
 	NotAfter    string `json:"not_after"`
 	Fingerprint string `json:"fingerprint"` // SHA-256, colon-separated
-	// SelfSigned is true when the certificate is its own issuer — the usual case for a
-	// homelab control plane, and the case where pinning it IS trusting the CA.
+	// For a self-signed cert, pinning it is trusting the CA.
 	SelfSigned bool `json:"self_signed"`
-	// PubliclyTrusted is true when the chain already verifies against the system pool,
-	// in which case no CA needs to be distributed at all and the agents should simply
-	// verify normally.
+	// Then no CA needs distributing and agents should simply verify normally.
 	PubliclyTrusted bool `json:"publicly_trusted"`
 
 	// Hosts are the names the certificate actually vouches for (its SANs).
 	Hosts []string `json:"hosts,omitempty"`
-	// MatchesHost is whether the certificate names the address the agents will dial. This is the trap in
-	// "just trust the CA": adding a certificate to the trust pool does NOT skip the hostname check, so a
-	// cert with no SANs fails however well it is trusted. A CA that doesn't name the control plane is useless.
+	// Trusting a cert does not skip the hostname check, so one that doesn't name the control plane is useless.
 	MatchesHost bool `json:"matches_host"`
 	// DialHost is the address the agents dial, so the UI can name it in the failure.
 	DialHost string `json:"dial_host"`
 
-	// AnchorIsCA is whether what we can offer is a real certificate AUTHORITY, or merely the server's own
-	// leaf. Pinning a leaf works right up until renewal, when the new leaf is a different certificate and
-	// every agent drops off at once. When this is false, the honest advice is to paste the actual CA.
+	// A pinned leaf breaks every agent at renewal; when false, advise pasting the real CA.
 	AnchorIsCA bool `json:"anchor_is_ca"`
 }
 
-// ErrNoTLS is returned when the control plane is not served over TLS, so there is no
-// certificate to trust (and the agents need none).
 var ErrNoTLS = errors.New("the control plane is not served over HTTPS; agents need no CA")
 
-// FetchControlPlaneCert dials the control plane and returns the certificate it serves. The dial
-// deliberately skips verification: the whole point is to reach a control plane whose certificate does
-// NOT verify yet. Safe here because we collect a certificate for a human to confirm by fingerprint.
+// The dial skips verification on purpose; safe because a human confirms the cert by fingerprint.
 func (s *Service) FetchControlPlaneCert(ctx context.Context) (ControlPlaneCert, error) {
 	raw := strings.TrimSpace(s.controlURL)
 	if raw == "" {
@@ -108,9 +91,7 @@ func (s *Service) FetchControlPlaneCert(ctx context.Context) (ControlPlaneCert, 
 	if len(chain) == 0 {
 		return ControlPlaneCert{}, errors.New("the control plane presented no certificate")
 	}
-	// Pin the ROOT of the chain, not the leaf: a leaf is reissued on every renewal and
-	// would break every agent when it rotates. For a self-signed cert the leaf IS the
-	// root, so this is the same certificate.
+	// Pin the root: a leaf is reissued on renewal and would break every agent.
 	root := chain[len(chain)-1]
 
 	leaf := chain[0]
@@ -123,24 +104,19 @@ func (s *Service) FetchControlPlaneCert(ctx context.Context) (ControlPlaneCert, 
 		SelfSigned:  root.Subject.String() == root.Issuer.String(),
 		DialHost:    u.Hostname(),
 		Hosts:       certHosts(leaf),
-		// Trusting the CA does not skip the hostname check: a certificate that does not
-		// name this host is useless to the agents however well it is trusted.
+		// Trusting the CA does not skip the hostname check.
 		MatchesHost: leaf.VerifyHostname(u.Hostname()) == nil,
-		// A durable anchor is a self-signed CA. Anything else is a leaf, and a leaf
-		// stops being trusted the moment it is reissued.
+		// A leaf stops being trusted the moment it is reissued.
 		AnchorIsCA: root.IsCA && root.Subject.String() == root.Issuer.String(),
 	}
-	// If it already verifies against the system pool, distributing a CA is pointless —
-	// say so, so the operator picks "verify" rather than pinning something they do not
-	// need to pin.
+	// Already publicly trusted, so the operator should pick "verify" rather than pin.
 	if _, verr := leaf.Verify(x509.VerifyOptions{DNSName: u.Hostname()}); verr == nil {
 		out.PubliclyTrusted = true
 	}
 	return out, nil
 }
 
-// certHosts lists the names a certificate vouches for. Empty means it vouches for
-// none — which is exactly the case that makes trusting it pointless.
+// Empty means it vouches for no name, which makes trusting it pointless.
 func certHosts(c *x509.Certificate) []string {
 	hosts := append([]string{}, c.DNSNames...)
 	for _, ip := range c.IPAddresses {
@@ -149,8 +125,7 @@ func certHosts(c *x509.Certificate) []string {
 	return hosts
 }
 
-// fingerprint renders the certificate's SHA-256 as colon-separated hex — the form an
-// operator can compare against `openssl x509 -fingerprint -sha256`.
+// Matches the form of `openssl x509 -fingerprint -sha256`.
 func fingerprint(c *x509.Certificate) string {
 	sum := sha256.Sum256(c.Raw)
 	parts := make([]string, 0, len(sum))

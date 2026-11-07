@@ -30,16 +30,13 @@ func TestNormalizeCapabilitiesAcceptsTheAllowList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NormalizeCapabilities: %v", err)
 	}
-	// De-duplicated, CAP_-stripped, upper-cased and sorted, so a no-op save reads
-	// as a no-op rather than as a change.
 	want := []string{"NET_ADMIN", "SYS_PTRACE"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
 
-// Anything not on the list is refused. A capability the platform has not
-// considered is not one it can reason about.
+// A capability the platform has not considered is not one it can reason about.
 func TestNormalizeCapabilitiesRefusesUnknown(t *testing.T) {
 	for _, bad := range []string{"SYS_BOOT", "ALL", "CAP_ALL", "NET_ADMIN; DROP", "sys admin"} {
 		if _, err := NormalizeCapabilities([]string{bad}); !errors.Is(err, ErrCapabilityUnknown) {
@@ -59,8 +56,7 @@ func TestCapabilityTiersMatchTheirBlastRadius(t *testing.T) {
 			t.Errorf("%s is tier %d, want elevated", name, c.Tier)
 		}
 	}
-	// The everyday ones must not require the system workspace, or nobody can use
-	// the feature for the thing it was built for.
+	// The everyday ones must not require the system workspace.
 	for _, name := range []string{"NET_ADMIN", "SYS_PTRACE", "NET_BIND_SERVICE"} {
 		c, _ := LookupCapability(name)
 		if c.Tier != TierCommon {
@@ -94,8 +90,7 @@ func TestNormalizeDevicesAcceptsTheAllowList(t *testing.T) {
 	}
 }
 
-// A raw block device is the host's filesystem. Granting one defeats the entire
-// point of granting a capability instead of the host.
+// A raw block device is the host's filesystem.
 func TestNormalizeDevicesRefusesBlockDevices(t *testing.T) {
 	for _, bad := range []string{"/dev/sda", "/dev/sda1", "/dev/nvme0n1", "/dev/vda", "/dev/dm-0", "/dev/mapper/root", "/dev/mem", "/dev/kmsg"} {
 		if _, err := NormalizeDevices([]string{bad}); !errors.Is(err, ErrDeviceBlockDevice) {

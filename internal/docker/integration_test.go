@@ -19,21 +19,7 @@
 
 //go:build integration
 
-// Package docker's integration ("characterization") suite.
-//
-// These tests talk to a REAL Docker daemon and lock in the current, observable
-// behavior of the internal/docker adapter through its public Client interface —
-// nothing here reaches into engineClient internals. They exist so a rewrite of
-// this package's guts (such as the docker/docker -> moby/moby SDK swap) can be
-// proven not to change behavior: this suite must stay green across it.
-//
-// They are gated behind the `integration` build tag AND the MIABI_TEST_DOCKER_HOST
-// environment variable, so a normal `go test ./...` never runs them. CI runs them
-// against a DinD engine matrix (25-29) — see .github/workflows/ci.yml. Run locally
-// against your own daemon with:
-//
-//	MIABI_TEST_DOCKER_HOST=unix:///var/run/docker.sock \
-//	    go test -tags integration -race -v ./internal/docker/...
+// Integration suite against a real daemon; needs the integration tag and MIABI_TEST_DOCKER_HOST.
 package docker
 
 import (
@@ -48,17 +34,7 @@ import (
 	"go.uber.org/goleak"
 )
 
-// expectNoGoroutineLeak registers a goleak check for the end of the test.
-//
-// Call it FIRST, before newClient — ordering matters. Cleanups run LIFO, so
-// registering the goleak verify first makes it run LAST: after newClient's
-// Client.Close (which calls the HTTP transport's CloseIdleConnections) and after
-// any container-removal cleanups. That means the Docker SDK's pooled keep-alive
-// connections are already being torn down when goleak snapshots, so its built-in
-// retry sees them exit — they are not our leak. IgnoreCurrent drops the
-// pre-existing baseline, and the persistConn filters cover any pool goroutine
-// still winding down. What survives is what we care about: a stream reader that
-// ignored context cancellation and kept running.
+// Call first: cleanups run LIFO, so goleak verifies after the client closes its pooled connections.
 func expectNoGoroutineLeak(t *testing.T) {
 	t.Helper()
 	opts := []goleak.Option{
@@ -71,27 +47,18 @@ func expectNoGoroutineLeak(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t, opts...) })
 }
 
-// Images the suite uses. All are tiny and widely mirrored; CI pulls them on
-// demand via ensureImage. alpine is the workhorse (has /bin/sh, id, nc, and a
-// readable /proc/self/status); alpine/socat backs the DialNetwork relay; postgres
-// is the realistic peer for the network-alias and relay tests.
 const (
 	imgAlpine   = "alpine:3"
 	imgSocat    = "alpine/socat:latest"
 	imgPostgres = "postgres:17-alpine"
 )
 
-// nameSeq makes container/network/volume names unique within a run without
-// needing time/rand (which the harness forbids in some contexts). Process id +
-// a monotonic counter is enough for a single test binary.
 var nameSeq atomic.Uint64
 
 func uniqueName(prefix string) string {
 	return fmt.Sprintf("miabi-it-%s-%d-%d", prefix, os.Getpid(), nameSeq.Add(1))
 }
 
-// newClient dials the daemon named by MIABI_TEST_DOCKER_HOST, or skips the test
-// when it is unset. The client is closed at test end.
 func newClient(t *testing.T) Client {
 	t.Helper()
 	host := os.Getenv("MIABI_TEST_DOCKER_HOST")
@@ -120,8 +87,6 @@ func bg(t *testing.T, d time.Duration) context.Context {
 	return ctx
 }
 
-// ensureImage pulls ref if it is not already present, so the suite is
-// self-sufficient on a fresh DinD engine. Exercises ImageExists + PullImage.
 func ensureImage(t *testing.T, cli Client, ref string) {
 	t.Helper()
 	ctx := bg(t, 3*time.Minute)
@@ -137,8 +102,6 @@ func ensureImage(t *testing.T, cli Client, ref string) {
 	}
 }
 
-// run creates+starts a container from spec, ensuring its image is present and
-// registering it for forced removal at test end. Returns the container id.
 func run(t *testing.T, cli Client, spec RunSpec) string {
 	t.Helper()
 	ensureImage(t, cli, spec.Image)
@@ -160,8 +123,6 @@ func run(t *testing.T, cli Client, spec RunSpec) string {
 	return id
 }
 
-// sleeper is a RunSpec for a long-lived alpine container that just idles, tagged
-// managed and (unless overridden) resource-capped. Handy base for most tests.
 func sleeper(t *testing.T) RunSpec {
 	return RunSpec{
 		Name:          uniqueName("sleep"),
@@ -172,11 +133,7 @@ func sleeper(t *testing.T) RunSpec {
 	}
 }
 
-// execOutput runs argv inside container id over a TTY exec and returns its
-// output with trailing CR/LF trimmed. TTY mode gives a raw, un-multiplexed
-// stream, so the helper needs no stdcopy demux; it is meant for small state
-// probes (id -u, /proc/self/status, getent hosts). The dedicated exec test
-// characterizes non-TTY stdcopy framing separately.
+// TTY mode gives a raw stream, so no stdcopy demux is needed; meant for small state probes.
 func execOutput(t *testing.T, cli Client, id string, argv ...string) string {
 	t.Helper()
 	ctx := bg(t, 30*time.Second)

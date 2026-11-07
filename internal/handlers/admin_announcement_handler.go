@@ -33,10 +33,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AdminAnnouncementHandler lets a platform administrator put a notice in the
-// inboxes of the users it concerns — planned maintenance, a breaking upgrade, a
-// policy change (Enterprise; gated announcements). It is the platform speaking,
-// as opposed to the alerts Miabi derives from the event stream.
+// AdminAnnouncementHandler is the platform speaking, as opposed to alerts derived from events (Enterprise).
 type AdminAnnouncementHandler struct {
 	svc   *announcement.Service
 	repo  *repositories.AnnouncementRepository
@@ -49,9 +46,7 @@ func NewAdminAnnouncementHandler(svc *announcement.Service, repo *repositories.A
 	return &AdminAnnouncementHandler{svc: svc, repo: repo, users: users, ee: ee, audit: auditLog}
 }
 
-// announcementBody is the shared create/update payload. It is named Message
-// rather than Body because okapi resolves a request's body by looking for a field
-// named Body, and applies that rule again to the body's own fields.
+// Named Message, not Body: okapi treats any field named Body as the request body, recursively.
 type announcementBody struct {
 	Title        string `json:"title" required:"true" maxLength:"200"`
 	Message      string `json:"message" maxLength:"4000"`
@@ -79,8 +74,6 @@ type ListAnnouncementsRequest struct {
 	Size int `query:"size" default:"20"`
 }
 
-// AudiencePreviewRequest asks how many users an audience currently resolves to,
-// so an operator sees the blast radius before broadcasting rather than after.
 type AudiencePreviewRequest struct {
 	Audience     string `query:"audience" enum:"all,admins,owners,workspaces"`
 	WorkspaceIDs string `query:"workspaces"` // comma-separated ids
@@ -126,9 +119,7 @@ func (h *AdminAnnouncementHandler) Preview(c *okapi.Context, req *AudiencePrevie
 	return ok(c, AudiencePreview{Recipients: n})
 }
 
-// Create broadcasts the announcement, or schedules it when publish_at is in the
-// future. There is no draft state: an announcement nobody will receive is a note,
-// and Retract covers the case where one went out wrong.
+// Create has no draft state; Retract covers an announcement that went out wrong.
 func (h *AdminAnnouncementHandler) Create(c *okapi.Context, req *CreateAnnouncementRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagAnnouncements); err != nil {
 		return entitlementAbort(c, err)
@@ -193,9 +184,7 @@ func (h *AdminAnnouncementHandler) Publish(c *okapi.Context) error {
 	return ok(c, a)
 }
 
-// Retract deletes the announcement and every delivery it made. Retraction stays
-// available on a degraded license: taking back a wrong notice is not a new
-// configuration, and blocking it would leave the mistake in every inbox.
+// Retract stays available on a degraded license, since blocking it would leave the mistake in every inbox.
 func (h *AdminAnnouncementHandler) Retract(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagAnnouncements); err != nil {
 		return entitlementAbort(c, err)
@@ -215,8 +204,6 @@ func (h *AdminAnnouncementHandler) Retract(c *okapi.Context) error {
 	return ok(c, map[string]string{"message": "announcement retracted"})
 }
 
-// apply validates the payload onto the announcement, leaving persistence to the
-// service.
 func (h *AdminAnnouncementHandler) apply(c *okapi.Context, a *models.Announcement, b announcementBody) error {
 	title := strings.TrimSpace(b.Title)
 	if title == "" {

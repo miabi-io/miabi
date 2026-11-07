@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// fakeEngine is the smallest Docker that can express the failures that matter: an
-// image that will not boot, and a promotion that will not come up.
 type fakeEngine struct {
 	docker.Client // embedded: every method we do not need panics loudly if reached
 
@@ -38,14 +36,10 @@ type fakeEngine struct {
 	// health maps container name -> the health Inspect reports.
 	health map[string]string
 	// dies is the set of images whose containers immediately exit.
-	dies map[string]bool
-	// unhealthy is the set of images whose containers RUN but never pass their
-	// healthcheck — a gateway that boots with a broken config and serves nothing.
+	dies      map[string]bool
 	unhealthy map[string]bool
 	// unstartable is the set of images RunContainer refuses outright.
 	unstartable map[string]bool
-	// pullFails simulates an unreachable registry (air-gapped, or a locally built
-	// image that was never pushed); localImages is what is already on the host.
 	pullFails   bool
 	localImages map[string]bool
 
@@ -154,8 +148,7 @@ func TestHappyPathPromotesTheNewImage(t *testing.T) {
 	}
 }
 
-// A bad image is the case the test container exists for. The live container must not
-// be touched at all — not stopped, not removed.
+// The live container must not be stopped or removed when the new image is bad.
 func TestABadImageNeverTouchesTheLiveContainer(t *testing.T) {
 	f := newFake()
 	f.running["gw"] = "goma:v1"
@@ -179,9 +172,7 @@ func TestABadImageNeverTouchesTheLiveContainer(t *testing.T) {
 	}
 }
 
-// The case edgegateway.SafeUpdate could not survive: the test passed or was skipped, but the promoted
-// container will not come up. Without a rollback the component is simply gone — which for the control plane
-// means the panel is down and nothing can bring it back but a human with a shell.
+// Without rollback a promotion that never comes up leaves the component, possibly the panel, gone.
 func TestAFailedPromotionRollsBackToThePreviousImage(t *testing.T) {
 	f := newFake()
 	f.running["miabi"] = "miabi:v1"
@@ -203,9 +194,7 @@ func TestAFailedPromotionRollsBackToThePreviousImage(t *testing.T) {
 	}
 }
 
-// The test container exists to catch a bad image BEFORE it takes the live one's ports. "Still running" is a
-// weak claim: a gateway with a broken config boots, stays up, and serves nothing. Where the container reports
-// health, the test phase must demand it — otherwise the failure surfaces after the live one is gone.
+// A gateway with a broken config can run while serving nothing, so the test phase must demand health.
 func TestAnUnhealthyTestContainerNeverGetsPromoted(t *testing.T) {
 	f := newFake()
 	f.running["gw"] = "goma:v1"
@@ -225,8 +214,7 @@ func TestAnUnhealthyTestContainerNeverGetsPromoted(t *testing.T) {
 	}
 }
 
-// Rollback:false is honored — some callers would rather fail loudly than resurrect an
-// old image over state the new one already changed.
+// Some callers would rather fail loudly than resurrect an old image over state the new one changed.
 func TestRollbackCanBeDeclined(t *testing.T) {
 	f := newFake()
 	f.running["x"] = "app:v1"
@@ -242,9 +230,7 @@ func TestRollbackCanBeDeclined(t *testing.T) {
 	}
 }
 
-// When the rollback ITSELF fails, the operator is in the worst position: nothing is
-// running. The error has to say so in those words, because it is the difference
-// between "retry later" and "get up now".
+// When rollback fails nothing is running, and the error must say so plainly.
 func TestAFailedRollbackSaysTheComponentIsDown(t *testing.T) {
 	f := newFake()
 	f.running["miabi"] = "miabi:v1"
@@ -261,8 +247,7 @@ func TestAFailedRollbackSaysTheComponentIsDown(t *testing.T) {
 	}
 }
 
-// A first install has nothing to roll back to. That must not be reported as a
-// rollback failure — there was simply no previous image.
+// A first install has no previous image, which is not a rollback failure.
 func TestNoPreviousImageIsNotARollbackFailure(t *testing.T) {
 	f := newFake()
 	f.dies["app:v1"] = true
@@ -276,9 +261,7 @@ func TestNoPreviousImageIsNotARollbackFailure(t *testing.T) {
 	}
 }
 
-// A hard pull breaks the two cases most likely at install time: an air-gapped host, and an operator running a
-// locally built or `docker load`ed image. Docker's own `docker run` uses what is on the host; so must we.
-// Caught by running install.sh against a locally built miabi/miabi, which failed with "not found".
+// A hard pull breaks air-gapped hosts and locally built images; caught running install.sh on a local build.
 func TestEnsureImageFallsBackToTheLocalCopy(t *testing.T) {
 	t.Run("registry unreachable but image is local", func(t *testing.T) {
 		f := newFake()

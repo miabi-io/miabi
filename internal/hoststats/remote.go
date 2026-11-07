@@ -26,13 +26,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/hoststats"
 )
 
-// SampleCommand is run inside a short-lived container on a node to produce one sample. A container's
-// /proc/stat and /proc/meminfo are the HOST's — they are not namespaced — so this reads the node's
-// real CPU and memory without binding anything. It is the fallback for nodes whose agent does not
-// push stats (no agent at all, or an older one).
-//
-// The two cpu lines a second apart are the CPU sample window; the meminfo keys cover kernels with
-// and without MemAvailable.
+// A container's /proc/stat and /proc/meminfo are not namespaced, so this reads the node's real usage.
 var SampleCommand = []string{
 	"sh", "-c",
 	"grep '^cpu ' /proc/stat; sleep 1; grep '^cpu ' /proc/stat; " +
@@ -42,9 +36,7 @@ var SampleCommand = []string{
 // SampleSeconds is how long SampleCommand takes, so callers can size their timeouts.
 const SampleSeconds = 1
 
-// ParseSample turns SampleCommand's output into a snapshot. It is deliberately a pure string
-// function: the container is run by the caller, which owns the Docker client, so the parsing stays
-// testable without one.
+// Pure string function so parsing stays testable without a Docker client.
 func ParseSample(out string) (Stats, error) {
 	var cpuLines []string
 	vals := map[string]uint64{}

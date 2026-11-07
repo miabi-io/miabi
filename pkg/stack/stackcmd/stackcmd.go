@@ -16,18 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package stackcmd is the behaviour behind the host-side verbs — install/converge, upgrade,
-// restart, status and uninstall — with no command-line framework attached.
-//
-// Two front-ends drive it, and they must not drift:
-//
-//   - `miabi setup|upgrade|stack …` in the CLI (cobra), the normal path;
-//   - `docker run miabi/miabi:<tag> install …` on the server image (okapicli), which is how a
-//     user without root installs — the image runs as uid 10001 with the host's docker group, so
-//     nothing has to be written to /usr/local/bin.
-//
-// Each front-end owns only its flag parsing and its rendering; everything that decides what
-// happens to a host lives here, once.
+// Package stackcmd holds host-side verb behaviour shared by the cobra CLI and the image's okapicli, so they can't drift.
 package stackcmd
 
 import (
@@ -65,8 +54,6 @@ type SetupOptions struct {
 	DefaultImage  func() string
 }
 
-// SetupResult reports what a Setup did, so the caller can print its own next-steps hint — the one
-// piece of the output that legitimately differs between the two front-ends.
 type SetupResult struct {
 	Manifest *stack.Manifest
 	Path     string
@@ -74,9 +61,7 @@ type SetupResult struct {
 	NewInstall bool
 }
 
-// Setup installs the stack, or converges an existing install to its manifest. It is idempotent:
-// run against an existing manifest it keeps the stored secrets, because a regenerated database
-// password would lock the new control plane out of its own data.
+// Idempotent: an existing manifest keeps its secrets, since a regenerated DB password locks out the data.
 func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions, ui UI) (*SetupResult, error) {
 	if o.AdminPassword != "" {
 		if err := stack.CheckAdminPassword(o.AdminPassword); err != nil {
@@ -94,8 +79,7 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 			def = o.DefaultImage()
 		}
 		m, newInstall = stack.Defaults(def), true
-		// Config encryption is on by default for a FRESH install only. An existing host may run an
-		// imported gateway, which Miabi never redeploys and so could never hand the key to.
+		// Fresh installs only: an existing host may run an imported gateway Miabi could never hand the key to.
 		if kerr := m.GenerateGatewayConfigKey(); kerr != nil {
 			return nil, kerr
 		}
@@ -119,9 +103,7 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 	if m.Images.Miabi == "" {
 		return nil, errors.New("cannot determine which image to install — pass --image <repo>:<tag>")
 	}
-	// Normalize before showing the plan, so what is printed is what will run — including the
-	// generated secrets, which must be persisted even if converge later fails. A stack whose
-	// containers exist but whose password was never written down is unrecoverable.
+	// Normalize first so the plan is what will run, and generated secrets get persisted even if converge fails.
 	if err := m.Normalize(); err != nil {
 		return nil, err
 	}
@@ -133,18 +115,14 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 		return nil, err
 	}
 
-	// A fresh install onto an EXISTING Postgres volume can never work: Postgres keeps the password
-	// its data dir was created with. Nothing downstream catches it (pg_isready does not check
-	// credentials), so refuse and say how to recover.
+	// Postgres keeps its original password and pg_isready doesn't check credentials, so refuse and explain.
 	if newInstall {
 		if err := svc.CheckOrphanedData(pctx); err != nil {
 			return nil, err
 		}
 	}
 
-	// Check the ports BEFORE creating anything. The gateway comes up last, so without this the
-	// install gets through Postgres, Redis and the control plane and only then dies because
-	// something else owns :443 — leaving a half-built stack.
+	// The gateway comes up last, so a taken :443 would otherwise leave a half-built stack.
 	conflicts, perr := svc.CheckPorts(pctx)
 	if perr != nil {
 		return nil, perr
@@ -172,17 +150,14 @@ func Setup(ctx context.Context, svc *stack.Service, path string, o SetupOptions,
 		svc.AllowNetworkRecreate()
 	}
 
-	// Persist the manifest BEFORE creating anything. The secrets are generated here and exist
-	// nowhere else; if converge dies halfway the operator still has the database password. The
-	// reverse order can strand a live Postgres whose password nobody knows.
+	// Persist first: the generated secrets exist nowhere else, and a live Postgres with an unknown password is stranded.
 	if err := stack.Save(path, m); err != nil {
 		return nil, err
 	}
 	if err := svc.Converge(ctx, m); err != nil {
 		return nil, err
 	}
-	// Converge may have filled in derived fields (docker GID, defaults). Persist again so the file
-	// matches what actually ran.
+	// Converge may have filled derived fields, so save again to match what actually ran.
 	if err := stack.Save(path, m); err != nil {
 		return nil, err
 	}
@@ -204,8 +179,7 @@ func applySetupOptions(m *stack.Manifest, o SetupOptions) {
 	set(&m.Images.Miabi, o.Image)
 	set(&m.Images.Gateway, o.GatewayImage)
 	set(&m.Gateway.Config, o.GomaConfig)
-	// install.sh pins every image in one place and CI bumps them there; without this the runner
-	// would silently fall back to the Go default and drift from that pin.
+	// Without this the runner would fall back to the Go default and drift from install.sh's pin.
 	set(&m.Images.Runner, o.RunnerImage)
 	set(&m.Network.Subnet, o.Subnet)
 	set(&m.InternalNetwork.Subnet, o.InternalSubnet)
@@ -221,8 +195,7 @@ func applySetupOptions(m *stack.Manifest, o SetupOptions) {
 		on := true
 		m.Network.IPv6 = &on
 	}
-	// --registry-host implies --registry: naming the host is only meaningful if the registry runs,
-	// and silently ignoring the flag would be worse than assuming.
+	// Naming the host is only meaningful if the registry runs, and ignoring the flag would be worse.
 	if o.RegistryHost != "" {
 		m.Registry.Host, m.Registry.Enabled = o.RegistryHost, true
 	}
@@ -293,8 +266,6 @@ func printResult(ui UI, m *stack.Manifest, path string, newInstall, suppliedPass
 	}
 }
 
-// controlHost is the host operators must make reachable for nodes, or "" when there is nothing
-// extra to say: no separate control URL, or one on the very name the domain line already covers.
 func controlHost(m *stack.Manifest) string {
 	cu := strings.TrimSpace(m.ControlURL)
 	if cu == "" || cu == m.WebURL {
@@ -304,8 +275,7 @@ func controlHost(m *stack.Manifest) string {
 	if err != nil || u.Host == "" {
 		return ""
 	}
-	// Same name on another port or scheme: the DNS advice is already given, and repeating the name
-	// would read as a second record to create.
+	// Repeating the same name would read as a second DNS record to create.
 	if u.Hostname() == m.Domain {
 		return ""
 	}
@@ -323,9 +293,7 @@ type UpgradeOptions struct {
 	DefaultImage func() string
 }
 
-// normalizeVersion accepts a Docker tag or a Git tag: releases are cut as v1.8.0 and published as
-// 1.8.0, and an operator reasonably types either. The "v" is stripped only when a digit follows, so
-// a real tag like "vnext" survives.
+// The "v" is stripped only before a digit, so a tag like "vnext" survives.
 func normalizeVersion(v string) (string, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -340,15 +308,12 @@ func normalizeVersion(v string) (string, error) {
 	return v, nil
 }
 
-// floatingTags never identify a fixed build. Pulling one twice a month apart gives two different
-// images under the same name, which is exactly what the manifest exists to prevent.
+// A floating tag pulled a month apart yields different images, which the manifest exists to prevent.
 var floatingTags = map[string]bool{
 	"latest": true, "edge": true, "stable": true, "nightly": true,
 	"main": true, "master": true, "dev": true, "devel": true, "canary": true,
 }
 
-// tagOf returns the tag on a reference, "" for a digest pin, and "latest" when none is given —
-// which is what Docker resolves a bare repository to.
 func tagOf(ref string) string {
 	if at := strings.LastIndex(ref, "@"); at >= 0 {
 		return "" // digest-pinned: the most fixed form there is
@@ -360,13 +325,7 @@ func tagOf(ref string) string {
 	return "latest"
 }
 
-// warnFloatingTag flags a reference that cannot pin a build. This is not style advice — it breaks
-// two guarantees the rollout depends on:
-//
-//   - saferollout skips the rollback when the previous reference equals the new one, so a failed
-//     upgrade of :latest -> :latest has nothing to return to and leaves the component down;
-//   - drift detection compares reference strings, so an old :latest and a new :latest look
-//     identical and `upgrade` reports "already at" without doing anything.
+// Floating tags defeat rollback (prev == new) and drift detection (identical ref strings).
 func warnFloatingTag(ui UI, ref string) {
 	tag := tagOf(ref)
 	if !floatingTags[tag] {
@@ -376,16 +335,14 @@ func warnFloatingTag(ui UI, ref string) {
 		"    image to return to), and drift against it cannot be detected. Pin a version instead — --version 1.8.0.", ref)
 }
 
-// retag swaps the tag on an image reference, keeping registry and repository — which is what makes
-// --version correct on a private registry, and on components that are not miabi/miabi.
+// Keeping registry and repository makes --version correct on private registries and other components.
 func retag(ref, version string) string {
 	repo := ref
 	// A digest pin has no tag to replace; the version supersedes it.
 	if at := strings.LastIndex(repo, "@"); at >= 0 {
 		repo = repo[:at]
 	}
-	// The tag separator is the last ":" AFTER the last "/", so the port in a reference like
-	// registry.example.com:5000/miabi is not mistaken for one.
+	// The tag separator is the last ":" after the last "/", so a registry port isn't mistaken for one.
 	slash := strings.LastIndex(repo, "/")
 	if colon := strings.LastIndex(repo, ":"); colon > slash {
 		repo = repo[:colon]
@@ -393,8 +350,6 @@ func retag(ref, version string) string {
 	return repo + ":" + version
 }
 
-// Upgrade rolls a component to a newer image, rolling back automatically if the new one never
-// becomes healthy. With no component named it moves the control plane and re-converges the rest.
 func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOptions, ui UI) error {
 	if strings.TrimSpace(o.Image) != "" && strings.TrimSpace(o.Version) != "" {
 		return errors.New("--image and --version are mutually exclusive: --version retags the current reference, --image replaces it outright")
@@ -413,16 +368,13 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 		name = o.Component
 	}
 
-	// Validate the component BEFORE resolving an image: a typo should say so, not complain about
-	// an image the caller never had to supply.
+	// A typo should be reported as such, not as a missing image the caller never had to supply.
 	pin, ok := m.ImagePin(name)
 	if !ok {
 		return fmt.Errorf("unknown component %q (have: %s)", name, strings.Join(svc.ComponentNames(m), ", "))
 	}
 
-	// Only the control plane follows the default image. Naming another component rolls it out to
-	// whatever the manifest pins, unless --image/--version says otherwise: bumping Postgres is a
-	// database restart the operator has to ask for — and it needs no default image at all.
+	// Only the control plane follows the default image; bumping Postgres is a restart the operator must ask for.
 	target := strings.TrimSpace(o.Image)
 	switch {
 	case target != "":
@@ -452,8 +404,7 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 			}
 			return convergeRest(ctx, svc, m, path)
 		}
-		// The gateway container being current does not mean the node gateways are: an earlier
-		// gateway-only upgrade may have left the control plane on the old value.
+		// An earlier gateway-only upgrade may have left node gateways on the old value.
 		if name == stack.ContainerGateway {
 			warnNodeGatewayDrift(ctx, svc, ui, target)
 		}
@@ -465,8 +416,7 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 		return errors.New("cancelled")
 	}
 
-	// Convert only once the upgrade is going ahead, so a cancelled or misspelled one never leaves a
-	// stray copy behind.
+	// Convert only once the upgrade proceeds, so a cancelled one leaves no stray copy.
 	if err := convertManifest(path, m, ui); err != nil {
 		return err
 	}
@@ -480,9 +430,7 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 		ui.Printf("  %s\n", phase)
 	})
 	if err != nil {
-		// Put the pin back. The manifest must describe what is RUNNING: a rollback restored the old
-		// image, so recording the new one would leave the file lying — and the next converge would
-		// reconcile reality to match the lie, re-applying the upgrade that just failed.
+		// The manifest must describe what runs, or the next converge would re-apply the failed upgrade.
 		*pin = prev
 		_ = stack.Save(path, m)
 		return err
@@ -502,9 +450,7 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	return nil
 }
 
-// convertManifest moves a flat manifest onto the kinded document, keeping a copy. An upgrade is
-// where the shape changes: it is the one command every host eventually runs, so there is no separate
-// migration step to find out about. `setup` never converts.
+// Upgrade is the one command every host eventually runs, so it is where the shape changes; `setup` never converts.
 func convertManifest(path string, m *stack.Manifest, ui UI) error {
 	converted, err := stack.ConvertFile(path, m)
 	if err != nil {
@@ -517,16 +463,7 @@ func convertManifest(path string, m *stack.Manifest, ui UI) error {
 	return nil
 }
 
-// convergeRest reconciles the components the rollout did not touch, so a manifest edit (a new
-// gateway pin, a rotated secret) takes effect without a second command. A no-op when nothing changed.
-// warnNodeGatewayDrift reports node gateways still pinned to an older image than the one just
-// rolled out.
-//
-// The gateway's image is also the image every node gateway runs, but the value nodes follow lives
-// on the CONTROL PLANE as MIABI_NODE_GATEWAY_IMAGE — so a gateway-only upgrade moves the manifest
-// and the one container while leaving every node behind. It says so rather than recreating the
-// control plane on its own: a command asked to roll one component should not restart another, and
-// which version a fleet of nodes runs is the operator's call to make deliberately.
+// Warns rather than recreating the control plane: rolling one component should not restart another.
 func warnNodeGatewayDrift(ctx context.Context, svc *stack.Service, ui UI, target string) {
 	stale := svc.NodeGatewayImageDrift(ctx, target)
 	if stale == "" {
@@ -544,8 +481,6 @@ func convergeRest(ctx context.Context, svc *stack.Service, m *stack.Manifest, pa
 	return stack.Save(path, m)
 }
 
-// isDrifted reports whether the running container is NOT on the image the manifest pins — in which
-// case "already at that version" is false even though the pin says so, and the rollout should proceed.
 func isDrifted(ctx context.Context, svc *stack.Service, name, want string) bool {
 	found, err := svc.Discover(ctx)
 	if err != nil {
@@ -559,9 +494,7 @@ func isDrifted(ctx context.Context, svc *stack.Service, name, want string) bool 
 	return true // not running at all: rolling it out is exactly right
 }
 
-// Restart restarts containers WITHOUT recreating them, so they re-read what is on disk. Editing the
-// gateway's goma.yml is the obvious case (Goma watches its providers directory, not its base
-// config); a spec change is the obvious non-case, and Service.Restart says so.
+// Restarts without recreating, so on-disk changes like goma.yml are re-read but spec changes are not.
 func Restart(ctx context.Context, svc *stack.Service, path, component string, yes bool, ui UI) error {
 	m, err := stack.Load(path)
 	if err != nil {
@@ -571,8 +504,6 @@ func Restart(ctx context.Context, svc *stack.Service, path, component string, ye
 	if component != "" {
 		what = component
 	}
-	// A whole-stack restart takes the panel down for as long as it takes to come back; one
-	// component is a smaller ask. Either way, confirm — this is not a read.
 	if !yes && !ui.Confirm(fmt.Sprintf("Restart %s?", what)) {
 		return errors.New("cancelled")
 	}
@@ -584,8 +515,7 @@ func Restart(ctx context.Context, svc *stack.Service, path, component string, ye
 	return nil
 }
 
-// Apply converges the stack onto the manifest, recreating only the components whose spec changed.
-// It is the second half of `env set`, so a batch of edits costs one recreate per component.
+// The second half of `env set`, so a batch of edits costs one recreate per component.
 func Apply(ctx context.Context, svc *stack.Service, path string, yes bool, ui UI) error {
 	m, err := stack.Load(path)
 	if err != nil {
@@ -613,14 +543,12 @@ func Apply(ctx context.Context, svc *stack.Service, path string, yes bool, ui UI
 	return nil
 }
 
-// StatusReport is what status found. The caller renders it: the two front-ends draw different
-// tables, but neither decides what is in one.
+// The caller renders it; neither front-end decides what is in it.
 type StatusReport struct {
 	Manifest *stack.Manifest
 	Path     string
 	Found    []stack.Component
-	// LegacyConfig is set when the manifest is at the pre-rename path. The host IS installed —
-	// saying otherwise sends its operator hunting for a Compose stack that never existed.
+	// The host is installed; saying otherwise sends the operator hunting for a Compose stack.
 	LegacyConfig error
 	// Unmanaged is set when containers exist but no manifest does: a Compose or hand-rolled install.
 	Unmanaged bool
@@ -656,8 +584,7 @@ func Status(ctx context.Context, svc *stack.Service, path string) (*StatusReport
 	return r, nil
 }
 
-// Uninstall removes the stack's containers. Volumes are kept unless withVolumes, in which case the
-// manifest goes too — it describes an install that no longer exists.
+// With volumes removed the manifest goes too, since it describes an install that no longer exists.
 func Uninstall(ctx context.Context, svc *stack.Service, path string, withVolumes, yes bool, ui UI, removeFile func(string) error) error {
 	ui.Printf("This removes the Miabi stack's containers on this host.\n")
 	if withVolumes {
@@ -683,12 +610,9 @@ func Uninstall(ctx context.Context, svc *stack.Service, path string, withVolumes
 	return nil
 }
 
-// WithInstallHint turns "no manifest" into an answer rather than a dead end. The same error means
-// very different things depending on whether Miabi is running.
 func WithInstallHint(err error) error {
 	if errors.Is(err, stack.ErrNotInstalled) {
-		// Only tell a non-root user to use sudo when they would actually need it: they can install
-		// under their own account, and the path they were just told about is in their home.
+		// Non-root users can install under their own account, so only suggest sudo when needed.
 		install := "sudo miabi setup --domain miabi.example.com"
 		if os.Geteuid() != 0 {
 			install = "miabi setup --domain miabi.example.com"

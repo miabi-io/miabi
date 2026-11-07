@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// An empty list offers the whole pool. Treating it as "deny all" would silently cut every existing
-// plan off from the shared runners it has always used.
+// Treating empty as "deny all" would cut every existing plan off from its shared runners.
 func TestRunnerBindingAllows(t *testing.T) {
 	if !(RunnerBinding{}).Allows("anything") {
 		t.Error("an empty binding must offer every shared runner")
@@ -59,8 +58,7 @@ func TestPlatformRunnersFrom(t *testing.T) {
 	}
 }
 
-// Without enforcement or the platform_runners entitlement, no workspace is bound to a subset: a
-// stored list goes inert rather than cutting a workspace off when a license lapses.
+// A stored list goes inert rather than cutting a workspace off when a license lapses.
 func TestEffectivePlatformRunnersNeedsEnforcementAndLicense(t *testing.T) {
 	if _, bound := (&Service{enforce: false, ee: allow{}}).EffectivePlatformRunners(1); bound {
 		t.Error("runners bound with plan enforcement off")

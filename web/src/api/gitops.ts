@@ -23,14 +23,11 @@ export const gitopsApi = {
   update: (ws: number, id: number, input: GitSourceInput) =>
     api.patch<ApiResponse<GitSource>>(`${base(ws)}/${id}`, input),
   sync: (ws: number, id: number) => api.post<ApiResponse<GitSource>>(`${base(ws)}/${id}/sync`),
-  // Reconcile a single managed resource (kind/name) without touching the rest of
-  // the project.
   syncResource: (ws: number, id: number, kind: string, name: string) =>
     api.post<ApiResponse<ApplyResult>>(
       `${base(ws)}/${id}/resources/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/sync`,
     ),
-  // Delete a single live resource. Under auto-sync it is recreated on the next
-  // reconcile — callers warn the user first.
+  // Under auto-sync the resource is recreated on the next reconcile; callers warn the user first.
   deleteResource: (ws: number, id: number, kind: string, name: string) =>
     api.delete<ApiResponse<ApplyResult>>(
       `${base(ws)}/${id}/resources/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`,

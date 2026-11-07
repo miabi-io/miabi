@@ -21,12 +21,7 @@ package models
 
 import "time"
 
-// Organization is the tenant boundary: it owns workspaces, caps how many, and may own the clusters
-// they deploy to. It is also the identity realm SSO, SAML, enforced login and SCIM attach to. Miabi
-// seeds one default organization; every nullable organization_id resolves to it.
-//
-// It is deliberately NOT a data-isolation boundary — every resource is scoped by workspace_id in the
-// repository layer, and that stays the isolation mechanism.
+// Organization is the tenant and SSO realm but not a data-isolation boundary; workspace_id scoping remains that.
 type Organization struct {
 	UIDModel
 	ID                             uint      `json:"id" gorm:"primaryKey"`
@@ -46,8 +41,6 @@ type Organization struct {
 	WorkspaceCount                 int64     `json:"workspace_count" gorm:"-"`
 }
 
-// DefaultOrganizationName is the handle of the seeded default organization, and
-// DefaultOrganizationLabel the label it is seeded with.
 const (
 	DefaultOrganizationName  = "default"
 	DefaultOrganizationLabel = "Miabi Default"

@@ -10,9 +10,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package scim implements a minimal SCIM 2.0 Users provisioning endpoint for identity providers.
-// It is compiled only into the Enterprise build. Create/replace provisions a Miabi user; setting
-// active=false (or DELETE) deprovisions by disabling the account.
+// Package scim provisions users via SCIM 2.0 (Enterprise only); deprovisioning disables the account.
 package scim
 
 import (
@@ -55,8 +53,6 @@ func New(d Deps) *Provider {
 	return &Provider{db: d.DB, tokens: repositories.NewSCIMTokenRepository(d.DB), entitled: entitled}
 }
 
-// authenticate validates the Bearer SCIM token. Returns false (and writes a 401)
-// when missing/unknown.
 func (p *Provider) authenticate(c *okapi.Context) bool {
 	h := c.Header("Authorization")
 	const pfx = "Bearer "
@@ -102,8 +98,7 @@ func (p *Provider) Users(c *okapi.Context) error {
 	}
 }
 
-// Groups returns an empty list — group provisioning is not modeled yet, but the
-// endpoint exists so IdPs that probe it succeed.
+// Exists only so IdPs that probe the endpoint succeed; group provisioning is not modeled yet.
 func (p *Provider) Groups(c *okapi.Context) error {
 	if !p.entitled() {
 		return scimError(c, http.StatusPaymentRequired, "SCIM requires an active Enterprise license")
@@ -169,8 +164,7 @@ func nameOf(in scimUser, email string) string {
 }
 
 func (p *Provider) listUsers(c *okapi.Context) error {
-	// IdPs query by userName before creating. Support the common
-	// filter=userName eq "x"; otherwise return all (bounded).
+	// IdPs query by userName before creating, so support filter=userName eq "x".
 	var users []models.User
 	if f := c.Query("filter"); f != "" {
 		if email := parseUserNameFilter(f); email != "" {
@@ -239,8 +233,6 @@ func (p *Provider) replaceUser(c *okapi.Context, id string) error {
 	return c.JSON(http.StatusOK, toSCIM(u))
 }
 
-// patchUser handles the common SCIM PATCH operations, chiefly replacing the
-// active flag (deprovisioning).
 func (p *Provider) patchUser(c *okapi.Context, id string) error {
 	u, err := p.find(id)
 	if err != nil {
@@ -289,8 +281,7 @@ func (p *Provider) patchUser(c *okapi.Context, id string) error {
 	return c.JSON(http.StatusOK, toSCIM(u))
 }
 
-// deleteUser deprovisions by disabling the account (we never hard-delete a user
-// and their owned resources via SCIM).
+// Never hard-delete a user and their resources via SCIM.
 func (p *Provider) deleteUser(c *okapi.Context, id string) error {
 	u, err := p.find(id)
 	if err != nil {

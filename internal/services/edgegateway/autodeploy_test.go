@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Regression: every agent reconnect recreated mb-node-gateway beside an imported gateway, which either
-// failed on the ingress ports and left a stopped container, or started a second gateway.
+// Every agent reconnect used to recreate mb-node-gateway beside an imported gateway.
 func TestAutoDeploySkipsImportedGateways(t *testing.T) {
 	for name, tc := range map[string]struct {
 		srv  *models.Server

@@ -44,8 +44,7 @@ const blank = (): AnnouncementPayload => ({
 })
 const form = ref<AnnouncementPayload>(blank())
 
-// reach is the resolved audience size, refreshed as the operator changes the
-// targeting — the blast radius shown before the send, not after.
+// The blast radius is shown before the send, not after.
 const reach = ref<number | null>(null)
 const audienceHint = computed(() => audiences.find((a) => a.value === form.value.audience)?.hint ?? '')
 
@@ -55,8 +54,7 @@ const dismissalHint = computed(() =>
     : 'The banner disappears for each reader once they close it.',
 )
 
-// A banner nobody can close and nothing retires stays on every recipient's screen
-// indefinitely, which is worth saying before the send rather than after.
+// A pinned, undismissable banner with no expiry stays on every screen indefinitely, so warn before sending.
 const lockedForever = computed(() => form.value.pinned && form.value.dismissal === 'never' && !form.value.expires_at)
 
 async function loadReach() {

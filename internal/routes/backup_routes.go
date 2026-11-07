@@ -35,8 +35,7 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 	}
 	const base = "/{workspace}/databases/{databaseID}/databases/{dbID}/backups"
 	const sched = "/{workspace}/databases/{databaseID}/databases/{dbID}/backup-schedules"
-	// Sets are instance-level: they span every database on the instance, so they
-	// hang off the instance rather than one of its databases.
+	// Sets span every database on the instance, so they hang off the instance.
 	const sets = "/{workspace}/databases/{databaseID}/backup-sets"
 	const setSched = "/{workspace}/databases/{databaseID}/backup-set-schedules"
 

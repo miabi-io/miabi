@@ -17,9 +17,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package environment manages promotion stages (dev → staging → prod) within a
-// workspace. An Environment carries an ordering rank and an approval policy that
-// the release-promotion flow enforces.
 package environment
 
 import (
@@ -47,8 +44,6 @@ func NewService(repo *repositories.EnvironmentRepository) *Service {
 	return &Service{repo: repo}
 }
 
-// Input is the create/update payload for an environment. Name is the desired
-// unique slug handle; DisplayName is the free-text label (falls back to Name).
 type Input struct {
 	Name              string
 	DisplayName       string

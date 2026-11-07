@@ -1,6 +1,4 @@
-# Production environment desired state. A separate GitSource pointed at path
-# `envs/prod` reconciles these manifests. Promotion = a commit that bumps the
-# digest below (auditable, reconciled — not a side-channel deploy).
+# Promotion is a commit bumping the digest below, so it is audited and reconciled.
 apiVersion: miabi.io/v1
 kind: Database
 metadata: { name: shop-db }

@@ -5,9 +5,7 @@ import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { PortEntry, PortNodeOverview, PortOverview } from '@/api/types'
 
-// Host ports are a node-wide shared resource, so publishing one needs an admin's
-// approval. This is where that decision is made — and where the ports already
-// open on each node are visible, which the binding table alone cannot show.
+// Host ports are node-wide, so publishing needs admin approval; shows open ports the binding table cannot.
 defineProps<{ embedded?: boolean }>()
 
 const notify = useNotificationStore()
@@ -50,8 +48,7 @@ function inRange(port: number): boolean {
   return port >= overview.value.min_port && port <= overview.value.max_port
 }
 
-// A pending request whose port is already held cannot be approved — the service
-// refuses it. Saying so before the click beats an error afterwards.
+// The service refuses approving a port already held, so say so before the click.
 function blockedBy(node: PortNodeOverview, entry: PortEntry): string {
   if (entry.container) return entry.container
   const clash = node.entries.find(
@@ -176,8 +173,7 @@ const STATE_CLASS: Record<string, string> = {
       </div>
     </div>
 
-    <!-- The map: what each node actually has open, which is not the same as what
-         the binding table says. -->
+    <!-- What each node actually has open, which can differ from the binding table. -->
     <div v-for="node in overview?.nodes ?? []" :key="node.server_id" class="card" style="margin-bottom: 16px">
       <div class="card-body">
         <div class="section-head">

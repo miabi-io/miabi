@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The golden list: routes whose classification is the point of the fix. A GET that hands back a
-// credential, a key or a shell must not fall through to `read` just because it is a GET, and the
-// account- and platform-administration trees must be out of reach of an ordinary key.
+// A GET returning a credential, key or shell must not fall through to `read` just because it is a GET.
 func TestScopeFor_SensitiveRoutes(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{"GET", "/api/v1/workspaces/{workspace}/apps/{appID}/exec"},
@@ -110,8 +108,7 @@ func TestScopeFor_Defaults(t *testing.T) {
 	}
 }
 
-// Creating a workspace is an ordinary write; deleting one is not. The DELETE rule keys on the
-// exact shape of the collection route, so a deeper path must not pick it up.
+// The DELETE rule keys on the exact collection shape, so deeper paths must not match it.
 func TestScopeFor_WorkspaceDeleteIsExact(t *testing.T) {
 	if got := scopeFor("POST", "/api/v1/workspaces"); got != models.ScopeWrite {
 		t.Errorf("creating a workspace = %q, want %q", got, models.ScopeWrite)
@@ -121,8 +118,7 @@ func TestScopeFor_WorkspaceDeleteIsExact(t *testing.T) {
 	}
 }
 
-// A path segment a tenant chooses — a workspace named `members`, an app named `deploy` — may raise
-// what a route demands but must never lower it. Only the raising direction is safe.
+// Tenant-chosen segment names may raise a route's scope but must never lower it.
 func TestScopeFor_TenantNamesNeverLower(t *testing.T) {
 	// The sensitive suffix survives a tenant-chosen segment earlier in the path.
 	if got := scopeFor("GET", "/api/v1/workspaces/read/secrets/{secretID}/reveal"); got != models.ScopeAdmin {

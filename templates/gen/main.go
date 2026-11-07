@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command gen vendors the official templates from the marketplace registry's published export.json
-// into miabi/templates/, the embedded offline floor. It writes each version's template.yaml
-// byte-for-byte, regenerates index.yaml, and rewrites the //go:embed list in embed.go.
+// Command gen vendors official templates from the marketplace export.json into the embedded offline floor.
 package main
 
 import (
@@ -98,8 +96,7 @@ func run(source, out string) error {
 	}
 	sort.Slice(officials, func(i, j int) bool { return officials[i].Name < officials[j].Name })
 
-	// Remove stale template-slug directories no longer in the official set, so the
-	// snapshot is exact (a removed template leaves no orphan).
+	// Remove templates no longer in the official set so the snapshot is exact.
 	if err := removeStale(out, keep); err != nil {
 		return err
 	}
@@ -147,8 +144,6 @@ func load(source string) ([]byte, error) {
 	return os.ReadFile(source)
 }
 
-// removeStale deletes template-slug directories under out whose slug is not in
-// keep. A directory is a template dir if it contains a <version>/template.yaml.
 func removeStale(out string, keep map[string]bool) error {
 	entries, err := os.ReadDir(out)
 	if err != nil {
@@ -204,8 +199,6 @@ func writeIndex(out string, officials []tmpl) error {
 
 var embedRe = regexp.MustCompile(`(?m)^//go:embed .*$`)
 
-// rewriteEmbed replaces the //go:embed directive in embed.go with the current
-// official slug list, so the embedded set stays in lockstep with the catalog.
 func rewriteEmbed(path string, slugs []string) error {
 	src, err := os.ReadFile(path)
 	if err != nil {

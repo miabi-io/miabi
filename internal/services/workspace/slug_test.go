@@ -25,8 +25,6 @@ import (
 	"github.com/miabi-io/miabi/internal/slug"
 )
 
-// The workspace handle grammar is now the shared slug.Make; this guards the
-// behaviour the service relies on (lowercasing, single hyphens, trimming).
 func TestHandleGrammar(t *testing.T) {
 	cases := map[string]string{
 		"Acme Prod":        "acme-prod",
@@ -42,9 +40,7 @@ func TestHandleGrammar(t *testing.T) {
 	}
 }
 
-// The reserved set protects the system handle and the route/registry namespace,
-// so SetName rejects them (see slug.IsReserved). "system" is the system
-// workspace's own handle and must be reserved for everyone else.
+// "system" is the system workspace's own handle and must be reserved for everyone else.
 func TestReservedHandlesRejected(t *testing.T) {
 	for _, h := range []string{"system", "admin", "api", "registry", "workspaces", "me"} {
 		if !slug.IsReserved(h) {

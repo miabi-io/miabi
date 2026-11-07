@@ -35,9 +35,7 @@ func NewAdminJobHandler(cron *cronpkg.Manager) *AdminJobHandler {
 	return &AdminJobHandler{cron: cron}
 }
 
-// List returns the scheduled jobs as a stable, paginated page. The cron snapshot
-// comes from a map (unordered), so it is sorted by kind, then name, then id to
-// give pagination a deterministic order across requests.
+// The cron snapshot is an unordered map, so sort for deterministic pagination.
 func (h *AdminJobHandler) List(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	if h.cron == nil {
@@ -64,8 +62,6 @@ func (h *AdminJobHandler) List(c *okapi.Context) error {
 	return paginated(c, jobs[offset:end], total, page, size)
 }
 
-// JobStats is the scheduled-jobs dashboard summary computed over every job (not
-// just the current page).
 type JobStats struct {
 	Total   int            `json:"total"`
 	Running int            `json:"running"`
@@ -74,9 +70,7 @@ type JobStats struct {
 	ByKind  map[string]int `json:"by_kind"`
 }
 
-// Stats returns aggregate counts for the jobs dashboard. A job is Failed when its
-// last run errored and it is not currently running, Running while in flight, and
-// OK otherwise — so the three are disjoint and sum to Total.
+// Failed, Running and OK are disjoint and sum to Total.
 func (h *AdminJobHandler) Stats(c *okapi.Context) error {
 	stats := JobStats{ByKind: map[string]int{}}
 	if h.cron == nil {

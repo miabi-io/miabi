@@ -29,29 +29,23 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// LiveTracker answers "how many distinct visitors are active right now" from the same Goma event
-// stream the rollups use, but per workspace and per app rather than one gateway-wide gauge. One sorted
-// set per scope keys on the daily-salted visitor id, so counting and expiry are both O(log N).
+// LiveTracker counts distinct active visitors per workspace and app from the Goma event stream.
 type LiveTracker struct {
 	rdb    *redis.Client
 	window time.Duration
 
-	// scopes are the keys this process has written, so it knows what to sweep.
-	// Bounded by the number of workspaces and apps with traffic.
+	// Keys this process has written, so it knows what to sweep.
 	mu     sync.Mutex
 	scopes map[string]struct{}
 }
 
-// DefaultLiveWindow is how far back a visitor still counts as "live" — the
-// convention analytics products settled on (Plausible, Cloudflare, Fathom).
+// DefaultLiveWindow follows the common analytics convention (Plausible, Cloudflare, Fathom).
 const DefaultLiveWindow = 5 * time.Minute
 
-// liveKeyPrefix namespaces these keys. Miabi-owned, distinct from Goma's own
-// visitor set in the same Redis.
+// Distinct from Goma's own visitor set in the same Redis.
 const liveKeyPrefix = "miabi:live:"
 
-// liveKeyTTL drops a scope that stops receiving traffic even if no worker is
-// left to sweep it. Refreshed on every write.
+// Drops a scope that stops receiving traffic even if no worker is left to sweep it.
 const liveKeyTTL = time.Hour
 
 // LiveVisit is one visitor sighting: the scope it belongs to, and who.
@@ -79,18 +73,13 @@ func scopeKey(ws, app uint) string {
 	return fmt.Sprintf("%sws%d:app%d", liveKeyPrefix, ws, app)
 }
 
-// Touch records a batch of sightings as active now. Callers batch by their natural boundary — one
-// stream read — so this is a handful of round trips per batch rather than one per event. Best-effort:
-// a Redis failure costs a live count, never an ingest.
+// Touch is best-effort: a Redis failure costs a live count, never an ingest.
 func (t *LiveTracker) Touch(ctx context.Context, visits []LiveVisit) {
 	if t == nil || t.rdb == nil || len(visits) == 0 {
 		return
 	}
 	now := float64(time.Now().Unix())
 
-	// Group by scope so each key takes one multi-member ZADD. A visitor seen
-	// twice in a batch is one member either way — the score just lands on the
-	// later value.
 	byKey := make(map[string][]redis.Z, 4)
 	for _, v := range visits {
 		if v.Workspace == 0 || v.VID == "" {
@@ -122,9 +111,7 @@ func (t *LiveTracker) Touch(ctx context.Context, visits []LiveVisit) {
 	t.mu.Unlock()
 }
 
-// Count returns the distinct visitors active within the window for a scope
-// (app 0 = the whole workspace). Exact, and unaffected by how recently a sweep
-// ran, because the window is applied as a score range.
+// Count is exact regardless of sweeps because the window is applied as a score range; app 0 means the workspace.
 func (t *LiveTracker) Count(ctx context.Context, ws, app uint) (int64, error) {
 	if t == nil || t.rdb == nil || ws == 0 {
 		return 0, nil
@@ -137,9 +124,7 @@ func (t *LiveTracker) Count(ctx context.Context, ws, app uint) (int64, error) {
 	return n, err
 }
 
-// Sweep drops visitors who have fallen outside the window from every scope this
-// process writes to. Purely housekeeping — counts are already window-correct —
-// so a failure is logged by the caller at most, never fatal.
+// Sweep is housekeeping only: counts are already window-correct, so failures are never fatal.
 func (t *LiveTracker) Sweep(ctx context.Context) {
 	if t == nil || t.rdb == nil {
 		return

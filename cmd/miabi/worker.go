@@ -62,8 +62,7 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// runWorker starts the standalone asynq worker. Live deploy-log SSE needs the embedded
-// worker's in-process bus; this one persists logs but publishes no live events.
+// runWorker starts the standalone worker; it persists deploy logs but publishes no live SSE events.
 func runWorker() error {
 	cfg := config.New()
 	_ = cfg.InitWorker()
@@ -94,12 +93,10 @@ func runWorker() error {
 	producer := worker.NewProducer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerMaxRetries)
 	defer func() { _ = producer.Close() }()
 
-	// With the filesystem backend this must be the same MIABI_LOG_DIR the control plane reads
-	// (a shared mount) for a standalone worker's logs to be visible; nil when disabled.
+	// With the filesystem backend this must be the control plane's MIABI_LOG_DIR (shared mount) or logs stay invisible.
 	logStore := cfg.BuildLogStore()
 
-	// Only the local node's Docker is reachable here (agent tunnels live in the server process).
-	// Tasks placed on a remote node will fail; run the embedded worker for multi-node.
+	// Agent tunnels live in the server process: tasks on remote nodes fail here, use the embedded worker for multi-node.
 	var localID uint
 	if local, err := repositories.NewServerRepository(db).FindLocal(); err == nil {
 		localID = local.ID
@@ -107,8 +104,7 @@ func runWorker() error {
 	producer.SetLocalID(localID)
 	nodeClients := nodes.NewClients(localID, dockerClient)
 
-	// Deployment-config image catalog, so worker-side services honor admin image overrides
-	// instead of the built-in Docker Hub defaults.
+	// Lets worker-side services honor admin image overrides instead of the built-in Docker Hub defaults.
 	imageResolver := platformimage.New(settings.NewProvider(repositories.NewSettingRepository(db), nil), map[string]string{
 		platformimage.KeyGoma:  cfg.NodeGatewayImage,
 		platformimage.KeyRelay: cfg.ForwardRelayImage,
@@ -127,9 +123,7 @@ func runWorker() error {
 	webhookHandler := worker.NewWebhookDeliverHandler(webhookRepo, webhookDeliveryRepo, eventRepo, appRepo, dbRepo)
 	channelHandler := worker.NewChannelSendHandler(channelRepo, eventRepo, appRepo, dbRepo, notify.NewRegistry())
 	secretService := secret.NewService(repositories.NewSecretRepository(db))
-	// The worker re-syncs Goma on deploy, so its route service must apply the same
-	// domain-verification gate as the API server — otherwise a deploy would re-render
-	// unverified or banned routes as live.
+	// Must apply the same domain-verification gate as the API server, or a deploy re-renders unverified routes live.
 	workerRouteSvc := route.NewService(repositories.NewRouteRepository(db), repositories.NewMiddlewareRepository(db), appRepo, repositories.NewReleaseRepository(db), repositories.NewServerRepository(db), proxyMgr)
 	workerRouteSvc.SetDomains(repositories.NewDomainRepository(db))
 	workerRouteSvc.SetWorkspacePolicy(repositories.NewWorkspaceRepository(db))
@@ -160,8 +154,6 @@ func runWorker() error {
 	dbService.SetEventRecorder(eventsSvc)
 	provisionHandler := worker.NewProvisionDBHandler(dbService)
 
-	// A queued database version upgrade may run here, so the worker needs the app service
-	// (quiesce/restart dependent apps) and the backup service (safety backup + data copy).
 	upgradeAppService := application.NewService(
 		appRepo,
 		repositories.NewDeploymentRepository(db),
@@ -197,8 +189,6 @@ func runWorker() error {
 	)
 	jobHandler.SetLogStore(logStore)
 
-	// Container security profile: deploy/job containers run as the platform
-	// non-root UID when the workspace's plan (or the global default) is restricted.
 	securityQuota := quota.NewService(
 		repositories.NewPlanRepository(db),
 		repositories.NewWorkspaceQuotaRepository(db),
@@ -214,8 +204,7 @@ func runWorker() error {
 	releaseJobs.SetDeployments(repositories.NewDeploymentRepository(db))
 	deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
 	jobHandler.SetFailureHook(releaseJobs.RunFailed)
-	// The restricted profile is an Enterprise entitlement; without it the resolver clamps every
-	// workspace back to the image's user. The same edition governs analytics retention below.
+	// Restricted profile is Enterprise-only; the same edition governs analytics retention below.
 	edition := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
 	securityQuota.SetEdition(edition)
 	securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
@@ -249,8 +238,7 @@ func runWorker() error {
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.SetStore(repositories.NewClusterRepository(db))
-	// The worker holds no agent tunnels, so its view of remote clusters is partial: it refreshes swarm state
-	// for its own deploys and leaves writing it to the control plane.
+	// The worker holds no agent tunnels, so it leaves writing swarm state to the control plane.
 	clusterService.SetLeader(leader.Never)
 	nodeClients.SetSwarmManagers(clusterService.Manager)
 	clusterService.SetAllocator(subnetAllocator)
@@ -316,8 +304,7 @@ func runWorker() error {
 
 	srv := worker.NewServer(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB, cfg.WorkerConcurrency, false)
 
-	// A standalone worker joins the same consumer group as the embedded one, so gateway events
-	// are rolled up exactly once no matter how many workers run.
+	// Shares the embedded worker's consumer group, so events are rolled up exactly once.
 	if cfg.AnalyticsEnabled {
 		analyticsConsumer := worker.NewAnalyticsConsumer(
 			cfg.Redis.Client,

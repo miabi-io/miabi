@@ -30,8 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeState records MarkConnected/MarkDisconnected calls so the manager's
-// status wiring can be asserted without a database.
 type fakeState struct {
 	mu          sync.Mutex
 	connected   map[uint]string // id -> last version reported
@@ -71,8 +69,7 @@ func TestManagerOfflineByDefault(t *testing.T) {
 	}
 }
 
-// Disconnecting an unknown runner is a safe no-op (it never panics on a missing
-// session), so a delete/disable of an offline runner is always safe to call.
+// Lets deleting or disabling an offline runner always be safe.
 func TestDisconnectUnknownIsNoop(t *testing.T) {
 	m := NewManager(newFakeState())
 	m.Disconnect(999) // must not panic

@@ -63,9 +63,7 @@ func NewUpgradeDBHandler(dbs *database.Service) *UpgradeDBHandler {
 	return &UpgradeDBHandler{dbs: dbs}
 }
 
-// ProcessTask implements asynq.Handler for the database-upgrade task. The job
-// records its own success/failure on the instance, so it returns nil (no retry)
-// except on an undecodable payload.
+// The job records its own result on the instance, so it returns nil (no retry) except on a bad payload.
 func (h *UpgradeDBHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	var p UpgradeDBPayload
 	if err := json.Unmarshal(task.Payload(), &p); err != nil {

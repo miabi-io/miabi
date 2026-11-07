@@ -8,20 +8,12 @@ import { useAuthStore } from '@/stores/auth'
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type { AccentCode } from '@/api/types'
 
-// AdoptAction is what to do once the account's stored theme is known: take the
-// server's value, push this device's value up to it, or leave both alone.
 export type AdoptAction =
   | { kind: 'take'; mode: ThemeMode }
   | { kind: 'push'; mode: ThemeMode }
   | { kind: 'none' }
 
-// themeAdoptAction decides how a device's current theme and the account's stored
-// one are reconciled at sign-in. Extracted so the rule is testable without a DOM.
-//
-// unsynced means this device holds a pick the account has not accepted — one made
-// on the sign-in screen, or one whose save failed. It wins over the stored value:
-// it is the user's most recent intent, and the account's value is very often just
-// the "system" default nobody chose.
+// An unsynced device pick wins: it is the latest intent, and the account value is often the unchosen "system".
 export function themeAdoptAction(
   local: ThemeMode,
   serverMode: ThemeMode | undefined,
@@ -33,16 +25,11 @@ export function themeAdoptAction(
 }
 
 export const useThemeStore = defineStore('theme', () => {
-  // localStorage is the pre-auth cache: it is read before /me can answer, so the
-  // first paint does not flash the wrong theme. The user's stored preference is the
-  // source of truth and overwrites it once the profile loads (see adopt).
+  // Pre-auth cache read before /me answers, so the first paint does not flash the wrong theme.
   const stored = localStorage.getItem('miabi_theme') as ThemeMode | null
   const mode = ref<ThemeMode>(stored && ['light', 'dark', 'system'].includes(stored) ? stored as ThemeMode : 'system')
-  // persist is off until a profile is loaded, so adopting the server's value does not
-  // immediately write it back.
+  // Off until a profile loads, so adopting the server's value does not write it straight back.
   let persist = false
-  // unsynced marks a pick the account has not accepted: made before the profile was
-  // known, or saved unsuccessfully. See themeAdoptAction.
   let unsynced = false
 
   const storedAccent = localStorage.getItem('miabi_accent') as AccentCode | null
@@ -50,8 +37,7 @@ export const useThemeStore = defineStore('theme', () => {
     storedAccent && ACCENTS.some((a) => a.code === storedAccent) ? storedAccent : 'default',
   )
   let accentUnsynced = false
-  // Set when the operator enforces the brand accent: the account's accent is theirs,
-  // so there is nothing to pick, reconcile or save.
+  // The operator enforces the brand accent, so there is nothing to pick, reconcile or save.
   const accentLocked = ref(false)
 
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -65,14 +51,12 @@ export const useThemeStore = defineStore('theme', () => {
     document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
   }
 
-  // Separate attribute from data-theme: the two are orthogonal, so light/dark keeps
-  // working exactly as it did and an accent is a second, independent axis.
+  // Separate from data-theme because accent and light/dark are independent axes.
   function applyAccent() {
     document.documentElement.setAttribute('data-accent', accent.value)
   }
 
-  // The sign-in screens have no user, so they wear the operator's accent or Miabi's
-  // own, never the cached accent of whoever signed in last.
+  // Sign-in screens wear the operator's accent, never the cached accent of whoever signed in last.
   function applyBrandAccent(a?: AccentCode) {
     document.documentElement.setAttribute('data-accent', a || 'default')
   }
@@ -83,13 +67,9 @@ export const useThemeStore = defineStore('theme', () => {
     accent.value = a
   }
 
-  // save persists the mode against the account AND refreshes the cached profile.
-  // Both matter: adopt() reads the cached profile on the next boot, so a cache left
-  // holding the old theme would overwrite the value just saved — which is exactly
-  // how a chosen theme used to survive until the next refresh and then revert.
+  // Also refresh the cached profile: adopt() reads it on boot, and a stale cache would revert the saved theme.
   function save(val: ThemeMode) {
-    // The theme is already applied locally, so a failed save never costs the current
-    // view; it is remembered as unsynced and retried at the next sign-in.
+    // A failed save is remembered as unsynced and retried at the next sign-in.
     void authApi
       .updatePreferences({ theme: val })
       .then((res) => {
@@ -124,13 +104,8 @@ export const useThemeStore = defineStore('theme', () => {
     setMode(isDark.value ? 'light' : 'dark')
   }
 
-  // adopt reconciles this device's theme with the one stored against the account,
-  // so a preference follows the user to a new browser. Called once the profile is
-  // known.
   function adopt(serverMode: ThemeMode | undefined, serverAccent?: AccentCode, serverAccentLocked = false) {
-    // adopt runs again on every console mount and after a branding change. Taking the
-    // account's values must not echo them back: a resolved accent saved as a choice
-    // would stop following the brand.
+    // Taking the account's values must not echo them back: a resolved accent saved as a choice stops following the brand.
     persist = false
     const action = themeAdoptAction(mode.value, serverMode, unsynced)
     if (action.kind === 'take') {
@@ -144,8 +119,7 @@ export const useThemeStore = defineStore('theme', () => {
       accentUnsynced = false
       accent.value = serverAccent
     } else {
-      // The same rule, on the same shape of problem — an accent chosen before the
-      // profile loaded is still the user's most recent intent.
+      // An accent chosen before the profile loaded is still the user's most recent intent.
       const accentAction = themeAdoptAction(
         accent.value as ThemeMode,
         serverAccent as ThemeMode | undefined,
@@ -158,15 +132,12 @@ export const useThemeStore = defineStore('theme', () => {
         saveAccent(accentAction.mode as AccentCode)
       }
     }
-    // A sign-in screen may have swapped in the brand accent, and the watcher only
-    // fires when the value changes.
+    // A sign-in screen may have swapped in the brand accent, and the watcher only fires on change.
     applyAccent()
     persist = true
   }
 
-  // flush: 'sync' so the attribute lands before the next paint, and so adopting the
-  // account's value runs this while persist is still false — an async watcher would
-  // fire after adopt() had flipped it and echo the value straight back to the server.
+  // Sync so the attribute lands before paint and runs while persist is still false, avoiding an echo to the server.
   watch(mode, (val) => {
     localStorage.setItem('miabi_theme', val)
     apply()

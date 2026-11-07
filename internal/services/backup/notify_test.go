@@ -60,8 +60,7 @@ func (f *fakeReporter) ScheduledBackupFinished(ws uint, rep BackupReport) {
 	f.reports = append(f.reports, rep)
 }
 
-// Only a scheduled run reports. A manual one is watched by the person who clicked it, and telling
-// them again in the inbox is how an inbox stops being read.
+// A manual run is watched by its operator; repeating it in the inbox is how an inbox stops being read.
 func TestOnlyScheduledRunsReport(t *testing.T) {
 	svc, _, _ := newSetService(t)
 	rep := &fakeReporter{}
@@ -100,8 +99,7 @@ func finishOne(t *testing.T, svc *Service, status models.BackupStatus, itemErr s
 	})
 }
 
-// A scheduled recovery point that failed used to raise nothing: the timeline recorded it and no
-// alert opened, so the first anyone knew was when they went looking.
+// Regression: a failed scheduled recovery point raised no alert.
 func TestFailedSetAlertsAndReports(t *testing.T) {
 	svc, _, _ := newSetService(t)
 	al, rep := &fakeAlerter{}, &fakeReporter{}

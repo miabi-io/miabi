@@ -3,9 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useLogSize, logHeight, type LogSize } from '@/composables/useLogSize'
 import LogSizeControl from '@/components/LogSizeControl.vue'
 
-// Reusable log panel: search/regex highlight, copy/download, follow, size
-// presets, status badge. The parent owns the line buffer (and any cap); this
-// component only renders + filters it.
+// The parent owns the line buffer (and any cap); this only renders and filters it.
 
 
 const props = withDefaults(

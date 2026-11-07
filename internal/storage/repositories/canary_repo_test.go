@@ -28,10 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// canaryRow is a sqlite-friendly stand-in for the applications table: the full
-// model carries Postgres-specific column defaults sqlite can't migrate, and the
-// canary calls only touch these columns. Reads and writes still go through the
-// real models.Application schema, so the JSON serializer is exercised.
+// The full model carries Postgres-specific defaults sqlite can't migrate; reads still use the real schema.
 type canaryRow struct {
 	ID              uint `gorm:"primaryKey"`
 	WorkspaceID     uint
@@ -92,8 +89,7 @@ func TestSetCanaryRoutingRoundTrips(t *testing.T) {
 	}
 }
 
-// Returning to the automatic ramp must actually clear the flags, not skip them
-// as struct-update zero values.
+// The flags must be cleared, not skipped as struct-update zero values.
 func TestSetCanaryRoutingClearsBackToAuto(t *testing.T) {
 	repo, db := newCanaryDB(t)
 	rules := []models.CanaryMatchRule{{Source: "header", Name: "X-Canary", Operator: "equals", Value: "true"}}
@@ -109,9 +105,7 @@ func TestSetCanaryRoutingClearsBackToAuto(t *testing.T) {
 	}
 }
 
-// Promote, abort and supersede all clear the canary through SetCanary. A `match`
-// surviving that would silently target the next rollout, so clearing the release
-// must clear the rules with it.
+// A match surviving SetCanary's clear would silently target the next rollout.
 func TestSetCanaryClearClearsRules(t *testing.T) {
 	repo, db := newCanaryDB(t)
 	relID := uint(9)

@@ -1,10 +1,4 @@
-# Minimal pipeline-as-code (kind: Pipeline). Paste it into a pipeline definition
-# in the UI (Pipelines → New), or keep it as .miabi/pipeline.yaml in your repo.
-#
-# Bind the pipeline to a Git-backed application: the runner clones that app's
-# repo once at the run's commit into a shared workspace mounted at /workspace,
-# then runs each step over it. `uses: build` turns the workspace into an image
-# (capturing its digest); `uses: deploy` deploys that exact image — no rebuild.
+# Paste into Pipelines -> New, or keep as .miabi/pipeline.yaml; deploy ships the built digest without a rebuild.
 apiVersion: miabi.io/v1
 kind: Pipeline
 metadata:
@@ -15,9 +9,7 @@ on:
   manual: true
 env:                   # applied to every step; a step's own env wins on a collision
   NODE_ENV: production
-  # ${{ secrets.NAME }} is read from the workspace vault when the job is dispatched
-  # (the runner never sees the vault) and masked in the streamed logs. The secret
-  # must already exist in the workspace, or the run fails before its first step.
+  # Read from the vault at dispatch and masked in logs; the secret must already exist or the run fails.
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 steps:
   - name: test

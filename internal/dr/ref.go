@@ -26,15 +26,12 @@ import (
 	"time"
 )
 
-// RefPrefix marks a platform recovery point. Restore matches on it so a
-// mistyped argument fails fast instead of listing a whole bucket.
+// Restore matches on RefPrefix so a mistyped argument fails fast instead of listing a whole bucket.
 const RefPrefix = "mbdr_"
 
 // IdentityExt is the sealed identity envelope's file extension.
 const IdentityExt = ".mbid"
 
-// NewRef builds a recovery point's stable name from the install it came from and
-// the moment it started: "mbdr_<install-id>_20260731T020000Z".
 func NewRef(installID string, at time.Time) string {
 	id := strings.TrimSpace(installID)
 	if id == "" {
@@ -46,9 +43,6 @@ func NewRef(installID string, at time.Time) string {
 // IsRef reports whether s looks like a recovery point ref.
 func IsRef(s string) bool { return strings.HasPrefix(strings.TrimSpace(s), RefPrefix) }
 
-// IdentityObject is the identity envelope's object name within a bucket prefix.
-// It sits beside the artifacts of its own set, named for it, so an operator
-// listing a bucket can see which envelope belongs to which recovery point.
 func IdentityObject(prefix, ref string) string {
 	name := "identity-" + ref + IdentityExt
 	if p := strings.Trim(strings.TrimSpace(prefix), "/"); p != "" {
@@ -57,9 +51,7 @@ func IdentityObject(prefix, ref string) string {
 	return name
 }
 
-// RefFromIdentityObject recovers the ref from an identity object key, or "" when
-// the key is not one. Lets `miabi restore` discover recovery points in a bucket
-// without a database to list them from.
+// Lets `miabi restore` discover recovery points without a database to list them from.
 func RefFromIdentityObject(key string) string {
 	base := path.Base(strings.TrimSpace(key))
 	if !strings.HasPrefix(base, "identity-") || !strings.HasSuffix(base, IdentityExt) {

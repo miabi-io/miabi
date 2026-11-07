@@ -16,8 +16,7 @@ function toggle(alpha2: string) {
   selected.value = selected.value === alpha2 ? null : alpha2
 }
 
-// Every request carries a path, so whatever the listed paths don't sum to is the
-// long tail the server's top-K dropped.
+// Every request carries a path, so the remainder is the long tail the server's top-K dropped.
 function untracked(total: number, items: Category[]): number {
   return total - items.reduce((n, i) => n + i.count, 0)
 }
@@ -37,9 +36,7 @@ function untracked(total: number, items: Category[]): number {
           :highlight="hovered ?? selected"
           @select="toggle"
         />
-        <!-- Miabi ships no GeoIP database (licensing — see docs), so for most installs this
-             empty state IS the setup instructions. Keep it actionable: the path and the link
-             are the whole point. -->
+        <!-- Miabi ships no GeoIP database (licensing), so this empty state is the setup instructions. -->
         <div v-else class="empty-state">
           <h3>{{ $t('analytics.noCountryDataYet') }}</h3>
           <i18n-t keypath="analytics.geoipHint" tag="p">

@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// ApplyServiceEndpointMode switches the running service apps of a cluster to how the cluster reaches services by
-// name. Tasks keep running; a service that cannot be switched now takes the mode on its next deploy.
+// Tasks keep running; a service that cannot be switched now takes the mode on its next deploy.
 func (s *Service) ApplyServiceEndpointMode(ctx context.Context, clusterID uint, mode models.ServiceEndpointMode) {
 	apps, err := s.apps.ListByCluster(clusterID)
 	if err != nil {

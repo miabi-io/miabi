@@ -29,9 +29,7 @@ async function copy(text: string) {
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
-// The callback URL an OIDC policy needs registered with the provider. Miabi is
-// the only place that knows both halves — the route's host and the callback
-// path — and getting it wrong is the usual reason a first sign-in fails.
+// A wrong callback URL is the usual reason a first OIDC sign-in fails, and only Miabi knows both halves.
 const callbackUrls = computed(() => {
   if (item.value?.type !== 'oidc') return []
   const rule = (item.value.rule || {}) as Record<string, unknown>

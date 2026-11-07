@@ -19,9 +19,7 @@
 
 package mwcatalog
 
-// Preset is a named, pre-filled policy the UI can instantiate in one click. Its
-// Rule is a sensible starting point; the user can tweak it (and must supply any
-// secret or empty required field, e.g. basicAuth users or accessPolicy ranges).
+// The user must still supply any secret or empty required field before a preset validates.
 type Preset struct {
 	Key         string         `json:"key"`
 	DisplayName string         `json:"display_name"`
@@ -158,9 +156,7 @@ func Presets() []Preset {
 	return out
 }
 
-// SeedMiddleware is a default policy definition created for every new workspace.
-// Name is the workspace-unique slug handle (and Goma name); DisplayName is the UI
-// label. Seeded policies are inert until a route references them.
+// Seeded policies are inert until a route references them.
 type SeedMiddleware struct {
 	Name        string
 	DisplayName string
@@ -168,9 +164,7 @@ type SeedMiddleware struct {
 	Rule        map[string]any
 }
 
-// defaultSeed is the curated set of policies a new workspace starts with. All
-// are safe (no effect until attached to a route) and broadly useful; keeping the
-// set as data makes it trivial to tune.
+// All are inert until attached to a route.
 var defaultSeed = []SeedMiddleware{
 	{
 		Name:        "security-headers",

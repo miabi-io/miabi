@@ -27,8 +27,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Deleting an app removes its CronJobs and Job runs, so no schedule outlives
-// the app it would run in.
 func TestApplicationDeleteRemovesJobs(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

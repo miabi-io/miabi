@@ -1,5 +1,4 @@
-# Dev environment desired state. A GitOps GitSource pointed at path `envs/dev`
-# reconciles these manifests into the workspace on every push / sweep.
+# Reconciled by a GitSource pointed at path `envs/dev`.
 apiVersion: miabi.io/v1
 kind: Database
 metadata: { name: shop-db }

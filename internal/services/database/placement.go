@@ -28,30 +28,20 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Placement decides how a database dependency is satisfied against the workspace.
-// It is shared by the marketplace installer and the declarative (GitOps) apply so
-// both honor the same semantics.
+// Placement decides how a database dependency is satisfied; shared by the marketplace installer and GitOps apply.
 type Placement string
 
 const (
-	// PlacementAuto reuses a compatible running instance when one exists (creating
-	// a dedicated logical database on it), otherwise provisions a fresh instance.
 	PlacementAuto Placement = "auto"
 	// PlacementDedicated always provisions a fresh instance for the dependency.
 	PlacementDedicated Placement = "dedicated"
-	// PlacementShared creates a dedicated logical database on an existing running instance of the
-	// engine. It provisions an instance only when the running ones are all on another version than
-	// the one declared: a database never silently runs on a version it did not ask for.
+	// Provisions only when every running instance is on another version: a database never silently runs a version it didn't ask for.
 	PlacementShared Placement = "shared"
 )
 
-// ErrNoSharedInstance is returned when placement "shared" finds no compatible
-// running instance to host the dependency's logical database.
 var ErrNoSharedInstance = errors.New("no compatible running database instance to share")
 
-// ResolveDependency satisfies a database dependency per its placement, returning the hosting instance,
-// the app-scoped logical database, a connection, and whether a new instance was provisioned. declName
-// stamps the logical database so a declarative reconcile maps a manifest name back to it exactly.
+// declName stamps the logical database so a declarative reconcile maps a manifest name back to it exactly.
 func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, pinInstance uint, base, declName string, engine models.DBEngine, version string, placement Placement, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	logical := models.EngineSupportsLogicalDatabases(engine)
 
@@ -86,9 +76,7 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 	}
 }
 
-// provisionDedicated provisions a fresh instance for a dependency. For a SQL engine it also reserves a logical
-// database with its own scoped user, whose CREATE DDL runs when the instance comes up, and returns that
-// connection. Redis and libSQL host no logical databases, so the app receives the instance connection.
+// Redis and libSQL host no logical databases, so the app receives the instance connection.
 func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base, declName string, engine models.DBEngine, version string, serverID uint, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	inst, err := s.Provision(ctx, workspaceID, serverID, strings.TrimSpace(base), engine, version, 0, "", res, meta, nil)
 	if err != nil {
@@ -104,8 +92,7 @@ func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base
 	}
 	db, err := s.PrepareDatabase(workspaceID, inst.ID, name, nil)
 	if err != nil {
-		// Reservation failed (very unlikely on a fresh instance); fall back to the
-		// admin connection so the dependency still resolves.
+		// Fall back to the admin connection so the dependency still resolves.
 		conn, cErr := s.InstanceConnection(inst)
 		return inst, nil, conn, true, cErr
 	}
@@ -114,9 +101,6 @@ func (s *Service) provisionDedicated(ctx context.Context, workspaceID uint, base
 	return inst, db, conn, true, err
 }
 
-// logicalOn creates a logical database (own scoped user) on an existing running
-// instance and returns its scoped connection. The name comes from base,
-// uniquified per instance only on collision.
 func (s *Service) logicalOn(ctx context.Context, workspaceID uint, inst *models.DatabaseInstance, base, declName string, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	name, err := s.UniqueDatabaseName(inst.ID, base)
 	if err != nil {
@@ -131,9 +115,7 @@ func (s *Service) logicalOn(ctx context.Context, workspaceID uint, inst *models.
 	return inst, db, conn, false, err
 }
 
-// tagLogical stamps a logical database with its declarative name and copies the
-// managed-by / gitops-source provenance from meta, so a reconcile can find and
-// own it. A no-op when declName is empty (e.g. marketplace installs).
+// No-op when declName is empty (e.g. marketplace installs).
 func (s *Service) tagLogical(d *models.Database, declName string, meta models.Metadata) {
 	if d == nil || declName == "" {
 		return
@@ -158,16 +140,12 @@ func (s *Service) tagLogical(d *models.Database, declName string, meta models.Me
 	}
 }
 
-// FindReusableInstance returns the running instance a shared/auto placement would
-// reuse for engine and version, or nil. Exposed so a caller can pre-resolve a dependency's
-// target node without performing the placement.
-// A non-zero clusterID keeps the search inside that location.
+// FindReusableInstance lets a caller pre-resolve a dependency's target node; a non-zero clusterID scopes the search.
 func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine, version string, clusterID uint) *models.DatabaseInstance {
 	return s.reusableIn(workspaceID, engine, version, clusterID, clusterID != 0)
 }
 
-// findReusable picks a running instance of engine, in the location of serverID when one is given:
-// private networks don't span locations. An empty version matches any.
+// Scoped to serverID's location because private networks don't span locations; an empty version matches any.
 func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, version string, serverID uint) *models.DatabaseInstance {
 	cluster, scoped := s.clusterOfServer(serverID)
 	return s.reusableIn(workspaceID, engine, version, cluster, scoped)
@@ -210,8 +188,6 @@ func (s *Service) ListDatabasesByWorkspace(workspaceID uint) ([]models.Database,
 	return s.repo.ListDatabasesByWorkspace(workspaceID)
 }
 
-// FindDatabaseByDeclName returns the logical database stamped with the given
-// declarative name and its hosting instance; ok is false when none exists.
 func (s *Service) FindDatabaseByDeclName(workspaceID uint, declName string) (*models.Database, *models.DatabaseInstance, bool) {
 	if declName == "" {
 		return nil, nil, false

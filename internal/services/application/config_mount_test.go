@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// mounts is an app mounting one volume and the same config three ways: whole, and
-// two individual files. That shape is what makes the mount identity a pair.
+// This shape is what makes the mount identity a (config, key) pair.
 func mounts() []models.AppMount {
 	return []models.AppMount{
 		{VolumeID: 1, Path: "/data"},
@@ -36,8 +35,7 @@ func mounts() []models.AppMount {
 	}
 }
 
-// TestRemoveConfigMountMatchesOnKeyToo is the case worth pinning: matching on the
-// config id alone would remove every file the config projects, not the one asked for.
+// Matching on config id alone would remove every file the config projects.
 func TestRemoveConfigMountMatchesOnKeyToo(t *testing.T) {
 	out, removed := removeConfigMount(mounts(), 7, "app.conf")
 	if !removed {
@@ -53,8 +51,6 @@ func TestRemoveConfigMountMatchesOnKeyToo(t *testing.T) {
 	}
 }
 
-// TestRemoveConfigMountWholeConfig removes the whole-config projection and leaves the
-// per-file mounts of the same config alone.
 func TestRemoveConfigMountWholeConfig(t *testing.T) {
 	out, removed := removeConfigMount(mounts(), 7, "")
 	if !removed || len(out) != 3 {
@@ -71,8 +67,7 @@ func TestRemoveConfigMountWholeConfig(t *testing.T) {
 	}
 }
 
-// TestRemoveConfigMountLeavesVolumes keeps the volume mount untouched — the two share
-// one slice, so a careless filter drops storage along with configuration.
+// Volumes and configs share one slice, so a careless filter drops storage too.
 func TestRemoveConfigMountLeavesVolumes(t *testing.T) {
 	out, _ := removeConfigMount(mounts(), 7, "")
 	for _, m := range out {
@@ -83,8 +78,7 @@ func TestRemoveConfigMountLeavesVolumes(t *testing.T) {
 	t.Fatal("the volume mount was removed")
 }
 
-// TestRemoveConfigMountMissing reports not-found rather than silently succeeding, so
-// the API can answer 404 instead of pretending it detached something.
+// Not-found lets the API answer 404 instead of pretending to detach.
 func TestRemoveConfigMountMissing(t *testing.T) {
 	if _, removed := removeConfigMount(mounts(), 7, "absent.conf"); removed {
 		t.Fatal("an absent mount must not report as removed")

@@ -15,12 +15,9 @@ const props = defineProps<{
   subtitle: string
   // shared = the platform pool (admin); tweaks copy only.
   shared?: boolean
-  // detailRouteName links each runner's name to its detail page (scope-specific
-  // route: workspace vs admin). When unset the name renders as plain text.
+  // Scope-specific route (workspace vs admin); when unset the name renders as plain text.
   detailRouteName?: string
-  // createLimit caps how many runners may be registered (-1 or omitted = no cap).
-  // When the current count reaches it, the register action is disabled and
-  // limitNote (if given) explains why.
+  // -1 or omitted means no cap; at the cap registering is disabled and limitNote explains why.
   createLimit?: number
   limitNote?: string
 }>()
@@ -29,8 +26,7 @@ const notify = useNotificationStore()
 const { t } = useI18n()
 
 const runners = ref<Runner[]>([])
-// atCreateLimit: the pool has reached its allowed size, so registering is blocked
-// (the backend enforces this too). Omitted / negative createLimit = no cap.
+// The backend enforces the cap too.
 const atCreateLimit = computed(
   () => props.createLimit !== undefined && props.createLimit >= 0 && runners.value.length >= props.createLimit,
 )
@@ -50,13 +46,9 @@ const displayName = ref('')
 const labelsText = ref('')
 const concurrency = ref(1)
 
-// Default image for the preview; replaced by the server-configured image
-// (MIABI_RUNNER_IMAGE) returned in the create response once a runner is registered.
+// Replaced by the server's MIABI_RUNNER_IMAGE from the create response.
 const image = ref('miabi/runner:latest')
-// The address THIS user reaches Miabi at, which is what their runner must dial. Deliberately the
-// browser's own origin and not the platform's configured control URL: that one is an operator
-// detail, often a private address only nodes can route to, and it is not a workspace member's to
-// see. A runner enrolled from the console talks to the console's host.
+// The browser's origin, not the configured control URL, which is often private and not a member's to see.
 const enrollUrl = computed(() => window.location.origin)
 const runCommand = computed(
   () =>
@@ -80,8 +72,7 @@ async function load(quiet = false) {
   }
 }
 
-// A status for a runner the list does not hold yet (added from another session) pulls the list in,
-// debounced, rather than inventing a row from the event.
+// An unknown runner's status triggers a debounced list refetch rather than inventing a row.
 let unknownRunnerTimer: ReturnType<typeof setTimeout> | null = null
 function applyStatus(r: Runner) {
   const i = runners.value.findIndex((x) => x.id === r.id)

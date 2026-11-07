@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// AnalyticsRollup is one minute-bucketed aggregate of a route's HTTP traffic, keyed by
-// (workspace, app, route, minute). Percentiles come from the histograms, uniques from a
-// mergeable HLL sketch, Top* are bounded top-K counts. It holds no PII.
+// Holds no PII.
 type AnalyticsRollup struct {
 	ID            uint      `gorm:"primaryKey" json:"-"`
 	WorkspaceID   uint      `gorm:"uniqueIndex:idx_arollup,priority:1;not null" json:"workspace_id"`
@@ -39,15 +37,13 @@ type AnalyticsRollup struct {
 	Status4xx int64 `json:"status_4xx"`
 	Status5xx int64 `json:"status_5xx"`
 
-	// Latency histograms (per-bucket counts over analytics.LatencyBoundsMs, with a
-	// trailing overflow bucket) + sums for the mean.
+	// Per-bucket counts over analytics.LatencyBoundsMs, with a trailing overflow bucket.
 	DurationHist []int64 `gorm:"serializer:json" json:"-"`
 	UpstreamHist []int64 `gorm:"serializer:json" json:"-"`
 	DurationSum  int64   `json:"-"` // milliseconds
 	UpstreamSum  int64   `json:"-"`
 
-	// VisitorsHLL is the serialized HyperLogLog sketch of visitor ids for this
-	// bucket — mergeable, so a range's uniques is the merge of its buckets.
+	// Mergeable, so a range's uniques is the merge of its buckets.
 	VisitorsHLL []byte `json:"-"`
 
 	// Bounded top-K count maps for the categorical breakdowns.
@@ -60,7 +56,5 @@ type AnalyticsRollup struct {
 	TopDevice     map[string]int64 `gorm:"serializer:json" json:"-"` // desktop | mobile | tablet | bot
 	TopMethods    map[string]int64 `gorm:"serializer:json" json:"-"`
 
-	// BotRequests is the subset of Requests classified as automated (crawlers,
-	// scripts) — the rest are treated as human, for the bot-vs-human split.
 	BotRequests int64 `json:"-"`
 }

@@ -37,9 +37,7 @@ func withRepos(n int, err error) *AdminRegistryHandler {
 	}
 }
 
-// Changing the hostname is gated whenever there is an old name to strand
-// references against, whether or not anything has been pushed yet: the
-// references live in Miabi's own records, not in the registry.
+// References live in Miabi's records, so a host change needs confirmation even before any push.
 func TestHostChangeNeedsConfirmation(t *testing.T) {
 	h := withRepos(0, nil)
 	current := &models.RegistrySettings{Host: "registry.old.test"}
@@ -110,9 +108,7 @@ func TestBucketChangeNeedsConfirmation(t *testing.T) {
 	}
 }
 
-// A registry that can't be reached must not wedge the settings form behind a
-// confirmation the admin has no way to satisfy — the probe failing is not
-// evidence that images exist.
+// A failing probe is not evidence that images exist, so it must not block saving.
 func TestUnreachableRegistryDoesNotBlockSaving(t *testing.T) {
 	h := withRepos(0, errors.New("connection refused"))
 	msg := h.destructiveChange(context.Background(), &models.RegistrySettings{StorageType: models.RegistryStorageFilesystem},

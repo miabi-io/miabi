@@ -28,10 +28,7 @@ import (
 	"testing"
 )
 
-// Everything under pkg/ is Apache-2.0 (pkg/LICENSE); the rest of the repository is AGPL. An import
-// of internal/ from here would put Apache-licensed source on top of AGPL code and make pkg/LICENSE a
-// false claim — so the boundary is a test, not a convention. Go's own internal/ rule does not help:
-// it stops OTHER modules importing internal/, not this one.
+// pkg/ is Apache-2.0 and the rest AGPL; Go's internal/ rule doesn't stop this module importing internal/.
 func TestPkgDoesNotImportInternal(t *testing.T) {
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
@@ -55,9 +52,7 @@ func TestPkgDoesNotImportInternal(t *testing.T) {
 	}
 }
 
-// A file added under pkg/ with the repository's default AGPL header would be distributed under
-// pkg/LICENSE regardless, which is the kind of contradiction a license scanner reports and a user
-// has to guess at.
+// An AGPL-headed file under pkg/ would contradict pkg/LICENSE.
 func TestEveryFileUnderPkgIsMarkedApache(t *testing.T) {
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {

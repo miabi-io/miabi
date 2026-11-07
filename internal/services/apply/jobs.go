@@ -29,8 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/job"
 )
 
-// SetJobs wires the job service (kinds CronJob and Job). Nil leaves a manifest
-// declaring either failing with ErrUnsupportedKind.
+// Nil makes a manifest declaring either fail with ErrUnsupportedKind.
 func (s *Service) SetJobs(j *job.Service) { s.jobs = j }
 
 // snapshotJobs adds the workspace's CronJobs and Job definitions to the live set.
@@ -106,8 +105,7 @@ func securitySpec(runAsUser string) *declarative.SecuritySpec {
 	return &declarative.SecuritySpec{RunAsUser: runAsUser}
 }
 
-// jobMetadata stamps the ownership labels prune is scoped by; a manifest can't
-// spoof provenance through its own labels.
+// A manifest can't spoof provenance through its own labels.
 func jobMetadata(ctx context.Context, desired declarative.Resource) models.Metadata {
 	return tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(desired.Metadata.Labels),
 		models.MetaManagedBy, managedBy(ctx)))
@@ -213,9 +211,7 @@ func (s *Service) applyJob(ctx context.Context, workspaceID uint, ch declarative
 	return err
 }
 
-// jobRun decides whether applying a Job change starts a run: a create runs unless
-// it adopts an existing job, an update runs only an onChange Job whose run
-// template changed, and a once Job's template can't change at all.
+// A create runs unless adopting; an update runs only an onChange Job whose template changed.
 func jobRun(ch declarative.Change, desired declarative.Resource) (bool, error) {
 	spec := desired.Job
 	specChanged := hasField(ch, declarative.JobSpecField)
@@ -241,8 +237,7 @@ func hasField(ch declarative.Change, field string) bool {
 	return false
 }
 
-// refuseRunMove fails moving a CronJob or Job to another app: its history and
-// the schedule's runs belong to the app it was created in.
+// History and the schedule's runs belong to the app it was created in.
 func refuseRunMove(ch declarative.Change) error {
 	if ch.Kind != declarative.KindCronJob && ch.Kind != declarative.KindJob {
 		return nil
@@ -281,8 +276,7 @@ func exportJobs(set, out *declarative.ResourceSet, app string) {
 	}
 }
 
-// failedJobs names the declared Jobs owned by source whose last run failed or
-// was skipped. Empty without a source: only a GitOps sync reports them.
+// Empty without a source: only a GitOps sync reports them.
 func (s *Service) failedJobs(workspaceID uint, source string) []string {
 	if s.jobs == nil || source == "" {
 		return nil

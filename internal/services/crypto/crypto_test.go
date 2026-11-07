@@ -25,8 +25,6 @@ import (
 	"testing"
 )
 
-// fakeKeyring derives a deterministic per-workspace DEK so encrypt/decrypt
-// resolve the same key without a DB.
 type fakeKeyring struct{ ver int }
 
 func (f fakeKeyring) dek(ws uint, ver int) []byte {

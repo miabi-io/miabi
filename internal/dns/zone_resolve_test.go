@@ -54,8 +54,6 @@ func (f *fakeLister) DeleteRecords(_ context.Context, zone string, recs []libdns
 	return recs, nil
 }
 
-// fakeNoList cannot enumerate zones (like Route 53/DigitalOcean here): GetRecords
-// errors unless asked for the one zone it actually hosts.
 type fakeNoList struct {
 	zone     string // the single hosted zone, no trailing dot
 	setZone  string

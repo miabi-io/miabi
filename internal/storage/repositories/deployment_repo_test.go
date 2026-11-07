@@ -40,9 +40,7 @@ func newDeploymentDB(t *testing.T) *DeploymentRepository {
 	return NewDeploymentRepository(db)
 }
 
-// TestUpdatePreservesAppendedLog guards the log-loss bug: AppendLog writes the log straight to
-// the DB column while the in-memory deployment keeps Logs="". A plain Save on Update would wipe
-// that column, so Update must omit the log columns.
+// AppendLog writes straight to the column while in-memory Logs is "", so a plain Save would wipe it.
 func TestUpdatePreservesAppendedLog(t *testing.T) {
 	repo := newDeploymentDB(t)
 	dep := &models.Deployment{ApplicationID: 1}
@@ -73,9 +71,6 @@ func TestUpdatePreservesAppendedLog(t *testing.T) {
 	}
 }
 
-// TestDeploymentNumberPerApp verifies the BeforeCreate hook assigns a per-app
-// sequential Number (1, 2, 3…) independent of the global ID, and restarts at 1
-// for a different application.
 func TestDeploymentNumberPerApp(t *testing.T) {
 	repo := newDeploymentDB(t)
 
@@ -105,9 +100,6 @@ func TestDeploymentNumberPerApp(t *testing.T) {
 	}
 }
 
-// TestDeploymentSetLogMeta verifies that externalizing a deployment's log
-// replaces the DB column with the bounded tail and records the store reference
-// and counters, and that a zero ref is a no-op that leaves the full log intact.
 func TestDeploymentSetLogMeta(t *testing.T) {
 	repo := newDeploymentDB(t)
 	dep := &models.Deployment{ApplicationID: 1, Logs: "line one\nline two\nline three\n"}
@@ -141,8 +133,6 @@ func TestDeploymentSetLogMeta(t *testing.T) {
 	}
 }
 
-// TestDeploymentNumberExplicitPreserved verifies an explicitly set Number (e.g.
-// from a backfill) is left untouched by the hook.
 func TestDeploymentNumberExplicitPreserved(t *testing.T) {
 	repo := newDeploymentDB(t)
 	dep := &models.Deployment{ApplicationID: 1, Number: 42}

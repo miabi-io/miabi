@@ -9,11 +9,7 @@ import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
 import type { PublicProvider } from '@/api/types'
 
-// `miabi login` loopback flow. The CLI opened this page with a local callback
-// (?redirect_uri=http://127.0.0.1:PORT/…&state=…). A signed-in user authorizes it
-// with one click on the current session; otherwise (or for another account) they
-// sign in here. Either way a single-use code goes back to the CLI's local server
-// via a redirect; the token itself never rides the redirect URL.
+// A single-use code goes back to the CLI's local server; the token never rides the redirect URL.
 type Step = 'session' | 'confirm' | 'twofactor' | 'done' | 'invalid'
 
 const route = useRoute()
@@ -33,9 +29,7 @@ const providers = ref<PublicProvider[]>([])
 const redirectUri = (route.query.redirect_uri as string | undefined)?.trim() || ''
 const state = (route.query.state as string | undefined)?.trim() || ''
 
-// The CLI may ask for a narrowed token (`miabi login --scopes read`). Unknown names are dropped
-// rather than forwarded: the server would reject the whole request and the user would see only a
-// failed sign-in. admin and * are not offered on this flow at all — the server refuses them.
+// Unknown scopes are dropped since the server would reject the whole request; admin and * are refused on this flow.
 const GRANTABLE = ['read', 'write', 'deploy'] as const
 const requestedScopes = ((route.query.scopes as string | undefined) || '')
   .split(',')
@@ -43,9 +37,7 @@ const requestedScopes = ((route.query.scopes as string | undefined) || '')
   .filter((s) => (GRANTABLE as readonly string[]).includes(s))
 const scopeLabel = computed(() => requestedScopes.join(', '))
 
-// isLoopback mirrors the server's check: only an http URL pointing at the local
-// machine may receive the login code. A mismatched target here means the link
-// wasn't produced by the CLI — refuse rather than send credentials anywhere.
+// Mirrors the server: only a local http URL may receive the code, else the link wasn't made by the CLI.
 function isLoopback(uri: string): boolean {
   try {
     const u = new URL(uri)
@@ -95,8 +87,6 @@ function deliver(to: string | undefined) {
     error.value = 'The server did not return a callback URL. Re-run `miabi login`.'
     return
   }
-  // Hand the code back to the CLI's local server. It responds with a small
-  // "you can close this window" page; we show 'done' meanwhile.
   step.value = 'done'
   window.location.href = to
 }
@@ -147,8 +137,7 @@ async function submit() {
 }
 
 function ssoLogin(slug: string) {
-  // Full-page redirect into the IdP; the callback delivers the code to the CLI's
-  // loopback callback directly (no return to this page).
+  // The IdP callback delivers the code straight to the CLI's loopback callback, never returning here.
   window.location.href = cliAuthorizeUrl(slug, redirectUri, state, requestedScopes)
 }
 </script>

@@ -31,12 +31,10 @@ var (
 	ErrRunAsUserRoot    = errors.New("run-as user must be a non-root numeric uid under the restricted security profile")
 )
 
-// maxRunAsPart bounds each half of a run-as user. Linux caps a login name at 32
-// characters, and a uid never needs more.
+// Linux caps a login name at 32 characters, and a uid never needs more.
 const maxRunAsPart = 32
 
-// NormalizeRunAsUser trims a run-as user and validates its shape. The empty
-// string is valid and means "run as the image's own user".
+// Empty is valid and means the image's own user.
 func NormalizeRunAsUser(v string) (string, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -49,8 +47,6 @@ func NormalizeRunAsUser(v string) (string, error) {
 	return v, nil
 }
 
-// runAsPartValid reports whether one half of a run-as user is a plausible
-// account or group reference — a uid/gid, or a POSIX-ish name.
 func runAsPartValid(p string) bool {
 	if p == "" || len(p) > maxRunAsPart {
 		return false
@@ -66,10 +62,7 @@ func runAsPartValid(p string) bool {
 	return true
 }
 
-// RunAsUserIsNonRoot reports whether v pins the container to a non-root account that the platform can
-// verify. Only a numeric uid qualifies: a name is resolved from the image's own /etc/passwd, which the
-// workload controls, so "appuser" is free to be uid 0. A numeric gid is required for the same reason,
-// but gid 0 is allowed — it is the arbitrary-uid convention the restricted profile itself uses.
+// Only a numeric uid:gid qualifies since names resolve via the image's /etc/passwd; gid 0 is allowed (restricted profile).
 func RunAsUserIsNonRoot(v string) bool {
 	v = strings.TrimSpace(v)
 	if v == "" {

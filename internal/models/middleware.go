@@ -23,9 +23,7 @@ import (
 	"time"
 )
 
-// Middleware is a Goma Gateway middleware owned by a workspace. Routes reference
-// it by Name. Rule holds the type-specific configuration as defined by Goma
-// (mirrors goma-admin's JSON config approach).
+// Middleware Rule holds the type-specific configuration exactly as Goma defines it.
 type Middleware struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_mw_workspace_name,unique;not null"`

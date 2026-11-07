@@ -27,9 +27,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// sanitizeIdent reduces a user-supplied name to a safe SQL identifier
-// (lowercase letters, digits, underscores; must start with a letter or
-// underscore). Returns "" if nothing usable remains.
 func sanitizeIdent(name string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
@@ -53,9 +50,7 @@ func sanitizeIdent(name string) string {
 	return out
 }
 
-// createDDL returns the statements that create a logical database and its
-// scoped user. Names/credentials are platform-generated identifiers and hex
-// tokens, so they are safe to embed directly.
+// Names and credentials are platform-generated identifiers and hex tokens, so they are safe to embed.
 func createDDL(engine models.DBEngine, name, user, pass string) []string {
 	switch engine {
 	case models.DBEnginePostgres:
@@ -64,9 +59,7 @@ func createDDL(engine models.DBEngine, name, user, pass string) []string {
 			fmt.Sprintf(`CREATE DATABASE "%s" OWNER "%s"`, name, user),
 		}
 	case models.DBEngineMongoDB:
-		// MongoDB has no DDL: a scoped user is created on the target database (so authSource = the database), and
-		// a marker collection makes the otherwise-empty database durable (Mongo drops databases with no
-		// collections). Statements are mongosh JS, joined and run via one --eval.
+		// Mongo drops databases with no collections, so a marker collection keeps the new one durable.
 		return []string{
 			fmt.Sprintf(`db.getSiblingDB(%q).createUser({user:%q,pwd:%q,roles:[{role:"dbOwner",db:%q}]})`, name, user, pass, name),
 			fmt.Sprintf(`db.getSiblingDB(%q).createCollection("_miabi_init")`, name),
@@ -89,8 +82,7 @@ func dropDDL(engine models.DBEngine, name, user string) []string {
 			fmt.Sprintf(`DROP USER IF EXISTS "%s"`, user),
 		}
 	case models.DBEngineMongoDB:
-		// dropUser before dropDatabase; both are idempotent enough for teardown
-		// (a missing user/db throws, but the surrounding job tolerates it).
+		// A missing user or db throws, but the surrounding teardown job tolerates it.
 		return []string{
 			fmt.Sprintf(`db.getSiblingDB(%q).dropUser(%q)`, name, user),
 			fmt.Sprintf(`db.getSiblingDB(%q).dropDatabase()`, name),
@@ -103,9 +95,7 @@ func dropDDL(engine models.DBEngine, name, user string) []string {
 	}
 }
 
-// readOnlyServerDDL creates (or, when it exists, re-passwords) a database's read-only user and lets it
-// connect. Run on the admin database; readOnlyGrantDDL then runs inside the target database. Both are
-// idempotent, so a recreate, a restore or a retry simply re-applies them.
+// Idempotent, so a recreate, restore or retry simply re-applies it.
 func readOnlyServerDDL(name, user, pass string) []string {
 	return []string{
 		fmt.Sprintf(`DO $$ BEGIN CREATE ROLE "%s" LOGIN PASSWORD '%s'; `+
@@ -114,10 +104,7 @@ func readOnlyServerDDL(name, user, pass string) []string {
 	}
 }
 
-// readOnlyGrantDDL gives the read-only user SELECT on every table and sequence of the public schema, and,
-// through the owner's default privileges, on those the owner creates later. Run inside the target
-// database. The owner can still narrow it: these grants are recorded as the owner's, so it may revoke
-// them (an application granting column by column does).
+// Grants are recorded as the owner's, so the owner can still revoke them.
 func readOnlyGrantDDL(owner, user string) []string {
 	return []string{
 		fmt.Sprintf(`GRANT USAGE ON SCHEMA public TO "%s"`, user),
@@ -128,8 +115,6 @@ func readOnlyGrantDDL(owner, user string) []string {
 	}
 }
 
-// readOnlyRevokeDDL removes the read-only user's privileges inside the target database (grants and default
-// privileges alike); readOnlyDropDDL then drops the user on the admin database.
 func readOnlyRevokeDDL(user string) []string {
 	return []string{fmt.Sprintf(`DROP OWNED BY "%s"`, user)}
 }
@@ -141,8 +126,6 @@ func readOnlyDropDDL(name, user string) []string {
 	}
 }
 
-// queryInvocation builds the engine client command to run a single query and
-// emit raw, parseable output (tuples-only / batch / redis INFO).
 func queryInvocation(inst *models.DatabaseInstance, query, adminPass string) (cmd []string, env []string) {
 	port := strconv.Itoa(inst.Port)
 	switch inst.Engine {
@@ -164,14 +147,10 @@ func queryInvocation(inst *models.DatabaseInstance, query, adminPass string) (cm
 	return cmd, env
 }
 
-// clientInvocation builds the engine client command and environment to run the
-// given statements as admin against the instance.
 func clientInvocation(inst *models.DatabaseInstance, statements []string, adminPass string) (cmd []string, env []string) {
 	return clientInvocationIn(inst, "", statements, adminPass)
 }
 
-// clientInvocationIn is clientInvocation against database dbName (Postgres; "" is the admin's own), for
-// statements that act inside one database, such as grants on its schema.
 func clientInvocationIn(inst *models.DatabaseInstance, dbName string, statements []string, adminPass string) (cmd []string, env []string) {
 	port := strconv.Itoa(inst.Port)
 	switch inst.Engine {
@@ -199,9 +178,7 @@ func clientInvocationIn(inst *models.DatabaseInstance, dbName string, statements
 	return cmd, env
 }
 
-// mongoshCmd builds a `mongosh --eval` invocation authenticating as the instance
-// admin against the `admin` database. The password is passed as a flag (mongosh
-// has no PGPASSWORD/MYSQL_PWD env equivalent); it is a platform-generated token.
+// mongosh has no password env equivalent, so the platform-generated token is passed as a flag.
 func mongoshCmd(inst *models.DatabaseInstance, port, adminPass, script string) []string {
 	return []string{
 		"mongosh", "--quiet",
@@ -212,9 +189,6 @@ func mongoshCmd(inst *models.DatabaseInstance, port, adminPass, script string) [
 	}
 }
 
-// readinessProbe returns a trivial admin query used to confirm the engine accepts
-// connections (it returns success, not data). MongoDB is not SQL, so it pings via
-// mongosh; every SQL engine uses SELECT 1.
 func readinessProbe(engine models.DBEngine) string {
 	if engine == models.DBEngineMongoDB {
 		return "db.adminCommand({ping:1})"

@@ -59,8 +59,7 @@ func TestSetVolumeBackupsRegistersEnabledSchedules(t *testing.T) {
 	}
 }
 
-// The licence gate stops a scheduled point before any work is enqueued; an expired licence
-// degrades configuration, and taking new points is configuration's output.
+// An expired licence degrades configuration, and taking new points is configuration's output.
 func TestVolumeBackupRunIsGated(t *testing.T) {
 	m := NewManager(nil, nil, nil, nil, nil)
 	f := &fakeVolumeScheduler{}

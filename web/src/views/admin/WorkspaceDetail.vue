@@ -18,8 +18,7 @@ const router = useRouter()
 const licenseStore = useLicenseStore()
 // Per-workspace quota overrides are an Enterprise capability.
 const quotaOverride = useEntitlement('quota_override')
-// The restricted security profile needs its own Enterprise flag on top of
-// quota_override, mirroring the backend gate.
+// Needs its own Enterprise flag on top of quota_override, mirroring the backend gate.
 const securityProfile = useEntitlement('security_profile')
 const notify = useNotificationStore()
 
@@ -33,10 +32,7 @@ const busy = ref(false)
 const plans = ref<Plan[]>([])
 const selectedPlanId = ref<number | null>(null)
 
-// The system plan grants unlimited resources and every capability, and the
-// platform pins it to its own workspace itself — so it is not on offer here. It
-// stays listed when this workspace is already on it, so the page reports what it
-// is on rather than showing a blank; the API refuses the change either way.
+// The platform pins the system plan itself; it stays listed only so a workspace on it reports what it is on.
 const onSystemPlan = computed(() => plans.value.some((p) => p.system && p.id === ws.value?.plan_id))
 const assignablePlans = computed(() =>
   plans.value.filter((p) => !p.system || p.id === ws.value?.plan_id),
@@ -199,9 +195,7 @@ type CapKey =
   | 'allow_service_runtime'
   | 'require_resource_limits'
 
-// Capabilities whose "Allow" widens what a workspace may do to the host or to other tenants.
-// Granting one is worth a confirmation; raising a quota number is not, and allow_gpu is a
-// resource grant rather than a security one.
+// Only grants that widen access to the host or other tenants need confirmation; allow_gpu is a resource grant.
 const securityCaps: { key: CapKey; label: string }[] = [
   { key: 'allow_privileged_host_mounts', label: 'Privileged host mounts' },
   { key: 'allow_shell_exec', label: 'Shell access' },
@@ -274,8 +268,7 @@ async function clearOverride() {
 }
 
 const placementPolicy = useEntitlement('placement_policy')
-// The organization runs its own clusters, so its workspaces have no location left to choose and a
-// plan override would be inert. Shown locked rather than accepted and ignored.
+// A plan override would be inert, so it is shown locked rather than accepted and ignored.
 const placementPinned = computed(() => !!ws.value?.placement_pinned)
 const clusters = ref<Cluster[]>([])
 async function loadClusters() {

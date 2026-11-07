@@ -32,9 +32,7 @@ export type AdoptAction =
   | { kind: 'push'; code: LanguageCode }
   | { kind: 'none' }
 
-// languageAdoptAction mirrors themeAdoptAction (stores/theme.ts). English is never
-// pushed: it is the never-chosen default, and writing it up would overwrite a real pick
-// made on another device.
+// English is never pushed: it is the unchosen default and would overwrite a real pick from another device.
 export function languageAdoptAction(
   local: LanguageCode,
   server: LanguageCode | undefined,
@@ -49,8 +47,7 @@ export function languageAdoptAction(
 export function browserLanguage(tags: readonly string[] = navigator.languages ?? []): LanguageCode {
   for (const tag of tags) {
     const code = resolveLanguage(tag)
-    // resolveLanguage answers English for anything unshipped, so an unknown first tag
-    // would otherwise win over a shipped later one.
+    // resolveLanguage answers English for anything unshipped, so an unknown first tag would win.
     if (code !== DEFAULT_LANGUAGE || /^en\b/i.test(tag)) return code
   }
   return DEFAULT_LANGUAGE
@@ -66,16 +63,14 @@ export const useLanguageStore = defineStore('language', () => {
   // A pick the account has not accepted: made before sign-in, or saved unsuccessfully.
   let unsynced = false
 
-  // Caches what setLanguage reports, not what was asked: a catalogue that fails to load
-  // stays on the previous language.
+  // Caches what setLanguage reports: a catalogue that fails to load stays on the previous language.
   async function apply(code: LanguageCode) {
     const effective = await setLanguage(code)
     current.value = effective
     localStorage.setItem(STORAGE_KEY, effective)
   }
 
-  // Already applied locally, so a failed save costs nothing now and is retried at the
-  // next sign-in.
+  // Already applied locally, so a failed save is just retried at the next sign-in.
   function save(code: LanguageCode) {
     void authApi
       .updatePreferences({ locale: code })

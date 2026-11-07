@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/blob"
 )
 
-// IndexEntry is one backup as the *-bkup tools record it in their index file
-// ({engine}-<scope>-metadata.json, next to the artifacts).
 type IndexEntry struct {
 	File   string `json:"file"`
 	Status string `json:"status"`
@@ -37,10 +35,7 @@ type IndexEntry struct {
 	SHA256 string `json:"sha256"`
 }
 
-// ReadIndex reads the tool index files directly inside dir, found in objects (a
-// listing of dir), and returns their entries by file name. One read per index
-// file, usually one, instead of a lookup per artifact. Nil when there is none,
-// which is the case for artifacts written by 1.x tools.
+// Nil when there is none, as with artifacts written by 1.x tools.
 func ReadIndex(ctx context.Context, get func(context.Context, string) ([]byte, error), objects []blob.Object, dir string) map[string]IndexEntry {
 	dir = strings.Trim(dir, "/")
 	var out map[string]IndexEntry
@@ -78,9 +73,7 @@ const (
 	IndexChanged = "changed"
 )
 
-// CheckIndexed judges file against its index entry: removed (retention, delete,
-// or found missing), stored at another size, or a checksum that differs from the
-// one the backup reported. "" when it matches or the index does not know it.
+// "" when it matches or the index does not know the file.
 func CheckIndexed(idx map[string]IndexEntry, file string, size int64, checksum string) string {
 	e, ok := idx[file]
 	switch {

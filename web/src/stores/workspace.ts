@@ -39,8 +39,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     else localStorage.removeItem(STORAGE_KEY)
   }
 
-  // valid reports whether an id names a workspace this user can actually open, so a
-  // stale localStorage value or a revoked membership never strands the console.
+  // Guards against a stale localStorage value or revoked membership stranding the console.
   function valid(id: number | null | undefined): boolean {
     return !!id && workspaces.value.some((w) => w.id === id)
   }
@@ -48,10 +47,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function fetchWorkspaces() {
     const res = await workspaceApi.list()
     workspaces.value = res.data.data ?? []
-    // Precedence: this session's own choice, then this device's last one, then the
-    // user's default from the server, then oldest-first. localStorage is a
-    // same-device fast path, not the source of truth — it does not follow the user
-    // to a new browser, and the server's default does.
+    // localStorage is a same-device fast path; the server default is what follows the user to a new browser.
     if (!valid(currentWorkspaceId.value)) {
       const serverDefault = useAuthStore().user?.default_workspace_id
       setWorkspace(
@@ -61,8 +57,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loaded.value = true
   }
 
-  // selectByRef switches to the workspace a link names (?workspace=<handle|uid|id>), as the billing
-  // console's "Open in Miabi" does. False when this user cannot open it.
+  // False when this user cannot open it.
   async function selectByRef(ref: string): Promise<boolean> {
     if (!loaded.value) await fetchWorkspaces()
     const r = ref.trim().toLowerCase()
@@ -72,17 +67,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return true
   }
 
-  // oldestWorkspaceId is the fallback when nothing else names a workspace. The list
-  // arrives newest-first for display, which is the wrong guess to land on: a user's
-  // oldest workspace is almost always their primary one.
+  // The list is newest-first, but a user's oldest workspace is almost always their primary one.
   function oldestWorkspaceId(): number | null {
     if (workspaces.value.length === 0) return null
     return workspaces.value[workspaces.value.length - 1].id
   }
 
-  // makeDefault pins where this user's future sessions land. Kept separate from
-  // setWorkspace on purpose: switching workspaces is navigation, changing the default
-  // is a deliberate choice, and conflating them makes the default unstable.
+  // Separate from setWorkspace: switching is navigation, the default is a deliberate choice.
   async function makeDefault(id: number) {
     await authApi.setDefaultWorkspace(id)
     const auth = useAuthStore()
@@ -97,8 +88,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const res = await workspaceApi.create(input)
     await fetchWorkspaces()
     setWorkspace(res.data.data.id)
-    // The server claims a user's FIRST workspace as their default, so refresh the
-    // cached profile rather than showing a stale "not default" state for it.
+    // The server claims a user's first workspace as their default, so refresh the cached profile.
     await useAuthStore().fetchUser()
     return res.data.data
   }

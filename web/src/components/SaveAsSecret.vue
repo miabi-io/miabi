@@ -18,16 +18,10 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Puts a generated value straight into the vault: name it, save it, done.
-//
-// This is the point of having a generator inside a secrets platform. The flow it
-// replaces routes the value through the clipboard, which is the weakest link —
-// readable by any other app, and left sitting there afterwards.
+// Saves straight to the vault, skipping the clipboard, which any app can read and which keeps the value.
 import { computed, ref } from 'vue'
 
-// save is a prop rather than an emit because the result matters: Vue emits
-// return void, so awaiting one would read every save as a success and close the
-// form over a failure, discarding the name that was just typed.
+// A prop, not an emit: emits return void, so awaiting one would treat every save as success.
 const props = defineProps<{
   value: string
   saving?: boolean

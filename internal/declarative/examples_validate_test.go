@@ -49,8 +49,7 @@ func TestExamplesParse(t *testing.T) {
 		}
 	}
 
-	// Domain/route bundle (multi-document) via Parse — Parse also runs
-	// cross-reference validation, so each Route must target the included app.
+	// Parse also runs cross-reference validation, so each Route must target the included app.
 	if dom, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "domain.yaml")); derr != nil {
 		t.Fatalf("read domain.yaml: %v", derr)
 	} else if domSet, perr := d.Parse(dom); perr != nil {
@@ -70,9 +69,7 @@ func TestExamplesParse(t *testing.T) {
 		t.Fatalf("parse apply/app-ports.yaml: %v", perr)
 	}
 
-	// Label-routed bundle: the fronted app must actually carry the labels a
-	// label-reading proxy discovers it by, and both apps must be in the stack
-	// that gives them a shared network.
+	// The fronted app must carry the proxy's discovery labels and share a stack network with its peer.
 	if cl, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "container-labels.yaml")); derr != nil {
 		t.Fatalf("read container-labels.yaml: %v", derr)
 	} else if clSet, perr := d.Parse([]byte(cl)); perr != nil {
@@ -92,8 +89,7 @@ func TestExamplesParse(t *testing.T) {
 		}
 	}
 
-	// Private-registry bundle: the app's spec.registry must name the declared
-	// credential, so the example can't drift out of sync with the schema.
+	// spec.registry must name the declared credential so the example can't drift from the schema.
 	if pr, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "private-registry.yaml")); derr != nil {
 		t.Fatalf("read private-registry.yaml: %v", derr)
 	} else if prSet, perr := d.Parse(pr); perr != nil {
@@ -117,9 +113,7 @@ func TestExamplesParse(t *testing.T) {
 		t.Error("gitsources.yaml should declare its GitSources")
 	}
 
-	// Config bundle: every mount must resolve to a config in the bundle, and the
-	// example must keep demonstrating both projection forms (whole set under a
-	// directory, and a single pinned key) — that is what it exists to show.
+	// The example must keep demonstrating both projection forms: whole set under a dir and a single pinned key.
 	if cb, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "config.yaml")); derr != nil {
 		t.Fatalf("read config.yaml: %v", derr)
 	} else if cbSet, perr := d.Parse(cb); perr != nil {

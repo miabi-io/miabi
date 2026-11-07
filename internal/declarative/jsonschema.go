@@ -31,15 +31,12 @@ import (
 	"strings"
 )
 
-// schemaSource is this file's neighbour, embedded so the generator can read the
-// doc comments reflection cannot see. Editors show them as hovers, which is what
-// makes a generated schema worth more than a hand-written one.
+// Embedded so the generator can read doc comments reflection cannot see; editors show them as hovers.
 //
 //go:embed schema.go
 var schemaSource string
 
-// SchemaID is where the generated schema is published. Editors resolve $ref
-// against it, so it must be the URL the file is actually served from.
+// SchemaID must be the URL the file is served from, since editors resolve $ref against it.
 const SchemaID = "https://docs.miabi.io/schema/miabi.io-v1.schema.json"
 
 func JSONSchema() ([]byte, error) {
@@ -51,8 +48,7 @@ func JSONSchema() ([]byte, error) {
 	}
 	sort.Strings(kinds)
 
-	// specConstraints carry the per-kind rules that reflection over struct tags cannot express — a
-	// choice between two fields, rather than a field being required outright.
+	// Per-kind rules struct tags cannot express, such as a choice between two fields.
 	specConstraints := map[Kind]map[string]any{
 		KindApplication: {
 			"oneOf": []any{
@@ -86,9 +82,7 @@ func JSONSchema() ([]byte, error) {
 		ref := g.define(reflect.TypeOf(specFor[Kind(k)]))
 		then := map[string]any{"properties": map[string]any{"spec": ref}}
 		if extra := specConstraints[Kind(k)]; extra != nil {
-			// A rule the struct tags cannot carry. Without it an editor would accept a document the
-			// parser then rejects, which is worse than no schema at all — the point of publishing one
-			// is that it agrees with the engine.
+			// Without this an editor accepts documents the parser rejects, which is worse than no schema.
 			then = map[string]any{"allOf": []any{then, map[string]any{"properties": map[string]any{"spec": extra}}}}
 		}
 		branches = append(branches, map[string]any{
@@ -154,15 +148,12 @@ func (g *schemaGen) object(t reflect.Type) map[string]any {
 		}
 		prop := g.field(t, f)
 		props[name] = prop
-		// A field the author is expected to set carries no omitempty — the same
-		// signal the parser and the docs already agree on.
+		// No omitempty marks a field the author is expected to set.
 		if !opts.omitempty {
 			required = append(required, name)
 		}
 	}
-	// A Project's children are written under spec.resources, but the field carries
-	// `yaml:"-"` because the parser flattens them itself before binding. The
-	// schema has to describe what authors type, not what the struct binds.
+	// The parser flattens resources itself (`yaml:"-"`), but the schema must describe what authors type.
 	if t.Name() == "ProjectSpec" {
 		props["resources"] = map[string]any{
 			"type":        "array",
@@ -185,8 +176,6 @@ func (g *schemaGen) object(t reflect.Type) map[string]any {
 	return out
 }
 
-// field renders one struct field, attaching its doc comment and any enum the
-// validator enforces for it.
 func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]any {
 	out := g.typeOf(f.Type)
 	if doc := g.docs[owner.Name()+"."+f.Name]; doc != "" {
@@ -230,16 +219,13 @@ func (g *schemaGen) typeOf(t reflect.Type) map[string]any {
 	case reflect.Struct:
 		return g.define(t)
 	default:
-		// An unmapped kind must not silently become "anything": that is how a
-		// schema starts accepting what the parser rejects.
+		// An unmapped kind must not silently become "anything", or the schema accepts what the parser rejects.
 		return map[string]any{}
 	}
 }
 
 type yamlOpts struct{ omitempty bool }
 
-// yamlName reads the field's YAML name; ok is false for unexported fields and
-// for `yaml:"-"` (the typed spec pointers, which the parser fills itself).
 func yamlName(f reflect.StructField) (string, yamlOpts, bool) {
 	if f.PkgPath != "" {
 		return "", yamlOpts{}, false
@@ -262,9 +248,7 @@ func yamlName(f reflect.StructField) (string, yamlOpts, bool) {
 	return name, o, true
 }
 
-// enumFor returns the values the validator accepts for a field. The sets are
-// this package's own, so renaming one breaks the build instead of leaving the
-// schema quietly permissive.
+// Uses this package's own sets, so renaming one breaks the build instead of leaving the schema permissive.
 func enumFor(typeName, field string) []string {
 	switch typeName + "." + field {
 	case "RouteSpec.TLS":
@@ -298,8 +282,6 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// fieldDocs maps "Type" and "Type.Field" to the doc comments in schema.go, so
-// the schema's descriptions and the code's comments are the same words.
 func fieldDocs() map[string]string {
 	out := map[string]string{}
 	fset := token.NewFileSet()
@@ -341,8 +323,7 @@ func fieldDocs() map[string]string {
 	return out
 }
 
-// commentText flattens a comment group into one line: an editor hover renders
-// the wrapping as-is, and a Go source wrap width is not a tooltip's.
+// Editor hovers render wrapping as-is, so collapse Go source line breaks.
 func commentText(g *ast.CommentGroup) string {
 	if g == nil {
 		return ""
@@ -350,8 +331,7 @@ func commentText(g *ast.CommentGroup) string {
 	return strings.Join(strings.Fields(g.Text()), " ")
 }
 
-// SchemaFileName is the published file name, kept here so the generator, the
-// docs site and the editor extension cannot disagree about it.
+// SchemaFileName is shared so the generator, docs site and editor extension cannot disagree.
 const SchemaFileName = "miabi.io-v1.schema.json"
 
 var _ = fmt.Sprintf // keep fmt for future error wrapping without churn

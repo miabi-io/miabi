@@ -29,8 +29,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// The whole point of the feature: an event a node's gateway buffered locally must
-// come out of the platform stream shaped exactly as the consumer expects.
 func TestIngestedEventSurvivesRoundTrip(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})

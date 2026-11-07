@@ -83,9 +83,7 @@ func TestIsManaged(t *testing.T) {
 	}
 }
 
-// The bug this fixes: discovery skipped a container only when isManaged(labels) was true. Miabi's own
-// stack is deployed by compose from outside Miabi, so it carried no io.miabi.* label and the import page
-// offered `miabi-postgres` as an importable application — which the deploy worker may then recreate.
+// Unlabeled compose-deployed platform containers were offered for import and could be recreated by the deploy worker.
 func TestPlatformStackIsNeverImportable(t *testing.T) {
 	platform := docker.PlatformLabels(docker.RolePlatformDB, docker.ManagedByCompose, nil)
 
@@ -100,16 +98,14 @@ func TestPlatformStackIsNeverImportable(t *testing.T) {
 		{"labeled platform postgres", platform, "miabi-postgres", true},
 		{"labeled agent", docker.PlatformLabels(docker.RoleAgent, docker.ManagedByExternal, nil), "miabi-agent", true},
 
-		// UNLABELED — a stack installed before platform labels. This is the case the
-		// old code got wrong, and the name shield is what covers it.
+		// A stack installed before platform labels is covered only by the name shield.
 		{"unlabeled platform postgres", nil, "miabi-postgres", true},
 		{"unlabeled platform redis", nil, "miabi-redis", true},
 		{"unlabeled control plane", nil, "miabi", true},
 		{"unlabeled central gateway", nil, "miabi-gateway", true},
 		{"container name keeps docker's leading slash", nil, "/miabi-postgres", true},
 
-		// Compose prefixes volume names with the project, so the platform's data
-		// volumes surface as miabi_pgdata — which the old `mb-` shield did not match.
+		// Compose prefixes volume names with the project, so platform volumes surface as miabi_pgdata.
 		{"compose-prefixed platform volume", nil, "miabi_pgdata", true},
 		{"miabi-managed resource", map[string]string{docker.LabelApp: "7"}, "mb-app-x", true},
 
@@ -118,8 +114,6 @@ func TestPlatformStackIsNeverImportable(t *testing.T) {
 		{"user app", nil, "blog-web-1", false},
 		{"compose-managed user stack", map[string]string{"com.docker.compose.project": "blog"}, "blog_db_1", false},
 		{"user volume", nil, "postgres_data", false},
-		// Not ours: a container merely *named* like a user's miabi-ish app. "miabify"
-		// does not start with "miabi_" or "miabi-", and is not an exact stack name.
 		{"unrelated name with the same prefix", nil, "miabify", false},
 	}
 
@@ -132,9 +126,7 @@ func TestPlatformStackIsNeverImportable(t *testing.T) {
 	}
 }
 
-// The name shield alone is not enough for an UNLABELED stack: compose pins container_name only on the
-// gateway, so the platform's Postgres is really "miabi-miabi-postgres-1" — a name that depends on the
-// install directory. So discovery also asks which compose project Miabi ITSELF is in.
+// Compose pins container_name only on the gateway, so other platform names depend on the install directory.
 func TestUnlabeledStackIsShieldedByItsComposeProject(t *testing.T) {
 	const project = "miabi" // the control plane's own com.docker.compose.project
 
@@ -155,8 +147,7 @@ func TestUnlabeledStackIsShieldedByItsComposeProject(t *testing.T) {
 		{"miabi-miabi-1", inStack("miabi")},
 		{"miabi-gateway", inStack("gateway")},
 	} {
-		// The name shield misses the generated names — that is exactly why the project
-		// shield exists. Assert the combination holds, not just one half.
+		// The name shield misses generated names, so assert the combination holds.
 		skipped := notImportable(c.labels, c.name) || inPlatformProject(c.labels, project)
 		if !skipped {
 			t.Errorf("%s (unlabeled, project=%s) would be offered for import", c.name, project)
@@ -169,9 +160,7 @@ func TestUnlabeledStackIsShieldedByItsComposeProject(t *testing.T) {
 		t.Error("a user's compose stack was shielded — the import page would be empty")
 	}
 
-	// With no self-container (an offline agent, or a Miabi running as a bare binary),
-	// project is "" and the shield must simply disable itself rather than match
-	// everything — which would hide every unlabeled container on the node.
+	// An empty project must disable the shield, not match everything on the node.
 	if inPlatformProject(user, "") {
 		t.Error("an empty project matched — discovery would shield everything")
 	}

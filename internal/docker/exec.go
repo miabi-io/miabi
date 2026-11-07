@@ -33,9 +33,7 @@ type ExecOptions struct {
 	Env []string // extra environment, "KEY=VALUE"
 }
 
-// ExecStream is a bidirectional stream attached to a running exec instance. With a TTY the byte
-// stream is raw (no stdcopy multiplexing), so Read/Write move terminal bytes directly. Resize
-// adjusts the pseudo-terminal; Close ends the session.
+// With a TTY the stream is raw (no stdcopy multiplexing).
 type ExecStream interface {
 	Read(p []byte) (int, error)
 	Write(p []byte) (int, error)
@@ -43,8 +41,6 @@ type ExecStream interface {
 	Close() error
 }
 
-// Exec creates and attaches to an interactive command inside a running
-// container, returning a bidirectional stream. Callers must Close the stream.
 func (e *engineClient) Exec(ctx context.Context, containerID string, opts ExecOptions) (ExecStream, error) {
 	created, err := e.cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 		Cmd:          opts.Cmd,
@@ -64,9 +60,7 @@ func (e *engineClient) Exec(ctx context.Context, containerID string, opts ExecOp
 	return &execStream{cli: e.cli, id: created.ID, hj: att.HijackedResponse}, nil
 }
 
-// Top lists the running processes in a container via the daemon's "docker top"
-// (the host runs ps against the container's PIDs), so it works regardless of
-// whether the image ships a ps binary.
+// Uses the daemon's docker top, so it works even when the image ships no ps binary.
 func (e *engineClient) Top(ctx context.Context, containerID, psArgs string) (ProcessList, error) {
 	var args []string
 	if f := strings.Fields(psArgs); len(f) > 0 {
@@ -79,8 +73,6 @@ func (e *engineClient) Top(ctx context.Context, containerID, psArgs string) (Pro
 	return ProcessList{Titles: body.Titles, Processes: body.Processes}, nil
 }
 
-// execStream wraps a hijacked exec attach connection. With a TTY the stream is raw:
-// stdout/stderr arrive interleaved on hj.Reader and stdin goes to hj.Conn.
 type execStream struct {
 	cli *client.Client
 	id  string

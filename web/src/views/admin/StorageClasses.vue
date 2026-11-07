@@ -13,8 +13,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
 const router = useRouter()
-// Every edition may register disks, up to an edition cap on the catalog that counts the built-in
-// class. Enterprise lifts the cap.
+// The edition cap counts the built-in class; Enterprise lifts it.
 const license = useLicenseStore()
 
 const classes = ref<StorageClass[]>([])

@@ -31,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/workspace"
 )
 
-// workspaceRoutes registers workspace CRUD, members, invitations and the audit log. Viewer and
-// Developer read; Admin manages members, invitations and metadata; Owner deletes.
+// Viewer and Developer read; Admin manages members and invitations; Owner deletes.
 func (r *Router) workspaceRoutes() []okapi.RouteDefinition {
 	ws := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Workspaces", Description: "Workspaces, members, invitations, and audit log."})
 

@@ -31,13 +31,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/pipeline"
 )
 
-// inspectTimeout bounds the probe clone. The create-app modal blocks on this
-// call, so it has to fail fast on an unreachable or oversized repository.
+// The create-app modal blocks on this, so it must fail fast on an unreachable or oversized repository.
 const inspectTimeout = 20 * time.Second
 
-// GitInspectHandler answers "what is in this repository?" for the create-app
-// flow: whether it builds from a Dockerfile, and whether it carries a
-// pipeline-as-code document Miabi should adopt.
 type GitInspectHandler struct {
 	gitRepos *gitrepo.Service
 }
@@ -48,8 +44,7 @@ func NewGitInspectHandler(gitRepos *gitrepo.Service) *GitInspectHandler {
 
 type InspectGitRequest struct {
 	Body struct {
-		// GitRepo is the repository URL. It may be omitted when GitRepositoryID
-		// names a stored credential that carries its own URL.
+		// May be omitted when GitRepositoryID names a stored credential carrying its own URL.
 		GitRepo string `json:"git_repo"`
 		// GitRef is the branch, tag or commit to inspect (blank = default branch).
 		GitRef string `json:"git_ref"`
@@ -66,8 +61,6 @@ type InspectGitStep struct {
 	ContinueOnError bool   `json:"continue_on_error,omitempty"`
 }
 
-// InspectGitResponse describes what the probe found. HasPipeline is the field the
-// create-app modal keys its "use the repository's pipeline" toggle off.
 type InspectGitResponse struct {
 	Ref           string `json:"ref"`
 	Commit        string `json:"commit"`
@@ -75,9 +68,7 @@ type InspectGitResponse struct {
 	HasPipeline   bool   `json:"has_pipeline"`
 	PipelinePath  string `json:"pipeline_path,omitempty"`
 	PipelineName  string `json:"pipeline_name,omitempty"`
-	// PipelineError is set when a pipeline file was found but failed to parse.
-	// HasPipeline is false in that case — the file is reported so the user can fix
-	// it rather than silently getting a plain build.
+	// HasPipeline is false then; the file is reported so the user can fix it instead of getting a plain build.
 	PipelineError string           `json:"pipeline_error,omitempty"`
 	Steps         []InspectGitStep `json:"steps,omitempty"`
 	PushBranches  []string         `json:"push_branches,omitempty"`
@@ -88,9 +79,7 @@ type InspectGitResponse struct {
 	Spec string `json:"spec,omitempty"`
 }
 
-// Inspect probes a repository. It is a read, but it makes the control plane
-// clone a caller-supplied URL, so it is gated at Developer — the same role that
-// can already point an app or a GitOps source at an arbitrary repository.
+// Gated at Developer: it makes the control plane clone a caller-supplied URL.
 func (h *GitInspectHandler) Inspect(c *okapi.Context, req *InspectGitRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	url, auth, err := h.gitRepos.CloneURLAuth(wsID, req.Body.GitRepo, req.Body.GitRepositoryID)
@@ -110,8 +99,7 @@ func (h *GitInspectHandler) Inspect(c *okapi.Context, req *InspectGitRequest) er
 
 	found, err := pipeline.Discover(ctx, url, strings.TrimSpace(req.Body.GitRef), auth)
 	if err != nil {
-		// A clone failure here is nearly always the user's input — a bad URL, a
-		// missing branch, or a credential that can't read the repo.
+		// A clone failure here is nearly always bad user input: URL, branch, or credential.
 		return c.AbortWithError(400, err)
 	}
 

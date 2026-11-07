@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-// Traffic at a glance on the workspace dashboard: the last 24 hours of gateway
-// traffic, plus who is on the site right now.
-//
-// It keeps its own state rather than sharing the analytics store, so opening the
-// dashboard never rewrites the range or app filter the /analytics pages remember.
+// Keeps its own state so the dashboard never rewrites the /analytics pages' remembered range or filter.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { analyticsApi, type AnalyticsSummary } from '@/api/analytics'
@@ -35,8 +31,7 @@ async function loadReport(id: number | null) {
   try {
     report.value = (await analyticsApi.summary(id, RANGE)).data.data
   } catch {
-    // Analytics is optional infrastructure (it needs the gateway's event stream
-    // and Redis). A failure hides the card rather than breaking the dashboard.
+    // Analytics is optional (needs the gateway event stream and Redis), so failure hides the card.
     failed.value = true
   } finally {
     loading.value = false
@@ -82,15 +77,11 @@ onBeforeUnmount(stopPolling)
 const totals = computed(() => report.value?.totals ?? null)
 const hasTraffic = computed(() => (totals.value?.requests ?? 0) > 0)
 
-// Countries come from the gateway's GeoIP database, which many installs don't
-// have — and an empty list looks the same as "no traffic from anywhere". The
-// panel is dropped entirely rather than explaining itself; the chart then takes
-// the full width, and /analytics/web is where the GeoIP hint belongs.
+// Without GeoIP an empty list looks like "no traffic", so the panel is dropped; /analytics/web carries the hint.
 const topCountries = computed(() => report.value?.top_countries ?? [])
 const hasCountries = computed(() => topCountries.value.length > 0)
 
-// 5xx as a share of all requests — the number worth leading with, since a
-// workspace can serve plenty of traffic and still be broken.
+// A workspace can serve plenty of traffic and still be broken, so lead with the 5xx share.
 const serverErrorRate = computed(() => {
   const r = report.value
   if (!r || r.totals.requests === 0) return 0
@@ -142,8 +133,7 @@ function deltaDir(d: number | null): string {
 </script>
 
 <template>
-  <!-- Hidden entirely when analytics isn't reachable: an error box here would
-       claim the dashboard is broken when only an optional pillar is. -->
+  <!-- An error box would claim the dashboard is broken when only an optional pillar is. -->
   <div v-if="!failed" class="card traffic-card">
     <div class="card-header">
       <h2>{{ $t('dashboard.analytics.traffic') }}</h2>
@@ -170,8 +160,6 @@ function deltaDir(d: number | null): string {
       </div>
     </div>
 
-    <!-- Split only when there are countries to show: without the aside the grid
-         is a single column, so the chart keeps the full width it has today. -->
     <div v-else-if="hasTraffic && report" class="tc-body tc-split" :class="{ 'has-aside': hasCountries }">
       <div class="tc-main">
         <div class="tc-tiles">
@@ -200,8 +188,7 @@ function deltaDir(d: number | null): string {
       </aside>
     </div>
 
-    <!-- Traffic only exists once an app is routed and reached, so the empty
-         state points at the cause rather than just saying "no data". -->
+    <!-- Traffic only exists once an app is routed and reached, so the empty state points at the cause. -->
     <div v-else class="empty-state" style="padding: 28px">
       <span class="mdi mdi-chart-line-variant" style="font-size: 32px; color: var(--text-muted)"></span>
       <p>{{ $t('dashboard.analytics.noTraffic') }}</p>
@@ -236,9 +223,7 @@ function deltaDir(d: number | null): string {
 
 .tc-body { padding: 16px 20px 18px; }
 
-/* One column by default — .has-aside is what opens the rail, so the empty case
-   needs no rule of its own. minmax(0, …) on the main column keeps the chart from
-   forcing the grid wider than the card. */
+/* minmax(0, ...) keeps the chart from forcing the grid wider than the card. */
 .tc-split { display: grid; gap: 20px; }
 .tc-split.has-aside { grid-template-columns: minmax(0, 1fr) minmax(230px, 0.36fr); }
 .tc-main { min-width: 0; }
@@ -246,20 +231,13 @@ function deltaDir(d: number | null): string {
 .tc-more { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .tc-more:hover { color: var(--primary-600); }
 
-/* The shared .brow row gives the label 38% of the width, which is fine in a
-   half-page card and far too little in a 230px rail — "United States" would
-   ellipsize to a few characters. Rebalance for the rail: the label takes what's
-   left, the bar keeps a fixed sliver so the ranking still reads visually. */
+/* The shared row's 38% label width would ellipsize country names in a 230px rail. */
 .tc-aside :deep(.brow-label) { flex: 1 1 auto; min-width: 0; }
 .tc-aside :deep(.brow-track) { flex: 0 0 34px; }
 .tc-aside :deep(.brow-count) { min-width: 34px; }
-/* Slightly tighter than the shared row so the full list ends level with the
-   chart's baseline rather than stretching the card past it. */
 .tc-aside :deep(.brow) { padding: 4px 0; }
 /* Match the stat tiles' label, so the rail reads as part of this card. */
 .tc-aside :deep(h3) { font-size: 12px; font-weight: 500; color: var(--text-muted); }
-/* Below this the rail is narrower than the flags and counts want; stack instead,
-   and swap the divider to the top edge so it still reads as a separate block. */
 @media (max-width: 860px) {
   .tc-split.has-aside { grid-template-columns: 1fr; gap: 16px; }
   .tc-aside { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--border-primary); }

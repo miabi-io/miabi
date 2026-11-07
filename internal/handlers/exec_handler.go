@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/application"
 )
 
-// Processes returns the running processes in the app's active container (the
-// "docker top" view). Sourced from the host's ps, so it works even for images
-// with no ps binary and needs no shell capability; the route applies Viewer RBAC.
+// Uses the host's ps, so it works for images without ps and needs no shell capability.
 func (h *ApplicationHandler) Processes(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -50,12 +48,9 @@ func (h *ApplicationHandler) Processes(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// allowedShells are the only programs the interactive exec may start. The parameter used to be
-// passed straight to docker exec, so any binary in the image could be opened as a TTY.
+// Any other program would let the exec open an arbitrary binary in the image as a TTY.
 var allowedShells = []string{"/bin/sh", "/bin/bash"}
 
-// execShell resolves the requested shell: empty means /bin/sh, and a bare "sh" or "bash" is
-// accepted for its /bin path.
 func execShell(requested string) (string, bool) {
 	requested = strings.TrimSpace(requested)
 	if requested == "" {
@@ -72,8 +67,7 @@ func execShell(requested string) (string, bool) {
 	return "", false
 }
 
-// execClientMessage is a control/input frame sent by the browser terminal.
-// Text frames carry JSON; binary frames are treated as raw stdin.
+// Text frames carry JSON; binary frames are raw stdin.
 type execClientMessage struct {
 	Type string `json:"type"`           // "stdin" | "resize"
 	Data string `json:"data,omitempty"` // stdin payload (for type "stdin")
@@ -81,9 +75,7 @@ type execClientMessage struct {
 	Rows uint   `json:"rows,omitempty"` // terminal rows (for type "resize")
 }
 
-// ExecShell upgrades the request to a WebSocket and bridges it to an interactive shell inside
-// the app's active container. The plan capability is enforced before the upgrade, so a denied
-// request returns a real 403 instead of a dropped socket. Auth and Admin+ RBAC come from routes.
+// The plan capability is checked before the upgrade so a denial is a real 403, not a dropped socket.
 func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -128,8 +120,7 @@ func (h *ApplicationHandler) ExecShell(c *okapi.Context) error {
 	}
 	defer func() { _ = stream.Close() }()
 
-	// Pump container output -> browser. A TTY stream is raw (no multiplexing),
-	// so bytes go straight to the terminal as binary frames.
+	// A TTY stream is raw (no multiplexing), so bytes go straight to the terminal.
 	go func() {
 		buf := make([]byte, 32*1024)
 		for {

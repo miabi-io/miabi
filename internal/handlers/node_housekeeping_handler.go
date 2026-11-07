@@ -29,12 +29,8 @@ import (
 	"github.com/miabi-io/miabi/internal/services/housekeeping"
 )
 
-// Node housekeeping: reclaim disk (prune dangling images and build cache), reconcile drift, and
-// report what is on the node. Admin-only, and every destructive apply is dry-run-first (Plan)
-// and audited.
+// Every destructive housekeeping apply is dry-run-first (Plan) and audited.
 
-// HousekeepingSelectionRequest is the body for the plan/apply endpoints: which
-// safe reclaim categories to run and which orphan resources to remove.
 type HousekeepingSelectionRequest struct {
 	Body struct {
 		Reclaim struct {
@@ -73,8 +69,6 @@ func (r *HousekeepingSelectionRequest) selection() housekeeping.Selection {
 	return sel
 }
 
-// Housekeeping returns the node's housekeeping analysis: disk usage, the safe
-// reclaimable breakdown, and the drift table (orphans / missing / untracked).
 // Pure read.
 func (h *NodeHandler) Housekeeping(c *okapi.Context) error {
 	id, err := h.id(c)
@@ -88,8 +82,7 @@ func (h *NodeHandler) Housekeeping(c *okapi.Context) error {
 	return ok(c, rep)
 }
 
-// HousekeepingPlan dry-runs a selection: exactly what would be reclaimed and
-// which orphans would be removed, with projected bytes. No mutations.
+// No mutations.
 func (h *NodeHandler) HousekeepingPlan(c *okapi.Context, req *HousekeepingSelectionRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -102,9 +95,7 @@ func (h *NodeHandler) HousekeepingPlan(c *okapi.Context, req *HousekeepingSelect
 	return ok(c, plan)
 }
 
-// HousekeepingApply executes a selection (reclaim and/or orphan removal). Each
-// destructive action is re-validated against fresh state inside the service and
-// audited here. Returns the bytes freed and the orphans removed.
+// Each destructive action is re-validated against fresh state inside the service.
 func (h *NodeHandler) HousekeepingApply(c *okapi.Context, req *HousekeepingSelectionRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -118,9 +109,6 @@ func (h *NodeHandler) HousekeepingApply(c *okapi.Context, req *HousekeepingSelec
 	return ok(c, res)
 }
 
-// auditHousekeeping writes an audit entry for each destructive housekeeping
-// action that actually happened: the reclaim (bytes freed) and each orphan
-// removal (node, kind, owner, bytes).
 func (h *NodeHandler) auditHousekeeping(c *okapi.Context, nodeID uint, res *housekeeping.Result) {
 	actor := middlewares.UserID(c)
 	nodeStr := strconv.Itoa(int(nodeID))

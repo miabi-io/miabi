@@ -39,8 +39,6 @@ const (
 
 var volArtifactRe = backup.VolumeArtifactRe
 
-// volImage is the volume archive helper (deployment-config catalog, else the
-// ecosystem default).
 func (s *Service) volImage() string {
 	if s.Images != nil {
 		if r := s.Images.Ref(platformimage.KeyBackupVolume); r != "" {
@@ -50,9 +48,7 @@ func (s *Service) volImage() string {
 	return defaultVolImage
 }
 
-// archiveVolume writes one volume's contents into the bundle's branch and returns the artifact name the helper
-// actually uploaded, and whether it is encrypted. Encryption is read back off the name rather than assumed: a
-// helper too old to support it writes plaintext, and a bundle claiming otherwise would fail to restore.
+// Encryption is read off the name: a helper too old to support it writes plaintext.
 func (s *Service) archiveVolume(ctx context.Context, v *models.Volume, cfg *backup.S3Config, path, passphrase string) (string, bool, error) {
 	dc, err := s.Clients.For(v.ServerID)
 	if err != nil {
@@ -93,9 +89,7 @@ func (s *Service) archiveVolume(ctx context.Context, v *models.Volume, cfg *back
 	return name, encrypted, nil
 }
 
-// restoreVolumeArchive extracts a bundle's archive back into a volume,
-// overwriting what is there. The volume already exists — the restore created it
-// from the state file before any data was fetched.
+// The volume already exists: the restore created it from the state file before fetching data.
 func (s *Service) restoreVolumeArchive(ctx context.Context, v *models.Volume, cfg *backup.S3Config, path, file, passphrase string) error {
 	dc, err := s.Clients.For(v.ServerID)
 	if err != nil {
@@ -125,14 +119,11 @@ func (s *Service) restoreVolumeArchive(ctx context.Context, v *models.Volume, cf
 	return nil
 }
 
-// oneShotName builds a unique container name for a helper run. The random suffix is what keeps a retry from
-// colliding with the container its predecessor left behind. A timestamp is not enough: two runs started in the
-// same clock tick would produce the same name, and Docker refuses the second.
+// A timestamp isn't enough: two runs in one clock tick collide, and Docker refuses the second name.
 func oneShotName(prefix string, id uint) string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
-		// Randomness is unavailable only in situations far worse than a name
-		// collision; fall back to the clock rather than failing the backup.
+		// Randomness fails only in far worse situations; fall back to the clock rather than fail the backup.
 		return fmt.Sprintf("%s-%d-%d", prefix, id, time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%s-%d-%s", prefix, id, hex.EncodeToString(b))

@@ -28,8 +28,7 @@ import (
 
 func uptr(v uint) *uint { return &v }
 
-// gitApp is a fully populated git-source application: every field the git source owns is set, so a
-// switch away from it has something to fail to clear.
+// Every git field is set so a switch away has something to fail to clear.
 func gitApp() *models.Application {
 	return &models.Application{
 		SourceType:      models.AppSourceGit,

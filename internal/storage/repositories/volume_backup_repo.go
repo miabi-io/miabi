@@ -35,9 +35,7 @@ func NewVolumeBackupRepository(db *gorm.DB) *VolumeBackupRepository {
 func (r *VolumeBackupRepository) Create(b *models.VolumeBackup) error { return r.db.Create(b).Error }
 func (r *VolumeBackupRepository) Update(b *models.VolumeBackup) error { return r.db.Save(b).Error }
 
-// SetLogMeta records the log-store reference + counters for a volume-backup run
-// and replaces the DB column with the bounded tail (the full log lives in the
-// store). A zero ref is ignored so a store failure leaves the full DB tail intact.
+// A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *VolumeBackupRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil
@@ -84,8 +82,7 @@ func (r *VolumeBackupRepository) ListPointsByVolume(volumeID uint) ([]models.Vol
 	return out, err
 }
 
-// ListSealed returns the workspace's points that carry an envelope, which are the ones a
-// passphrase rotation has to re-wrap.
+// ListSealed returns points carrying an envelope, the ones a passphrase rotation must re-wrap.
 func (r *VolumeBackupRepository) ListSealed(workspaceID uint) ([]models.VolumeBackup, error) {
 	var out []models.VolumeBackup
 	err := r.db.Where("workspace_id = ? AND envelope <> ''", workspaceID).Find(&out).Error
@@ -104,8 +101,7 @@ func (r *VolumeBackupRepository) DeleteSchedule(id uint) error {
 	return r.db.Delete(&models.VolumeBackupSchedule{}, id).Error
 }
 
-// FindScheduleInWorkspace scopes the lookup so a schedule id from another tenant reads as not
-// found.
+// Scoped so a schedule id from another tenant reads as not found.
 func (r *VolumeBackupRepository) FindScheduleInWorkspace(workspaceID, id uint) (*models.VolumeBackupSchedule, error) {
 	var s models.VolumeBackupSchedule
 	if err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&s).Error; err != nil {

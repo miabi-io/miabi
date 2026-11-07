@@ -24,9 +24,7 @@ const { currentWorkspaceId } = storeToRefs(ws)
 const secrets = ref<Secret[]>([])
 const loading = ref(false)
 const search = ref('')
-// Ownership is filtered by the API, not in this page: the list is paged, so
-// hiding rows here would leave the count and the page size disagreeing with
-// what's on screen.
+// Filtered by the API: the list is paged, so hiding rows here would contradict the count.
 const ownership = ref<SecretOwnership>('all')
 const ownershipFilters: Array<{ value: SecretOwnership; label: string }> = [
   { value: 'all', label: 'secretPicker.filter.all' },
@@ -50,15 +48,13 @@ const { pageable, goToPage } = usePagination(async (page) => {
 function reload() { goToPage(pageable.value.current_page) }
 // Switching workspaces resets to the first page.
 watch(currentWorkspaceId, () => goToPage(0))
-// Narrowing can leave the current page past the end of the result, so every
-// filter change re-queries from the first page.
+// Narrowing can leave the current page past the end, so re-query from the first page.
 function setOwnership(v: SecretOwnership) {
   ownership.value = v
   goToPage(0)
 }
 
-// Whether the view is showing a subset — drives the empty state, which must not
-// read as "the vault is empty" when it is really "nothing matches".
+// An empty filtered result must not read as "the vault is empty".
 const narrowed = computed(() => !!search.value.trim() || ownership.value !== 'all')
 function clearFilters() {
   search.value = ''
@@ -176,9 +172,7 @@ function sealCommand(s: Secret) {
   return `miabi secrets seal ${s.name}`
 }
 
-// The generator modal: the deliberate "make me a value" path from the vault.
-// It shares GeneratorPanel with the /generator page and the inline button, so
-// the three cannot drift.
+// Shares GeneratorPanel with the /generator page and inline button so they cannot drift.
 const showGenerator = ref(false)
 const generatorSaving = ref(false)
 
@@ -200,8 +194,7 @@ async function saveGenerated(name: string, description: string, value: string): 
   }
 }
 
-// Literal reference examples, built in script so the `}}` doesn't confuse the Vue template's
-// mustache parser.
+// Built in script so `}}` doesn't confuse the template's mustache parser.
 const refExample = 'PASSWORD=${{ secrets.NAME }}'
 const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`)
 </script>
@@ -239,8 +232,7 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <div v-else-if="secrets.length === 0" class="empty-state">
         <span class="mdi mdi-key-variant" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ narrowed ? $t('secrets.noSecretsFound') : $t('secrets.noSecrets') }}</h3>
-        <!-- An empty result under a filter is not an empty vault: offering
-             "New secret" here would answer a question the user didn't ask. -->
+        <!-- An empty filtered result is not an empty vault, so don't offer "New secret". -->
         <p v-if="narrowed">{{ $t('secrets.noMatches') }}</p>
         <p v-else>{{ $t('secrets.emptyHint') }}</p>
         <button v-if="narrowed" class="btn btn-secondary mt-4" @click="clearFilters">{{ $t('secrets.clearFilters') }}</button>
@@ -652,9 +644,7 @@ code {
   word-break: break-all;
 }
 
-/* A secret is stored byte for byte, so it has to be shown that way: a
-   certificate or private key is multi-line, and collapsing the line breaks —
-   which is what HTML does by default — makes an intact value look mangled. */
+/* Secrets are stored byte for byte; collapsing line breaks would make a key or certificate look mangled. */
 .code-box-block {
   align-items: flex-start;
   gap: 8px;

@@ -1,9 +1,7 @@
 import api from './client'
 import type { ApiResponse, PageableResponse } from './types'
 
-// PlatformBackupSubject mirrors the backend. "identity" is the sealed envelope
-// carrying the platform's encryption key — the artifact that makes a recovery
-// point restorable onto a *fresh* host rather than only back onto this one.
+// "identity" is the sealed encryption-key envelope that makes a recovery point restorable onto a fresh host.
 export type PlatformBackupSubject =
   | 'database'
   | 'volume'
@@ -36,9 +34,7 @@ export interface PlatformBackup {
   created_at: string
 }
 
-// PlatformBackupSet is a recovery point: the identity envelope, the
-// control-plane dump and every volume/tenant artifact from one run, retained and
-// restored as a unit.
+// Identity envelope, control-plane dump and every volume/tenant artifact from one run, retained and restored as a unit.
 export interface PlatformBackupSet {
   id: number
   ref: string
@@ -102,9 +98,7 @@ export interface PlatformBackupSettings {
   updated_at: string
   s3_secret_set: boolean
   passphrase_set: boolean
-  // env_locked names the fields this deployment takes from environment
-  // variables. They are read-only here: the process configuration wins, so the
-  // form disables them rather than accepting an edit that would be ignored.
+  // Fields taken from env vars are read-only here because the process configuration wins.
   env_locked?: string[]
 }
 
@@ -131,8 +125,7 @@ export interface PlatformBackupSettingsPayload {
   volumes: string[]
 }
 
-// A recovery point found in the bucket — including ones this platform has no
-// record of, which is what makes this a recovery tool rather than a history view.
+// Includes recovery points this platform has no record of, which makes this a recovery tool, not a history view.
 export interface DiscoveredArtifact {
   subject: PlatformBackupSubject
   workspace?: string
@@ -183,8 +176,7 @@ export interface PlatformVolume {
   role?: string
 }
 
-// Recovery: the state a platform is in between `miabi restore` and an operator
-// confirming the recovery is complete.
+// The state between `miabi restore` and an operator confirming the recovery is complete.
 export interface TenantRestoreSummary {
   ref: string
   databases_restored: number
@@ -202,9 +194,7 @@ export interface RecoveryReport {
   apps_redeployed: number
   routes_synced: number
   tenant_data?: TenantRestoreSummary
-  // Optional on purpose: Go marshals a nil slice as null, so a client that
-  // assumes an array here crashes on a clean reconcile — which is the common
-  // case, not the edge one.
+  // Optional on purpose: Go marshals a nil slice as null, which is the common clean-reconcile case.
   unrecoverable?: string[]
   manual?: string[]
   failures?: string[]

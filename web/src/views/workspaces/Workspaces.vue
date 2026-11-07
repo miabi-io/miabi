@@ -29,9 +29,7 @@ function openCreate() {
 async function submitCreate() {
   if (!form.value.name.trim()) return
   saving.value = true
-  // The first user workspace (the system workspace doesn't count) is onboarding:
-  // land on the Dashboard so the getting-started checklist guides the next step.
-  // Later workspaces open their settings.
+  // The first user workspace lands on the Dashboard for the onboarding checklist; later ones open settings.
   const isFirst = !ws.workspaces.some((w) => !w.system)
   try {
     const created = await ws.create({ display_name: form.value.name.trim(), description: form.value.description.trim() })
@@ -50,8 +48,7 @@ function open(id: number) {
   router.push(`/workspaces/${id}?tab=settings`)
 }
 
-// Copy the workspace id — handy for API calls and binding an API key. Stops
-// propagation so the card's navigate-on-click doesn't fire.
+// Stops propagation so the card's navigate-on-click doesn't fire.
 async function copyId(id: number) {
   if (await copyText(String(id))) notify.success(t('notify.apiKeys.workspaceIdCopied'))
   else notify.error(t('notify.common.couldNotCopyId'))
@@ -222,8 +219,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
 }
-/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
-   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
+/* Off the brand accent on purpose: system is the platform's own, privileged relaxes the security profile. */
 .ws-card-avatar-system {
   background: var(--danger-600, #dc2626);
 }

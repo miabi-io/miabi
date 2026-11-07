@@ -18,8 +18,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The deliberate path: "give me a passphrase for something", as opposed to the
-// inline button, which is the common one. Same panel underneath.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { secretApi } from '@/api/secrets'

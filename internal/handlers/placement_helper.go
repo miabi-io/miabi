@@ -30,8 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// Placer resolves where a created resource lands, for the create handlers. A nil Placer keeps the
-// request's server_id, as before locations existed.
+// A nil Placer keeps the request's server_id, as before locations existed.
 type Placer struct {
 	svc   *placement.Service
 	users *repositories.UserRepository

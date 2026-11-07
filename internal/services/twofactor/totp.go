@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package twofactor wraps TOTP (RFC 6238) generation and validation for time-based two-factor
-// authentication. The caller owns persistence and encryption of the secret; this package only deals with the
-// cryptographic primitives.
+// Package twofactor wraps TOTP (RFC 6238); the caller owns persistence and encryption of the secret.
 package twofactor
 
 import (
@@ -56,9 +54,6 @@ func Issuer(name, publicURL string) string {
 	return name + " (" + host + ")"
 }
 
-// Generate creates a fresh TOTP secret bound to issuer/account. It returns the
-// base32 secret (to persist, encrypted) and the otpauth:// URL the client turns
-// into a QR code for an authenticator app.
 func Generate(issuer, account string) (secret, url string, err error) {
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: issuer, AccountName: account})
 	if err != nil {
@@ -67,9 +62,7 @@ func Generate(issuer, account string) (secret, url string, err error) {
 	return key.Secret(), key.URL(), nil
 }
 
-// QRDataURI renders an otpauth:// URL as a PNG QR code and returns it as a "data:image/png;base64,..." URI the
-// browser can use directly as an <img> src. Rendering server-side keeps the secret off third-party QR
-// services and avoids a client-side QR dependency.
+// Rendering server-side keeps the secret off third-party QR services.
 func QRDataURI(otpauthURL string, size int) (string, error) {
 	key, err := otp.NewKeyFromURL(otpauthURL)
 	if err != nil {

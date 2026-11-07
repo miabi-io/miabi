@@ -46,8 +46,6 @@ func (r *ReleaseRepository) ListByApp(appID uint) ([]models.Release, error) {
 	return releases, err
 }
 
-// ListByWorkspace returns every release across the workspace's applications,
-// newest first — the data behind the workspace-wide Releases screen.
 func (r *ReleaseRepository) ListByWorkspace(workspaceID uint) ([]models.Release, error) {
 	var releases []models.Release
 	err := r.db.
@@ -57,8 +55,6 @@ func (r *ReleaseRepository) ListByWorkspace(workspaceID uint) ([]models.Release,
 	return releases, err
 }
 
-// ListByWorkspacePaged returns a page of workspace releases plus the total
-// count, newest first.
 func (r *ReleaseRepository) ListByWorkspacePaged(workspaceID uint, limit, offset int) ([]models.Release, int64, error) {
 	var (
 		releases []models.Release
@@ -82,18 +78,14 @@ func (r *ReleaseRepository) FindActive(appID uint) (*models.Release, error) {
 	return &rel, nil
 }
 
-// ListProtected returns releases that pin an image against GC: the active
-// release of every app and any pinned (rollback-target) release. Their image
-// IDs, digests, and refs must never be collected.
+// ListProtected returns releases whose images must never be GC'd: every active release and any pinned one.
 func (r *ReleaseRepository) ListProtected() ([]models.Release, error) {
 	var out []models.Release
 	err := r.db.Where("active = ? OR pinned = ?", true, true).Find(&out).Error
 	return out, err
 }
 
-// FindByContainerID returns the release tracking the given Docker container ID,
-// or gorm.ErrRecordNotFound. Used by the import flow to detect a container that
-// is already adopted (idempotent re-scan/re-import).
+// FindByContainerID lets import detect an already-adopted container, keeping re-import idempotent.
 func (r *ReleaseRepository) FindByContainerID(containerID string) (*models.Release, error) {
 	var rel models.Release
 	if err := r.db.Where("container_id = ?", containerID).First(&rel).Error; err != nil {
@@ -129,8 +121,7 @@ func (r *ReleaseRepository) Activate(appID, releaseID uint) error {
 	})
 }
 
-// ImageRefs returns the image and digest of every release. These are the rollback targets, so
-// housekeeping must never reclaim them however long they have sat without a container.
+// ImageRefs returns every release image and digest; these are rollback targets housekeeping must never reclaim.
 func (r *ReleaseRepository) ImageRefs() ([]string, error) {
 	var rows []struct{ Image, Digest string }
 	if err := r.db.Model(&models.Release{}).Select("image", "digest").Scan(&rows).Error; err != nil {

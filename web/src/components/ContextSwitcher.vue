@@ -10,8 +10,6 @@ import { ADMIN_HOME, rememberConsoleRoute, workspaceReturnPath } from '@/data/co
 import { workspaceTrait } from '@/data/workspaceTrait'
 
 const props = defineProps<{
-  // 'admin' renders the platform identity and offers the way back; 'workspace'
-  // lists the workspaces and offers the way in.
   mode: 'workspace' | 'admin'
   collapsed?: boolean
 }>()
@@ -30,8 +28,7 @@ const isAdminConsole = computed(() => props.mode === 'admin')
 
 const label = computed(() => (isAdminConsole.value ? 'Platform' : ws.contextLabel))
 
-// An icon, not a word: the sidebar is 240px and the workspace name has to survive. The name each
-// icon stands for is on its tooltip and its aria-label, which is also what a screen reader reads.
+// An icon, not a word, so the workspace name survives; the label is on the tooltip and aria-label.
 const traitOf = (w: { system?: boolean; privileged?: boolean }) => workspaceTrait(w, t)
 const currentTrait = computed(() => (ws.currentWorkspace ? traitOf(ws.currentWorkspace) : null))
 const initial = computed(() => {
@@ -40,9 +37,7 @@ const initial = computed(() => {
   return name?.charAt(0)?.toUpperCase() || 'D'
 })
 
-// A licence problem is the one platform condition worth surfacing from inside a
-// workspace: the banner explaining it now lives in the admin console, so without
-// this an admin would have to go looking.
+// The licence banner lives in the admin console, so without this an admin would have to go looking.
 const adminAttention = computed(() => auth.isAdmin && license.warnings.length > 0)
 
 function close() {
@@ -53,13 +48,10 @@ function close() {
 function switchWorkspace(id: number) {
   ws.setWorkspace(id)
   close()
-  // Leaving the admin console by picking a workspace lands on that workspace's
-  // dashboard, not on whatever admin page was open.
   if (isAdminConsole.value || route.path !== '/') router.push('/')
 }
 
-// makeDefaultWorkspace pins where future sessions land. Separate from switching on
-// purpose: navigating between workspaces should not silently rewrite the default.
+// Separate from switching on purpose: navigating between workspaces must not silently rewrite the default.
 async function makeDefaultWorkspace(id: number) {
   try {
     await ws.makeDefault(id)
@@ -109,8 +101,6 @@ function leaveAdmin() {
       <div v-if="open" class="ws-switcher-dropdown">
         <div v-for="w in ws.workspaces" :key="w.id" class="ws-switcher-option"
           :class="{ active: !isAdminConsole && ws.currentWorkspaceId === w.id }" @click="switchWorkspace(w.id)">
-          <!-- The trait rides the avatar rather than taking a column of its own: the row already
-               carries a name, a handle, a role and a pin, and 210px does not stretch. -->
           <div class="ws-avatar-sm" :class="traitOf(w) ? `ws-avatar-${traitOf(w)!.key}` : ''"
             :title="traitOf(w)?.title">
             <span v-if="traitOf(w)" class="mdi" :class="traitOf(w)!.icon" role="img"
@@ -140,8 +130,6 @@ function leaveAdmin() {
           <span class="mdi mdi-briefcase-outline"></span><span>{{ t('switcher.manage') }}</span>
         </div>
 
-        <!-- The platform is not a workspace, so it sits below its own rule rather
-             than as one more row in the list above. -->
         <template v-if="auth.isAdmin">
           <div class="ws-switcher-rule"></div>
           <div v-if="isAdminConsole" class="ws-switcher-action ws-switcher-leave" @click="leaveAdmin">
@@ -273,8 +261,6 @@ function leaveAdmin() {
 .ws-switcher-option-name {
   display: flex;
   flex-direction: column;
-  /* Takes the row's free space and truncates into it, so the role badge and pin land in the same
-     place on every row whatever the name's length. */
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -313,8 +299,7 @@ function leaveAdmin() {
 }
 
 .ws-default-pin { color: var(--primary-500); cursor: default; }
-/* Hidden until the row is hovered or the button is focused, so the list stays calm
-   but the action is still reachable from the keyboard. */
+/* Hidden until hover or focus, so the action stays keyboard-reachable. */
 .ws-default-set { color: var(--text-muted); opacity: 0; transition: opacity 0.12s; }
 .ws-switcher-option:hover .ws-default-set,
 .ws-default-set:focus-visible { opacity: 1; }
@@ -355,8 +340,7 @@ function leaveAdmin() {
   font-size: 16px;
 }
 
-/* The collapsed sidebar hides the label, so the toggle centres its avatar. The
-   parent layout owns .sidebar-collapsed, hence :global. */
+/* The parent layout owns .sidebar-collapsed, hence :global. */
 :global(.sidebar-collapsed) .sidebar:not(.sidebar-mobile) .ws-switcher-toggle {
   justify-content: center;
   padding: 8px;
@@ -382,8 +366,7 @@ function leaveAdmin() {
   color: #fff;
 }
 
-/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
-   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
+/* Off the brand accent on purpose: system is the platform's own, privileged relaxes the security profile. */
 .ws-avatar-system,
 .ws-avatar-system.ws-avatar-sm {
   background: var(--danger-600, #dc2626);

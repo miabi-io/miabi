@@ -17,8 +17,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package middlewares holds HTTP middleware: authentication, workspace scoping,
-// and role-based access control.
 package middlewares
 
 import (
@@ -56,9 +54,7 @@ const (
 	ctxJTI       = "jti"
 )
 
-// SessionCookieName holds the user JWT for browser clients. It is HttpOnly (so
-// XSS can't read it) and SameSite=Strict (so it isn't sent cross-site, blocking
-// CSRF); non-browser clients (CLI, API) keep using the Authorization header.
+// HttpOnly against XSS and SameSite=Strict against CSRF; CLI and API use the Authorization header.
 const SessionCookieName = "miabi_session"
 
 func baseJWT(cfg *config.Config, store *session.Store, users *repositories.UserRepository) okapi.JWTAuth {
@@ -104,8 +100,7 @@ func baseJWT(cfg *config.Config, store *session.Store, users *repositories.UserR
 	return a
 }
 
-// checkSessionUser ends a session whose user is gone, disabled, or has changed password since it was
-// issued: a token alone outlives all three for up to its 24 h lifetime. API keys reload the user too.
+// A token alone outlives a deleted, disabled, or re-passworded user for up to its 24h lifetime.
 func checkSessionUser(users *repositories.UserRepository, key []byte, mc jwt.MapClaims) (*models.User, error) {
 	sub, ok := mc["sub"].(float64)
 	if !ok || sub <= 0 {
@@ -125,8 +120,7 @@ func checkSessionUser(users *repositories.UserRepository, key []byte, mc jwt.Map
 	return user, nil
 }
 
-// markSuspended records a suspended caller for SuspensionGuard, which refuses their writes later in
-// the chain: refusing here would end the session, and a suspended user keeps read access.
+// Refusing here would end the session, and a suspended user keeps read access.
 func markSuspended(c *okapi.Context, u *models.User) {
 	if u != nil && u.Suspended(time.Now()) {
 		reason := u.SuspendedReason
@@ -147,8 +141,7 @@ func (e *UserSuspendedError) Error() string {
 // Code is the stable machine code surfaced in the API error envelope.
 func (e *UserSuspendedError) Code() string { return "USER_SUSPENDED" }
 
-// SuspensionGuard refuses writes by a suspended user. Sign-in and sign-out flows under /auth/ stay
-// open. It is a no-op for anyone not suspended, so it is safe on every route.
+// No-op for anyone not suspended, so it is safe on every route.
 func SuspensionGuard() okapi.Middleware {
 	return func(c *okapi.Context) error {
 		reason := c.GetString(CtxSuspended)
@@ -159,15 +152,11 @@ func SuspensionGuard() okapi.Middleware {
 	}
 }
 
-// JWTAuth builds user JWT auth (Authorization header or session cookie, per
-// baseJWT's TokenLookup). Revoked sessions are rejected.
 func JWTAuth(cfg *config.Config, store *session.Store, users *repositories.UserRepository) okapi.JWTAuth {
 	return baseJWT(cfg, store, users)
 }
 
-// Authenticate accepts a user JWT or an API key. API keys (mb_...) are read from the Authorization
-// header or the ?token= query param; any other credential is treated as a JWT and resolved from
-// the header or session cookie per JWTAuth.TokenLookup — a JWT is never accepted via ?token=.
+// A JWT is never accepted via ?token=.
 func Authenticate(jwtAuth okapi.JWTAuth, apiKeys *auth.APIKeyService, users *repositories.UserRepository, apps AppIDResolver) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		raw := bearerToken(c)
@@ -191,8 +180,7 @@ func Authenticate(jwtAuth okapi.JWTAuth, apiKeys *auth.APIKeyService, users *rep
 	}
 }
 
-// bearerToken returns the token from the Authorization header, stripping an
-// optional `Bearer ` prefix (so a bare `Authorization: mb_…` key still works).
+// Strips an optional Bearer prefix so a bare "Authorization: mb_..." key still works.
 func bearerToken(c *okapi.Context) string {
 	return strings.TrimSpace(strings.TrimPrefix(c.Header("Authorization"), "Bearer "))
 }
@@ -213,9 +201,7 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 	if !ipAllowed(key.AllowedIPs, c.RealIP()) {
 		return c.AbortForbidden("IP address not allowed for this API key")
 	}
-	// A registry-only key (only registry_* scopes) is for docker login/push/pull,
-	// which the gateway authorizes at /internal/registry/auth — it has no business
-	// on the general API, so refuse it here. A billing key is for the Billing API only.
+	// Registry-only keys are authorized by the gateway at /internal/registry/auth and have no business here.
 	switch key.Purpose() {
 	case models.KeyPurposeRegistry:
 		return c.AbortForbidden("this API key is limited to the container registry")
@@ -267,8 +253,7 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 	return c.Next()
 }
 
-// ipAllowed reports whether clientIP is permitted by an API key's allowlist. An
-// empty allowlist permits any IP; entries may be exact IPs or CIDR ranges.
+// An empty allowlist permits any IP; entries may be exact IPs or CIDR ranges.
 func ipAllowed(allowed []string, clientIP string) bool {
 	if len(allowed) == 0 {
 		return true
@@ -304,8 +289,6 @@ func AuthMethod(c *okapi.Context) string { return c.GetString(CtxAuthMethod) }
 // APIKeyID returns the presented API key's id (0 for session/JWT callers).
 func APIKeyID(c *okapi.Context) uint { return uint(c.GetInt(CtxAPIKeyID)) }
 
-// APIKeyWorkspaceID returns the workspace an API key is bound to, or nil for an
-// account-wide key or a non-API-key caller.
 func APIKeyWorkspaceID(c *okapi.Context) *uint {
 	if id := c.GetInt(CtxAPIKeyWorkspaceID); id > 0 {
 		v := uint(id)

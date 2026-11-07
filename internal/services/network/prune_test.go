@@ -70,8 +70,7 @@ func pruneService(t *testing.T, clusterOn bool, records ...string) *Service {
 	return s
 }
 
-// The meetup-02 case: bridges left behind by the conversion collide with the overlays that took over
-// their subnets. Only those go; anything Miabi still records, or did not create, stays.
+// Bridges left by conversion collide with overlays that took their subnets; only those are removed.
 func TestPruneStaleBridgesRemovesOnlyLeftovers(t *testing.T) {
 	s := pruneService(t, true, "mb-ws3-kept")
 	dc := &pruneDocker{networks: []docker.Network{

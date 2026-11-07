@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package wsbackup exports a workspace to a portable bundle on S3 and restores one back. It owns no
-// storage machinery: dumps are services/backup's job, archives the volume-bkup helper's, and the bucket
-// the workspace's existing target. What it adds is the bundle — one tree a different install can read.
+// Package wsbackup exports a workspace to a portable S3 bundle another install can read, and restores it.
 package wsbackup
 
 import (
@@ -62,21 +60,15 @@ import (
 )
 
 var (
-	// ErrNotConfigured means the workspace cannot produce or read a bundle yet.
-	// It wraps the missing piece (S3 target or passphrase) so the API can say
-	// which one.
+	// Wraps the missing piece (S3 target or passphrase) so the API can say which one.
 	ErrNotConfigured = errors.New("portable backup is not configured for this workspace")
-	// ErrBusy means a run is already in flight for this workspace. Two concurrent
-	// exports would race on nothing, but two concurrent restores race on every
-	// resource they create — so both are serialized, per workspace.
+	// Concurrent restores race on every resource they create, so runs are serialized per workspace.
 	ErrBusy = errors.New("a portable backup run is already in progress for this workspace")
 	// ErrNotFound means the bucket holds no bundle under that ref.
 	ErrNotFound = errors.New("no bundle with that reference in the bucket")
 )
 
-// defaultS3Region is what the S3 client and the *-bkup helpers both fall back to
-// when the workspace names no region. They must agree: a client and a helper
-// signing for different regions is a harder failure to read than either alone.
+// The S3 client and *-bkup helpers must agree: signing for different regions is a hard failure to read.
 const defaultS3Region = "us-east-1"
 
 // NodeDocker resolves the Docker client for a node id (0 = local).
@@ -90,15 +82,11 @@ type ImageResolver interface {
 	Ref(key string) string
 }
 
-// Enqueuer schedules a bundle run on the background worker. Satisfied by
-// worker.Producer.
 type Enqueuer interface {
 	EnqueueWorkspaceBundle(bundleID uint) error
 }
 
-// Deps are the services a bundle run drives. They are the platform's own create paths, deliberately: a
-// restore that wrote rows directly would skip quota, naming, Docker provisioning and every guard those
-// paths own, and produce a workspace that looks right in the database and does not run.
+// The platform's own create paths: writing rows directly would skip quota, naming, provisioning and guards.
 type Deps struct {
 	Repo       *repositories.WorkspaceBundleRepository
 	Apps       *repositories.ApplicationRepository
@@ -132,8 +120,7 @@ type Deps struct {
 	Backup      *backup.Service
 	Clients     NodeDocker
 	Images      ImageResolver
-	// Placer puts the restored resources in a location the target workspace may use. Nil places
-	// everything on the control-plane node, as before locations existed.
+	// Nil places everything on the control-plane node, as before locations existed.
 	Placer Placer
 	// Freezer stops a migrating workspace's apps and refuses changes; nil disables the freeze option.
 	Freezer Freezer
@@ -156,13 +143,9 @@ type Service struct {
 
 func NewService(d Deps) *Service { return &Service{Deps: d} }
 
-// SetEnqueuer wires the background worker producer. Without one a run executes
-// inline — correct for tests, and for a single-process deployment with no queue.
+// Without one a run executes inline, for tests and single-process deployments with no queue.
 func (s *Service) SetEnqueuer(e Enqueuer) { s.enqueuer = e }
 
-// Configured reports whether the workspace has everything a bundle needs, and whether its bundles
-// will be encrypted. The UI asks before offering the action, so an operator is told what is missing
-// instead of triggering a run that immediately fails.
 func (s *Service) Configured(workspaceID uint) (encrypted bool, err error) {
 	_, _, pass, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
@@ -175,8 +158,6 @@ func (s *Service) store(cfg *backup.S3Config) (*blob.Store, error) {
 	return blob.New(blobConfig(cfg))
 }
 
-// blobConfig maps the workspace's backup target onto the object client's own
-// config, defaulting the region to what the *-bkup helpers are given.
 func blobConfig(cfg *backup.S3Config) blob.Config {
 	region := cfg.Region
 	if region == "" {
@@ -203,8 +184,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.WorkspaceBundle, error) {
 	return s.Repo.FindInWorkspace(workspaceID, id)
 }
 
-// Delete removes a run record. The bundle in the bucket is left alone — deleting
-// a row must never be how data disappears; use DeleteBundle for that.
+// Deleting a row must never be how data disappears; use DeleteBundle for that.
 func (s *Service) Delete(workspaceID, id uint) error {
 	b, err := s.Repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -213,9 +193,7 @@ func (s *Service) Delete(workspaceID, id uint) error {
 	return s.Repo.Delete(b.ID)
 }
 
-// Bundles lists the bundles present in the workspace's bucket, newest first, read from their info files.
-// This is the authoritative list: the run records are this platform's memory of what it did, while the
-// bucket is what actually survives — and a restore is offered from the bucket precisely for that reason.
+// The bucket, not the run records, is authoritative: it is what actually survives.
 func (s *Service) Bundles(ctx context.Context, workspaceID uint) ([]wsbundle.Info, error) {
 	cfg, prefix, _, err := s.Settings.BundleTarget(workspaceID)
 	if err != nil {
@@ -241,8 +219,6 @@ func (s *Service) Bundles(ctx context.Context, workspaceID uint) ([]wsbundle.Inf
 		}
 		info, err := wsbundle.DecodeInfo(body)
 		if err != nil {
-			// A bundle whose index does not parse is not a bundle this build can
-			// restore; say so in the log rather than hiding it from the listing.
 			logger.Warn("bundle info could not be decoded", "key", o.Key, "error", err)
 			continue
 		}
@@ -275,8 +251,6 @@ func (s *Service) FindBundle(ctx context.Context, workspaceID uint, ref string) 
 	return wsbundle.DecodeInfo(body)
 }
 
-// DeleteBundle removes a bundle from the bucket: its info file, its state file
-// and every artifact under its branch.
 func (s *Service) DeleteBundle(ctx context.Context, workspaceID uint, ref string) error {
 	if !wsbundle.IsRef(ref) {
 		return fmt.Errorf("%w: %q is not a bundle reference", ErrNotFound, ref)
@@ -289,9 +263,7 @@ func (s *Service) DeleteBundle(ctx context.Context, workspaceID uint, ref string
 	if err != nil {
 		return err
 	}
-	// The branch first, the index last: an interrupted delete then leaves an info
-	// file pointing at artifacts that are gone, which the restore reports as a
-	// missing artifact — rather than artifacts no listing will ever show again.
+	// Branch first, index last: an interrupted delete leaves a reportable missing artifact, not invisible orphans.
 	objects, err := st.List(ctx, wsbundle.Root(prefix, ref))
 	if err != nil {
 		return err
@@ -326,9 +298,7 @@ func (s *Service) start(ctx context.Context, b *models.WorkspaceBundle) (*models
 	return b, nil
 }
 
-// Run executes a pending run — the worker's entry point. A handled failure is
-// recorded on the row and returns nil: a bundle run is not auto-retried, because
-// a half-finished restore repeated blindly is worse than one an operator looks at.
+// Not auto-retried: a half-finished restore repeated blindly is worse than one an operator looks at.
 func (s *Service) Run(ctx context.Context, id uint) error {
 	b, err := s.Repo.FindByID(id)
 	if err != nil {
@@ -370,8 +340,6 @@ func (s *Service) finish(b *models.WorkspaceBundle) {
 		"workspace", b.WorkspaceID, "ref", b.Ref, "artifacts", b.Artifacts)
 }
 
-// partial marks a restore that brought back some resources but not all. Those that came back are real
-// and are kept, so the run is neither a success nor a failure.
 func (s *Service) partial(b *models.WorkspaceBundle, cause error) {
 	fin := time.Now()
 	b.Phase = models.BundlePhaseDone

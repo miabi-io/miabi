@@ -34,8 +34,7 @@ type Placer interface {
 // SetPlacer wires location placement for installs (nil-safe; nil lands installs on the local node).
 func (s *Service) SetPlacer(p Placer) { s.placer = p }
 
-// installTarget decides where every resource of an install lands: in its location, and on the node of a
-// database instance it reuses there, since an app shares a Docker network with its databases.
+// One node for everything, since an app shares a Docker network with its databases.
 func (s *Service) installTarget(workspaceID uint, m *manifest.Manifest, in InstallInput) (placement.Result, error) {
 	if s.placer == nil {
 		node, err := s.installNode(workspaceID, m, in, 0)
@@ -52,8 +51,7 @@ func (s *Service) installTarget(workspaceID uint, m *manifest.Manifest, in Insta
 	return s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: loc.Name, Colocate: colocate, Admin: in.Admin})
 }
 
-// LocationDatabases lists the database instances an install into location may reuse or pin: only those in
-// that location, as private networks don't span locations. An empty location is the workspace default.
+// Only instances in that location, as private networks don't span locations.
 func (s *Service) LocationDatabases(workspaceID uint, location string, admin bool) ([]models.DatabaseInstance, error) {
 	list, err := s.dbs.List(workspaceID)
 	if err != nil || s.placer == nil {

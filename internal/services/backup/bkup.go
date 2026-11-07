@@ -27,8 +27,6 @@ import (
 )
 
 var (
-	// DBArtifactRe matches the artifacts of the database *-bkup tools:
-	// <name>_YYYYMMDD_HHMMSS.<sql|archive|dump>[.gz|.zst][.gpg|.age].
 	DBArtifactRe = regexp.MustCompile(`[\w.\-]+\.(?:sql|archive|dump)(?:\.gz|\.zst)?(?:\.gpg|\.age)?`)
 	// VolumeArtifactRe matches volume-bkup archives: <name>_YYYYMMDD_HHMMSS.tar[.gz|.zst][.gpg|.age].
 	VolumeArtifactRe = regexp.MustCompile(`[\w.\-]+\.tar(?:\.gz|\.zst)?(?:\.gpg|\.age)?`)
@@ -41,9 +39,7 @@ func IsEncryptedArtifact(name string) bool {
 	return strings.HasSuffix(name, ".gpg") || strings.HasSuffix(name, ".age")
 }
 
-// IndexEnv names the tool's backup index for a scope (an instance, a volume,
-// the platform). Each scope gets its own index so scopes sharing a bucket path
-// never see each other's history; "{engine}" is expanded by the tool.
+// Each scope gets its own index so scopes sharing a bucket path never see each other's history.
 func IndexEnv(scope string) string {
 	return "BACKUP_INDEX_NAME={engine}-" + indexScope(scope) + "-metadata.json"
 }
@@ -68,8 +64,7 @@ func indexScope(s string) string {
 	return out
 }
 
-// ArtifactSize returns the stored size the tool reports on its final
-// "Backup completed" line (0 when the tool predates it).
+// 0 when the tool predates the size report.
 func ArtifactSize(out string) int64 {
 	m := completedBytesRe.FindAllStringSubmatch(out, -1)
 	if len(m) == 0 {
@@ -81,8 +76,7 @@ func ArtifactSize(out string) int64 {
 
 var completedSHARe = regexp.MustCompile(`msg="?Backup completed"?[^\n]*\bsha256=([0-9a-f]{64})`)
 
-// ArtifactSHA256 returns the stored artifact's sha256 from the tool's final
-// "Backup completed" line ("" when the tool predates it).
+// "" when the tool predates the checksum report.
 func ArtifactSHA256(out string) string {
 	m := completedSHARe.FindAllStringSubmatch(out, -1)
 	if len(m) == 0 {
@@ -91,15 +85,11 @@ func ArtifactSHA256(out string) string {
 	return m[len(m)-1][1]
 }
 
-// ErrAgeIdentityRequired is returned when restoring an age-encrypted artifact
-// without the matching identity.
 var ErrAgeIdentityRequired = errors.New("this backup is encrypted with age: an age identity (AGE-SECRET-KEY-…) is required to restore it")
 
 // Encrypting reports whether the destination encrypts what is written to it.
 func (d Destination) Encrypting() bool { return d.AgeRecipients != "" || d.GPGPassphrase != "" }
 
-// EncryptionEnv is the encryption environment of a backup run: age recipients
-// when set, else the GPG passphrase.
 func (d Destination) EncryptionEnv() []string {
 	switch {
 	case d.AgeRecipients != "":
@@ -110,8 +100,6 @@ func (d Destination) EncryptionEnv() []string {
 	return nil
 }
 
-// RestoreKeyEnv is what the tool needs to decrypt file: the passphrase for
-// ".gpg", the identity for ".age", nothing for a cleartext artifact.
 func RestoreKeyEnv(file, passphrase, ageIdentity string) ([]string, error) {
 	switch {
 	case strings.HasSuffix(file, ".age"):
@@ -125,8 +113,6 @@ func RestoreKeyEnv(file, passphrase, ageIdentity string) ([]string, error) {
 	return nil, nil
 }
 
-// VerifyOutcome interprets a `verify` run: ok, failed with a reason, or skipped
-// when the image predates the command.
 func VerifyOutcome(exit int, out string, err error) (status, reason string) {
 	switch {
 	case err != nil:

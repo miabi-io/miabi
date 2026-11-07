@@ -92,9 +92,7 @@ func (c *clusterAgentAuthCache) drop(key string) {
 	c.mu.Unlock()
 }
 
-// AgentStats ingests a host CPU/memory report pushed by a node's agent. The node is identified by
-// the bearer token — per-node or cluster-wide plus swarm node id, as for Connect — never by the body,
-// and the reading is stamped with the control plane's clock.
+// The node is identified by the bearer token, never the body; readings use the control plane's clock.
 func (h *NodeHandler) AgentStats(c *okapi.Context) error {
 	ingest, _ := h.nodeStats.(NodeStatsIngester)
 	if ingest == nil {
@@ -132,8 +130,7 @@ func (h *NodeHandler) AgentStats(c *okapi.Context) error {
 
 var errNodeGone = errors.New("node no longer exists")
 
-// statsAgent resolves the pushing agent's node the same way Connect does. The cluster-token path is
-// cached briefly, since verifying it asks the swarm manager for its membership list.
+// The cluster-token path is cached briefly: verifying it asks the swarm manager for membership.
 func (h *NodeHandler) statsAgent(c *okapi.Context, token string) (*models.Server, error) {
 	if srv, err := h.nodes.Authenticate(token); err == nil {
 		return srv, nil

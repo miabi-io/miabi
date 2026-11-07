@@ -26,19 +26,15 @@ import (
 	"strings"
 )
 
-// ErrInvalidRule is returned when a rule fails validation against its
-// descriptor. Handlers map it to 422 MIDDLEWARE_INVALID_RULE.
+// Handlers map it to 422 MIDDLEWARE_INVALID_RULE.
 var ErrInvalidRule = errors.New("invalid middleware rule")
 
-// retired lists rule keys Goma no longer accepts. They are dropped rather than refused, so a
-// middleware saved before the change still renders and can still be edited.
+// Dropped rather than refused so middleware saved before the change still renders and can be edited.
 var retired = map[string][]string{
 	// Goma sends X-Goma-Country to every app itself when the gateway's countryHeader is on.
 	"geoBlock": {"addCountryHeader"},
 }
 
-// DropRetired returns rule without the keys Goma no longer accepts for mwType. It returns rule
-// itself when there are none to drop.
 func DropRetired(mwType string, rule map[string]any) map[string]any {
 	keys := retired[mwType]
 	drop := false
@@ -60,9 +56,7 @@ func DropRetired(mwType string, rule map[string]any) map[string]any {
 	return out
 }
 
-// Validate checks a rule against a catalogued type, returning nil for an uncatalogued one (the
-// advanced passthrough). A catalogued type is checked for required keys, value types and unknown
-// keys, so a malformed rule can't render into the workspace file and take every route offline.
+// Uncatalogued types pass through; catalogued ones are fully checked so a bad rule cannot take every route offline.
 func Validate(mwType string, rule map[string]any) error {
 	d, ok := Get(mwType)
 	if !ok {
@@ -71,8 +65,7 @@ func Validate(mwType string, rule map[string]any) error {
 	if err := validateFields(d.Fields, rule); err != nil {
 		return err
 	}
-	// Cross-field constraints the per-field loop can't express (run last, so it
-	// sees fully type-checked values).
+	// Runs last so it sees fully type-checked values.
 	if d.Validate != nil {
 		if err := d.Validate(rule); err != nil {
 			return err
@@ -81,9 +74,6 @@ func Validate(mwType string, rule map[string]any) error {
 	return nil
 }
 
-// validateFields checks a rule map against a field set: it rejects unknown keys, enforces required
-// fields, and type-checks each present value. Used for both the top-level rule and nested
-// sub-schemas, so a malformed nested value is caught with the same rigour as a top-level one.
 func validateFields(fields []Field, rule map[string]any) error {
 	allowed := make(map[string]Field, len(fields))
 	for _, f := range fields {
@@ -140,9 +130,7 @@ func validateField(f Field, v any) error {
 		if !isStringSlice(v) {
 			return fmt.Errorf("%w: %q must be a list of strings", ErrInvalidRule, f.Key)
 		}
-		// Goma splits each entry on the first colon, so a second one silently
-		// becomes part of the target name. Reject it here rather than let the
-		// gateway forward a header nobody meant to name.
+		// Goma splits on the first colon, so a second one silently becomes part of the target name.
 		for _, e := range v.([]any) {
 			s, _ := e.(string)
 			if strings.TrimSpace(s) == "" {
@@ -176,8 +164,6 @@ func validateField(f Field, v any) error {
 		if !ok {
 			return fmt.Errorf("%w: %q must be an object", ErrInvalidRule, f.Key)
 		}
-		// A structured object (with a sub-schema) is validated against it; a
-		// free-form object (no Fields) is passed through unchecked.
 		if len(f.Fields) > 0 {
 			return validateFields(f.Fields, m)
 		}
@@ -202,9 +188,7 @@ func validateField(f Field, v any) error {
 	return nil
 }
 
-// requireAnyOf builds a descriptor cross-field validator asserting at least one
-// of the named keys is present and non-nil — for types where every field is
-// individually optional but the middleware is a no-op with none set.
+// For types where every field is optional but the middleware is a no-op with none set.
 func requireAnyOf(keys ...string) func(map[string]any) error {
 	return func(rule map[string]any) error {
 		for _, k := range keys {
@@ -229,8 +213,6 @@ func isIntSlice(v any) bool {
 	return true
 }
 
-// validateUsers checks the basicAuth users list: a non-empty array of objects,
-// each with a username and password.
 func validateUsers(key string, v any) error {
 	list, ok := v.([]any)
 	if !ok || len(list) == 0 {
@@ -251,8 +233,7 @@ func validateUsers(key string, v any) error {
 	return nil
 }
 
-// isInt accepts JSON numbers (float64) with no fractional part, as well as the
-// native int kinds, since rules round-trip through JSON.
+// Rules round-trip through JSON, so whole float64 values count as ints.
 func isInt(v any) bool {
 	switch n := v.(type) {
 	case float64:
@@ -303,8 +284,7 @@ func validateRedirectHost(rule map[string]any) error {
 
 var minSizePattern = regexp.MustCompile(`(?i)^\s*\d+\s*([kmg]i?b|b)?\s*$`)
 
-// validateCompress mirrors the gateway's own checks, so a bad rule is refused on save instead of
-// taking the route offline: Goma answers 503 on a route whose compress rule it cannot load.
+// Mirrors Goma's checks: it answers 503 on a route whose compress rule it cannot load.
 func validateCompress(rule map[string]any) error {
 	if list, ok := rule["algorithms"].([]any); ok {
 		for _, a := range list {

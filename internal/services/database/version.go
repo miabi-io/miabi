@@ -32,9 +32,6 @@ const (
 	PathDumpRestore = "dump-restore" // dump all logical DBs and restore into a fresh volume
 )
 
-// versionComponents splits a version string into its leading numeric components,
-// ignoring any non-numeric suffix (e.g. "17.2-alpine" -> [17, 2], "8.4" -> [8, 4],
-// "16-alpine" -> [16]). Unparseable input yields an empty slice.
 func versionComponents(v string) []int {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -55,8 +52,6 @@ func versionComponents(v string) []int {
 	return out
 }
 
-// majorOf returns the major version number (the first numeric component), and
-// whether it could be parsed.
 func majorOf(v string) (int, bool) {
 	c := versionComponents(v)
 	if len(c) == 0 {
@@ -65,9 +60,7 @@ func majorOf(v string) (int, bool) {
 	return c[0], true
 }
 
-// cmpVersion compares two version strings by their numeric components.
-// Returns -1 if a<b, 0 if equal, +1 if a>b. A shorter prefix that matches is
-// treated as smaller (16 < 16.2). Unparseable versions compare as equal.
+// A matching shorter prefix is smaller (16 < 16.2); unparseable versions compare equal.
 func cmpVersion(a, b string) int {
 	ca, cb := versionComponents(a), versionComponents(b)
 	for i := 0; i < len(ca) || i < len(cb); i++ {
@@ -88,16 +81,12 @@ func cmpVersion(a, b string) int {
 	return 0
 }
 
-// upgradePath decides how to move engine e from version `from` to `to`: the same major (or Redis, which
-// reads its persistence forward) swaps the image on the same volume, while a SQL major bump needs a dump
-// and restore into a fresh volume. Returns the path, whether it crosses a major, and an error for non-upgrades.
+// Same major (or Redis) swaps the image in place; a SQL major bump needs a dump and restore into a fresh volume.
 func upgradePath(e models.DBEngine, from, to string) (path string, major bool, err error) {
 	if strings.TrimSpace(to) == "" {
 		return "", false, ErrInvalidVersion
 	}
-	// libSQL stores data as SQLite (a stable, forward-compatible file format), so any version change is an
-	// in-place image swap on the same volume — like Redis. Its image uses non-numeric tags (e.g. "latest"), so
-	// skip the numeric-major gating the other engines rely on. Re-pinning the same tag is a no-op.
+	// libSQL's SQLite format is forward-compatible and its tags are non-numeric, so any change is an in-place swap.
 	if e == models.DBEngineLibSQL {
 		if strings.TrimSpace(from) == strings.TrimSpace(to) {
 			return "", false, ErrAlreadyOnVersion
@@ -116,23 +105,18 @@ func upgradePath(e models.DBEngine, from, to string) (path string, major bool, e
 	fromMajor, okF := majorOf(from)
 	toMajor, _ := majorOf(to)
 	major = !okF || toMajor != fromMajor
-	// MongoDB majors must be applied sequentially and gate on
-	// featureCompatibilityVersion, so a dump/restore swap isn't safe. Allow
-	// in-place minor upgrades only; reject major bumps until guided upgrades land.
+	// MongoDB majors must be applied sequentially and gate on featureCompatibilityVersion, so dump/restore isn't safe.
 	if e == models.DBEngineMongoDB && major {
 		return "", true, ErrMongoMajorUpgrade
 	}
-	// Redis keeps its RDB/AOF readable across upgrades, so it never needs a copy;
-	// MongoDB minor upgrades are likewise in-place on the same data files.
+	// Redis keeps RDB/AOF readable across upgrades, and Mongo minors use the same data files.
 	if e == models.DBEngineRedis || e == models.DBEngineMongoDB || !major {
 		return PathInPlace, major, nil
 	}
 	return PathDumpRestore, major, nil
 }
 
-// suggestedVersions returns a curated list of common upgrade targets newer than
-// `current` for the engine, for the UI picker. Users may still type any version;
-// these are only hints (Miabi has no live engine-version catalog).
+// Only hints for the UI picker: Miabi has no live engine-version catalog.
 func suggestedVersions(e models.DBEngine, current string) []string {
 	all := map[models.DBEngine][]string{
 		models.DBEnginePostgres: {"14", "15", "16", "17", "18"},

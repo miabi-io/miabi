@@ -25,18 +25,13 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// The two guarded reclaim categories. Unlike the dangling-image and build-cache prunes, which hand
-// the whole category to the daemon, these are resolved to an explicit list here and then removed one
-// by one, so the guard below is the only thing that decides what goes and the dry-run is exact.
+// Resolved to an explicit list and removed one by one, so the guard alone decides and the dry run is exact.
 
-// ImageRefSource yields image references that must survive an unused-image reclaim. Satisfied by the
-// application, release, database and node repositories.
 type ImageRefSource interface {
 	ImageRefs() ([]string, error)
 }
 
-// SetImageRefs wires the referenced-image guard. Without it the unused-image category stays empty:
-// an unguarded prune would take the image a stopped app or a rollback needs.
+// Without it the unused-image category stays empty: an unguarded prune would take an image a rollback needs.
 func (s *Service) SetImageRefs(src ...ImageRefSource) { s.imageRefs = src }
 
 // referencedImages collects every image reference the platform's records still name.
@@ -59,10 +54,7 @@ func (s *Service) referencedImages() (map[string]bool, error) {
 	return set, nil
 }
 
-// unusedImages resolves the images that can be reclaimed: no container holds them, they are not
-// dangling (that category prunes separately), a record does not name them, and they carry a repo
-// digest, so removing one is undone by a pull. A referenced set of nil means the guard is not wired
-// and nothing is reclaimable.
+// Requires a repo digest so removal is undone by a pull; nil referenced means the guard isn't wired.
 func unusedImages(imgs []docker.Image, referenced map[string]bool) []docker.Image {
 	if referenced == nil {
 		return nil
@@ -72,8 +64,7 @@ func unusedImages(imgs []docker.Image, referenced map[string]bool) []docker.Imag
 		if im.Dangling || im.Containers != 0 || len(im.RepoTags) == 0 {
 			continue
 		}
-		// Never remove what cannot be pulled back: a locally built image that was never pushed has
-		// no repo digest, and no record has to name it for its loss to be unrecoverable.
+		// A never-pushed local build has no repo digest, so removing it would be unrecoverable.
 		if len(im.RepoDigests) == 0 {
 			continue
 		}
@@ -85,9 +76,7 @@ func unusedImages(imgs []docker.Image, referenced map[string]bool) []docker.Imag
 	return out
 }
 
-// unsharedBytes is what removing an image actually frees: its own layers, minus the ones other
-// images keep alive. Summing Size instead counts a shared base layer once per image that carries it,
-// which is how an estimate ends up promising several times the disk the apply can return.
+// Summing Size counts shared base layers once per image and overstates what the apply frees.
 func unsharedBytes(im docker.Image) int64 {
 	if im.SharedSize <= 0 {
 		return im.Size
@@ -107,10 +96,7 @@ func anyReferenced(referenced map[string]bool, refs []string) bool {
 	return false
 }
 
-// unusedVolumes resolves the volumes that can be reclaimed: no container holds them and nothing
-// about them is Miabi's. A volume the platform owns is never in this category however idle it looks
-// — a stopped app's data volume holds no container either — and reaches the report, if at all,
-// through the precise orphan path instead. claimed reports whether a volume row names the volume.
+// Platform-owned volumes never land here, since a stopped app's data volume also has no container.
 func unusedVolumes(vols []docker.Volume, usage []docker.VolumeUsage, claimed func(string) (bool, error)) ([]docker.VolumeUsage, error) {
 	if claimed == nil {
 		return nil, nil
@@ -143,8 +129,7 @@ func unusedVolumes(vols []docker.Volume, usage []docker.VolumeUsage, claimed fun
 	return out, nil
 }
 
-// isMiabiName reports whether a Docker name follows one of the platform's own naming conventions.
-// Volumes created before they were labelled are recognised by nothing else.
+// Pre-label volumes are recognised by nothing else.
 func isMiabiName(name string) bool {
 	return strings.HasPrefix(name, "mb-") || strings.HasPrefix(name, "miabi_") || strings.HasPrefix(name, "miabi-")
 }

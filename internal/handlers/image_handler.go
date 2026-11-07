@@ -29,16 +29,13 @@ import (
 	"github.com/miabi-io/miabi/internal/services/image"
 )
 
-// ImageHandler exposes the built-image catalog: provenance listing and deletion
-// (guarded against removing an image a live deployment or pinned release uses).
 type ImageHandler struct {
 	svc     *image.Service
 	remover image.Remover
 	audit   *audit.Logger
 }
 
-// NewImageHandler wires the image catalog handler. remover deletes the physical
-// image from the local node on delete (may be nil for DB-only).
+// remover may be nil for DB-only deletion.
 func NewImageHandler(svc *image.Service, remover image.Remover, auditLog *audit.Logger) *ImageHandler {
 	return &ImageHandler{svc: svc, remover: remover, audit: auditLog}
 }
@@ -73,8 +70,6 @@ func (h *ImageHandler) Get(c *okapi.Context) error {
 	return ok(c, img)
 }
 
-// Delete removes a catalog image unless it is referenced by a live or pinned
-// release.
 func (h *ImageHandler) Delete(c *okapi.Context) error {
 	id, err := uintParam(c, "imageID")
 	if err != nil {

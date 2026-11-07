@@ -32,8 +32,6 @@ import (
 	"github.com/miabi-io/miabi/internal/config"
 )
 
-// sendMail delivers an HTML message to the recipients over the configured system
-// SMTP server, honoring the encryption mode (none | starttls | ssl/tls).
 func sendMail(cfg config.SystemSMTPConfig, to []string, subject, htmlBody string) error {
 	host := cfg.Host
 	addr := net.JoinHostPort(host, strconv.Itoa(cfg.Port))
@@ -125,9 +123,6 @@ func buildMessage(from string, to []string, subject, htmlBody string) []byte {
 	return []byte(b.String())
 }
 
-// envelopeAddr extracts the bare address from an RFC 5322 string such as
-// "Miabi <noreply@example.com>", returning just "noreply@example.com". On parse
-// failure it returns the input unchanged.
 func envelopeAddr(addr string) string {
 	if a, err := mail.ParseAddress(addr); err == nil {
 		return a.Address

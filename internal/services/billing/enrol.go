@@ -45,8 +45,7 @@ const CodePrefix = "mce1."
 // enrollTimeout bounds the call to the console.
 const enrollTimeout = 15 * time.Second
 
-// Setting keys of the console connection. The "billing." prefix is reserved: only the admin
-// Billing page writes them.
+// The "billing." prefix is reserved: only the admin Billing page writes these.
 const (
 	SettingConsoleURL            = "billing.console_url"
 	SettingConsoleInstanceID     = "billing.console_instance_id"
@@ -191,9 +190,7 @@ type envelope struct {
 	} `json:"error"`
 }
 
-// Enroll connects this Miabi to the console that issued code: it mints the billing key and the
-// two secrets, hands them to the console, and stores the connection. The key is revoked when the
-// console refuses or answers with something unusable, so a failed attempt leaves nothing behind.
+// The key is revoked if the console refuses or answers unusably, so a failed attempt leaves nothing.
 func (s *Service) Enroll(ctx context.Context, rawCode string, actorID uint) (*Connection, error) {
 	code, err := DecodeCode(rawCode)
 	if err != nil {
@@ -268,8 +265,7 @@ func (s *Service) callConsole(ctx context.Context, code Code, body enrollRequest
 	return &out, nil
 }
 
-// sameHost refuses any returned address outside the console's own host: the notify secret and
-// customer portal links must never go elsewhere.
+// The notify secret and portal links must never go to another host.
 func sameHost(host string, urls ...string) error {
 	for _, raw := range urls {
 		if raw == "" {
@@ -363,8 +359,7 @@ func (s *Service) NotifySecret() (string, error) {
 	return crypto.Decrypt(st.Value)
 }
 
-// Disconnect revokes the billing key and forgets the console. The console keeps its own record and
-// sees its calls refused; reconnecting needs a new enrolment code.
+// Reconnecting needs a new enrolment code.
 func (s *Service) Disconnect(actorID uint) error {
 	cur, err := s.Connection()
 	if err != nil {
@@ -404,8 +399,7 @@ func (s *Service) Disconnect(actorID uint) error {
 	return nil
 }
 
-// client calls the console. The console must answer itself: a redirect could hand a key or a
-// signed event to another host.
+// No redirects: one could hand a key or signed event to another host.
 func (s *Service) client() *http.Client {
 	if s.http != nil {
 		return s.http

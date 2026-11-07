@@ -25,13 +25,8 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dockerimport"
 )
 
-// Import existing Docker resources (hand-run containers, compose stacks, volumes, networks) into
-// Miabi. Scanning is system-admin because it reads the raw node Docker surface; imported
-// resources are assigned to the chosen workspace.
+// Scanning is system-admin because it reads the raw node Docker surface.
 
-// ImportableResources lists the node's unmanaged (importable) Docker resources,
-// enriched with inspect data, compose grouping, relationships, and
-// already-imported flags.
 func (h *NodeHandler) ImportableResources(c *okapi.Context) error {
 	if h.importer == nil {
 		return c.AbortInternalServerError("import service unavailable", nil)
@@ -52,24 +47,19 @@ type ImportResourcesRequest struct {
 	Body struct {
 		// WorkspaceID is the workspace the imported resources are assigned to.
 		WorkspaceID uint `json:"workspace_id" required:"true"`
-		// StackName is a fallback stack for container items with no per-item
-		// stack_name (e.g. ungrouped containers). Per-item stack_name wins, so each
-		// compose project maps to its own stack.
+		// Fallback only: per-item stack_name wins, so each compose project maps to its own stack.
 		StackName string `json:"stack_name"`
 		Items     []struct {
-			Kind    string `json:"kind" required:"true" enum:"container,volume,network"`
-			Ref     string `json:"ref" required:"true"`
-			AppName string `json:"app_name"`
-			Mode    string `json:"mode" enum:"adopt,reconcile"`
-			// StackName groups this container under a Stack (typically its compose
-			// project), created or reused.
+			Kind      string `json:"kind" required:"true" enum:"container,volume,network"`
+			Ref       string `json:"ref" required:"true"`
+			AppName   string `json:"app_name"`
+			Mode      string `json:"mode" enum:"adopt,reconcile"`
 			StackName string `json:"stack_name"`
 		} `json:"items" required:"true"`
 	} `json:"body"`
 }
 
-// Import creates Miabi records for the selected resources. Non-destructive
-// by default (adopt-in-place); per-item "reconcile" recreates natively.
+// Non-destructive by default (adopt-in-place); per-item "reconcile" recreates natively.
 func (h *NodeHandler) Import(c *okapi.Context, req *ImportResourcesRequest) error {
 	if h.importer == nil {
 		return c.AbortInternalServerError("import service unavailable", nil)

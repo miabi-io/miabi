@@ -32,8 +32,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// unreachableRedis points at a closed port, so every command fails fast without
-// needing a server.
 func unreachableRedis() *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:        "127.0.0.1:1",
@@ -42,8 +40,7 @@ func unreachableRedis() *redis.Client {
 	})
 }
 
-// The stop function is what shutdown hangs its ordering on: it has to return
-// once the consumer is done, promptly, and survive being called twice.
+// Shutdown ordering depends on stop returning promptly and surviving a second call.
 func TestAnalyticsConsumerStartStop(t *testing.T) {
 	c := NewAnalyticsConsumer(
 		unreachableRedis(), nil, nil,
@@ -67,8 +64,7 @@ func TestAnalyticsConsumerStartStop(t *testing.T) {
 	}
 }
 
-// Cancelling the context the consumer was started with must also bring it down,
-// so a caller that cancels a parent context and then calls stop() just waits.
+// Cancelling the start context must also stop the consumer, so a later stop() just waits.
 func TestAnalyticsConsumerStopsWithContext(t *testing.T) {
 	c := NewAnalyticsConsumer(
 		unreachableRedis(), nil, nil,
@@ -92,8 +88,7 @@ func TestAnalyticsConsumerStopsWithContext(t *testing.T) {
 	}
 }
 
-// The point of waiting on shutdown: buckets live in memory until their minute
-// closes, so cancelling has to persist what is open rather than drop it.
+// Buckets live in memory until their minute closes, so cancelling must persist open ones rather than drop them.
 func TestAnalyticsFlushLoopPersistsOnCancel(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -110,8 +105,7 @@ func TestAnalyticsFlushLoopPersistsOnCancel(t *testing.T) {
 		time.Hour, nil, nil, // flush ticker far away: only the final drain can persist
 	)
 
-	// An event old enough to be outside the bucket grace, so the final flush
-	// closes its bucket.
+	// Old enough to be outside the bucket grace, so the final flush closes its bucket.
 	bucket := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Minute)
 	c.agg.Ingest(&analytics.Event{
 		Ts: bucket.UnixMilli(), Route: "mb-ws9-shop", Method: "GET",
@@ -141,8 +135,6 @@ func TestAnalyticsFlushLoopPersistsOnCancel(t *testing.T) {
 	}
 }
 
-// A nil tracker is replaced with a default, so a caller that doesn't care about
-// the live window still gets a working consumer rather than a nil dereference.
 func TestAnalyticsConsumerDefaultsLiveTracker(t *testing.T) {
 	c := NewAnalyticsConsumer(
 		unreachableRedis(), nil, nil,

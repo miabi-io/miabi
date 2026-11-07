@@ -28,8 +28,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// fakeOrgs stands in for the organization service: the workspace service only needs a user's home
-// realm and that realm's caps.
 type fakeOrgs struct {
 	org *models.Organization
 }
@@ -48,8 +46,6 @@ func (f fakeOrgs) Get(uint) (*models.Organization, error) {
 	return f.org, nil
 }
 
-// seedOrg builds a service where user 1 owns `owned` workspaces, the platform default is `global`,
-// and their organization carries `orgPerUser` (nil = inherit the platform default).
 func seedOrg(t *testing.T, owned int, global int, orgPerUser *int, override *int, entitled bool) *Service {
 	t.Helper()
 	seedN++
@@ -72,14 +68,11 @@ func seedOrg(t *testing.T, owned int, global int, orgPerUser *int, override *int
 	s := NewService(repositories.NewWorkspaceRepository(db), repositories.NewUserRepository(db), nil)
 	s.SetLimits(func() int { return global }, func() bool { return entitled })
 	s.SetOrgs(fakeOrgs{org: &models.Organization{ID: 7, MaxWorkspacesPerUser: orgPerUser}})
-	// Organization-scoped limits are licensed here; TestOrgCapsAreInertWithoutTheLicence covers the
-	// unlicensed install, where the platform defaults are the whole policy.
 	s.SetOrgLimitsEntitled(func() bool { return true })
 	return s
 }
 
-// The organization is the authority for its own tenants: its cap beats the platform default in both
-// directions, tighter and looser.
+// The organization is the authority for its tenants: its cap beats the platform default either way.
 func TestOrgPerUserCapBeatsThePlatformDefault(t *testing.T) {
 	two := 2
 	if err := seedOrg(t, 2, 10, &two, nil, false).canOwnAnother(1); err == nil {
@@ -102,8 +95,7 @@ func TestOrgPerUserCapBeatsThePlatformDefault(t *testing.T) {
 	}
 }
 
-// An org that sets nothing inherits the platform default, which is what keeps a single-org install
-// behaving exactly as it did before the limit moved.
+// Keeps a single-org install behaving exactly as before the limit moved.
 func TestOrgWithoutACapInheritsThePlatformDefault(t *testing.T) {
 	if err := seedOrg(t, 3, 3, nil, nil, false).canOwnAnother(1); err == nil {
 		t.Error("inherited platform cap of 3 with 3 owned: want refusal")
@@ -135,9 +127,7 @@ func TestUnwiredOrgsLeaveThePlatformDefaultInCharge(t *testing.T) {
 	}
 }
 
-// Without the organizations licence an org's stored caps are ignored and the platform default
-// decides. An operator who cannot edit those caps must not be bound by them — which is also what
-// keeps a lapsed licence from stranding a tenant.
+// An operator who can't edit org caps must not be bound by them, so a lapsed licence never strands a tenant.
 func TestOrgCapsAreInertWithoutTheLicence(t *testing.T) {
 	two := 2
 	s := seedOrg(t, 5, 10, &two, nil, false)

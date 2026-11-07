@@ -29,13 +29,10 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/saferollout"
 )
 
-// restartTimeout is how long a component gets to shut down cleanly before Docker
-// kills it. Generous for Postgres, which flushes on the way out.
+// Generous for Postgres, which flushes on the way out.
 const restartTimeout = 30
 
-// Restart restarts the stack, or one component. It restarts CONTAINERS rather than recreating them, so
-// it re-reads what is on disk (Goma watches its providers directory but NOT its base config); anything
-// changing a spec needs `miabi setup`. Order matters: stores first, gateway last.
+// Restarts rather than recreates, so spec changes need `miabi setup`; stores first, gateway last.
 func (s *Service) Restart(ctx context.Context, m *Manifest, only string) error {
 	if err := m.Normalize(); err != nil {
 		return err
@@ -50,9 +47,7 @@ func (s *Service) Restart(ctx context.Context, m *Manifest, only string) error {
 		targets = []component{c}
 	}
 
-	// Restarting the gateway makes it re-read goma.yml — so a broken edit would take the gateway down, and
-	// with it the panel you would use to fix it. Check the file BEFORE stopping anything. (Validate only: a
-	// restart must not rewrite the config out from under the operator.)
+	// A broken goma.yml would take down the gateway and the panel, so validate before stopping; never rewrite.
 	for _, c := range targets {
 		if c.Name == ContainerGateway {
 			if err := s.ValidateGatewayConfig(ctx, m); err != nil {
@@ -78,16 +73,13 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 		return err
 	}
 
-	// Never restart something we do not own. On a Compose stack the containers look the same and answer to the
-	// same names, but Compose owns their lifecycle — and a restart that Compose did not ask for is exactly the
-	// kind of out-of-band change this whole design exists to avoid.
+	// Never restart a Compose-owned container: Compose owns its lifecycle.
 	if owner := docker.ManagedBy(cur.Labels); owner != "" && owner != docker.ManagedByMiabi {
 		return fmt.Errorf("it is managed by %s, not by Miabi — restart it with that "+
 			"(for Compose: docker compose restart %s)", owner, c.Name)
 	}
 
-	// A restart cannot apply a spec change; only a recreate can. Saying so beats
-	// leaving an operator to wonder why their edited manifest had no effect.
+	// A restart cannot apply a spec change, so warn rather than leave the operator wondering.
 	spec := c.Build(m, c.Name, *c.Image(m))
 	if want, got := specHash(spec), cur.Labels[docker.LabelSpecHash]; got != "" && got != want {
 		s.log("  %-14s note: the manifest has changed since this container was created — "+
@@ -99,8 +91,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 		return err
 	}
 
-	// Wait for it to come back before touching the next one: the control plane must not
-	// be restarted into a database that is still starting.
+	// The control plane must not be restarted into a database that is still starting.
 	if err := saferollout.WaitHealthy(ctx, s.dc, c.Name, 2*time.Minute); err != nil {
 		return err
 	}
@@ -108,9 +99,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	return nil
 }
 
-// ValidateGatewayConfig checks the gateway config without writing it. EnsureGatewayConfig would also
-// (re)write the file; a restart must not — the whole reason to restart is that the operator changed
-// something on disk, and rewriting it underneath them would be the opposite of what they asked for.
+// Unlike EnsureGatewayConfig it never rewrites the file the operator just changed.
 func (s *Service) ValidateGatewayConfig(ctx context.Context, m *Manifest) error {
 	host, err := s.requireHostPath(ctx, s.configPath(m))
 	if err != nil {
@@ -120,8 +109,6 @@ func (s *Service) ValidateGatewayConfig(ctx context.Context, m *Manifest) error 
 	return s.validateGatewayConfig(ctx, m, host)
 }
 
-// Pending names the components the next Converge would create or recreate: missing, stopped, or
-// created from a spec the manifest no longer describes.
 func (s *Service) Pending(ctx context.Context, m *Manifest) ([]string, error) {
 	if err := m.Normalize(); err != nil {
 		return nil, err

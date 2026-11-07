@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package runner manages build/pipeline runner records: registration, scope (workspace-owned vs
-// platform-shared), labels, concurrency and reachability. Runners are dedicated build machines that never
-// host apps, dialing in over an outbound tunnel with a tightly-scoped registration token.
+// Package runner manages build runners: dedicated machines that never host apps, dialing in over a tunnel.
 package runner
 
 import (
@@ -47,16 +45,13 @@ var (
 	ErrBadToken     = errors.New("invalid runner token")
 )
 
-// tokenPrefix marks Miabi runner registration tokens (distinct from the node
-// join-token prefix "mbn_" so the two token scopes never collide).
+// Distinct from the node join-token prefix "mbn_" so the two token scopes never collide.
 const tokenPrefix = "mbr_"
 
-// contactLostAfter is the gap in a runner's heartbeat (30s) that counts as the
-// connection having broken, rather than one late beat. Two missed beats.
+// Two missed 30s heartbeats count as a broken connection rather than one late beat.
 const contactLostAfter = 90 * time.Second
 
-// Input is the mutable set of fields a create/update accepts. Scope-specific
-// fields (WorkspaceID, Scope) are set by the caller, not bound from the request.
+// WorkspaceID and Scope are set by the caller, not bound from the request.
 type Input struct {
 	Name        string
 	DisplayName string
@@ -77,16 +72,10 @@ func NewService(repo *repositories.RunnerRepository) *Service {
 	return &Service{repo: repo}
 }
 
-// SetQuota wires the plan/quota enforcer (nil-safe; gates MaxRunners on create
-// and the platform-runners capability on shared-pool use).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// SetImage records the configured miabi-runner image (MIABI_RUNNER_IMAGE) so the
-// panel's generated `docker run` enrollment command uses the operator's image.
 func (s *Service) SetImage(image string) { s.image = image }
 
-// Image returns the configured runner image, falling back to the current default
-// when unset, so the enrollment command is always complete.
 func (s *Service) Image() string {
 	if s.image == "" {
 		return "miabi/runner:latest"
@@ -104,15 +93,11 @@ func (s *Service) ListShared() ([]models.Runner, error) {
 	return s.repo.ListShared()
 }
 
-// ListUsable returns the runners a workspace's jobs may target: its own runners
-// plus, when its plan grants the platform-runners capability, the shared runners
-// that plan offers.
 func (s *Service) ListUsable(workspaceID uint) ([]models.Runner, error) {
 	return s.schedulable(workspaceID)
 }
 
-// UsableShared returns just the shared runners a workspace may build on — its plan's slice of the
-// pool. The tenant-facing list, so a workspace is never shown a runner its plan refuses.
+// UsableShared is the tenant-facing list, so a workspace is never shown a runner its plan refuses.
 func (s *Service) UsableShared(workspaceID uint) ([]models.Runner, error) {
 	all, err := s.schedulable(workspaceID)
 	if err != nil {
@@ -127,10 +112,7 @@ func (s *Service) UsableShared(workspaceID uint) ([]models.Runner, error) {
 	return out, nil
 }
 
-// schedulable is the single candidate-set choke point: a workspace's own runners, plus the shared
-// runners its plan both permits (the capability) and offers (the per-plan list). Every consumer —
-// selection, the availability explanation and the tenant-facing lists — goes through here, so a
-// plan cannot be enforced in one of them and forgotten in another.
+// Single candidate-set choke point so a plan can't be enforced in one consumer and forgotten in another.
 func (s *Service) schedulable(workspaceID uint) ([]models.Runner, error) {
 	includeShared := s.quota.Require(workspaceID, quota.CapPlatformRunners) == nil
 	all, err := s.repo.ListSchedulable(workspaceID, includeShared)
@@ -144,8 +126,7 @@ func (s *Service) schedulable(workspaceID uint) ([]models.Runner, error) {
 	return offeredByPlan(all, binding), nil
 }
 
-// offeredByPlan drops the shared runners a plan does not offer. Owned runners pass untouched: they
-// are the tenant's own machines, and a plan describes what the platform lends out.
+// Owned runners pass untouched: a plan describes only what the platform lends out.
 func offeredByPlan(all []models.Runner, binding quota.RunnerBinding) []models.Runner {
 	out := make([]models.Runner, 0, len(all))
 	for _, r := range all {
@@ -156,8 +137,7 @@ func offeredByPlan(all []models.Runner, binding quota.RunnerBinding) []models.Ru
 	return out
 }
 
-// BoundBy returns the plans that offer a shared runner, so deleting one a plan still names can be
-// refused rather than silently narrowing that plan's pool.
+// BoundBy lets deleting a plan-named runner be refused rather than silently narrowing that plan's pool.
 func (s *Service) BoundBy(id uint) ([]models.Plan, error) {
 	r, err := s.repo.FindShared(id)
 	if err != nil {
@@ -202,9 +182,7 @@ func (s *Service) GetShared(id uint) (*models.Runner, error) {
 	return m, nil
 }
 
-// CreateWorkspace registers a workspace-owned runner and returns the one-time
-// registration token (shown once; only its hash is stored). Quota-checked
-// against the workspace's MaxRunners.
+// CreateWorkspace returns the one-time registration token; only its hash is stored.
 func (s *Service) CreateWorkspace(workspaceID, createdByID uint, in Input) (*models.Runner, string, error) {
 	if s.quota.Enabled() {
 		n, _ := s.repo.CountByWorkspace(workspaceID)
@@ -223,9 +201,7 @@ func (s *Service) CreateWorkspace(workspaceID, createdByID uint, in Input) (*mod
 // BuiltinRunnerName is the reserved handle of the co-located built-in runner.
 const BuiltinRunnerName = "builtin"
 
-// EnsureBuiltin finds or creates the platform-shared built-in runner and issues it a fresh registration token.
-// The co-located container gets a new token each start, so a stale container's token is invalidated. Returns
-// the runner and its one-time token.
+// EnsureBuiltin issues a fresh token each start, invalidating a stale co-located container's token.
 func (s *Service) EnsureBuiltin() (*models.Runner, string, error) {
 	shared, err := s.repo.ListShared()
 	if err != nil {
@@ -323,15 +299,12 @@ func (s *Service) applyUpdate(m *models.Runner, in Input) (*models.Runner, error
 	return m, nil
 }
 
-// SetCordoned holds a runner out of scheduling (or releases it) without
-// disconnecting it. scope is enforced by the caller's Get*.
+// Scope is enforced by the caller's Get*.
 func (s *Service) SetCordoned(m *models.Runner, cordoned bool) error {
 	m.Cordoned = cordoned
 	return s.repo.Update(m)
 }
 
-// SetEnabled toggles a runner's on/off switch (a disabled runner never receives
-// jobs even while connected).
 func (s *Service) SetEnabled(m *models.Runner, enabled bool) error {
 	m.Enabled = enabled
 	return s.repo.Update(m)
@@ -353,8 +326,6 @@ func (s *Service) DeleteShared(id uint) error {
 	return s.repo.Delete(id)
 }
 
-// RegenerateTokenWorkspace issues a fresh registration token for a
-// workspace-owned runner, invalidating the old one.
 func (s *Service) RegenerateTokenWorkspace(workspaceID, id uint) (string, error) {
 	m, err := s.GetWorkspace(workspaceID, id)
 	if err != nil {
@@ -381,9 +352,7 @@ func (s *Service) regenToken(m *models.Runner) (string, error) {
 	return token, nil
 }
 
-// connectionBroke reports whether a runner's stored state shows the previous connection genuinely ended,
-// deciding when ConnectedSince restarts. A stale last-seen counts as a break even when the row says online:
-// a control plane killed mid-connection never runs MarkDisconnected, so Status alone would claim otherwise.
+// A stale last-seen counts as a break: a control plane killed mid-connection never runs MarkDisconnected.
 func connectionBroke(m *models.Runner, now time.Time) bool {
 	return m.ConnectedSince == nil ||
 		m.Status == models.RunnerStatusOffline ||
@@ -391,9 +360,7 @@ func connectionBroke(m *models.Runner, now time.Time) bool {
 		now.Sub(*m.LastSeenAt) > contactLostAfter
 }
 
-// MarkConnected records that a runner's tunnel is live: online status, a fresh last-seen, and its
-// self-reported platform facts. Best-effort — a missing runner is ignored — so the connection manager can
-// call it on connect and on each heartbeat without handling errors.
+// MarkConnected is best-effort (a missing runner is ignored) so it can run on every heartbeat.
 func (s *Service) MarkConnected(id uint, f models.RunnerFacts) {
 	m, err := s.repo.FindByID(id)
 	if err != nil {
@@ -437,9 +404,6 @@ func (s *Service) MarkDisconnected(id uint) {
 	_ = s.repo.Update(m)
 }
 
-// Authenticate resolves a runner from a presented registration token,
-// constant-time comparing the hash. Used by the runner-gateway endpoint when a
-// runner dials in. A disabled runner is rejected.
 func (s *Service) Authenticate(token string) (*models.Runner, error) {
 	if !strings.HasPrefix(token, tokenPrefix) {
 		return nil, ErrBadToken
@@ -464,8 +428,7 @@ func displayName(display, name string) string {
 	return name
 }
 
-// normalizeLabels trims, drops blanks, de-duplicates and sorts labels so the
-// scheduler's subset match is order-independent and stable.
+// Sorted and de-duplicated so the scheduler's subset match is order-independent and stable.
 func normalizeLabels(in []string) []string {
 	if len(in) == 0 {
 		return nil

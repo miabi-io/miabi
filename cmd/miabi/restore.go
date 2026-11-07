@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/blob"
 )
 
-// registerRestoreCommands adds the disaster-recovery commands. They live beside `install`
-// rather than behind the admin API because the host they run on has no Miabi: the
-// credentials needed to reach the backup are themselves inside the backup.
+// Not behind the admin API: the credentials needed to reach the backup are inside the backup.
 func registerRestoreCommands(cli *okapicli.CLI) {
 	cli.Command("restore", "Rebuild a Miabi platform on this host from a recovery point", runRestore).
 		String("from", "", "", "Backup target, e.g. s3://bucket/prefix").
@@ -90,8 +88,7 @@ func runRestore(cmd *okapicli.Command) error {
 		ManifestPath: manifestPath(cmd),
 		DryRun:       cmd.GetBool("dry-run"),
 	}
-	// Resolve the image BEFORE preflight: an unresolvable one must stop the run here, not after
-	// the database and volumes are already back.
+	// Resolve the image before preflight so a bad one stops the run before the database and volumes are restored.
 	if opts.Image == "" {
 		if opts.Image, err = defaultImage(context.Background(), dc); err != nil {
 			return err
@@ -252,9 +249,7 @@ func s3From(cmd *okapicli.Command) (blob.Config, string, error) {
 	}, prefix, nil
 }
 
-// passphraseFrom reads the backup passphrase from a file or the environment, never a flag:
-// it opens the master key and would land in shell history and ps. An empty result is not
-// an error — preflight decides whether the recovery point needs one.
+// Never a flag: the passphrase opens the master key and would land in shell history and ps.
 func passphraseFrom(cmd *okapicli.Command) (string, error) {
 	if p := strings.TrimSpace(cmd.GetString("passphrase-file")); p != "" {
 		b, err := os.ReadFile(p)

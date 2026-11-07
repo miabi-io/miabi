@@ -98,8 +98,7 @@ func TestLeaderStepsDownWhenAnotherProcessHoldsTheLease(t *testing.T) {
 	eventually(t, "the leader steps down", func() bool { return !a.Leading() })
 }
 
-// A leader cut off from Redis must stop before its key can expire and a standby win it, or both
-// would lead at once.
+// A leader cut off from Redis must stop before a standby can win, or both would lead.
 func TestLeaderCutOffFromRedisStepsDownBeforeItsLeaseExpires(t *testing.T) {
 	rdb, mr := newTestRedis(t)
 	a, _ := startTestElector(t, rdb)

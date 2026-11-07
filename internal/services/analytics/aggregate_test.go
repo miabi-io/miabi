@@ -113,8 +113,7 @@ func TestAggregatorIngestFlushAndMerge(t *testing.T) {
 
 	mk := func(status int, dur int64, vid, path string) *Event {
 		return &Event{
-			// No PathTemplate: the gateway has no per-request patterns, so real
-			// events carry only the request path.
+			// The gateway has no per-request patterns, so real events carry only the request path.
 			Ts: base, Route: "mb-ws9-shop", Method: "GET", Status: status,
 			Path: path, ReqBytes: 100, RespBytes: 2000,
 			DurationMs: dur, UpstreamMs: dur - 2, VID: vid, Country: "US",
@@ -176,9 +175,7 @@ func TestAggregatorIngestFlushAndMerge(t *testing.T) {
 	}
 }
 
-// The series must cover every bucket in the window, including the quiet ones:
-// the charts plot it against a time axis, so a skipped bucket would silently
-// shift every later column (and every axis label) to the wrong time.
+// A skipped quiet bucket would silently shift every later column and axis label to the wrong time.
 func TestBuildReportFillsEmptyBuckets(t *testing.T) {
 	until := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	since := until.Add(-24 * time.Hour)
@@ -212,9 +209,7 @@ func TestBuildReportFillsEmptyBuckets(t *testing.T) {
 	}
 }
 
-// Top paths is keyed on the request path, so distinct paths stay distinct. The gateway used to send its
-// route mount prefix as PathTemplate — "/" for most routes — and since a template wins over the raw
-// path, every request in a route collapsed into a single "/" row.
+// Regression: Goma's "/" mount-prefix template collapsed every request in a route into one row.
 func TestIngestKeysPathsOnRequestPath(t *testing.T) {
 	a := NewAggregator()
 	base := time.Date(2026, 7, 18, 10, 30, 0, 0, time.UTC).UnixMilli()
@@ -247,8 +242,6 @@ func TestIngestKeysPathsOnRequestPath(t *testing.T) {
 	}
 }
 
-// A template still wins when the gateway can supply one, so the breakdown
-// collapses /orders/1 and /orders/2 if routing ever grows real path patterns.
 func TestIngestPrefersPathTemplateWhenPresent(t *testing.T) {
 	a := NewAggregator()
 	base := time.Date(2026, 7, 18, 10, 30, 0, 0, time.UTC).UnixMilli()
@@ -264,9 +257,7 @@ func TestIngestPrefersPathTemplateWhenPresent(t *testing.T) {
 	}
 }
 
-// The dashboard reads BuildSummary and the analytics pages read BuildReport, so
-// the figures they share have to agree — otherwise the same workspace shows two
-// different request counts on two pages.
+// Dashboard and analytics pages share figures, so they must agree on request counts.
 func TestBuildSummaryMatchesReport(t *testing.T) {
 	until := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	since := until.Add(-24 * time.Hour)
@@ -319,9 +310,7 @@ func TestBuildSummaryMatchesReport(t *testing.T) {
 		}
 	}
 
-	// The dashboard's country panel and the analytics page's country breakdown are
-	// the same ranking, the dashboard's simply truncated — a workspace must not see
-	// a different leader on two pages.
+	// The dashboard ranking is the analytics ranking truncated; the leader must match on both pages.
 	if len(sum.TopCountries) > SummaryTopCountries {
 		t.Fatalf("summary returned %d countries, want at most %d", len(sum.TopCountries), SummaryTopCountries)
 	}

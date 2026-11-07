@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cron is a generic recurring-task scheduler over robfig/cron. Tasks are keyed by a
-// string ("backup:12", "cronjob:34") so different sources share one loop and one status view
-// without id collisions. Schedules load at startup and can be (de)registered at runtime.
+// Package cron is a recurring-task scheduler keyed by "kind:id" strings so sources share one loop without collisions.
 package cron
 
 import (
@@ -76,9 +74,7 @@ type Manager struct {
 
 func NewManager(backups *backup.Service, dbs *repositories.DatabaseRepository, sched *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service) *Manager {
 	m := &Manager{
-		// SkipIfStillRunning drops a tick whose previous invocation of the same task
-		// is still running, so a job slower than its interval (e.g. a large backup)
-		// never overlaps itself on the same schedule/database.
+		// A job slower than its interval (e.g. a large backup) never overlaps itself.
 		c:        cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger))),
 		backups:  backups,
 		dbs:      dbs,
@@ -103,9 +99,7 @@ type VolumeScheduler interface {
 	RunSchedule(ctx context.Context, workspaceID, scheduleID uint) error
 }
 
-// SetVolumeBackups wires volume recovery-point schedules and registers every enabled one. It
-// is a setter rather than a NewManager argument because the volume service is built after the
-// manager; the scheduler is already running by then, which robfig/cron allows.
+// A setter because the volume service is built after the manager; robfig/cron allows adding while running.
 func (m *Manager) SetVolumeBackups(v VolumeScheduler) {
 	m.volumes = v
 	if v == nil {
@@ -140,8 +134,7 @@ func (m *Manager) runVolumeBackup(scheduleID, workspaceID uint) error {
 	if m.volumes == nil {
 		return fmt.Errorf("volume backups are not wired")
 	}
-	// Same flag as database recovery points: an expired licence stops new points, never
-	// restores of existing ones.
+	// An expired licence stops new recovery points, never restores of existing ones.
 	if m.setGate != nil {
 		if err := m.setGate(); err != nil {
 			return err
@@ -155,8 +148,7 @@ type Leader interface {
 	Leading() bool
 }
 
-// SetLeader runs tasks only while l leads, so two control-plane processes never run the same job
-// twice. Tasks registered with RegisterLocalTask run regardless. Without a leader every task runs.
+// SetLeader runs tasks only while l leads; local tasks always run, and without a leader every task runs.
 func (m *Manager) SetLeader(l Leader) { m.leader = l }
 
 // Snapshot returns the current status of every registered task.
@@ -185,14 +177,11 @@ func (m *Manager) Snapshot() []JobStatus {
 	return out
 }
 
-// RegisterTask adds (or replaces) a task in the running cron, keyed by kind:id.
-// fn runs on each tick; its error is surfaced in the snapshot's LastError.
 func (m *Manager) RegisterTask(kind string, id uint, name, schedule string, fn func() error) error {
 	return m.register(kind, id, name, schedule, false, fn)
 }
 
-// RegisterLocalTask is RegisterTask for a task that only touches this process's own state, such as
-// the agent tunnels it holds, so it runs whether or not the process leads.
+// RegisterLocalTask runs regardless of leadership, for tasks touching only this process's state (e.g. tunnels).
 func (m *Manager) RegisterLocalTask(kind string, id uint, name, schedule string, fn func() error) error {
 	return m.register(kind, id, name, schedule, true, fn)
 }
@@ -225,8 +214,6 @@ func (m *Manager) UnregisterTask(kind string, id uint) {
 
 func taskKey(kind string, id uint) string { return fmt.Sprintf("%s:%d", kind, id) }
 
-// ValidateSpec reports whether spec is a valid standard (5-field) cron
-// expression, so callers can reject a bad schedule before persisting it.
 func ValidateSpec(spec string) error {
 	_, err := cron.ParseStandard(spec)
 	return err
@@ -346,8 +333,7 @@ func (m *Manager) runBackupSet(scheduleID, workspaceID, instanceID uint) error {
 	sched.LastRunAt = &now
 	_ = m.sets.UpdateSchedule(sched)
 
-	// Retention runs only after a set that actually completed. Pruning around a
-	// failed run could retire a good recovery point in favour of a broken one.
+	// Prune only after a completed set, or a failed run could retire a good recovery point for a broken one.
 	if set.Status == models.BackupCompleted && (sched.MaxSets > 0 || sched.RetentionDays > 0) {
 		if _, perr := m.backups.PruneSets(context.Background(), instanceID, sched.MaxSets, sched.RetentionDays); perr != nil {
 			logger.Error("prune backup sets", "instance", instanceID, "error", perr)
@@ -385,9 +371,6 @@ func (m *Manager) runBackup(scheduleID, workspaceID, databaseID uint) error {
 	return nil
 }
 
-// destinationFor resolves a scheduled backup's destination from the workspace's
-// backup settings: the centralized S3 target (with the database path prefix)
-// when configured, else local. Schedules no longer carry their own S3 config.
 func (m *Manager) destinationFor(workspaceID uint) backup.Destination {
 	if m.settings != nil {
 		if dest, err := m.settings.DatabaseDestination(workspaceID); err == nil {

@@ -46,8 +46,7 @@ func main() {
 	// install / update / restart / status / uninstall.
 	registerStackCommands(cli)
 
-	// Disaster recovery: rebuild this platform on a fresh host from a recovery
-	// point. Also a host command — the machine it runs on has no Miabi yet.
+	// Host command: the machine it runs on has no Miabi yet.
 	registerRestoreCommands(cli)
 
 	registerAdminCommands(cli)

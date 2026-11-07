@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package account orchestrates account-wide actions across a user's owned workspaces: stopping every
-// app and database when an account is disabled, and cascade-deleting a user's data on removal. Each
-// workspace has exactly one owner, so "a user's resources" are the resources in the workspaces they own.
+// Package account runs account-wide actions over a user's owned workspaces; each workspace has exactly one owner.
 package account
 
 import (
@@ -34,12 +32,8 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ErrSystemProtected is returned when a teardown targets the system workspace,
-// which must never be deleted.
 var ErrSystemProtected = errors.New("system workspace cannot be deleted")
 
-// WorkspaceFinalizer performs the final workspace-row deletion and crypto-shred
-// once its resources have been torn down. Satisfied by workspace.Service.
 type WorkspaceFinalizer interface {
 	Delete(id uint) error
 }
@@ -80,15 +74,13 @@ type Service struct {
 	stackOps   StackOps
 	storageOps StorageOps
 
-	// finalizer removes the workspace row + crypto-shreds its keys after its
-	// resources are torn down. Optional; falls back to a plain repo delete.
+	// Optional; falls back to a plain repo delete.
 	finalizer WorkspaceFinalizer
 	// deletionGuard refuses a user-initiated workspace delete (console-managed workspaces).
 	deletionGuard func(ws *models.Workspace) error
 	// onWorkspaceDeleted runs after a workspace row is gone, whatever started the delete.
 	onWorkspaceDeleted func(ws *models.Workspace)
-	// Live workspace-deletion jobs (single-node, in-process), streamed over the
-	// event bus to the deletion-progress UI. bus may be nil in tests / unwired.
+	// bus may be nil in tests or when unwired.
 	bus       *eventbus.Bus
 	delJobsMu sync.Mutex
 	delJobs   map[string]*DeletionJob
@@ -97,8 +89,6 @@ type Service struct {
 // SetEventBus wires the bus used to stream deletion-job progress over SSE.
 func (s *Service) SetEventBus(b *eventbus.Bus) { s.bus = b }
 
-// SetWorkspaceFinalizer wires the component that deletes the workspace row and
-// crypto-shreds its keys once teardown completes.
 func (s *Service) SetWorkspaceFinalizer(f WorkspaceFinalizer) { s.finalizer = f }
 
 // SetDeletionGuard wires the check GuardDeletion runs for deletes started from Miabi's own API.
@@ -107,8 +97,7 @@ func (s *Service) SetDeletionGuard(fn func(ws *models.Workspace) error) { s.dele
 // SetWorkspaceDeletedHook wires a callback run after any workspace is deleted.
 func (s *Service) SetWorkspaceDeletedHook(fn func(ws *models.Workspace)) { s.onWorkspaceDeleted = fn }
 
-// GuardDeletion refuses a delete Miabi's own users may not make. The Billing API deletes through
-// DeleteWorkspaceNow directly, so it is not subject to this.
+// The Billing API deletes via DeleteWorkspaceNow directly, so it is not subject to this.
 func (s *Service) GuardDeletion(wsID uint) error {
 	if s.deletionGuard == nil {
 		return nil
@@ -132,9 +121,7 @@ func NewService(
 	return &Service{users: users, workspaces: workspaces, apps: apps, dbs: dbs, stacks: stacks, appOps: appOps, dbOps: dbOps, stackOps: stackOps, storageOps: storageOps}
 }
 
-// PurgeDue permanently deletes every account whose scheduled deletion time has
-// passed: it tears down all of the account's owned-workspace data, then removes
-// the user row. Returns the number of accounts purged. Best-effort per account.
+// Best-effort per account.
 func (s *Service) PurgeDue(ctx context.Context) int {
 	if s.users == nil {
 		return 0
@@ -159,9 +146,7 @@ func (s *Service) PurgeDue(ctx context.Context) int {
 	return purged
 }
 
-// PurgeAccount permanently deletes a single account immediately, skipping any remaining grace period:
-// it tears down all owned-workspace data (best-effort) then removes the user row. An error is returned
-// only if the final user-row delete fails. Callers must enforce their own preconditions.
+// Errors only if the final user-row delete fails; callers must enforce their own preconditions.
 func (s *Service) PurgeAccount(ctx context.Context, userID uint) (DeleteResult, error) {
 	if s.users == nil {
 		return DeleteResult{}, errors.New("account service not configured")
@@ -179,9 +164,7 @@ type StopResult struct {
 	Databases int `json:"databases"`
 }
 
-// StopOwned stops every running application and database instance in the
-// workspaces the user owns. Best-effort: a single failure is logged and the
-// sweep continues, so disabling an account never gets stuck on one bad container.
+// Best-effort so disabling an account never gets stuck on one bad container.
 func (s *Service) StopOwned(ctx context.Context, userID uint) StopResult {
 	var res StopResult
 	wsIDs, err := s.workspaces.IDsOwnedBy(userID)
@@ -197,14 +180,12 @@ func (s *Service) StopOwned(ctx context.Context, userID uint) StopResult {
 	return res
 }
 
-// StopWorkspace stops every running app and database instance of one workspace and returns what it
-// stopped, so StartWorkspace can bring back exactly that.
+// Returns what it stopped so StartWorkspace can bring back exactly that.
 func (s *Service) StopWorkspace(ctx context.Context, wsID uint) (StopResult, models.FrozenResources) {
 	return s.stopWorkspace(ctx, wsID, true)
 }
 
-// StopWorkspaceApps is StopWorkspace for the apps only: a migration freeze keeps the databases up so
-// they can still be exported.
+// A migration freeze keeps databases up so they can still be exported.
 func (s *Service) StopWorkspaceApps(ctx context.Context, wsID uint) (StopResult, models.FrozenResources) {
 	return s.stopWorkspace(ctx, wsID, false)
 }
@@ -242,8 +223,7 @@ func (s *Service) stopWorkspace(ctx context.Context, wsID uint, databases bool) 
 	return res, frozen
 }
 
-// AppStarter and DBStarter start a stopped workload. Implemented by *application.Service and
-// *database.Service; kept apart from AppOps/DBOps so account deletion does not depend on them.
+// Kept apart from AppOps/DBOps so account deletion does not depend on them.
 type AppStarter interface {
 	Start(ctx context.Context, app *models.Application) (*models.Deployment, error)
 }
@@ -259,9 +239,7 @@ type StartResult struct {
 	Failed    int `json:"failed"`
 }
 
-// StartWorkspace starts stopped workloads of a workspace, databases first so apps find them: those
-// in only, or every stopped one when only is nil. Workloads deleted meanwhile, or no longer
-// stopped, are skipped.
+// Databases first so apps find them; workloads deleted or no longer stopped are skipped.
 func (s *Service) StartWorkspace(ctx context.Context, wsID uint, only *models.FrozenResources) (StartResult, error) {
 	var res StartResult
 	appStarter, ok1 := s.appOps.(AppStarter)
@@ -312,9 +290,7 @@ type DeleteResult struct {
 	Volumes    int `json:"volumes"`
 }
 
-// DeleteOwned permanently removes every resource in the user's owned workspaces, then the workspaces
-// themselves. Best-effort and idempotent: failures are logged and the sweep continues. Apps go before
-// databases so a database's owner and attachment guards no longer block it.
+// Apps go before databases so owner and attachment guards no longer block them.
 func (s *Service) DeleteOwned(ctx context.Context, userID uint) DeleteResult {
 	var res DeleteResult
 	workspaces, err := s.workspaces.ListOwnedBy(userID)
@@ -339,14 +315,10 @@ func (s *Service) DeleteOwned(ctx context.Context, userID uint) DeleteResult {
 	return res
 }
 
-// teardownResources removes every application, database instance, stack and volume in one workspace, in the
-// order that satisfies their cross-guards (apps before databases). Best-effort and idempotent: failures are
-// logged and the sweep continues. A non-nil rep reports each phase for live progress; nil is a no-op.
+// Apps before databases to satisfy cross-guards; best-effort and idempotent; nil rep is a no-op.
 func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delReporter) DeleteResult {
 	var res DeleteResult
 
-	// Applications first: Stop is best-effort (a stopped app has no container);
-	// Delete tears down container, routes and host-port bindings.
 	apps, _ := s.apps.ListByWorkspace(wsID)
 	if len(apps) > 0 {
 		rep.phase(PhaseApps, PhaseActive)
@@ -362,9 +334,7 @@ func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delRepo
 		rep.phase(PhaseApps, PhaseDone)
 	}
 
-	// Database instances: detach logical databases (their app is gone now, but
-	// the link still blocks instance deletion), stop, then delete (which removes
-	// the container, data volume and scoped secrets).
+	// Detach logical databases first: the link still blocks instance deletion even with the app gone.
 	insts, _ := s.dbs.ListByWorkspace(wsID)
 	if len(insts) > 0 {
 		rep.phase(PhaseDatabases, PhaseActive)
@@ -416,9 +386,7 @@ func (s *Service) teardownResources(ctx context.Context, wsID uint, rep *delRepo
 	return res
 }
 
-// DeleteWorkspaceNow tears down a single workspace's resources and removes the workspace itself,
-// synchronously. It is the non-streaming counterpart of the deletion-job path used by the UI, so CLI
-// and API callers get the same full teardown. The system workspace is protected.
+// Synchronous counterpart of the UI deletion job so CLI and API get the same full teardown.
 func (s *Service) DeleteWorkspaceNow(ctx context.Context, wsID uint) error {
 	ws, err := s.workspaces.FindByID(wsID)
 	if err != nil {
@@ -431,8 +399,6 @@ func (s *Service) DeleteWorkspaceNow(ctx context.Context, wsID uint) error {
 	return s.finalizeWorkspace(wsID)
 }
 
-// finalizeWorkspace removes the workspace row and crypto-shreds its keys via the
-// finalizer, falling back to a plain repo delete when none is wired (tests).
 func (s *Service) finalizeWorkspace(wsID uint) error {
 	ws, _ := s.workspaces.FindByID(wsID)
 	var err error

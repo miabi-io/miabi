@@ -28,16 +28,11 @@ import (
 	"github.com/miabi-io/miabi/internal/logstore"
 )
 
-// replayLogHistory returns the log lines to replay for a resource's SSE stream: a finished run's
-// full log from the store when a ref is present and readable, otherwise the bounded DB tail.
-// This preserves the "replay history then stream live" contract with the store as history.
 func replayLogHistory(store *logstore.Store, ref, tail string) []string {
 	if store.Enabled() && ref != "" {
 		rc, err := store.Open(ref)
 		if err != nil {
-			// The row references a stored log the store can't read — a swept object, or a volume not shared
-			// with the process that wrote it. The caller only gets the bounded DB tail, so surface why the
-			// full log is missing rather than silently degrading.
+			// The caller only gets the bounded DB tail, so log why the full log is missing.
 			logger.Warn("log store read failed; falling back to DB tail", "ref", ref, "error", err)
 		} else {
 			defer func() { _ = rc.Close() }()
@@ -49,9 +44,7 @@ func replayLogHistory(store *logstore.Store, ref, tail string) []string {
 	return logstore.SplitLines(tail)
 }
 
-// streamLogDownload writes a resource's full log as a file download. It streams the stored object
-// directly (gzipped when the store compresses, advertised via Content-Encoding) and falls back to
-// the DB tail when the store is disabled, the ref is empty, or the object is gone.
+// Falls back to the DB tail when the store is disabled, the ref is empty, or the object is gone.
 func streamLogDownload(c *okapi.Context, store *logstore.Store, ref, tail, filename string) error {
 	c.SetHeader("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")

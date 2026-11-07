@@ -40,8 +40,7 @@ func refusalOf(t *testing.T, method, pattern, path string, check func(c *okapi.C
 	return got
 }
 
-// The refusals are returned, never written: an aborted response returns nil, which would let the
-// caller continue to the handler.
+// Refusals are returned, never written: an aborted response returns nil and the caller would continue.
 func TestEphemeralKeyRefusal(t *testing.T) {
 	apps := fakeApps{}
 	check := func(bound uint) func(c *okapi.Context) error {

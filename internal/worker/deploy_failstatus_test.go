@@ -48,9 +48,7 @@ func TestFailedAppStatus(t *testing.T) {
 	}
 }
 
-// Rolling runs the new container beside the old one, so it cannot be used while
-// a host port is published — Docker gives the second container "port is already
-// allocated" and the deploy fails. The worker downgrades instead of failing.
+// Rolling runs both containers at once, which fails on a published host port, so the worker downgrades instead.
 func TestEffectiveStrategy(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -61,8 +59,7 @@ func TestEffectiveStrategy(t *testing.T) {
 		{"rolling with no host ports is left alone", models.DeployRolling, 0, models.DeployRolling},
 		{"rolling publishing a host port becomes recreate", models.DeployRolling, 1, models.DeployRecreate},
 		{"rolling publishing several still becomes recreate", models.DeployRolling, 3, models.DeployRecreate},
-		// Canary publishes no host ports at all, so it never reaches the rule with
-		// a non-zero count; assert it is untouched either way.
+		// Canary publishes no host ports, so it is never downgraded.
 		{"canary is never downgraded", models.DeployCanary, 0, models.DeployCanary},
 		{"canary is never downgraded even with ports", models.DeployCanary, 2, models.DeployCanary},
 		{"recreate already stops the old container first", models.DeployRecreate, 2, models.DeployRecreate},

@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// This drives the half of a bundle that does not need a platform: the objects an export writes, and the
-// discovery path a restore reads them back through, on a REAL bucket. The layout is what a restore on another
-// install depends on. Skips unless MIABI_S3_IT_BUCKET is set, so the default `go test` stays hermetic.
+// Exercises the bucket layout a cross-install restore depends on; skips unless MIABI_S3_IT_BUCKET is set.
 func itStore(t *testing.T) (*blob.Store, blob.Config) {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")
@@ -145,8 +143,6 @@ func TestBundleLayoutRoundTrip_Integration(t *testing.T) {
 		t.Fatalf("the state did not survive the bucket: %+v", opened.Workspace)
 	}
 
-	// The passphrase is the only thing that opens it — including for anyone who
-	// pulls these very bytes out of the bucket.
 	if _, err := wsbundle.Open(sealedBack, "another-horse-42"); err == nil {
 		t.Fatal("the state file opened with the wrong passphrase")
 	}

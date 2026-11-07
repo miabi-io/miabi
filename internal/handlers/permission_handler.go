@@ -24,8 +24,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// PermissionHandler serves the static permission catalog and built-in role
-// presets — the source of truth for the role-picker UI.
 type PermissionHandler struct{}
 
 func NewPermissionHandler() *PermissionHandler { return &PermissionHandler{} }

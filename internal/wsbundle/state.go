@@ -26,34 +26,19 @@ import (
 	"time"
 )
 
-// StateSchema is the version this build writes. A restore accepts anything from
-// MinStateSchema up to it, so an older bundle keeps restoring; a newer one is
-// refused rather than partially understood.
-//
-//	1  the original document
-//	2  adds configs, and config mounts on an application
-//	3  healthcheck_type "none" disables the image's own HEALTHCHECK; before, it kept it ("image")
-//	4  adds sealing keys, and the sealed-value fingerprint on secrets
-//	5  adds a pipeline's version policy and the latest version of each series
-//	6  adds a logical database's source connection and its attach-only flag
+// StateSchema history: 2 configs, 3 "none" healthcheck disables, 4 sealing keys, 5 version policy, 6 db source.
 const StateSchema = 6
 
 // HealthcheckNoneDisables is the first schema whose "none" healthcheck disables the image's own check.
 const HealthcheckNoneDisables = 3
 
-// MinStateSchema is the oldest document this build can read. Every version in
-// [MinStateSchema, StateSchema] differs only by fields that are absent in the
-// older ones and decode to their zero value.
+// Every version in range differs only by fields absent in older ones, which decode to zero.
 const MinStateSchema = 1
 
-// State is a workspace's whole configuration, by natural key. Nothing here carries a primary key:
-// across two installs a uint id is meaningless, so every reference is a name and restore rebuilds
-// the graph from those names. It holds plaintext secrets, so it only exists sealed or in memory.
+// Every reference is a name, since uint ids are meaningless across installs; it only exists sealed or in memory.
 type State struct {
 	Schema int `json:"schema"`
 
-	// Source describes where the bundle came from, for the restore report. It is
-	// never required to match anything on the target.
 	Source Source `json:"source"`
 
 	Workspace Workspace `json:"workspace"`
@@ -72,8 +57,7 @@ type State struct {
 	Certificates []Certificate      `json:"certificates,omitempty"`
 	Apps         []Application      `json:"apps,omitempty"`
 	CronJobs     []CronJob          `json:"cron_jobs,omitempty"`
-	// JobDefinitions travel so a restored GitOps source re-syncs them as
-	// unchanged rather than running every declared Job again.
+	// Carried so a restored GitOps source re-syncs them as unchanged rather than running every Job again.
 	JobDefinitions []JobDefinition `json:"job_definitions,omitempty"`
 	Middlewares    []Middleware    `json:"middlewares,omitempty"`
 	Routes         []Route         `json:"routes,omitempty"`
@@ -91,17 +75,13 @@ type Source struct {
 	ExportedAt   time.Time `json:"exported_at"`
 }
 
-// Workspace is the workspace record itself. Plan, quota and privilege are deliberately absent:
-// they are the target platform's decisions about a tenant, not the tenant's own state, and a
-// bundle that carried them would let an import grant itself capacity or privilege.
+// Plan, quota and privilege are absent: carrying them would let an import grant itself capacity or privilege.
 type Workspace struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
 	Description string `json:"description,omitempty"`
 }
 
-// Registry is a container-registry credential (secret in plaintext, inside the
-// sealed file), so a private-image app still pulls on the target.
 type Registry struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -120,38 +100,28 @@ type GitRepository struct {
 	Secret      string `json:"secret,omitempty"`
 }
 
-// DNSProvider is a connection to a DNS host. Credentials travel because what they authorize —
-// publishing an ownership TXT record, answering a DNS-01 challenge — is exactly what the target
-// must do before a migrated domain serves anything.
+// Credentials travel because the target must publish ownership TXT records and answer DNS-01 before serving.
 type DNSProvider struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
 	Type        string `json:"type"` // cloudflare | route53 | digitalocean
-	// Credentials is the provider's credential blob as JSON, the same shape the
-	// platform stores encrypted.
 	Credentials string `json:"credentials,omitempty"`
 }
 
-// Certificate is a TLS certificate the workspace owns. Only uploaded certificates carry their
-// material; a Miabi-issued one carries its declaration and nothing else, since its key was minted
-// for a host that still resolves to the source. Reissuing is a cutover step, not an import step.
+// Only uploaded certs carry material; a managed cert's key belongs to a host still resolving to the source.
 type Certificate struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name,omitempty"`
 	Source      string   `json:"source,omitempty"` // imported | acme
 	DNSNames    []string `json:"dns_names,omitempty"`
 	// CertPEM and KeyPEM are the material, present only for an imported cert.
-	CertPEM string `json:"cert_pem,omitempty"`
-	KeyPEM  string `json:"key_pem,omitempty"`
-	// DNSProvider and AutoRenew describe how a managed cert was issued, so the
-	// report can say what to re-issue and against which connection.
+	CertPEM     string `json:"cert_pem,omitempty"`
+	KeyPEM      string `json:"key_pem,omitempty"`
 	DNSProvider string `json:"dns_provider,omitempty"`
 	AutoRenew   bool   `json:"auto_renew,omitempty"`
 }
 
-// Middleware is a gateway middleware routes attach by name. Its rule may hold
-// secret fields (a basicAuth password, a forwardAuth shared secret) — which is
-// why, like everything else here, it only exists inside the sealed state file.
+// The rule may hold secret fields, which is why it only exists inside the sealed state file.
 type Middleware struct {
 	Name        string         `json:"name"`
 	DisplayName string         `json:"display_name,omitempty"`
@@ -160,8 +130,6 @@ type Middleware struct {
 	Rule        map[string]any `json:"rule,omitempty"`
 }
 
-// CronJob is a scheduled command in an application's runtime context. The
-// schedule travels; the runs it produced do not.
 type CronJob struct {
 	Name              string            `json:"name"`
 	App               string            `json:"app"`
@@ -199,8 +167,7 @@ type JobDefinition struct {
 	Annotations   map[string]string `json:"annotations,omitempty"`
 }
 
-// Environment is a promotion stage. Approvals recorded against releases do not
-// travel — they are decisions made about a release on the platform that held it.
+// Approvals don't travel: they are decisions made on the platform that held the release.
 type Environment struct {
 	Name              string `json:"name"`
 	DisplayName       string `json:"display_name,omitempty"`
@@ -210,29 +177,22 @@ type Environment struct {
 	GitSource         string `json:"gitops_source,omitempty"`
 }
 
-// Pipeline is a pipeline-as-code definition. Its runs, logs and built images
-// stay behind: a run is a record of something that happened on the platform that
-// ran it, and the definition is what reproduces it.
+// Runs, logs and images stay behind; the definition is what reproduces them.
 type Pipeline struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
 	App         string `json:"app,omitempty"`
 	Spec        string `json:"spec"`
 	Enabled     bool   `json:"enabled"`
-	// Source is manual or repo. A repo-owned spec is carried as it was last read,
-	// and the target re-reads it from the repository at the next run.
+	// A repo-owned spec is carried as last read and re-read from the repository at the next run.
 	Source     string `json:"source,omitempty"`
 	SourcePath string `json:"source_path,omitempty"`
 	SourceRef  string `json:"source_ref,omitempty"`
-	// Versioning is the image repository's version policy and the latest version of each series, so a
-	// restored repository continues its numbering instead of starting over at tags that already exist.
-	// Opaque here: the versioning service owns the shape.
+	// Lets a restored repository continue its numbering instead of reusing existing tags; opaque here.
 	Versioning json.RawMessage `json:"versioning,omitempty"`
 }
 
-// GitSource is a GitOps connection: the repository of manifests, not a fork of it. The manifests
-// are in Git, so what travels is how to reach it and how to reconcile it. The webhook secret does
-// not travel — carrying it would let the same push drive two installs.
+// The webhook secret does not travel, or the same push would drive two installs.
 type GitSource struct {
 	Name          string `json:"name"`
 	DisplayName   string `json:"display_name,omitempty"`
@@ -246,13 +206,11 @@ type GitSource struct {
 	AllowEmpty    bool   `json:"allow_empty,omitempty"`
 	// RequireSealedSecrets keeps the target refusing plaintext Secret values, as the source did.
 	RequireSealedSecrets bool `json:"require_sealed_secrets,omitempty"`
-	// LastSyncedCommit lets the target decide "already at HEAD" instead of
-	// redeploying everything on its first reconcile.
+	// Lets the target treat HEAD as already synced instead of redeploying everything.
 	LastSyncedCommit string `json:"last_synced_commit,omitempty"`
 }
 
-// Network is a workspace-owned Docker network. The Docker name is not carried:
-// it is platform-managed and globally unique, so the target mints its own.
+// The Docker name is globally unique and platform-managed, so the target mints its own.
 type Network struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -267,8 +225,7 @@ type Secret struct {
 	Description string            `json:"description,omitempty"`
 	Value       string            `json:"value"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
-	// SealedFP carries the fingerprint of the sealed value that set it, so a GitOps source re-syncing on the
-	// target sees the secret as unchanged.
+	// Lets a GitOps source re-syncing on the target see the secret as unchanged.
 	SealedFP         string `json:"sealed_fp,omitempty"`
 	SealedKeyVersion int    `json:"sealed_key_version,omitempty"`
 }
@@ -292,8 +249,7 @@ type Config struct {
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
-// Volume is a managed volume's declaration. Its contents travel separately, as a
-// data artifact named after Name.
+// Contents travel separately as a data artifact named after Name.
 type Volume struct {
 	Name        string            `json:"name"`
 	DisplayName string            `json:"display_name,omitempty"`
@@ -307,27 +263,22 @@ type Volume struct {
 
 // Stack groups applications and carries the environment shared by its members.
 type Stack struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Description string `json:"description,omitempty"`
-	// Env is injected into every member application's containers. Secret values
-	// are in plaintext here, inside the sealed file, as everywhere else.
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Description string            `json:"description,omitempty"`
 	Env         []EnvVar          `json:"env,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// DatabaseInstance is a managed database server and the logical databases on it. Credentials
-// deliberately do NOT travel: data crosses as a logical dump restored into a server the target
-// initialized itself. EnvPrefix and App do travel, so consuming apps are re-injected on restore.
+// Credentials don't travel: data is dumped into a server the target initialized; EnvPrefix/App re-inject apps.
 type DatabaseInstance struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
 	Engine      string `json:"engine"`
 	Version     string `json:"version,omitempty"`
 	VolumeSize  int64  `json:"volume_size_bytes,omitempty"`
-	// StorageClass is the operator-registered disk the data volume was on. Restoring onto an
-	// install without that class falls back to the default one rather than failing.
+	// Restoring onto an install without that class falls back to the default one.
 	StorageClass string            `json:"storage_class,omitempty"`
 	MemoryBytes  int64             `json:"memory_bytes,omitempty"`
 	NanoCPUs     int64             `json:"nano_cpus,omitempty"`
@@ -338,8 +289,6 @@ type DatabaseInstance struct {
 	Links []InstanceLink `json:"links,omitempty"`
 }
 
-// InstanceLink is an app's link to a whole instance and how its connection
-// lands in the app env.
 type InstanceLink struct {
 	App       string            `json:"app"`
 	EnvPrefix string            `json:"env_prefix,omitempty"`
@@ -353,14 +302,11 @@ type LogicalDatabase struct {
 	EnvMap    map[string]string `json:"env_map,omitempty"`
 	App       string            `json:"app,omitempty"` // owning application, by name
 	Metadata  map[string]string `json:"metadata,omitempty"`
-	// ReadOnlyUser recreates the database's read-only user on restore (with new credentials, like
-	// the owner's: credentials never travel).
+	// Credentials never travel, so the read-only user is recreated with new ones.
 	ReadOnlyUser bool `json:"readonly_user,omitempty"`
-	// AttachOnly marks an attachment that injected no env (apply and marketplace attach this way), so
-	// restore does not add connection variables the app never had.
+	// Restore must not add connection variables an attach-only app never had.
 	AttachOnly bool `json:"attach_only,omitempty"`
-	// Source is the connection on the install that wrote the bundle. Restore rewrites any env or config
-	// value carrying it, such as an apply-rendered {{ .databases.x.uri }}, to the target's connection.
+	// Restore rewrites env or config values carrying the source connection to the target's.
 	Source *Connection `json:"source,omitempty"`
 }
 
@@ -441,9 +387,7 @@ type Port struct {
 	Name      string `json:"name,omitempty"`
 }
 
-// Mount attaches a managed volume by the volume's Miabi name. Privileged host-path binds are not
-// carried: their source is an allow-listed preset on the node that granted it, and it may not
-// exist — or may mean something else — on the target.
+// Host-path binds aren't carried: their allow-listed preset may not exist, or mean something else, on the target.
 type Mount struct {
 	Volume   string `json:"volume"`
 	Config   string `json:"config,omitempty"`
@@ -453,8 +397,7 @@ type Mount struct {
 	ReadOnly bool   `json:"read_only,omitempty"`
 }
 
-// EnvVar is one environment variable. Secret values are in plaintext here, inside
-// the sealed file, because the target re-encrypts under its own key.
+// Plaintext inside the sealed file because the target re-encrypts under its own key.
 type EnvVar struct {
 	Key      string `json:"key"`
 	Value    string `json:"value,omitempty"`
@@ -463,18 +406,16 @@ type EnvVar struct {
 
 // Route is an HTTP routing rule bound to an app by name.
 type Route struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name,omitempty"`
-	App         string   `json:"app"`
-	Hosts       []string `json:"hosts,omitempty"`
-	Path        string   `json:"path,omitempty"`
-	Methods     []string `json:"methods,omitempty"`
-	Middlewares []string `json:"middlewares,omitempty"`
-	Rewrite     string   `json:"rewrite,omitempty"`
-	TargetPort  int      `json:"target_port,omitempty"`
-	TLSMode     string   `json:"tls_mode,omitempty"`
-	// Certificate names the uploaded certificate a custom-TLS route serves, by
-	// its Miabi name.
+	Name              string            `json:"name"`
+	DisplayName       string            `json:"display_name,omitempty"`
+	App               string            `json:"app"`
+	Hosts             []string          `json:"hosts,omitempty"`
+	Path              string            `json:"path,omitempty"`
+	Methods           []string          `json:"methods,omitempty"`
+	Middlewares       []string          `json:"middlewares,omitempty"`
+	Rewrite           string            `json:"rewrite,omitempty"`
+	TargetPort        int               `json:"target_port,omitempty"`
+	TLSMode           string            `json:"tls_mode,omitempty"`
 	Certificate       string            `json:"certificate,omitempty"`
 	Enabled           bool              `json:"enabled"`
 	ExploitProtection bool              `json:"exploit_protection,omitempty"`
@@ -487,21 +428,16 @@ type RouteMaintenance struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// Domain is an owned hostname. Ownership is not carried: a domain is verified
-// against DNS, and DNS on the target points wherever it points — so a restored
-// domain starts unverified and re-proves itself.
+// Ownership is not carried: a restored domain starts unverified and re-proves itself against DNS.
 type Domain struct {
 	Name    string `json:"name"`
 	TLSMode string `json:"tls_mode,omitempty"`
-	// DNSProvider names the connection that automates this domain's records, so
-	// the target can prove ownership without an operator pasting a TXT record.
+	// Lets the target prove ownership without an operator pasting a TXT record.
 	DNSProvider string `json:"dns_provider,omitempty"`
 	Wildcard    bool   `json:"wildcard,omitempty"`
 }
 
-// Member is a workspace membership, by email. Users are instance-global: the
-// target may know this person, or may not, and either way it authenticates them
-// itself. Password hashes, sessions, 2FA secrets and token values never travel.
+// Users are instance-global; password hashes, sessions, 2FA secrets and tokens never travel.
 type Member struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
@@ -510,9 +446,7 @@ type Member struct {
 
 // Validate checks an opened state document is one this build understands.
 func (s *State) Validate() error {
-	// A range rather than an exact match: refusing an older bundle would strand every
-	// bundle already taken, and silently accepting a newer one would restore a workspace
-	// missing whatever that version added, looking like it worked.
+	// A range: refusing older bundles strands them, and accepting newer ones silently drops what they added.
 	if s.Schema < MinStateSchema || s.Schema > StateSchema {
 		return fmt.Errorf("bundle state schema %d is not supported by this build (expected %d–%d); "+
 			"a bundle from a newer Miabi needs a newer Miabi to restore", s.Schema, MinStateSchema, StateSchema)

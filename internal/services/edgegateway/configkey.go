@@ -26,14 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// MissingConfigKey names the nodes whose gateway will never receive GOMA_CONFIG_ENCRYPTION_KEY.
-//
-// Miabi injects the key into every gateway it deploys, but an imported one belongs to whoever
-// installed it and is never redeployed — so once config encryption is on, Miabi encrypts middleware
-// rules and TLS material those gateways cannot read, and their routes fail with no visible cause.
-//
-// The local node is excluded: AdoptCentral marks the manager's own gateway imported to stop Miabi
-// deploying a second one beside it, but the stack installer gives that container the key.
+// MissingConfigKey lists imported gateways that never get GOMA_CONFIG_ENCRYPTION_KEY and so can't read encrypted config.
 func MissingConfigKey(servers []models.Server) []string {
 	var out []string
 	for _, s := range servers {
@@ -44,8 +37,7 @@ func MissingConfigKey(servers []models.Server) []string {
 	return out
 }
 
-// WarnMissingConfigKey reports the problem loudly rather than quietly declining to encrypt. Silently
-// downgrading would leave an operator believing the config is protected when it is not.
+// Warns loudly: silently skipping encryption would let an operator believe the config is protected.
 func WarnMissingConfigKey(key string, servers []models.Server) {
 	if strings.TrimSpace(key) == "" {
 		return

@@ -27,8 +27,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// newVersionService builds the version keeper a pipeline worker uses to check a run's tag before
-// dispatch and to give its version back when the run fails before a runner reports.
 func newVersionService(db *gorm.DB, registry *registryserver.Service) *versioning.Service {
 	svc := versioning.NewService(repositories.NewVersionRepository(db), repositories.NewApplicationRepository(db), repositories.NewPipelineRepository(db))
 	svc.SetRegistry(registry)

@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts the workspace's database secrets (instance admin
-// passwords + libSQL keys, and each logical database's password) under the
-// workspace's active DEK. Idempotent; returns the number rewritten.
+// Reencrypt re-encrypts the workspace's database secrets under its active DEK; idempotent.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	insts, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

@@ -44,8 +44,7 @@ func NewWorkspaceBackupSettingsHandler(svc *backupsettings.Service, auditLog *au
 	return &WorkspaceBackupSettingsHandler{svc: svc, audit: auditLog}
 }
 
-// UpdateBackupSettingsRequest is the body for updating (and validating) settings.
-// S3SecretKey is empty to keep the stored secret unchanged.
+// S3SecretKey empty keeps the stored secret.
 type UpdateBackupSettingsRequest struct {
 	Body struct {
 		S3Enabled        bool   `json:"s3_enabled"`
@@ -60,18 +59,14 @@ type UpdateBackupSettingsRequest struct {
 		DatabaseBackupPath string `json:"database_backup_path"`
 		VolumeBackupPath   string `json:"volume_backup_path"`
 
-		// BundlePassphrase encrypts portable bundles and BackupPassphrase database backups.
-		// Omitted keeps the stored value; the *Clear flags are the only way back to cleartext,
-		// so removing encryption is always deliberate and never an empty field submitted by accident.
+		// Only the *Clear flags remove encryption, so it is never lost by an empty field submitted by accident.
 		BundlePath            string `json:"bundle_path"`
 		BundlePassphrase      string `json:"bundle_passphrase"`
 		BundlePassphraseClear bool   `json:"bundle_passphrase_clear"`
 		BackupPassphrase      string `json:"backup_passphrase"`
 		BackupPassphraseClear bool   `json:"backup_passphrase_clear"`
 
-		// BackupEncryption is "gpg" (the backup passphrase, default) or "age". With age, backups are
-		// encrypted to AgeRecipients; AgeIdentity, when given, lets the platform restore and verify
-		// them itself (write-only; AgeIdentityClear removes it).
+		// AgeIdentity is write-only and lets the platform restore and verify age backups itself.
 		BackupEncryption string `json:"backup_encryption" enum:",gpg,age"`
 		AgeRecipients    string `json:"age_recipients"`
 		AgeIdentity      string `json:"age_identity"`
@@ -123,8 +118,7 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 		SkipBackupVerify:   b.SkipBackupVerify,
 	})
 	if err != nil {
-		// A rejected passphrase is the user's to fix, not an internal failure. So is
-		// discarding one that recovery points are still sealed with.
+		// These are the user's to fix, not internal failures.
 		if errors.Is(err, wsbundle.ErrWeakPassphrase) || errors.Is(err, backupsettings.ErrSealedSetsExist) || errors.Is(err, backupsettings.ErrInvalidAge) {
 			return c.AbortBadRequest(err.Error())
 		}
@@ -137,8 +131,7 @@ func (h *WorkspaceBackupSettingsHandler) Update(c *okapi.Context, req *UpdateBac
 	return ok(c, st)
 }
 
-// passphraseChange maps a form's passphrase field to the service's input: nil keeps the stored value,
-// "" removes encryption, anything else replaces it.
+// nil keeps the stored value, "" removes encryption, anything else replaces it.
 func passphraseChange(value string, clear bool) *string {
 	switch {
 	case clear:
@@ -150,9 +143,6 @@ func passphraseChange(value string, clear bool) *string {
 	return nil
 }
 
-// Test proves the supplied (or stored) S3 target works, by using it: under every
-// prefix this workspace writes to, it puts a small object, reads it back and
-// removes it.
 func (h *WorkspaceBackupSettingsHandler) Test(c *okapi.Context, req *UpdateBackupSettingsRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	b := req.Body
@@ -160,9 +150,7 @@ func (h *WorkspaceBackupSettingsHandler) Test(c *okapi.Context, req *UpdateBacku
 	if b.S3SecretKey != "" {
 		secret = &b.S3SecretKey
 	}
-	// Bounded: a wrong endpoint should answer in seconds. The blob client's own
-	// timeout is sized for uploading artifacts, not for a person waiting on a
-	// button.
+	// The blob client's timeout is sized for uploads, not for a person waiting on a button.
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 25*time.Second)
 	defer cancel()
 
@@ -179,17 +167,12 @@ func (h *WorkspaceBackupSettingsHandler) Test(c *okapi.Context, req *UpdateBacku
 	return ok(c, backupTestResult(checks))
 }
 
-// TestBackupSettingsResponse is what a connection test reports: whether the
-// target is usable, a sentence for the operator, and the per-prefix detail
-// behind it.
 type TestBackupSettingsResponse struct {
 	OK      bool                         `json:"ok"`
 	Message string                       `json:"message"`
 	Checks  []backupsettings.PrefixCheck `json:"checks"`
 }
 
-// backupTestResult turns the probe results into the answer the operator needs:
-// what was actually done, or which prefix refused and why.
 func backupTestResult(checks []backupsettings.PrefixCheck) TestBackupSettingsResponse {
 	res := TestBackupSettingsResponse{OK: true, Checks: checks}
 	var failed, undeletable []string

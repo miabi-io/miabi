@@ -39,8 +39,7 @@ func TestParseDF(t *testing.T) {
 		t.Fatalf("free = %d, want %d", free, int64(37711140)*1024)
 	}
 
-	// Unreadable output must report zero, which the caller reads as "keep the last good figure"
-	// rather than writing a zero that would look like a node with no disk.
+	// Zero means "keep the last good figure", not a node with no disk.
 	if tot, _ := parseDF("df: /mnt/dataroot: No such file or directory"); tot != 0 {
 		t.Fatalf("total = %d on an error line, want 0", tot)
 	}

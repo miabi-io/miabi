@@ -18,15 +18,11 @@ import { infoApi } from '@/api/info'
 import { useUpdateNotice } from '@/composables/useUpdateNotice'
 import { ADMIN_HOME } from '@/data/console'
 
-// The frame both consoles share. What differs is the navigation it is handed and
-// which identity the context switcher wears — everything else (topbar, user menu,
-// mobile drawer, palette, footer) is the same product chrome, and was previously
-// duplicated between the desktop and mobile sidebars of one 1,700-line file.
+// Shared by both consoles; only the navigation and the switcher's identity differ.
 const props = defineProps<{
   sections: NavSection[]
   console: 'workspace' | 'admin'
-  // Section state is remembered per console: the admin sections are not the
-  // workspace ones, so one shared key would have them fight over the same names.
+  // Per console: admin and workspace sections would otherwise fight over the same names.
   sectionStateKey: string
   home: string
 }>()
@@ -48,8 +44,7 @@ const themeModes = ['light', 'dark', 'system'] as const
 const user = computed(() => auth.user)
 const currentYear = new Date().getFullYear()
 
-// The interactive API reference (/docs) is served at the server root, a sibling
-// of the API base prefix. Hidden until /info confirms it's enabled.
+// Served at the server root, a sibling of the API prefix; hidden until /info confirms it's enabled.
 const docsEnabled = ref(false)
 const docsUrl = ((import.meta.env.VITE_API_URL as string) || '/api/v1').replace(/\/api\/v1\/?$/, '') + '/docs'
 
@@ -117,8 +112,7 @@ function logout() {
   router.push('/login')
 }
 
-// Close on any outside click. Match by class (not a template ref): the switcher is
-// rendered twice — desktop sidebar and mobile sidebar — so one ref can't cover both.
+// Match by class: the switcher renders in both the desktop and mobile sidebars, so one ref can't cover both.
 function closeMenus(e: MouseEvent) {
   const target = e.target as Element
   if (userMenuOpen.value && !target.closest?.('.user-menu')) userMenuOpen.value = false
@@ -384,9 +378,7 @@ onBeforeUnmount(() => {
   transition: width var(--transition-slow);
 }
 
-/* The admin console's sidebar carries a warm cast so the console you are in is
-   readable at a glance. Deleting an app and deleting a user look identical
-   otherwise, and only one of them is recoverable. */
+/* A warm cast marks the admin console, since deleting a user looks like deleting an app but isn't recoverable. */
 .console-admin .sidebar {
   background:
     linear-gradient(to bottom,
@@ -627,8 +619,7 @@ onBeforeUnmount(() => {
 }
 
 .ws-default-pin { color: var(--primary-500); cursor: default; }
-/* Hidden until the row is hovered or the button is focused, so the list stays calm
-   but the action is still reachable from the keyboard. */
+/* Hidden until hover or focus, so the action stays keyboard-reachable. */
 .ws-default-set { color: var(--text-muted); opacity: 0; transition: opacity 0.12s; }
 .ws-switcher-option:hover .ws-default-set,
 .ws-default-set:focus-visible { opacity: 1; }
@@ -783,10 +774,7 @@ onBeforeUnmount(() => {
 /* ─── Main wrapper ─── */
 .main-wrapper {
   flex: 1;
-  /* Allow this flex item to shrink below its content's intrinsic width.
-     Without it, a wide table forces the whole wrapper (topbar included) past
-     the viewport edge and the page scrolls sideways instead of the table
-     scrolling inside its own wrapper. */
+  /* Without it a wide table pushes the whole wrapper past the viewport instead of scrolling inside its wrapper. */
   min-width: 0;
   margin-left: 240px;
   display: flex;
@@ -914,8 +902,7 @@ onBeforeUnmount(() => {
 }
 
 /* ─── User menu ─── */
-/* Positioning context for the absolutely-positioned dropdown below. Without
-   this the dropdown anchors to the sticky topbar and drifts off the trigger. */
+/* Without this the dropdown anchors to the sticky topbar and drifts off the trigger. */
 .user-menu {
   position: relative;
 }

@@ -31,8 +31,6 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Attached is a container whose stdio is wired to the caller: writes go to its stdin, reads come from its
-// demultiplexed stdout, and stderr is kept (bounded) for error messages.
 type Attached interface {
 	io.ReadWriter
 	// CloseWrite ends the container's stdin, which is how a consumer like pg_restore learns the input is done.
@@ -48,9 +46,7 @@ type Attached interface {
 // stderrLimit caps the stderr kept per attached container; a noisy tool must not grow it without bound.
 const stderrLimit = 16 << 10
 
-// RunAttached creates a container with stdin open, attaches to it before starting it so no early bytes are
-// lost, and returns its stdio as a stream. Unlike RunOneShot nothing is buffered, so gigabytes can flow
-// through it. The container is not auto-removed: Wait must be able to read its exit code.
+// RunAttached attaches before starting so no early bytes are lost; not auto-removed so Wait can read the exit code.
 func (e *engineClient) RunAttached(ctx context.Context, spec RunSpec) (Attached, error) {
 	id, err := e.createOneShot(ctx, spec, func(c *container.Config) {
 		c.OpenStdin = true

@@ -33,8 +33,7 @@ var accountReadable = map[string]bool{
 	"/capabilities": true,
 }
 
-// workspaceKeyRefusal keeps a workspace-bound API key inside its workspace: nil when the request
-// stays in it, else the refusal for the caller to abort with.
+// Returns the refusal rather than aborting.
 func workspaceKeyRefusal(c *okapi.Context) error {
 	if workspaceKeyAllowed(c.Param("workspace"), c.Request().Method, c.Request().URL.Path) {
 		return nil
@@ -46,16 +45,13 @@ func workspaceKeyAllowed(workspaceParam, method, path string) bool {
 	if strings.TrimSpace(workspaceParam) != "" {
 		return true
 	}
-	// The migration tree admits only migration keys, which are workspace-bound by design; its
-	// handlers check the binding against the workspace each call names.
+	// Migration keys are workspace-bound; their handlers check the binding per call.
 	if strings.HasPrefix(path, MigrationPathPrefix) {
 		return true
 	}
 	return method == http.MethodGet && accountReadable[reducePath(path)]
 }
 
-// reducePath reduces a request path to the suffix the allow-list is written in, so the list does not
-// have to repeat the API version prefix.
 func reducePath(path string) string {
 	p := strings.TrimSuffix(path, "/")
 	if i := strings.Index(p, "/api/v1"); i >= 0 {
@@ -67,10 +63,7 @@ func reducePath(path string) string {
 	return p
 }
 
-// RequireSession refuses anything but a browser/JWT session. It guards the endpoints that change how
-// an account is authenticated — minting API keys, enrolling or disabling 2FA, revoking sessions.
-// Those are exactly the actions a stolen token would use to make itself permanent, and there is no
-// legitimate automation reason to perform them with an API key rather than a login.
+// A stolen token would use these actions to make itself permanent; no automation needs them.
 func RequireSession() okapi.Middleware {
 	return func(c *okapi.Context) error {
 		if AuthMethod(c) != "jwt" {

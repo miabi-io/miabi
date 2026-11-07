@@ -73,8 +73,6 @@ func TestManifestRoundTrip(t *testing.T) {
 	}
 }
 
-// One format, one extension: an operator looking in a bucket has one thing to
-// find rather than two to guess between.
 func TestManifestIsXMLOnly(t *testing.T) {
 	if ManifestExt != ".xml" {
 		t.Fatalf("ManifestExt = %q, want .xml", ManifestExt)
@@ -91,8 +89,7 @@ func TestManifestIsXMLOnly(t *testing.T) {
 	}
 }
 
-// A manifest is only ever read at a moment when the platform that wrote it is
-// gone, so an unusable one must be rejected loudly rather than half-trusted.
+// A manifest is read when its platform is gone, so an unusable one must be rejected loudly.
 func TestManifestValidateRejectsUnrestorable(t *testing.T) {
 	t.Run("no database dump", func(t *testing.T) {
 		m := manifest()
@@ -124,8 +121,7 @@ func TestManifestObjectRoundTrip(t *testing.T) {
 	if got := RefFromManifestObject(key); got != ref {
 		t.Fatalf("RefFromManifestObject(%q) = %q, want %q", key, got, ref)
 	}
-	// The identity envelope and the manifest sit side by side; neither key may be
-	// mistaken for the other, or `miabi restore` would try to decrypt JSON.
+	// Neither key may be mistaken for the other, or `miabi restore` would try to decrypt JSON.
 	if RefFromManifestObject(IdentityObject("platform", ref)) != "" {
 		t.Fatal("an identity object was read as a manifest object")
 	}
@@ -141,9 +137,7 @@ func TestManifestObjectWithoutPrefix(t *testing.T) {
 	}
 }
 
-// A manifest built without an explicit schema fails its own validation with "schema 0 is not
-// supported", which reads like a version incompatibility rather than a field nobody set. This
-// pins the contract that made that possible: Validate does not repair what it checks.
+// Validate must not repair the schema, so an unset one fails with a misleading version error.
 func TestValidateRejectsUnsetSchema(t *testing.T) {
 	m := manifest()
 	m.Schema = 0
@@ -166,8 +160,6 @@ func TestValidateRejectsUnsetSchema(t *testing.T) {
 	}
 }
 
-// The info file sits unencrypted next to encrypted artifacts, so it names itself
-// — whoever finds one in a bucket should not have to guess what it is.
 func TestManifestCarriesItsNotice(t *testing.T) {
 	body, err := EncodeManifest(manifest())
 	if err != nil {
@@ -178,15 +170,13 @@ func TestManifestCarriesItsNotice(t *testing.T) {
 	}
 }
 
-// And it must still contain nothing secret, in either format — the notice is a
-// claim, and this is the test that keeps it true.
+// The notice claims nothing secret is inside; this keeps it true.
 func TestManifestCarriesNoSecrets(t *testing.T) {
 	body, err := EncodeManifest(manifest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Anything resembling key material must never reach this file. The
-	// fingerprint is allowed: it is an HMAC that identifies a key, not the key.
+	// The fingerprint is allowed: it is an HMAC identifying a key, not the key.
 	for _, forbidden := range []string{"encryption_key", "encryptionKey", "jwt_secret", "jwtSecret", "passphrase", "secret_key", "secretKey"} {
 		if strings.Contains(string(body), forbidden) {
 			t.Errorf("the info file contains %q:\n%s", forbidden, body)
@@ -194,9 +184,7 @@ func TestManifestCarriesNoSecrets(t *testing.T) {
 	}
 }
 
-// A restore searched for tenant artifacts under the top-level database prefix and declared a
-// complete recovery point incomplete. Two faults: "tenant-volume" was not recognised as a volume,
-// and nothing added the "tenants/<workspace>" branch the backup actually writes to.
+// Restore once missed tenant artifacts: tenant-volume wasn't a volume and the tenants/<ws> branch was missing.
 func TestArtifactKeyLocatesTenantArtifacts(t *testing.T) {
 	m := &Manifest{Prefix: "databases", VolumePrefix: "volumes"}
 
@@ -235,8 +223,7 @@ func TestArtifactKeyLocatesTenantArtifacts(t *testing.T) {
 	}
 }
 
-// A recorded path always wins: it is what the backup actually used, and it
-// survives any later change to how the layout is derived.
+// A recorded path wins: it is what the backup used and survives later layout changes.
 func TestArtifactKeyPrefersTheRecordedPath(t *testing.T) {
 	m := &Manifest{Prefix: "databases", VolumePrefix: "volumes"}
 	a := Artifact{Subject: SubjectTenantDatabase, Workspace: "system", Path: "old/layout/system", File: "goma.sql.gz.gpg"}
@@ -245,8 +232,6 @@ func TestArtifactKeyPrefersTheRecordedPath(t *testing.T) {
 	}
 }
 
-// The path a restore looks under must be the path the backup wrote to. Both now
-// come from TenantPath, so this pins them together.
 func TestTenantPathMatchesWhatTheBackupWrites(t *testing.T) {
 	cases := map[string]string{
 		"system":    "databases/tenants/system",

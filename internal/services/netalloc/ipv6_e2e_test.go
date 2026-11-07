@@ -30,10 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// Behind a build tag: needs a live daemon. Proves the spec Miabi builds actually produces a
-// dual-stack network, in both modes.
-//
-//	go test -tags dockere2e ./internal/services/netalloc/ -run IPv6OnALiveDaemon -v
+// Needs a live daemon: go test -tags dockere2e ./internal/services/netalloc/ -run IPv6OnALiveDaemon -v
 func TestIPv6OnALiveDaemon(t *testing.T) {
 	cli, err := docker.New()
 	if err != nil {

@@ -27,8 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Sqlite-friendly stand-ins: the full models carry Postgres-specific column defaults sqlite can't
-// migrate, and these writes touch one column each.
+// The full models carry Postgres-specific column defaults sqlite can't migrate.
 type volumeStampRow struct {
 	ID              uint `gorm:"primaryKey"`
 	DockerName      string
@@ -59,8 +58,7 @@ func newStampDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// The first timestamp is the one that matters: keeping it is what makes a volume that was deleted and
-// recreated by hand read as replaced instead of intact.
+// Keeping the first timestamp makes a volume recreated by hand read as replaced instead of intact.
 func TestSetEngineCreatedAtWritesOnlyOnce(t *testing.T) {
 	db := newStampDB(t)
 	repo := NewVolumeRepository(db)

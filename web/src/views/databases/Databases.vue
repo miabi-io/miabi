@@ -42,9 +42,7 @@ function sizeLabel(s: DatabaseSize): string {
 }
 const form = ref<CreateForm>(emptyForm())
 
-// The disks this workspace may put a database's data on, narrowed to its plan. They depend on the
-// node, so they reload when the location changes. A failure is not fatal: the field disappears and
-// the create falls back to the workspace's default class.
+// Classes depend on the node, so they reload with the location; on failure the create uses the workspace default.
 const storageClasses = ref<StorageClassOption[]>([])
 async function loadStorageClasses() {
   if (!currentWorkspaceId.value) return
@@ -57,9 +55,7 @@ async function loadStorageClasses() {
 }
 watch(() => form.value.location, () => { if (showCreate.value) void loadStorageClasses() })
 
-// Live updates: one SSE connection streams status deltas for the whole workspace
-// (no per-row polling). A slow reconcile is kept only as a safety net — to catch
-// creates/deletes/size changes and recover if the SSE connection drops.
+// The slow reconcile is only a safety net for creates/deletes/size changes and dropped SSE connections.
 let es: EventSource | null = null
 let reconcileTimer: ReturnType<typeof setInterval> | null = null
 let inFlight = false
@@ -73,8 +69,6 @@ const engines: { value: DBEngine; label: string; icon: string; default: string }
   { value: 'mongodb', label: 'MongoDB', icon: 'mdi-leaf', default: '7.0' },
   { value: 'libsql', label: 'libSQL', icon: 'mdi-database-search', default: 'latest' },
 ]
-// Default versions resolved from the admin deployment-config catalog (overrides
-// the hardcoded fallbacks above so the form reflects the configured tags).
 const engineDefaults = ref<Record<string, string>>({})
 const engineLimits = ref<Record<string, EngineDefault>>({})
 const formLimits = computed(() => engineLimits.value[form.value.engine])
@@ -82,9 +76,7 @@ const defaultVersion = computed(
   () => engineDefaults.value[form.value.engine] || engines.find((e) => e.value === form.value.engine)?.default || 'latest',
 )
 
-// mergeList folds an incoming list into dbs while keeping the existing row
-// objects for unchanged instances, so the table patches only what changed instead
-// of re-rendering (and flickering) every row on each refresh.
+// Keeps unchanged row objects so the table patches only what changed instead of flickering.
 function mergeList(incoming: DatabaseInstance[]) {
   const byId = new Map(dbs.value.map((d) => [d.id, d]))
   dbs.value = incoming.map((item) => {
@@ -94,8 +86,7 @@ function mergeList(incoming: DatabaseInstance[]) {
   })
 }
 
-// reconcile re-fetches the list and merges it in place. Used for the initial load
-// and the slow safety-net refresh; concurrent calls are skipped.
+// Concurrent calls are skipped.
 async function reconcile(id: number | null) {
   if (!id || inFlight) return
   inFlight = true
@@ -109,8 +100,7 @@ async function reconcile(id: number | null) {
 }
 
 async function loadEngines(id: number) {
-  // Engine defaults come from the deployment-config catalog and rarely change, so
-  // they are fetched once per workspace rather than on every refresh.
+  // Rarely change, so fetched once per workspace.
   try {
     const defs = (await databaseApi.engines(id)).data.data ?? []
     engineDefaults.value = Object.fromEntries(defs.map((d) => [d.engine, d.version]))
@@ -120,8 +110,7 @@ async function loadEngines(id: number) {
   }
 }
 
-// applyStatus patches one row's status from a live SSE delta. A status for an
-// instance we don't have yet (created elsewhere) pulls in the new row.
+// A status for an unknown instance (created elsewhere) pulls in the new row.
 function applyStatus(ev: { id: number; status: DBStatus }) {
   const row = dbs.value.find((d) => d.id === ev.id)
   if (row) row.status = ev.status
@@ -163,8 +152,7 @@ async function loadWorkspace(id: number | null) {
 
 watch(currentWorkspaceId, (id) => loadWorkspace(id), { immediate: true })
 
-// Returning to a backgrounded tab: reconcile once so the list is fresh even if the
-// SSE connection was idle or reconnecting while hidden.
+// The SSE may have been idle or reconnecting while hidden.
 function onVisibility() { if (!document.hidden) reconcile(currentWorkspaceId.value) }
 document.addEventListener('visibilitychange', onVisibility)
 
@@ -317,8 +305,7 @@ function fmtBytes(n?: number): string {
               <input v-model.number="form.size_mb" type="number" min="0" class="form-input" :placeholder="$t('databases.form.noLimit')" />
               <p class="form-hint">{{ $t('databases.form.volumeHint') }}</p>
             </div>
-            <!-- Only when the operator registered more than one disk: with a single class there is
-                 nothing to choose, and the field would be a question with one answer. -->
+            <!-- With a single class there is nothing to choose. -->
             <div v-if="storageClasses.length > 1" class="form-group" style="margin-bottom: 0">
               <label class="form-label">{{ $t('databases.form.storage') }}</label>
               <select v-model="form.storage_class" class="form-select">

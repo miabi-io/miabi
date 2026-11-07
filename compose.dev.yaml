@@ -1,14 +1,8 @@
-# Miabi — local development stack.
-#
-# Builds the image from source (docker/Dockerfile), exposes Postgres/Redis on the
-# host, and serves Miabi on :9000 with throwaway credentials. No gateway/TLS.
-# For production use examples/compose/ instead, or deploy/install.sh.
-#   make compose-up   # docker compose -f compose.dev.yaml up -d
+# Local dev stack with throwaway credentials and no gateway; for production use examples/compose/ or deploy/install.sh.
 services:
   postgres:
     image: postgres:17-alpine
-    # Same platform identity as production (compose.yaml), so dev exercises the
-    # same import/protection paths instead of only finding out in prod.
+    # Same platform identity as production, so dev exercises the same import/protection paths.
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: platform-db
@@ -67,12 +61,9 @@ services:
     ports:
       - "9000:9000"
     volumes:
-      # Shared log store: execution logs are externalized out of Postgres into
-      # this volume (MIABI_LOG_DIR, default /var/lib/miabi/logs).
+      # Execution logs are externalized here (MIABI_LOG_DIR).
       - miabi-logs:/var/lib/miabi/logs
-      # Optional: bind the host procfs read-only so the admin Node page can show
-      # real host CPU/memory (MIABI_HOST_PROC, default /host/proc). Without it,
-      # Miabi falls back to /proc or the container-stats aggregate.
+      # Optional: real host CPU/memory on the admin Node page (MIABI_HOST_PROC); without it Miabi falls back to /proc.
       - /proc:/host/proc:ro
 
 volumes:

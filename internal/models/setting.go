@@ -31,8 +31,6 @@ const (
 	SettingTypeJSON   SettingType = "json"
 )
 
-// Setting is a single global, platform-wide key/value configuration entry. The
-// value is always stored as a string; Type records how to parse it.
 type Setting struct {
 	ID        uint        `json:"id" gorm:"primaryKey"`
 	Key       string      `json:"key" gorm:"uniqueIndex;not null"`
@@ -41,8 +39,6 @@ type Setting struct {
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 
-	// Pinned reports that an environment variable supplies this value. Not
-	// persisted: populated on read so the console can show the field as
-	// operator-managed instead of offering an edit that reverts on restart.
+	// Lets the console show env-supplied values as operator-managed instead of offering an edit that reverts on restart.
 	Pinned bool `json:"pinned" gorm:"-"`
 }

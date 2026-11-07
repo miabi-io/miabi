@@ -90,9 +90,7 @@ func eventBackoff(attempts int) time.Duration {
 	return maxEventBackoff
 }
 
-// DeliverEvents sends due events in sequence order and stops at the first failure, so the console
-// never sees a later event before an earlier one it could still receive. Nothing is sent while
-// this Miabi is not connected; events wait.
+// Stops at the first failure so the console never sees a later event before an earlier one.
 func (s *Service) DeliverEvents(ctx context.Context) error {
 	conn, err := s.Connection()
 	if err != nil || conn == nil || !conn.Connected || conn.NotifyURL == "" {

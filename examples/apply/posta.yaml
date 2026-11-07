@@ -1,19 +1,4 @@
-# Posta — self-hosted transactional email & SMTP platform — deployed as a single
-# miabi.io/v1 Project: a managed PostgreSQL database, a dedicated Redis, the
-# Posta server (HTTP API + web UI, embedded worker), and a public HTTPS route
-# with automatic TLS.
-#
-# This mirrors the Posta marketplace template (templates/posta) but as a
-# declarative bundle you apply directly or reconcile from Git:
-#   POST /api/v1/workspaces/{ws}/apply
-#   { "manifests": "<this file>", "dry_run": true }   # preview the plan
-#   { "manifests": "<this file>" }                     # converge the workspace
-#
-# Env interpolation available in apply/GitOps:
-#   {{ .databases.<name>.host | port | user | password | name | uri }}
-# (The {{ .inputs.* }} and {{ .secrets.* }} helpers are marketplace-only. Here,
-# keys that must stay private are listed under secretEnv so Miabi stores them
-# encrypted at rest — set strong values before applying.)
+# Posta (transactional email) as one Project; set strong secretEnv values before applying.
 apiVersion: miabi.io/v1
 kind: Project
 metadata:
@@ -30,8 +15,7 @@ spec:
         version: "17-alpine"
         instance: auto           # auto | dedicated | shared
 
-    # Dedicated Redis — async job queue (asynq) + caches. Miabi sets a
-    # password on the instance, surfaced below as .databases.posta-redis.password.
+    # Miabi sets a password on the instance, exposed as .databases.posta-redis.password.
     - apiVersion: miabi.io/v1
       kind: Database
       metadata: { name: posta-redis }
@@ -65,8 +49,7 @@ spec:
           POSTA_REDIS_ADDR: "{{ .databases.posta-redis.host }}:{{ .databases.posta-redis.port }}"
           POSTA_REDIS_PASSWORD: "{{ .databases.posta-redis.password }}"
 
-          # Security — CHANGE THESE before applying. Stored encrypted (secretEnv).
-          # (The marketplace template auto-generates jwt_secret/encryption_key for you.)
+          # CHANGE THESE before applying; stored encrypted (secretEnv).
           POSTA_JWT_SECRET: "change-me-to-a-long-random-string"
           POSTA_ENCRYPTION_KEY: "change-me-to-a-32-byte-secret!!!"   # AES-256-GCM: exactly 32 bytes
           POSTA_ADMIN_EMAIL: admin@example.com
@@ -102,8 +85,7 @@ spec:
         #     publish: true
         #     hostPort: 25
 
-    # The hostname Posta is served on (ownership + default TLS policy). DNS
-    # verification is a runtime action after apply.
+    # DNS verification is a runtime action after apply.
     - apiVersion: miabi.io/v1
       kind: Domain
       metadata: { name: posta.example.com }

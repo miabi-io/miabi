@@ -50,9 +50,7 @@ func TestLiveWindowDefaults(t *testing.T) {
 	}
 }
 
-// Redis is optional: with none wired the tracker stays silent rather than
-// erroring, since live visitors is an accent on a dashboard that otherwise reads
-// from Postgres.
+// Redis is optional: live visitors is an accent on a dashboard otherwise read from Postgres.
 func TestLiveTrackerNoRedisIsInert(t *testing.T) {
 	ctx := context.Background()
 	tr := NewLiveTracker(nil, time.Minute)
@@ -71,8 +69,7 @@ func TestLiveTrackerNoRedisIsInert(t *testing.T) {
 	}
 }
 
-// An empty or unusable batch must not reach Redis at all — the nil client here
-// would panic if a command were issued.
+// The nil client would panic if a command were issued.
 func TestLiveTrackerSkipsUnusableVisits(t *testing.T) {
 	tr := &LiveTracker{rdb: nil, window: time.Minute, scopes: map[string]struct{}{}}
 	tr.Touch(context.Background(), nil)
@@ -85,8 +82,7 @@ func TestLiveTrackerSkipsUnusableVisits(t *testing.T) {
 	}
 }
 
-// Counting a scope with no traffic must be zero, not an error, so the pill can
-// render before the first visitor arrives.
+// Zero, not an error, so the pill can render before the first visitor arrives.
 func TestLiveCountUnknownScope(t *testing.T) {
 	tr := NewLiveTracker(nil, time.Minute)
 	if n, err := tr.Count(context.Background(), 4242, 0); err != nil || n != 0 {

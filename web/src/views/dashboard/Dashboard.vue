@@ -35,15 +35,10 @@ const stacks = ref<Stack[]>([])
 const domainCount = ref(0)
 const loading = ref(false)
 
-// Destructured so the template binds the refs directly (auto-unwrapped) rather
-// than reaching through an object for every read.
 const { sample: usage, cpuSeries, memSeries, start: startUsage } = useLiveUsage()
 const { connected: streamLive, freshEventId, open: openStream, FEED_CAP } = useWorkspaceStream(reconcile)
 
-// Getting-started checklist: each step's done state is derived from real
-// resources, so it ticks itself. Steps are monotonic (a later one can't complete
-// before an earlier one), and the platform's own "Miabi System" workspace is
-// ignored for the freshly-seeded admin.
+// Steps are monotonic; the platform's "Miabi System" workspace is ignored for the freshly-seeded admin.
 const showOnboarding = computed(() => !auth.user?.onboarding_dismissed)
 const hasWorkspace = computed(() => ws.workspaces.some((w) => !w.system))
 const hasApp = computed(() => hasWorkspace.value && (overview.value?.total_apps ?? 0) > 0)
@@ -57,8 +52,7 @@ const greeting = computed(() => {
   return name ? `${part}, ${name}` : part
 })
 
-// At-a-glance health derived from the overview counts. Failures get a banner of
-// their own below, so this pill stays quiet and doesn't compete with it.
+// Failures get their own banner, so this pill stays quiet.
 const health = computed(() => {
   const o = overview.value
   if (!o) return { tone: 'neutral', icon: 'mdi-circle-outline', text: t('dashboard.health.loading') }
@@ -108,8 +102,7 @@ async function load(id: number | null) {
   try {
     overview.value = (await workspaceApi.overview(id)).data.data
     stacks.value = (await stackApi.list(id)).data.data ?? []
-    // Domain count drives the onboarding checklist; only fetched when the card
-    // is still showing, to avoid an extra request for settled users.
+    // Only fetched while the onboarding card shows, to spare settled users a request.
     if (showOnboarding.value) {
       domainCount.value = (await domainApi.list(id)).data.data?.length ?? 0
     }
@@ -120,8 +113,7 @@ async function load(id: number | null) {
   }
 }
 
-// reconcile re-reads the counts without tearing the page down to a skeleton, so
-// health and per-app status stay truthful as events arrive.
+// Re-reads counts without a skeleton so health and per-app status stay truthful as events arrive.
 async function reconcile(id: number) {
   try {
     const [ov, st] = await Promise.all([workspaceApi.overview(id), stackApi.list(id)])
@@ -132,8 +124,6 @@ async function reconcile(id: number) {
   }
 }
 
-// A streamed event lands in the timeline immediately, enriched with its app's
-// name from the overview we already hold.
 function spliceEvent(e: AppEvent) {
   const ov = overview.value
   if (!ov) return
@@ -181,8 +171,6 @@ watch(
       </div>
     </div>
 
-    <!-- Failures get one actionable banner at the top rather than a colour
-         somewhere in a stat tile. -->
     <div v-if="failedCount > 0" class="alert-banner" role="alert">
       <span class="mdi mdi-alert-circle"></span>
       <span class="ab-text">
@@ -223,8 +211,6 @@ watch(
         :mem-series="memSeries"
       />
 
-      <!-- Inventory keeps the full width on wide screens; activity rides
-           alongside it instead of adding another screen of scroll. -->
       <div class="dash-columns">
         <div class="dash-main">
           <AppsTable :apps="overview.apps" :can-edit="ws.canEdit" />

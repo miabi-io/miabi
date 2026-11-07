@@ -17,16 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Turns src/theme/accents.json into src/assets/accents.css.
-//
-// The default accent is not emitted: it already lives in styles.css as the :root
-// ramp, so emitting it again would mean two places to change one colour.
-//
-//   npm run gen:accents
-//
-// It also runs as `prebuild`, so the shipped stylesheet is always the JSON's
-// current output and a forgotten run cannot reach production. The generated file
-// is committed anyway, so `npm run dev` needs no build step first.
+// The default accent lives in styles.css as the :root ramp, so it is not emitted; runs as prebuild.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

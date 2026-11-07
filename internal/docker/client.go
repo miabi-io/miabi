@@ -51,8 +51,6 @@ type engineClient struct {
 	cli *client.Client
 }
 
-// New connects to the Docker engine using the standard environment
-// (DOCKER_HOST etc.) with API version negotiation.
 func New() (Client, error) {
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
@@ -95,10 +93,7 @@ func (e *engineClient) Info(ctx context.Context) (Info, error) {
 	}, nil
 }
 
-// Capabilities reports what the connected engine supports, from Ping + Info in
-// one round-trip. It maps the SDK's too-old-daemon error onto ErrEngineTooOld so
-// the caller sees a clear reason ("engine too old, Miabi requires >= X") rather
-// than an obscure SDK error.
+// Maps the SDK's too-old-daemon error to ErrEngineTooOld for a clear message.
 func (e *engineClient) Capabilities(ctx context.Context) (Capabilities, error) {
 	ping, err := e.cli.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
 	if err != nil {
@@ -124,9 +119,7 @@ func (e *engineClient) Capabilities(ctx context.Context) (Capabilities, error) {
 	return caps, nil
 }
 
-// selectorFilters is the ONLY place internal/docker constructs an engine filter
-// set, so a future change to the Filters API touches one function. Pairs are
-// key,value,key,value…; a trailing unpaired key is ignored.
+// The only place internal/docker builds engine filters, so a Filters API change touches one function.
 func selectorFilters(pairs ...string) client.Filters {
 	f := client.Filters{}
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -135,7 +128,6 @@ func selectorFilters(pairs ...string) client.Filters {
 	return f
 }
 
-// toDeviceMappings exposes host device nodes at the same path in the container.
 // Paths are allow-listed before they reach here; this does no policy.
 func toDeviceMappings(paths []string) []container.DeviceMapping {
 	if len(paths) == 0 {
@@ -152,10 +144,7 @@ func toDeviceMappings(paths []string) []container.DeviceMapping {
 	return out
 }
 
-// toDeviceRequests maps Miabi GPU requests to Docker's DeviceRequest form. Each
-// request targets the "nvidia" device driver; DeviceIDs pins exact cards while a
-// nil DeviceIDs falls back to Count-of-any (-1 = all). An empty capability set
-// defaults to [["gpu"]].
+// A nil DeviceIDs means Count-of-any (-1 = all); an empty capability set defaults to [["gpu"]].
 func toDeviceRequests(gpus []GPURequest) []container.DeviceRequest {
 	if len(gpus) == 0 {
 		return nil
@@ -289,8 +278,6 @@ func (e *engineClient) InspectContainerConfig(ctx context.Context, id string) (C
 	return cfg, nil
 }
 
-// restartPolicyString renders an engine restart policy back to the string form Miabi stores
-// (e.g. "on-failure:3"). Empty and "no" both map to "no".
 func restartPolicyString(p container.RestartPolicy) string {
 	switch p.Name {
 	case container.RestartPolicyAlways:
@@ -323,10 +310,7 @@ func hostBinds(mounts []BindMount) []string {
 	return out
 }
 
-// hostBindMounts renders the binds that must not be auto-created. A bind string makes the daemon
-// create a missing source directory; the Mount API with CreateMountpoint unset makes it refuse,
-// which is how a storage class whose disk is not mounted fails loudly instead of quietly landing
-// on the root filesystem.
+// The Mount API refuses a missing source, so an unmounted storage-class disk fails instead of filling the root fs.
 func hostBindMounts(mounts []BindMount) []mount.Mount {
 	var out []mount.Mount
 	for _, m := range mounts {
@@ -341,9 +325,7 @@ func hostBindMounts(mounts []BindMount) []mount.Mount {
 	return out
 }
 
-// containerVolumeMounts renders a RunSpec's named volumes and host binds for the HostConfig.
-// Named volumes are bind strings unless NoCopyVolumes is set, in which case they use the Mount
-// API with NoCopy so copy-up can't undo the restricted-profile chown. Host binds stay plain.
+// NoCopy keeps copy-up from undoing the restricted-profile chown.
 func containerVolumeMounts(spec RunSpec) ([]string, []mount.Mount) {
 	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
 	var volMounts []mount.Mount
@@ -448,8 +430,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	if err != nil {
 		return "", err
 	}
-	// Files land between create and start so the app never sees a half-written
-	// config: the container has a filesystem but no process yet.
+	// Files land between create and start so the app never sees a half-written config.
 	if err := e.copyFiles(ctx, created.ID, spec.Files); err != nil {
 		return created.ID, err
 	}
@@ -459,10 +440,7 @@ func (e *engineClient) RunContainer(ctx context.Context, spec RunSpec) (string, 
 	return created.ID, nil
 }
 
-// copyFiles writes the entries into the created container as one tar stream
-// extracted at /. CopyToContainer does not create parent directories, so the
-// archive carries a directory entry for each one; a nested key would otherwise
-// fail with "could not find the file".
+// CopyToContainer does not create parent directories, so the tar carries an entry for each.
 func (e *engineClient) copyFiles(ctx context.Context, id string, files []FileEntry) error {
 	if len(files) == 0 {
 		return nil
@@ -510,9 +488,7 @@ func (e *engineClient) copyFiles(ctx context.Context, id string, files []FileEnt
 	return nil
 }
 
-// restartPolicy maps a RunSpec restart-policy string onto the Docker engine policy. Empty or
-// unrecognized falls back to "unless-stopped", the platform's historical default. "on-failure"
-// may carry a ":N" max-retry suffix.
+// Empty or unrecognized falls back to "unless-stopped", the platform's historical default.
 func restartPolicy(p string) container.RestartPolicy {
 	switch {
 	case p == string(container.RestartPolicyDisabled): // "no"
@@ -641,9 +617,6 @@ func (e *engineClient) RunOneShot(ctx context.Context, spec RunSpec) (int, strin
 	return exitCode, e.collectLogs(id), nil
 }
 
-// RunOneShotStream runs a one-shot helper container to completion, streaming its combined output
-// to sink line-by-line as it runs, then removes it and returns the exit code. Used by the
-// buildpack build provider, which needs live `pack build` output.
 func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink func(LogLine) error) (int, error) {
 	id, err := e.createOneShot(ctx, spec)
 	if err != nil {
@@ -653,15 +626,12 @@ func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink 
 		_, _ = e.cli.ContainerRemove(context.Background(), id, client.ContainerRemoveOptions{Force: true})
 	}()
 
-	// Wait must be set up before start so a fast-exiting container's status isn't
-	// missed.
+	// Wait must be set up before start so a fast-exiting container's status isn't missed.
 	wait := e.cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return -1, err
 	}
 
-	// Follow the logs until the stream closes (container exit) or the context is
-	// cancelled. stdout and stderr both feed the same sink, interleaved as emitted.
 	rc, lerr := e.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: true,
 	})
@@ -695,8 +665,7 @@ func (e *engineClient) CopyToVolume(ctx context.Context, volumeName, image, name
 		_, _ = e.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
-	// CopyToContainer extracts a tar at the destination path; stream a single-file
-	// tar so large dumps don't buffer in memory.
+	// Stream a single-file tar so large dumps don't buffer in memory.
 	pr, pw := io.Pipe()
 	go func() {
 		tw := tar.NewWriter(pw)
@@ -718,8 +687,6 @@ func (e *engineClient) CopyToVolume(ctx context.Context, volumeName, image, name
 	return nil
 }
 
-// ReadContainerFile reads a single regular file from a container's filesystem
-// via CopyFromContainer (a tar stream with one entry), capped at 5 MiB.
 func (e *engineClient) ReadContainerFile(ctx context.Context, containerID, path string) ([]byte, error) {
 	res, err := e.cli.CopyFromContainer(ctx, containerID, client.CopyFromContainerOptions{SourcePath: path})
 	if err != nil {
@@ -754,8 +721,6 @@ func (e *engineClient) CopyFileFromVolume(ctx context.Context, volumeName, image
 		_, _ = e.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
 	}
 
-	// CopyFromContainer returns the path as a tar stream; the file we want is
-	// the single entry inside it.
 	res, err := e.cli.CopyFromContainer(ctx, created.ID, client.CopyFromContainerOptions{SourcePath: "/backup/" + file})
 	if err != nil {
 		cleanup()
@@ -774,8 +739,6 @@ func (e *engineClient) CopyFileFromVolume(ctx context.Context, volumeName, image
 	return &volumeFileReader{tr: tr, closer: res.Content, cleanup: cleanup}, hdr.Size, nil
 }
 
-// volumeFileReader streams one file out of a CopyFromContainer tar archive and, on Close,
-// releases the tar stream and removes the helper container.
 type volumeFileReader struct {
 	tr      *tar.Reader
 	closer  io.Closer
@@ -807,8 +770,7 @@ func (e *engineClient) collectLogs(id string) string {
 }
 
 func (e *engineClient) StreamEvents(ctx context.Context, sink func(EngineEvent) error) error {
-	// Stream all container lifecycle events and filter in Go: the subscriber
-	// cheaply ignores any without an io.miabi.app label (see events.Subscriber).
+	// Filtered in Go: the subscriber cheaply ignores events without an io.miabi.app label.
 	evs := e.cli.Events(ctx, client.EventsListOptions{Filters: selectorFilters("type", "container")})
 	for {
 		select {
@@ -861,8 +823,7 @@ func (e *engineClient) PushImage(ctx context.Context, ref string, auth *Registry
 		return err
 	}
 	defer func() { _ = rc.Close() }()
-	// Push errors (auth denied, quota) surface as a JSON {"error":"…"} message in
-	// the progress stream rather than a transport error, so scan for one.
+	// Push errors arrive as a JSON error message in the progress stream, not a transport error.
 	dec := json.NewDecoder(rc)
 	for {
 		var msg struct {
@@ -900,8 +861,6 @@ func (e *engineClient) BuildImage(ctx context.Context, contextDir, dockerfile, t
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// The build response is a stream of JSON objects: {"stream":"..."} for
-	// progress and {"error":"..."} on failure.
 	dec := json.NewDecoder(resp.Body)
 	for {
 		var msg struct {
@@ -923,18 +882,13 @@ func (e *engineClient) BuildImage(ctx context.Context, contextDir, dockerfile, t
 	}
 }
 
-// InspectImage returns a local image's identity (ID + digest) and size. Used by
-// the pipeline build step to capture the digest of the image it just built and
-// by deploy-by-digest to record what ran.
 func (e *engineClient) InspectImage(ctx context.Context, ref string) (ImageInspect, error) {
 	insp, err := e.cli.ImageInspect(ctx, ref)
 	if err != nil {
 		return ImageInspect{}, wrapNotFound(err)
 	}
 	digest := insp.ID
-	// A pushed/pulled image carries a repo digest (repo@sha256:…); prefer it so
-	// provenance survives a registry round-trip. A locally-built image has none,
-	// so the content-addressable ID is the stable local handle.
+	// Prefer the repo digest so provenance survives a registry round-trip; a local build only has its ID.
 	if len(insp.RepoDigests) > 0 {
 		if _, d, ok := strings.Cut(insp.RepoDigests[0], "@"); ok && d != "" {
 			digest = d
@@ -943,8 +897,6 @@ func (e *engineClient) InspectImage(ctx context.Context, ref string) (ImageInspe
 	return ImageInspect{ID: insp.ID, Digest: digest, Size: insp.Size}, nil
 }
 
-// ImageExists reports whether ref resolves to a local image. It lets a deploy
-// no-op a redundant pull/build when the artifact is already present on the node.
 func (e *engineClient) ImageExists(ctx context.Context, ref string) (bool, error) {
 	_, err := e.cli.ImageInspect(ctx, ref)
 	if err != nil {
@@ -956,8 +908,7 @@ func (e *engineClient) ImageExists(ctx context.Context, ref string) (bool, error
 	return true, nil
 }
 
-// RemoveImage deletes a local image by reference. A not-found image is success
-// (idempotent), so GC can prune a row whose image a prior sweep already removed.
+// A not-found image is success, so GC can prune a row a prior sweep already removed.
 func (e *engineClient) RemoveImage(ctx context.Context, ref string, force bool) error {
 	_, err := e.cli.ImageRemove(ctx, ref, client.ImageRemoveOptions{Force: force, PruneChildren: true})
 	if err != nil && cerrdefs.IsNotFound(err) {
@@ -966,13 +917,9 @@ func (e *engineClient) RemoveImage(ctx context.Context, ref string, force bool) 
 	return err
 }
 
-// maxLogTail bounds how many historical log lines a single stream may replay on connect, so a
-// request for "all" against a chatty container can't flood the client or pin memory.
+// Bounds replay on connect so "all" on a chatty container can't flood the client or pin memory.
 const maxLogTail = 5000
 
-// sanitizeTail validates the caller-supplied tail count before it reaches the Docker API. Empty
-// defaults to a small window; "all" and out-of-range numbers are clamped to maxLogTail;
-// non-numeric garbage falls back to the default.
 func sanitizeTail(tail string) string {
 	switch tail {
 	case "":
@@ -1035,8 +982,7 @@ func (e *engineClient) StreamStats(ctx context.Context, id string, sink func(Sta
 }
 
 func (e *engineClient) StatsOnce(ctx context.Context, id string) (StatsSample, error) {
-	// IncludePreviousSample makes the daemon collect a prior sample so PreCPUStats
-	// is populated and the CPU delta is non-zero on a single read.
+	// IncludePreviousSample populates PreCPUStats so the CPU delta is non-zero on a single read.
 	res, err := e.cli.ContainerStats(ctx, id, client.ContainerStatsOptions{IncludePreviousSample: true})
 	if err != nil {
 		return StatsSample{}, wrapNotFound(err)
@@ -1057,8 +1003,6 @@ func (e *engineClient) CreateNetwork(ctx context.Context, name, driver string, i
 	return e.CreateNetworkSpec(ctx, NetworkSpec{Name: name, Driver: driver, Internal: internal})
 }
 
-// createNetworkOptions builds the Docker create options from a NetworkSpec,
-// including IPAM when a subnet is set.
 func createNetworkOptions(spec NetworkSpec) client.NetworkCreateOptions {
 	driver := spec.Driver
 	if driver == "" {
@@ -1089,8 +1033,7 @@ func createNetworkOptions(spec NetworkSpec) client.NetworkCreateOptions {
 			opts.IPAM = &network.IPAM{Config: []network.IPAMConfig{cfg}}
 		}
 	}
-	// A pinned v6 range rides alongside the v4 one in the same IPAM config. Empty leaves it to the
-	// daemon, which assigns a ULA /64 when EnableIPv6 is set.
+	// Empty leaves it to the daemon, which assigns a ULA /64 when EnableIPv6 is set.
 	if spec.IPv6Subnet != "" {
 		if prefix, perr := netip.ParsePrefix(spec.IPv6Subnet); perr == nil {
 			if opts.IPAM == nil {
@@ -1111,8 +1054,6 @@ func (e *engineClient) CreateNetworkSpec(ctx context.Context, spec NetworkSpec) 
 	return created.ID, nil
 }
 
-// EnsureNetworkSpec returns the existing network of the same name, or creates it
-// from the spec. Idempotent — used for the shared gateway and remote-node recreate.
 func (e *engineClient) EnsureNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error) {
 	if existing, err := e.cli.NetworkInspect(ctx, spec.Name, client.NetworkInspectOptions{}); err == nil {
 		return existing.Network.ID, nil
@@ -1177,8 +1118,7 @@ func (e *engineClient) ListNetworks(ctx context.Context) ([]Network, error) {
 	for _, n := range res.Items {
 		net := Network{ID: n.ID, Name: n.Name, Driver: n.Driver, Scope: n.Scope, Labels: n.Labels}
 		net.EnableIPv6 = n.EnableIPv6
-		// A dual-stack network carries both families in IPAM, in no guaranteed order, so each entry
-		// is placed by what it actually is rather than by position.
+		// Dual-stack IPAM entries come in no guaranteed order, so classify each by family.
 		for _, cfg := range n.IPAM.Config {
 			if !cfg.Subnet.IsValid() {
 				continue
@@ -1216,25 +1156,19 @@ func (e *engineClient) CreateVolumeWith(ctx context.Context, spec VolumeSpec) (V
 		labels = map[string]string{}
 	}
 	labels[ManagedLabel] = "true"
-	// Record the declared capacity as a label. A *hard* size cap needs a sized backing volume, which
-	// depends on the node's storage backend and is layered on separately; the label makes the size
-	// visible to `docker volume inspect` and to quota tracking for soft enforcement.
+	// The label is a soft size record; a hard cap needs a sized backing volume layered on separately.
 	if spec.SizeBytes > 0 {
 		labels[LabelSizeBytes] = strconv.FormatInt(spec.SizeBytes, 10)
 	}
 	opts := client.VolumeCreateOptions{Name: spec.Name, Labels: labels}
-	// Shared-storage drivers (nfs/cifs/…) carry their backend in driver options;
-	// an empty driver uses Docker's default (local). The NFS/CIFS case uses the
-	// built-in local driver with mount options, so no external plugin is needed.
+	// NFS/CIFS use the built-in local driver with mount options, so no external plugin is needed.
 	if spec.Driver != "" {
 		opts.Driver = spec.Driver
 	}
 	if len(spec.DriverOpts) > 0 {
 		opts.DriverOpts = spec.DriverOpts
 	}
-	// A storage class backs the volume with a host directory via the local driver's bind options.
-	// Docker accepts this even when the directory is absent and only fails when a container mounts
-	// it, so the caller creates the directory first (storageclass.EnsureDir).
+	// Docker only fails on a missing directory at mount time, so the caller creates it first (storageclass.EnsureDir).
 	if p := strings.TrimSpace(spec.DevicePath); p != "" {
 		if opts.DriverOpts == nil {
 			opts.DriverOpts = map[string]string{}
@@ -1277,8 +1211,6 @@ func (e *engineClient) RemoveVolume(ctx context.Context, name string, force bool
 	return wrapNotFound(err)
 }
 
-// encodeRegistryAuth base64-encodes a registry credential for the Docker API's
-// X-Registry-Auth header. Returns "" (no error) when auth is nil/empty.
 func encodeRegistryAuth(auth *RegistryAuth) (string, error) {
 	if auth == nil || (auth.Username == "" && auth.Password == "") {
 		return "", nil

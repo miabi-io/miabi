@@ -38,7 +38,6 @@ type migrationCode struct {
 	Workspace string `json:"w,omitempty"`
 }
 
-// EncodeMigrationCode packs what an importer needs into the one string the source's owner copies.
 // Workspace is empty for an instance migration, where the importer picks.
 func EncodeMigrationCode(url, key, workspace string) string {
 	raw, _ := json.Marshal(migrationCode{URL: strings.TrimRight(url, "/"), Key: key, Workspace: workspace})
@@ -62,8 +61,6 @@ func DecodeMigrationCode(code string) (url, key, workspace string, err error) {
 	return c.URL, c.Key, c.Workspace, nil
 }
 
-// resolve fills the source from its code, when one was given. The code's workspace is returned for a
-// caller that did not name one.
 func (src *MigrationSource) resolve() (string, error) {
 	if strings.TrimSpace(src.Code) == "" {
 		return "", nil

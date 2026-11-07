@@ -372,9 +372,7 @@ func (h *BillingHandler) record(c *okapi.Context, action, externalID string, met
 // idempotentReplayHeader marks an answer replayed from an earlier request with the same key.
 const idempotentReplayHeader = "Idempotent-Replayed"
 
-// write runs a Billing API write and answers it. With an Idempotency-Key the answer is stored, and
-// a retry of the same request gets it back instead of applying the change twice. okapi offers no
-// way to wrap the response writer, so writes build their envelope here rather than in a middleware.
+// okapi cannot wrap the response writer, so idempotent envelopes are built here, not in a middleware.
 func (h *BillingHandler) write(c *okapi.Context, body any, run func() (any, error)) error {
 	key := strings.TrimSpace(c.Header("Idempotency-Key"))
 	if key == "" {
@@ -405,8 +403,7 @@ func (h *BillingHandler) write(c *okapi.Context, body any, run func() (any, erro
 	return writeRaw(c, status, out)
 }
 
-// billingAnswer runs a write and renders its envelope; errors without a stable code become a 500
-// without detail.
+// Errors without a stable code become a 500 without detail.
 func billingAnswer(run func() (any, error)) (int, []byte) {
 	data, err := run()
 	if err == nil {
@@ -446,8 +443,7 @@ const (
 
 // AdminInfo is platform information and statuses the admin screens share.
 type AdminInfo struct {
-	// BillingAPI is "off" (MIABI_BILLING_API_ENABLED unset), "unlicensed" (on, but the licence
-	// lacks billing) or "on".
+	// "unlicensed" means the API is enabled but the licence lacks billing.
 	BillingAPI string `json:"billing_api" enum:"off,unlicensed,on"`
 	// MigrationEnabled is MIABI_MIGRATION_ENABLED: workspaces may move to and from other installs.
 	MigrationEnabled bool `json:"migration_enabled"`

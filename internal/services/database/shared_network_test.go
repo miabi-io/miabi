@@ -39,9 +39,7 @@ func (f fakeNetworks) EnsureDefault(context.Context, uint) (*models.Network, err
 
 func (f fakeNetworks) Get(uint, uint) (*models.Network, error) { return f.net, f.err }
 
-// Provisioning used to fall back to the shared proxy network when a workspace's own network could
-// not be resolved — putting the database where every tenant's routed containers can reach it, and
-// pinning that choice for the instance's lifetime. It must refuse instead.
+// Falling back to the shared proxy network would expose the DB to every tenant for its lifetime; it must refuse.
 func TestDefaultNetworkRefusesRatherThanShare(t *testing.T) {
 	cases := []struct {
 		name string

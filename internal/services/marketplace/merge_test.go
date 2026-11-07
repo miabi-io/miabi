@@ -89,9 +89,6 @@ func findEntry(entries []CatalogEntry, slug string) (CatalogEntry, bool) {
 	return CatalogEntry{}, false
 }
 
-// TestMergeSyncedRegistry covers the merge outcomes: a synced official template
-// overrides the embedded floor, and community templates surface as their own
-// source.
 func TestMergeSyncedRegistry(t *testing.T) {
 	s := &Service{}
 	s.SetRemote(&fakeRemote{tpls: []remote.DecodedTemplate{
@@ -123,9 +120,7 @@ func TestMergeSyncedRegistry(t *testing.T) {
 	}
 }
 
-// TestMergeRemoteOverridesBuiltin asserts the registry is authoritative for
-// official templates: its copy wins over the built-in floor even when its
-// version is older (the floor is a vendored snapshot, not a version authority).
+// The registry wins even with an older version: the floor is a vendored snapshot, not a version authority.
 func TestMergeRemoteOverridesBuiltin(t *testing.T) {
 	s := &Service{}
 	s.SetRemote(&fakeRemote{tpls: []remote.DecodedTemplate{
@@ -146,8 +141,6 @@ func TestMergeRemoteOverridesBuiltin(t *testing.T) {
 	}
 }
 
-// TestMergeFloorFillsSlugsAbsentFromRegistry asserts the embedded floor still
-// serves slugs the registry does not deliver — the offline fallback.
 func TestMergeFloorFillsSlugsAbsentFromRegistry(t *testing.T) {
 	floor := List()
 	if len(floor) == 0 {
@@ -204,8 +197,6 @@ func TestMergeOrdersByDisplayName(t *testing.T) {
 		}
 	}
 
-	// And the first entry overall must not be a community template purely
-	// because of its source label.
 	if len(list) > 0 && list[0].DisplayName != "Alpha" {
 		t.Fatalf("first entry = %q (%s), want the alphabetically first template",
 			list[0].DisplayName, list[0].Source)

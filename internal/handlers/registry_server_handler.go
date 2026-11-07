@@ -33,8 +33,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// RegistryServerHandler serves the internal forwardAuth endpoint (called by the
-// gateway on every /v2/* request) and the per-workspace registry info.
 type RegistryServerHandler struct {
 	svc        *registryserver.Service
 	workspaces *repositories.WorkspaceRepository
@@ -44,9 +42,7 @@ func NewRegistryServerHandler(svc *registryserver.Service, workspaces *repositor
 	return &RegistryServerHandler{svc: svc, workspaces: workspaces}
 }
 
-// Authenticate is the Goma forwardAuth target: it authorizes a forwarded registry request from
-// the docker Basic credentials, the original method and the requested repository. 2xx allows,
-// 401 challenges, 403 denies. Unauthenticated by design — only the gateway can reach it.
+// 2xx allows, 401 challenges, 403 denies; unauthenticated by design since only the gateway can reach it.
 func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 	res := h.svc.Authorize(registryserver.AuthInput{
 		Authorization: c.Header("Authorization"),
@@ -56,9 +52,7 @@ func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 	hasAuth := c.Header("Authorization") != ""
 	switch {
 	case res.Status == http.StatusForbidden:
-		// A 403 (cross-tenant / scope / unknown namespace) is a real
-		// misconfiguration the operator needs to see — the reason never reaches the
-		// docker client (the gateway returns a bare 403), so surface it here.
+		// The gateway returns a bare 403 to docker, so the reason is only visible in this log.
 		logger.Warn("registry auth denied",
 			"fwd_method", c.Header("X-Forwarded-Method"),
 			"fwd_uri", c.Header("X-Forwarded-Uri"),
@@ -66,9 +60,7 @@ func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 			"reason", res.Reason,
 		)
 	case res.Status == http.StatusUnauthorized && hasAuth:
-		// A 401 WITH credentials is a rejected token (invalid/expired) — a real
-		// failure, distinct from the first-request challenge (no creds) that docker
-		// always triggers. Surface it so a bad/missing runner token is visible.
+		// A 401 with credentials is a rejected token, unlike docker's credential-less first challenge.
 		logger.Warn("registry auth rejected credentials",
 			"fwd_method", c.Header("X-Forwarded-Method"),
 			"fwd_uri", c.Header("X-Forwarded-Uri"),
@@ -87,9 +79,7 @@ func (h *RegistryServerHandler) Authenticate(c *okapi.Context) error {
 		c.SetHeader("WWW-Authenticate", registryserver.Realm)
 	}
 	if res.Allowed() {
-		// The gateway copies these from the forwardAuth response and rewrites the repository namespace
-		// segment to X-Miabi-Registry-Namespace (ws_<id>) before forwarding, so storage keys off the
-		// immutable id while users keep addressing by workspace name (rename-safe).
+		// The gateway rewrites the namespace to ws_<id>, so storage keys off the immutable id (rename-safe).
 		c.SetHeader("X-Miabi-Registry-Namespace", res.Namespace)
 		c.SetHeader("X-Miabi-Workspace", res.Workspace)
 		c.SetHeader("X-Miabi-Workspace-Id", strconv.FormatUint(uint64(res.WorkspaceID), 10))
@@ -112,15 +102,11 @@ type RegistryInfo struct {
 	Namespace    string `json:"namespace"`     // the workspace name
 	ImagePrefix  string `json:"image_prefix"`  // <host>/<namespace>
 	LoginExample string `json:"login_example"` // docker login snippet
-	// DeleteEnabled reports the platform's registry delete switch. Without it a
-	// client would offer a delete action that always fails — the role check alone
-	// isn't enough to know whether deletion is possible.
+	// The role check alone isn't enough to know whether deletion is possible.
 	DeleteEnabled bool `json:"delete_enabled"`
 }
 
-// Info returns the registry connection details for the scoped workspace, so the
-// UI can render the docker login/tag/push snippet. Membership is enforced by
-// WorkspaceScope.
+// Membership is enforced by WorkspaceScope.
 func (h *RegistryServerHandler) Info(c *okapi.Context) error {
 	ws, err := h.workspaces.FindByID(middlewares.WorkspaceID(c))
 	if err != nil {
@@ -144,9 +130,7 @@ func (h *RegistryServerHandler) Info(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// Repositories lists a page of the workspace's registry repositories, each with its tag count and
-// a preview of its newest tags. Query: page, size, q, tag_limit. Only the page's repositories have
-// their tags read from the registry, so cost is bounded by page size, not by image count.
+// Only the page's repositories have tags read, so cost is bounded by page size.
 func (h *RegistryServerHandler) Repositories(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	repos, total, err := h.svc.ListRepositoriesPage(
@@ -159,16 +143,12 @@ func (h *RegistryServerHandler) Repositories(c *okapi.Context) error {
 	return paginated(c, repos, int64(total), page, size)
 }
 
-// repoParam reads the repository name from the ?name= query parameter. It is a query parameter
-// rather than a path segment because an image name may itself contain slashes ("team/api"),
-// which a path segment cannot carry unambiguously.
+// A query param because an image name may contain slashes ("team/api").
 func repoParam(c *okapi.Context) (string, bool) {
 	name := strings.TrimSpace(c.Query("name"))
 	return name, name != ""
 }
 
-// RepositoryOverview returns a single repository's summary: tag count, a preview
-// of the newest tags, and the newest tag with its digest, size, and provenance.
 func (h *RegistryServerHandler) RepositoryOverview(c *okapi.Context) error {
 	name, okName := repoParam(c)
 	if !okName {
@@ -187,9 +167,6 @@ func (h *RegistryServerHandler) RepositoryOverview(c *okapi.Context) error {
 	return ok(c, ov)
 }
 
-// RepositoryTags lists a page of a repository's tags in display order, enriched
-// with digest, size, in-use state, and build provenance. Query: name, page,
-// size, q (filters on tag name).
 func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
 	name, okName := repoParam(c)
 	if !okName {
@@ -211,8 +188,6 @@ func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
 	return paginated(c, tags, int64(total), page, size)
 }
 
-// DeleteTag deletes a tag from a workspace repository (developer+; resolves the
-// tag to its manifest digest and deletes the manifest).
 func (h *RegistryServerHandler) DeleteTag(c *okapi.Context) error {
 	image := c.Param("repo")
 	tag := c.Param("tag")

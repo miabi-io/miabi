@@ -32,8 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// oneEngine plays two nodes with the local engine, so a copy crosses the same splice a real move does
-// without needing a second machine.
+// Plays two nodes with the local engine so a copy crosses the same splice a real move does.
 type oneEngine struct{ dc docker.Client }
 
 func (o oneEngine) For(uint) (docker.Client, error) { return o.dc, nil }

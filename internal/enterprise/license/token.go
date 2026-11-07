@@ -8,14 +8,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package license verifies Miabi's offline, signed commercial license token: an Ed25519-signed
-// claims blob verified against a keyring of public keys embedded in the binary, so verification
-// works air-gapped. It is pure (no DB, no build tag).
-//
-// The wire format is "miabi-v1.<kid>.<base64url(claims)>.<base64url(signature)>". The signature
-// covers everything before the last dot, so a swapped kid breaks it, and the kid picks the key
-// from the keyring, so a signing key can rotate without breaking installed licenses. It matches
-// the customer portal's pkg/license, which signs; keep the two in step.
+// Package license verifies Ed25519-signed tokens offline; keep in step with the portal's pkg/license, which signs.
 package license
 
 import (
@@ -121,8 +114,6 @@ func KeyID(token string) string {
 	return parts[1]
 }
 
-// Verify checks a token against the keyring and returns its claims: the prefix, then the key id,
-// then the signature, then the product claim.
 func Verify(ring Keyring, token string) (Claims, error) {
 	var c Claims
 	parts := strings.Split(strings.TrimSpace(token), ".")

@@ -18,10 +18,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Theme and language for the sign-in pages, in one popover. Both are device
-// settings until there is an account: the theme pick is held as unsynced and the
-// language is stored locally, and each is pushed to the account at the next
-// sign-in (stores/theme.ts, stores/language.ts).
+// Device settings until sign-in, then pushed to the account (stores/theme.ts, stores/language.ts).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LANGUAGES } from '@/i18n/languages'
@@ -36,8 +33,7 @@ const theme = useThemeStore()
 const open = ref(false)
 const trigger = ref<HTMLButtonElement | null>(null)
 
-// Same order and icons as the console's user menu, so the control is the one
-// users already know once they are signed in.
+// Same order and icons as the console's user menu, so it is familiar once signed in.
 const themeModes = computed<{ value: ThemeMode; label: string; icon: string }[]>(() => [
   { value: 'system', label: t('preferences.theme.system'), icon: 'mdi-monitor' },
   { value: 'light', label: t('preferences.theme.light'), icon: 'mdi-white-balance-sunny' },

@@ -43,9 +43,7 @@ func NewMarketplaceHandler(svc *marketplace.Service, auditLog *audit.Logger) *Ma
 // SetPlacer wires the platform-admin check that lets an install target a restricted location.
 func (h *MarketplaceHandler) SetPlacer(p *Placer) { h.placer = p }
 
-// InstallRequest installs a template version into the workspace. Inputs answers
-// the template's questions; Placements optionally pins a database dependency
-// (by manifest db name) to an existing instance id.
+// Placements pins a database dependency (by manifest db name) to an existing instance id.
 type InstallRequest struct {
 	Body struct {
 		Name           string            `json:"name" required:"true"` // template handle
@@ -59,14 +57,10 @@ type InstallRequest struct {
 	} `json:"body"`
 }
 
-// ListTemplates returns the public catalog — embedded official floor merged with
-// the synced official+community registry (no scope required beyond login).
 func (h *MarketplaceHandler) ListTemplates(c *okapi.Context) error {
 	return ok(c, h.svc.ListPublic())
 }
 
-// GetTemplate returns one template: the listing entry plus the full manifest of
-// the requested version (an empty ?version selects the latest) for the wizard.
 func (h *MarketplaceHandler) GetTemplate(c *okapi.Context) error {
 	name := c.Param("name")
 	entry, found := h.svc.GetPublicEntry(name)
@@ -114,9 +108,6 @@ func (h *MarketplaceHandler) Install(c *okapi.Context, req *InstallRequest) erro
 	return created(c, result)
 }
 
-// StartInstall begins an asynchronous install and returns the initial job
-// snapshot. The client streams live progress from InstallJobEvents and navigates
-// to the created app/stack once the job reports success.
 func (h *MarketplaceHandler) StartInstall(c *okapi.Context, req *InstallRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	job, err := h.svc.StartInstall(wsID, marketplace.InstallInput{
@@ -149,8 +140,6 @@ func (h *MarketplaceHandler) StartInstall(c *okapi.Context, req *InstallRequest)
 	return created(c, job)
 }
 
-// LocationDatabases lists the database instances an install into ?location= may reuse or pin; an empty
-// location is the workspace default.
 func (h *MarketplaceHandler) LocationDatabases(c *okapi.Context) error {
 	list, err := h.svc.LocationDatabases(middlewares.WorkspaceID(c), c.Query("location"), h.placer.admin(c))
 	if err != nil {
@@ -211,8 +200,7 @@ type UpdateTemplateRequest struct {
 	} `json:"body"`
 }
 
-// GetCustomTemplateYAML returns a custom template's stored manifest YAML, for the
-// edit form (official templates are not editable, so are not exposed here).
+// Official templates are not editable, so are not exposed here.
 func (h *MarketplaceHandler) GetCustomTemplateYAML(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	name := c.Param("name")
@@ -258,8 +246,6 @@ func (h *MarketplaceHandler) DeleteTemplate(c *okapi.Context) error {
 	return ok(c, map[string]any{"deleted": true})
 }
 
-// ListWorkspaceTemplates returns the catalog visible to the workspace (official
-// + imported custom templates).
 func (h *MarketplaceHandler) ListWorkspaceTemplates(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	list, err := h.svc.ListForWorkspace(wsID)
@@ -269,8 +255,7 @@ func (h *MarketplaceHandler) ListWorkspaceTemplates(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// GetWorkspaceTemplate returns one template visible to the workspace (custom
-// takes precedence over official) with the manifest of the requested version.
+// Custom takes precedence over official.
 func (h *MarketplaceHandler) GetWorkspaceTemplate(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	name := c.Param("name")
@@ -282,8 +267,6 @@ func (h *MarketplaceHandler) GetWorkspaceTemplate(c *okapi.Context) error {
 	return ok(c, map[string]any{"entry": entry, "manifest": m})
 }
 
-// ListInstalls returns this workspace's template installs, each annotated with
-// whether a newer version is available.
 func (h *MarketplaceHandler) ListInstalls(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	installs, err := h.svc.ListInstalls(wsID)
@@ -293,9 +276,6 @@ func (h *MarketplaceHandler) ListInstalls(c *okapi.Context) error {
 	return ok(c, installs)
 }
 
-// UpgradePlan previews the diff between the installed version and the target
-// (?version=, default latest): image/env changes, new volumes/databases, new
-// inputs, and warnings for items applied manually.
 func (h *MarketplaceHandler) UpgradePlan(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	id, err := strconv.Atoi(c.Param("installID"))
@@ -317,9 +297,7 @@ type UpgradeRequest struct {
 	} `json:"body"`
 }
 
-// Upgrade applies the diff to the install: bumps matched apps' images, adds new
-// env/volumes, redeploys, and records the new version. Items that need manual
-// review come back as warnings in the result.
+// Items that need manual review come back as warnings in the result.
 func (h *MarketplaceHandler) Upgrade(c *okapi.Context, req *UpgradeRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	id, err := strconv.Atoi(c.Param("installID"))
@@ -362,7 +340,5 @@ func (h *MarketplaceHandler) Uninstall(c *okapi.Context) error {
 	}
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: "marketplace.uninstall", TargetType: "install", TargetID: c.Param("installID"), IP: c.RealIP()})
-	// Return the teardown follow-up so the UI can show which resources were
-	// removed (and any that failed).
 	return ok(c, result)
 }

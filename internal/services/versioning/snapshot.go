@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Snapshot is a policy as a workspace bundle carries it: the rules, and the highest published version of
-// each sequence, which is all a restore needs to continue numbering where the source left off.
+// Carries each sequence's highest published version, all a restore needs to continue numbering.
 type Snapshot struct {
 	Settings  Settings          `json:"settings"`
 	Managed   bool              `json:"managed,omitempty"`
@@ -69,8 +68,7 @@ func (s *Service) Export(def *models.PipelineDefinition) (json.RawMessage, error
 	return json.Marshal(snap)
 }
 
-// Import applies a bundled policy to a restored pipeline's repository and records each sequence head as
-// published, so the next run continues past it. Heads the target already has are left alone.
+// Heads the target already has are left alone.
 func (s *Service) Import(def *models.PipelineDefinition, raw json.RawMessage) error {
 	if len(raw) == 0 {
 		return nil

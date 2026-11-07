@@ -104,8 +104,6 @@ func TestBuildJobSpecNoJobToken(t *testing.T) {
 	}
 }
 
-// A container (image) step's `run:` must reach the runner wrapped as a
-// non-login shell command; a `uses:` built-in step carries no command.
 func TestBuildJobSpecStepRun(t *testing.T) {
 	in := JobInputs{
 		Run: &models.PipelineRun{ID: 1, WorkspaceID: 1},
@@ -153,9 +151,7 @@ func TestRedact(t *testing.T) {
 	}
 }
 
-// The bug this guards: `dockerfile:` was parsed and validated at the spec layer, stored, and then
-// never copied into the wire spec — so every pipeline build used the root Dockerfile regardless of
-// what the pipeline file said, with nothing reporting that the setting had been ignored.
+// Regression: `dockerfile:` was stored but never copied into the wire spec, so builds silently used the root Dockerfile.
 func TestBuildJobSpecCarriesDockerfile(t *testing.T) {
 	in := JobInputs{
 		Run: &models.PipelineRun{ID: 1, WorkspaceID: 1},
@@ -174,8 +170,7 @@ func TestBuildJobSpecCarriesDockerfile(t *testing.T) {
 	if got := spec.Steps[0].Build.Dockerfile; got != "docker/Dockerfile" {
 		t.Errorf("Dockerfile = %q, want docker/Dockerfile", got)
 	}
-	// No dockerfile means no BuildConfig at all, which is what selects the
-	// runner's auto-detection; an empty struct would read as "configured".
+	// An empty struct would read as configured and skip the runner's auto-detection.
 	if spec.Steps[1].Build != nil {
 		t.Errorf("unconfigured build step should send no BuildConfig, got %+v", spec.Steps[1].Build)
 	}
@@ -282,9 +277,7 @@ func TestBuildJobSpecCarriesNoCache(t *testing.T) {
 	}
 }
 
-// The registry cache is what makes an invalidation stick across runners: every build imports its
-// branch's ref (plus the trunk's) and exports only its own, and a generation nothing has built yet
-// forces a cold rebuild for runners whose cache is local and has no ref to rotate.
+// A never-built generation forces a cold rebuild on runners whose cache is local with no ref to rotate.
 func TestBuildJobSpecCarriesCacheRefs(t *testing.T) {
 	in := JobInputs{
 		Run:             &models.PipelineRun{ID: 1, WorkspaceID: 1},
@@ -326,8 +319,7 @@ func TestBuildJobSpecCarriesCacheRefs(t *testing.T) {
 	}
 }
 
-// Platforms alone are reason enough to send a build config, and a run that names them needs a runner that
-// reports it can build for several platforms.
+// A run naming platforms needs a runner that reports multi-platform support.
 func TestBuildPlatforms(t *testing.T) {
 	step := models.PipelineStepRun{Uses: "build", Platforms: []string{"linux/amd64", "linux/arm64"}}
 	cfg := buildConfig(&step, JobInputs{})

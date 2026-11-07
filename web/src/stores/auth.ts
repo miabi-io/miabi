@@ -5,10 +5,7 @@ import type { User, AuthResponse } from '@/api/types'
 import { getPasskey } from '@/utils/webauthn'
 
 export const useAuthStore = defineStore('auth', () => {
-  // The JWT lives only in an HttpOnly cookie set by the server, so it is never
-  // readable from JavaScript (XSS can't exfiltrate it). We cache only the profile
-  // for instant UI; the cookie authenticates every request, and a stale cache is
-  // corrected by the 401 interceptor.
+  // The JWT is an HttpOnly cookie so XSS can't read it; only the profile is cached, and the 401 interceptor fixes staleness.
   const user = ref<User | null>(JSON.parse(localStorage.getItem('mb_user') || 'null'))
 
   const isAuthenticated = computed(() => !!user.value)
@@ -21,10 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
     return p?.mode === 'console' ? p.console_url || '' : ''
   })
 
-  // A pending forced password change: the credentials were valid but the account
-  // has an admin-set/reset password. We hold the short-lived reset token (in
-  // memory only — not a session) until the user sets their own password. Lost on
-  // reload, which just sends them back to sign in.
+  // The reset token is held in memory only, so a reload just sends the user back to sign in.
   const pendingReset = ref<string | null>(null)
 
   function setAuth(data: AuthResponse) {
@@ -32,9 +26,6 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('mb_user', JSON.stringify(user.value))
   }
 
-  // LoginResult: 'ok' = signed in; 'twofactor' = a TOTP/recovery code is still
-  // required (resubmit with the code); 'reset' = the account must set a new
-  // password first (routed to the change-password screen with the reset token).
   type LoginResult = 'ok' | 'twofactor' | 'reset'
   async function login(identifier: string, password: string, twoFactorCode?: string): Promise<LoginResult> {
     const res = await authApi.login(identifier, password, twoFactorCode)
@@ -51,8 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
     return 'ok'
   }
 
-  // Passwordless sign-in: the browser offers whichever of this server's passkeys it holds. A passkey
-  // is both factors, so there is no 'twofactor' step.
+  // A passkey is both factors, so there is no 'twofactor' step.
   async function loginWithPasskey(): Promise<'ok' | 'reset'> {
     const begin = (await authApi.passkeyLoginBegin()).data.data
     const credential = await getPasskey(begin.options.publicKey)
@@ -66,8 +56,6 @@ export const useAuthStore = defineStore('auth', () => {
     return 'ok'
   }
 
-  // completeReset finishes the forced change: exchanges the reset token for a real
-  // session (the server sets the cookie) and clears the pending state.
   async function completeReset(newPassword: string) {
     if (!pendingReset.value) throw new Error('No pending password reset')
     const res = await authApi.completePasswordReset(pendingReset.value, newPassword)
@@ -79,10 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
     pendingReset.value = null
   }
 
-  // clearSession drops all local auth state WITHOUT calling the API. Safe to call
-  // repeatedly — used by the 401 interceptor, so it must never itself make a
-  // request (that would 401 and re-trigger the interceptor in a loop). The cookie
-  // is cleared server-side by logout(); here we only drop the cached profile.
+  // Used by the 401 interceptor, so it must never make a request (that would loop); logout() clears the cookie.
   function clearSession() {
     user.value = null
     pendingReset.value = null
@@ -102,8 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = res.data.data
       localStorage.setItem('mb_user', JSON.stringify(res.data.data))
     } catch {
-      // A failed /me means the session is gone; drop local state only (a 401 is
-      // already handled by the API interceptor, which redirects to /login).
+      // A 401 is already handled by the API interceptor, which redirects to /login.
       clearSession()
     }
   }
@@ -119,8 +103,6 @@ export const useAuthStore = defineStore('auth', () => {
     await updateProfile(name)
   }
 
-  // setUser replaces the cached profile. Used when another store learns of a change
-  // to it (the default workspace) without a full /me round-trip.
   function setUser(u: User) {
     user.value = u
     localStorage.setItem('mb_user', JSON.stringify(u))

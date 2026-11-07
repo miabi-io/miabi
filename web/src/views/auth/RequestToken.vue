@@ -8,11 +8,7 @@ import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
 import type { LoginTokenResponse, PublicProvider } from '@/api/types'
 
-// "Copy login command" — OpenShift-style. This view is reachable while signed in
-// (opened from the user menu) but never mints off the session: the user must
-// re-authenticate here, then lands on a one-time token + CLI command display.
-// It also handles the SSO return (?handoff=…), where the token was minted by the
-// OAuth callback and stashed for a single-use claim.
+// Never mints off the session: the user must re-authenticate; also handles the SSO ?handoff= single-use claim.
 type Step = 'confirm' | 'twofactor' | 'display'
 
 const route = useRoute()
@@ -29,9 +25,7 @@ const twoFactorCode = ref('')
 const providers = ref<PublicProvider[]>([])
 const token = ref<LoginTokenResponse | null>(null)
 
-// `miabi login --no-browser --scopes read` opens this page with the narrowed grant it wants.
-// Unknown names are dropped rather than forwarded: the server would refuse the whole request and
-// the user would see only a failed sign-in.
+// Unknown scopes are dropped since the server would refuse the whole request.
 const GRANTABLE = ['read', 'write', 'deploy'] as const
 const requestedScopes = ((route.query.scopes as string | undefined) || '')
   .split(',')
@@ -54,8 +48,6 @@ const subtitle = computed(() =>
 )
 
 onMounted(async () => {
-  // SSO hand-off: the OAuth callback minted the token and redirected here with a
-  // single-use reference. Claim it and go straight to the display.
   const handoff = route.query.handoff as string | undefined
   if (handoff) {
     loading.value = true
@@ -124,9 +116,7 @@ async function copy(text: string | undefined, what: string) {
   }
 }
 
-// baseUrl is the panel root the CLI/curl target: the server-provided URL
-// (MIABI_WEB_URL) when configured, otherwise the browser's current origin — so
-// the commands always show the URL the user actually reached the console at.
+// MIABI_WEB_URL when configured, else the browser origin, so commands show the URL the user actually reached.
 function baseUrl(t: LoginTokenResponse): string {
   return (t.server_url?.trim() || window.location.origin).replace(/\/+$/, '')
 }
@@ -255,8 +245,7 @@ function expiryLabel(t: LoginTokenResponse): string {
 </template>
 
 <style scoped>
-/* Widen the shared card for the multi-line token display. Vue adds this
-   component's scope id to the AuthShell root, so :deep reaches its .auth-card. */
+/* Vue adds this component's scope id to the AuthShell root, so :deep reaches its .auth-card. */
 .wide :deep(.auth-card) {
   max-width: 560px;
 }

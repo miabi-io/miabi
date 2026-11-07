@@ -28,29 +28,17 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Cache key prefix. The bundle JSON and its ETag are stored separately so a
-// conditional sync can read the ETag without decoding the whole bundle. Shared
-// by the server and the worker, surviving restarts.
-//
-// Both are namespaced by the marketplace they came from, so bundles from
-// different catalogs never collide — changing MIABI_MARKETPLACE_URL, or being
-// held to the official one by an expired license, must not serve the other
-// catalog's templates or hand its ETag to the new source (which would answer 304
-// and pin the stale bundle).
+// Namespaced per source marketplace so a different catalog never serves another's templates or reuses its ETag.
 const keyPrefix = "miabi:marketplace:"
 
 // Cache persists the synced marketplace bundle, per source marketplace.
 type Cache interface {
-	// Load returns the cached bundle and its ETag for source. A cache miss returns
-	// nil data and an empty ETag with a nil error.
 	Load(ctx context.Context, source string) (data []byte, etag string, err error)
 	// Save stores the bundle and ETag for source, with a TTL safety net.
 	Save(ctx context.Context, source string, data []byte, etag string, ttl time.Duration) error
 }
 
-// sourceKeys returns the bundle and ETag keys for a marketplace URL. The URL is
-// hashed rather than embedded so an arbitrary operator-supplied value can never
-// shape the key.
+// Hashed so an operator-supplied URL can never shape the key.
 func sourceKeys(source string) (bundle, etag string) {
 	sum := sha256.Sum256([]byte(source))
 	base := keyPrefix + hex.EncodeToString(sum[:8])

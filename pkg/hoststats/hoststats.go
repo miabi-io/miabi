@@ -16,12 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package hoststats reads real host CPU and memory usage from a procfs directory. /proc/stat and
-// /proc/meminfo already reflect the host even from inside a container, so the process's own /proc
-// works out of the box; binding the host's procfs to /host/proc is an explicit alternative.
-//
-// It is shared by the control plane and the node agent, so the figures both sides produce and the
-// payload the agent pushes cannot drift apart.
+// Package hoststats reads host CPU and memory from procfs, shared by control plane and agent so figures can't drift.
 package hoststats
 
 import (
@@ -43,16 +38,11 @@ type Stats struct {
 	MemPercent    float64 `json:"mem_percent"`
 }
 
-// Available reports whether procPath exposes a readable /proc/stat, i.e. host
-// stats can be read from it.
 func Available(procPath string) bool {
 	_, err := os.Stat(filepath.Join(procPath, "stat"))
 	return err == nil
 }
 
-// Read samples host CPU (over a short interval) and memory from procPath (e.g.
-// "/proc" or a bound "/host/proc"). Returns an error if the procfs files can't
-// be read or parsed.
 func Read(ctx context.Context, procPath string) (Stats, error) {
 	c1, err := ReadCPU(procPath)
 	if err != nil {
@@ -121,8 +111,7 @@ func ReadCPU(procPath string) (CPUTimes, error) {
 	return CPUTimes{}, fmt.Errorf("hoststats: no cpu line in %s/stat", procPath)
 }
 
-// ParseCPULine reads the aggregate "cpu" row of /proc/stat. Shared with the remote sampler, which
-// gets the same line from a helper container's stdout rather than from a file.
+// Shared with the remote sampler, which gets the line from a helper container's stdout.
 func ParseCPULine(line string) (CPUTimes, error) {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
@@ -145,8 +134,7 @@ func ParseCPULine(line string) (CPUTimes, error) {
 	return t, nil
 }
 
-// CPUPercent is the busy share of the interval between two samples, clamped to [0, 100]. A counter
-// that went backwards reads as 0.
+// A counter that went backwards reads as 0.
 func CPUPercent(a, b CPUTimes) float64 {
 	totalDelta := float64(b.Total) - float64(a.Total)
 	idleDelta := float64(b.Idle) - float64(a.Idle)
@@ -163,8 +151,7 @@ func CPUPercent(a, b CPUTimes) float64 {
 	return pct
 }
 
-// ReadMem parses MemTotal and MemAvailable (bytes) from meminfo. Falls back to
-// MemFree+Buffers+Cached for kernels without MemAvailable.
+// Falls back to MemFree+Buffers+Cached for kernels without MemAvailable.
 func ReadMem(procPath string) (total, avail uint64, err error) {
 	f, err := os.Open(filepath.Join(procPath, "meminfo"))
 	if err != nil {
@@ -186,8 +173,6 @@ func ReadMem(procPath string) (total, avail uint64, err error) {
 	return MemFromVals(vals)
 }
 
-// MemFromVals resolves total and available memory from parsed meminfo keys (bytes). MemAvailable is
-// preferred; the MemFree+Buffers+Cached sum is the fallback for kernels without it.
 func MemFromVals(vals map[string]uint64) (total, avail uint64, err error) {
 	total = vals["MemTotal"]
 	if total == 0 {

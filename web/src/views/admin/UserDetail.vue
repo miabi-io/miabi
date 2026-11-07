@@ -23,8 +23,6 @@ const user = ref<AdminUserDetail | null>(null)
 const loading = ref(false)
 const busy = ref(false)
 
-// Generic confirmation: the account actions each open a styled ConfirmDialog
-// instead of a native confirm(); the pending action's work runs on confirm.
 interface ConfirmAction {
   title: string
   message: string
@@ -93,8 +91,7 @@ async function liftSuspension() {
 const isSelf = computed(() => !!user.value && auth.user?.id === user.value.id)
 const canManage = computed(() => auth.isAdmin && !!user.value && !isSelf.value)
 
-// --- Enterprise per-user workspace limits (owned + joined) ------------------
-// Editable override strings: '' = inherit (null); a number overrides; -1 = unlimited.
+// '' = inherit (null), -1 = unlimited.
 const ownedLimit = ref('')
 const memberLimit = ref('')
 const eeOwned = computed(() => license.has('user_workspace_limit'))
@@ -185,8 +182,7 @@ function toggleRole() {
   if (!user.value) return
   const id = user.value.id
   const next = user.value.role === 'admin' ? 'user' : 'admin'
-  // Two whole sentences rather than a verb dropped into one: a translated "Promote"
-  // cannot be slotted into a French sentence and still agree with it.
+  // Two whole sentences: a translated verb cannot be slotted into a French sentence and still agree.
   const promoting = next === 'admin'
   confirmAction.value = {
     title: promoting ? 'Promote user?' : 'Demote user?',
@@ -278,9 +274,7 @@ function disableTwoFactor() {
   }
 }
 
-// Admin password reset: the platform generates a new password, shown once here so
-// the admin can hand it to the user. Irreversible — the old password is discarded
-// and every session is signed out.
+// Irreversible: the old password is discarded and every session is signed out.
 const generatedPassword = ref<string | null>(null)
 function resetPassword() {
   if (!user.value) return
@@ -320,8 +314,7 @@ async function verifyEmail() {
   }
 }
 
-// Disable/enable the account. Disabling signs the user out, blocks login, and
-// stops all of their applications and databases (handled by the backend).
+// The backend signs the user out, blocks login and stops all their apps and databases.
 async function setActive(active: boolean) {
   if (!user.value) return
   const u = user.value
@@ -415,8 +408,7 @@ async function cancelDeletion() {
   }
 }
 
-// Force deletion: permanently delete a pending-deletion account now, skipping the
-// remaining grace period. Irreversible, so it is double-confirmed.
+// Irreversible, so it is double-confirmed.
 function forceDeletion() {
   if (!user.value) return
   const id = user.value.id

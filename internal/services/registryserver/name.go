@@ -28,30 +28,22 @@ import (
 )
 
 var (
-	// ErrInvalidRepository rejects a repository name that is not a name at all. The browse API takes
-	// it from a query parameter and joins it under the caller's namespace, so a name carrying `..`
-	// or its own slashes would address a path the caller was never scoped to.
+	// Names come from a query parameter, so `..` or extra slashes would escape the caller's namespace.
 	ErrInvalidRepository = errors.New("invalid repository name")
 	// ErrInvalidTag rejects a tag outside the distribution grammar, for the same reason.
 	ErrInvalidTag = errors.New("invalid tag")
 )
 
-// repoComponent is one path component of a repository name, as the OCI distribution spec defines it:
-// lowercase alphanumerics, with single separators (`.`, `_`, `__`, `-`…) only BETWEEN them. `..` has
-// no alphanumeric on either side, so it cannot match — which is what closes the traversal.
+// Separators only between alphanumerics, so `..` cannot match, which closes traversal.
 var repoComponent = regexp.MustCompile(`^[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*$`)
 
-// tagPattern is the distribution grammar for a tag: a word character, then up to 127 more of word,
-// dot or dash. A digest is accepted separately where one is meaningful.
+// A digest is accepted separately where meaningful.
 var tagPattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`)
 
 // maxRepositoryLength is the distribution limit on a whole repository name, namespace included.
 const maxRepositoryLength = 255
 
-// repoPath builds the registry path for one of a workspace's repositories and validates the result
-// against the reference grammar. The namespace is Miabi's, so the check exists for `image`, which
-// arrives from a URL: every component must be a name, which leaves no spelling of `..`, of an
-// absolute path, or of an empty component that could climb out of the namespace.
+// The grammar check leaves no spelling of `..`, absolute path or empty component that escapes the namespace.
 func repoPath(workspaceID uint, image string) (string, error) {
 	name, err := validateRepository(image)
 	if err != nil {
@@ -64,8 +56,7 @@ func repoPath(workspaceID uint, image string) (string, error) {
 	return repo, nil
 }
 
-// validateRepository checks the user-facing part of a repository name — everything after the
-// workspace namespace — and returns it cleaned of the surrounding slashes the UI may include.
+// Trims surrounding slashes the UI may include.
 func validateRepository(image string) (string, error) {
 	name := strings.Trim(strings.TrimSpace(image), "/")
 	if name == "" {
@@ -87,12 +78,7 @@ func validateTag(tag string) error {
 	return nil
 }
 
-// escapePath escapes a registry path segment-by-segment, keeping the separators, so a stray slash
-// or a byte that is not URL-safe cannot open a path of its own.
-//
-// It is NOT what stops traversal: url.PathEscape leaves `..` exactly as it found it, because a dot
-// segment is legal in a URL path. Only the grammar check above refuses it, which is why that check
-// runs on every caller-supplied name rather than being left to this.
+// Not the traversal guard: url.PathEscape leaves `..` intact, so the grammar check must run on every name.
 func escapePath(p string) string {
 	parts := strings.Split(p, "/")
 	for i, part := range parts {

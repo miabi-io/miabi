@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Pausing bypasses the licence gate, so it must mean exactly "switch off": any other edit riding
-// along would let a lapsed licence reconfigure a paid feature.
+// Pausing bypasses the gate, so any other edit riding along would let a lapsed licence reconfigure it.
 func TestPausesOnly(t *testing.T) {
 	sched := &models.VolumeBackupSchedule{Cron: "0 3 * * *", Enabled: true, MaxPoints: 7, RetentionDays: 30}
 	req := func(cron string, enabled bool, max, days int) *VolumeBackupScheduleRequest {

@@ -16,10 +16,7 @@ import { adminApi } from '@/api/admin'
 import { ADMIN_HOME } from '@/data/console'
 import type { UpdateInfo } from '@/api/types'
 
-// The platform console. It deliberately has no no-workspace empty state: platform
-// administration is not scoped to a workspace, and gating it on owning one locked
-// a fresh install's operator out of every admin page, licence installation
-// included.
+// No no-workspace empty state: gating on a workspace locked a fresh install's operator out of admin, licence included.
 const route = useRoute()
 const auth = useAuthStore()
 const ws = useWorkspaceStore()
@@ -28,8 +25,6 @@ const notify = useNotificationStore()
 const license = useLicenseStore()
 const brand = useBrandStore()
 
-// License banner: admins see a warning when the license is in grace, expired,
-// nearing expiry, or over the node limit. Driven by the cached entitlements.
 const licenseBanner = computed(() => {
   const w = license.warnings
   if (w.includes('license_expired')) {
@@ -47,9 +42,7 @@ const licenseBanner = computed(() => {
   return null
 })
 
-// New-release notice. Dismissal is stored server-side against the version, not in
-// localStorage: it must survive a browser change and it must come back when the
-// *next* version lands.
+// Dismissal is stored server-side per version so it survives a browser change and returns for the next release.
 const update = ref<UpdateInfo | null>(null)
 const showUpdateBanner = computed(() => update.value?.update_available === true)
 
@@ -74,8 +67,7 @@ async function dismissUpdate() {
   }
 }
 
-// A background tab should say which console it is, so an admin returning to a
-// window does not act on the wrong one.
+// A background tab names its console so an admin returning does not act on the wrong one.
 function applyTitlePrefix() {
   const base = route.meta.title as string | undefined
   brand.setTitle(base ? `Admin · ${base}` : 'Admin')
@@ -87,8 +79,7 @@ onMounted(async () => {
   license.load().catch(() => { })
   loadUpdate()
   applyTitlePrefix()
-  // The switcher lists workspaces as the way back out, so they are still needed
-  // here — but nothing in this console is gated on there being any.
+  // The switcher lists workspaces as the way out, but nothing in this console is gated on there being any.
   ws.fetchWorkspaces().catch(() => { })
 })
 onBeforeUnmount(() => {
@@ -132,8 +123,7 @@ async function lockConsole() {
         <span class="license-banner-cta">{{ $t('plans.manageLicense') }}</span>
       </router-link>
 
-      <!-- A newer Miabi release exists. Links to the release notes; it never
-           upgrades anything on its own. -->
+      <!-- It links to the release notes and never upgrades anything on its own. -->
       <div v-if="showUpdateBanner" class="update-banner" :class="{ 'update-banner-security': update?.security }">
         <span class="mdi update-banner-icon" :class="update?.security ? 'mdi-shield-alert-outline' : 'mdi-arrow-up-bold-circle-outline'"></span>
         <span class="update-banner-text">

@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// RunnerLeaseRepository persists runner claims on pipeline runs (the at-most-once
-// lease + concurrency accounting + dead-lease requeue).
 type RunnerLeaseRepository struct {
 	db *gorm.DB
 }
@@ -39,9 +37,6 @@ func NewRunnerLeaseRepository(db *gorm.DB) *RunnerLeaseRepository {
 func (r *RunnerLeaseRepository) Create(l *models.RunnerLease) error { return r.db.Create(l).Error }
 func (r *RunnerLeaseRepository) Update(l *models.RunnerLease) error { return r.db.Save(l).Error }
 
-// ActiveCountByRunner returns how many active leases a runner currently holds —
-// its live load, compared against the runner's declared Concurrency by the
-// scheduler.
 func (r *RunnerLeaseRepository) ActiveCountByRunner(runnerID uint) (int, error) {
 	var n int64
 	err := r.db.Model(&models.RunnerLease{}).
@@ -49,9 +44,6 @@ func (r *RunnerLeaseRepository) ActiveCountByRunner(runnerID uint) (int, error) 
 	return int(n), err
 }
 
-// ActiveCountsByRunner returns the active-lease count for every runner that has
-// at least one, keyed by runner id — one query for the scheduler to rank all
-// candidates without an N+1.
 func (r *RunnerLeaseRepository) ActiveCountsByRunner() (map[uint]int, error) {
 	var rows []struct {
 		RunnerID uint
@@ -71,9 +63,6 @@ func (r *RunnerLeaseRepository) ActiveCountsByRunner() (map[uint]int, error) {
 	return out, nil
 }
 
-// ActiveByRun returns the current active lease on a job (pipeline run or build,
-// per kind), if any — used to enforce the at-most-once claim and to find the
-// runner executing it.
 func (r *RunnerLeaseRepository) ActiveByRun(kind models.LeaseKind, runID uint) (*models.RunnerLease, error) {
 	var l models.RunnerLease
 	if err := r.db.Where("kind = ? AND run_id = ? AND status = ?", kind, runID, models.LeaseActive).First(&l).Error; err != nil {
@@ -89,9 +78,7 @@ func (r *RunnerLeaseRepository) Release(kind models.LeaseKind, runID uint) error
 		Update("status", models.LeaseDone).Error
 }
 
-// ExpireDue marks every active lease past now as expired and returns them, so
-// the caller can requeue their runs onto another runner. Runs in one UPDATE to
-// avoid a lost-update race between the sweeper and a late-completing runner.
+// Runs in one UPDATE to avoid a lost-update race between the sweeper and a late-completing runner.
 func (r *RunnerLeaseRepository) ExpireDue(now time.Time) ([]models.RunnerLease, error) {
 	var due []models.RunnerLease
 	err := r.db.Transaction(func(tx *gorm.DB) error {

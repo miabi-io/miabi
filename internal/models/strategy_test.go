@@ -30,8 +30,7 @@ func appWith(def DeployStrategy, running bool) *Application {
 	return app
 }
 
-// The reported bug: an app configured for canary deployed rolling when the deploy came from CI,
-// because the caller passed nothing and nothing consulted the app.
+// Regression: a canary app deployed rolling from CI because nothing consulted the app default.
 func TestUnspecifiedRequestUsesTheAppDefault(t *testing.T) {
 	if got := EffectiveDeployStrategy(appWith(DeployCanary, true), ""); got != DeployCanary {
 		t.Errorf("got %q, want the app's configured canary", got)
@@ -47,8 +46,7 @@ func TestExplicitRequestWinsOverTheDefault(t *testing.T) {
 	}
 }
 
-// A canary splits traffic between the running release and the new one. On a first deploy there is
-// nothing to split, so it has to fall back rather than start a rollout that can never progress.
+// A first deploy has nothing to split, so canary must fall back rather than start a rollout that never progresses.
 func TestCanaryFallsBackWithNoRunningRelease(t *testing.T) {
 	if got := EffectiveDeployStrategy(appWith(DeployCanary, false), ""); got != DeployRolling {
 		t.Errorf("got %q, want rolling on a first deploy", got)

@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// SCIMToken is a bearer credential an identity provider uses to call the SCIM 2.0 endpoint.
-// Only the SHA-256 hash is stored; the plaintext is shown once at creation. Migrated in every
-// build but only used by the enterprise SCIM handler (gated on the scim entitlement).
+// SCIMToken stores only the SHA-256 hash; the plaintext is shown once (Enterprise, scim entitlement).
 type SCIMToken struct {
 	ID             uint       `json:"id" gorm:"primaryKey"`
 	OrganizationID *uint      `json:"organization_id" gorm:"index"`

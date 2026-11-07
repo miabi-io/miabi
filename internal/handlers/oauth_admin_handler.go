@@ -37,8 +37,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// errSSOProviderLimit is returned when a Community install (no multi_sso
-// entitlement) already has its single allowed provider. Maps to HTTP 403.
 var errSSOProviderLimit = &ssoProviderLimitError{}
 
 type ssoProviderLimitError struct{}
@@ -61,8 +59,6 @@ func NewOAuthAdminHandler(repo *repositories.OAuthProviderRepository, oauthSvc *
 	return &OAuthAdminHandler{repo: repo, oauth: oauthSvc, ee: ee, audit: auditLog}
 }
 
-// providerCountAllowed reports whether another provider may be created.
-// Community is capped at one; multi_sso lifts the cap.
 func providerCountAllowed(ee enterprise.EE, current int64) bool {
 	if ee != nil && ee.Has(enterprise.FlagMultiSSO) {
 		return true
@@ -70,8 +66,6 @@ func providerCountAllowed(ee enterprise.EE, current int64) bool {
 	return current < 1
 }
 
-// hiddenAllowed reports whether a provider may be hidden from the login page (an
-// Enterprise capability). Community installs always list providers.
 func hiddenAllowed(ee enterprise.EE) bool {
 	return ee != nil && ee.Has(enterprise.FlagSSOHiddenProvider)
 }
@@ -104,18 +98,14 @@ type CreateOAuthProviderRequest struct {
 		// GroupsClaim and GroupPrefix turn on group mapping (Enterprise sso_group_mapping).
 		GroupsClaim string `json:"groups_claim"`
 		GroupPrefix string `json:"group_prefix"`
-		// OrganizationID is the realm accounts this provider registers belong to. Null leaves them
-		// in the default organization. Set once, here: it never moves an account that already
-		// exists, so changing it later would only split the provider's users across two tenants.
+		// Set once: it never moves existing accounts, so changing it later would split the provider's users.
 		OrganizationID *uint `json:"organization_id"`
 	} `json:"body"`
 }
 
 type UpdateOAuthProviderRequest struct {
 	Body struct {
-		// DisplayName edits the login-button label. The Name handle is immutable
-		// here because it is part of the provider's OAuth callback URL, and so is the
-		// organization, which the accounts it already registered belong to.
+		// Name is immutable because it is part of the OAuth callback URL.
 		DisplayName  string `json:"display_name"`
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"` // blank keeps the stored secret
@@ -135,8 +125,7 @@ type UpdateOAuthProviderRequest struct {
 		UsernameClaim        *string `json:"username_claim"`
 		DefaultWorkspaceID   *uint   `json:"default_workspace_id"`
 		DefaultRole          *string `json:"default_role" enum:"owner,admin,developer,viewer"`
-		// GroupsClaim and GroupPrefix turn on group mapping (Enterprise sso_group_mapping); empty
-		// strings turn it off.
+		// Empty strings turn group mapping off.
 		GroupsClaim *string `json:"groups_claim"`
 		GroupPrefix *string `json:"group_prefix"`
 	} `json:"body"`
@@ -151,15 +140,12 @@ func (h *OAuthAdminHandler) List(c *okapi.Context) error {
 	return ok(c, providers)
 }
 
-// Create configures a new provider, resolving its endpoints and encrypting the
-// client secret at rest.
 func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderRequest) error {
 	// Single-provider quota: Community allows one provider; multi_sso lifts it.
 	if n, err := h.repo.Count(); err == nil && !providerCountAllowed(h.ee, n) {
 		return c.AbortWithError(403, errSSOProviderLimit)
 	}
-	// Hidden providers are an Enterprise capability; reject an explicit
-	// opt-in without the entitlement (the field is otherwise forced false below).
+	// The field is otherwise forced false below.
 	if boolOr(req.Body.Hidden, false) && !h.canHide() {
 		return entitlementAbort(c, enterprise.ErrEntitlementDenied)
 	}
@@ -253,8 +239,7 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 		p.Enabled = *req.Body.Enabled
 	}
 	if req.Body.Hidden != nil {
-		// Turning a provider hidden requires the entitlement; clearing it is always
-		// allowed (additive, never traps a provider hidden after a downgrade).
+		// Clearing is always allowed, so a provider never stays trapped hidden after a downgrade.
 		if *req.Body.Hidden && !h.canHide() {
 			return entitlementAbort(c, enterprise.ErrEntitlementDenied)
 		}
@@ -313,8 +298,7 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 	return ok(c, p)
 }
 
-// updateManaged applies the only fields Miabi owns on a console-managed provider: whether it is
-// enabled and whether its button shows. The rest is ignored, so a full form round-trips.
+// Other fields are ignored so a full form round-trips.
 func (h *OAuthAdminHandler) updateManaged(c *okapi.Context, p *models.OAuthProvider, req *UpdateOAuthProviderRequest) error {
 	if req.Body.Enabled != nil {
 		p.Enabled = *req.Body.Enabled
@@ -388,8 +372,7 @@ type groupSettingsError struct{ msg string }
 
 func (e *groupSettingsError) Error() string { return e.msg }
 
-// groupSettings validates a provider's group-mapping settings. Turning mapping on needs the
-// entitlement; clearing it never does, so a downgrade can always switch it off.
+// Clearing never needs the entitlement, so a downgrade can always switch it off.
 func (h *OAuthAdminHandler) groupSettings(claim, prefix string) (string, string, error) {
 	claim, prefix = strings.TrimSpace(claim), strings.ToLower(strings.TrimSpace(prefix))
 	if claim == "" && prefix == "" {

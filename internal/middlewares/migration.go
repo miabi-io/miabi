@@ -24,13 +24,9 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// MigrationPathPrefix is the tree another install pulls a workspace from; migration keys are refused
-// anywhere else.
 const MigrationPathPrefix = "/api/v1/migration/"
 
-// RequireMigrationCaller admits only a migration key, never a session or another key, "*" included.
-// Which workspace the key may export is checked by the handler: a workspace key names one, an
-// instance key none.
+// The handler checks which workspace the key may export.
 func RequireMigrationCaller() okapi.Middleware {
 	return func(c *okapi.Context) error {
 		if AuthMethod(c) != "api_key" || c.GetString(CtxAPIKeyPurpose) != models.KeyPurposeMigration {

@@ -19,10 +19,7 @@
 
 package components
 
-// Component versions, bumped in the PR that changes the component: major when users must act (a
-// migration, a manifest change, a removed option), minor for a feature, patch for a fix.
-// scripts/components/check-component-versions.sh warns when a component's code changes without a bump here.
-// The Web UI ships with Miabi and carries Miabi's own version.
+// Bump with the component's change: major when users must act, minor for a feature, patch for a fix.
 const (
 	GitOpsVersion         = "1.1.0"
 	PipelineVersion       = "1.1.0"

@@ -56,8 +56,7 @@ var linuxCapabilities = map[string]bool{
 	"SYS_TIME": true, "SYS_TTY_CONFIG": true, "WAKE_ALARM": true,
 }
 
-// NormalizeDropCapabilities cleans, de-duplicates and sorts the capabilities to drop. ALL already covers
-// every other name, so it is kept alone.
+// ALL already covers every other name, so it is kept alone.
 func NormalizeDropCapabilities(in []string) ([]string, error) {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -79,8 +78,7 @@ func NormalizeDropCapabilities(in []string) ([]string, error) {
 	return out, nil
 }
 
-// CheckCapabilityConflict refuses a capability both added and dropped by name. Dropping ALL while adding
-// some is the intended way to keep only those, so it is no conflict. Both sets must be normalized.
+// Dropping ALL while adding some is the intended way to keep only those, so it is no conflict.
 func CheckCapabilityConflict(add, drop []string) error {
 	for _, d := range drop {
 		for _, a := range add {
@@ -109,8 +107,7 @@ type Capability struct {
 	Help string         `json:"help"`
 }
 
-// capabilities is the allow-list; anything absent is refused. The elevated tier
-// is what permits mounting, and mounting the host's disk is a container escape.
+// Anything absent is refused; the elevated tier permits mounting, and mounting host disks is an escape.
 var capabilities = []Capability{
 	{"NET_ADMIN", TierCommon, "Configure interfaces, routes and firewall rules. Needed by VPN containers such as WireGuard or Tailscale."},
 	{"NET_RAW", TierCommon, "Use raw and packet sockets — ping, traceroute and packet capture."},
@@ -134,8 +131,7 @@ var capabilities = []Capability{
 	{"MKNOD", TierElevated, "Create device nodes, which is a route to reaching devices that were never granted."},
 }
 
-// MaxCapabilities and MaxDevices bound one application's request, so a manifest
-// cannot ask for the whole list.
+// A manifest cannot ask for the whole list.
 const MaxCapabilities = 12
 const MaxDevices = 8
 
@@ -162,8 +158,7 @@ func NormalizeCapability(v string) string {
 	return strings.TrimPrefix(v, "CAP_")
 }
 
-// NormalizeCapabilities cleans, de-duplicates and sorts a set. Sorted so a no-op
-// save does not read as a change.
+// Sorted so a no-op save does not read as a change.
 func NormalizeCapabilities(in []string) ([]string, error) {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -199,8 +194,7 @@ func HighestCapabilityTier(names []string) CapabilityTier {
 	return tier
 }
 
-// devicePrefixes are the exposable host devices. Block devices are absent on
-// purpose: /dev/sda is the host's filesystem. See blockedDevicePrefixes.
+// Block devices are absent on purpose: /dev/sda is the host's filesystem.
 var devicePrefixes = []struct {
 	prefix string
 	exact  bool
@@ -217,8 +211,7 @@ var devicePrefixes = []struct {
 	{prefix: "/dev/bus/usb/", tier: TierElevated, help: "Raw USB bus access — any device on the bus, not one."},
 }
 
-// blockedDevicePrefixes never pass, at any tier. Separate from "not allow-listed"
-// so the refusal can say why.
+// Separate from "not allow-listed" so the refusal can say why.
 var blockedDevicePrefixes = []string{
 	"/dev/sd", "/dev/nvme", "/dev/hd", "/dev/vd", "/dev/xvd", "/dev/dm-", "/dev/loop",
 	"/dev/mapper/", "/dev/md", "/dev/mem", "/dev/kmem", "/dev/port", "/dev/kmsg",
@@ -233,8 +226,7 @@ func NormalizeDevices(in []string) ([]string, error) {
 		if d == "" {
 			continue
 		}
-		// A path and nothing else: no ".." out of /dev, no "host:container:rwm"
-		// triplet smuggling a second target past the check.
+		// No ".." out of /dev, and no "host:container:rwm" triplet smuggling a second target.
 		if !strings.HasPrefix(d, "/dev/") || strings.Contains(d, "..") || strings.Contains(d, ":") {
 			return nil, fmt.Errorf("%w: %s", ErrDeviceUnknown, d)
 		}

@@ -45,16 +45,13 @@ var (
 	ErrCronNameTaken   = errors.New("a cronjob with this name already exists in the workspace")
 )
 
-// Scheduler registers/unregisters recurring tasks. Implemented by cron.Manager;
-// an interface here keeps the job package free of a hard cron dependency.
+// Scheduler is an interface so the job package has no hard cron dependency.
 type Scheduler interface {
 	RegisterTask(kind string, id uint, name, schedule string, fn func() error) error
 	UnregisterTask(kind string, id uint)
 }
 
-// SetScheduler wires the cron scheduler used to drive CronJobs. Optional: when
-// unset (e.g. in the worker process), CronJob CRUD still works but nothing is
-// scheduled in this process.
+// SetScheduler is optional: without it (e.g. the worker) CronJob CRUD works but nothing is scheduled here.
 func (s *Service) SetScheduler(sch Scheduler) { s.scheduler = sch }
 
 // CronJobInput is the create/update payload for a CronJob.
@@ -73,14 +70,11 @@ type CronJobInput struct {
 	Enabled           bool
 	ConcurrencyPolicy string
 	HistoryLimit      int
-	// Metadata and Annotations replace the stored ones when non-nil; nil keeps
-	// them, so a console edit never drops the GitOps ownership labels.
+	// nil keeps them, so a console edit never drops the GitOps ownership labels.
 	Metadata    models.Metadata
 	Annotations models.Metadata
 }
 
-// LoadCronJobs registers every enabled CronJob with the scheduler. Call once at
-// startup, after the scheduler is running.
 func (s *Service) LoadCronJobs() {
 	if s.scheduler == nil {
 		return
@@ -107,8 +101,7 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// Blank stays blank on a schedule: spawned runs inherit whatever the app is
-	// configured with when they fire, rather than snapshotting it now.
+	// Blank stays blank: spawned runs inherit the app's account when they fire, not now.
 	runAsUser, err := s.checkRunAsUser(app, in.RunAsUser)
 	if err != nil {
 		return nil, err
@@ -210,8 +203,6 @@ func (s *Service) UpdateCronJob(workspaceID, id uint, in CronJobInput) (*models.
 	return cj, nil
 }
 
-// ListCronJobs returns the workspace's cronjobs (optionally filtered to appID),
-// annotated with each one's application name.
 func (s *Service) ListCronJobs(workspaceID, appID uint) ([]models.CronJob, error) {
 	var (
 		list []models.CronJob
@@ -258,8 +249,7 @@ func (s *Service) DeleteCronJob(workspaceID, id uint) error {
 	return s.repo.DeleteCronJob(cj.ID)
 }
 
-// RunCronJobNow spawns a Job immediately from a CronJob's template (ignores the
-// concurrency policy — a manual trigger always runs).
+// RunCronJobNow ignores the concurrency policy: a manual trigger always runs.
 func (s *Service) RunCronJobNow(ctx context.Context, workspaceID, id uint, triggeredBy *uint) (*models.Job, error) {
 	cj, err := s.repo.FindCronJobInWorkspace(workspaceID, id)
 	if err != nil {
@@ -307,10 +297,7 @@ func registration(cj *models.CronJob) string {
 	return cj.Schedule + "\x00" + cj.Name + "\x00" + cj.DisplayName
 }
 
-// SyncSchedules reconciles this process's registered ticks with the database. A
-// create, edit or delete registers only in the process that served it, and only
-// the leader runs ticks, so the leader calls this periodically to pick up
-// changes made on other replicas.
+// SyncSchedules lets the leader, the only process running ticks, pick up changes made on other replicas.
 func (s *Service) SyncSchedules() error {
 	if s.scheduler == nil {
 		return nil
@@ -347,9 +334,7 @@ func (s *Service) SyncSchedules() error {
 	return nil
 }
 
-// cronName resolves a requested name into the workspace-unique slug and the
-// display name to store. A blank name gets a generated one; a name that slugs
-// differently keeps the original as its display name.
+// A name that slugs differently keeps the original as its display name.
 func (s *Service) cronName(workspaceID uint, name, display string, selfID uint) (string, string, error) {
 	raw := strings.TrimSpace(name)
 	display = strings.TrimSpace(display)
@@ -381,8 +366,6 @@ func (s *Service) cronName(workspaceID uint, name, display string, selfID uint) 
 	return n, display, nil
 }
 
-// tick runs on each scheduled fire: honors the concurrency policy, spawns a Job,
-// updates LastRunAt, and prunes history.
 func (s *Service) tick(id uint) error {
 	cj, err := s.repo.FindCronJobByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -415,8 +398,6 @@ func (s *Service) tick(id uint) error {
 	return nil
 }
 
-// spawnJob creates and enqueues a Job from a cronjob's template, then records the
-// run and prunes old history.
 func (s *Service) spawnJob(ctx context.Context, cj *models.CronJob, source string, triggeredBy *uint) (*models.Job, error) {
 	j, err := s.Run(ctx, cj.WorkspaceID, cj.ApplicationID, RunRequest{
 		Name:        cj.Name,
@@ -461,9 +442,7 @@ func validateCron(expr string) error {
 	return err
 }
 
-// OnlyToggles reports whether applying in to cj would change nothing but
-// whether it is enabled: the one edit a GitOps-owned CronJob accepts from the
-// console, since the manifest leaves an unstated suspend alone.
+// OnlyToggles detects the one console edit a GitOps-owned CronJob accepts, since manifests leave suspend alone.
 func (in CronJobInput) OnlyToggles(cj *models.CronJob) bool {
 	user, err := models.NormalizeRunAsUser(in.RunAsUser)
 	if err != nil {

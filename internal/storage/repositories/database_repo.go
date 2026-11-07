@@ -24,8 +24,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// DatabaseRepository persists database server instances and the logical
-// databases they host.
 type DatabaseRepository struct {
 	db *gorm.DB
 }
@@ -35,21 +33,17 @@ func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository { return &DatabaseRe
 func (r *DatabaseRepository) Create(d *models.DatabaseInstance) error { return r.db.Create(d).Error }
 func (r *DatabaseRepository) Update(d *models.DatabaseInstance) error { return r.db.Save(d).Error }
 
-// RetargetNetwork repoints every instance pinned to the old Docker network at the new one. An
-// instance stores its network by name, so replacing the workspace network — as the bridge ->
-// overlay migration does — must carry instances across or their helper jobs lose the network.
+// Instances store their network by name, so replacing the workspace network must carry them across.
 func (r *DatabaseRepository) RetargetNetwork(oldName, newName string) error {
 	return r.db.Model(&models.DatabaseInstance{}).
 		Where("network_name = ?", oldName).
 		Update("network_name", newName).Error
 }
 
-// Delete removes an instance and its logical database records (the server
-// container holds the actual data, so dropping it removes those databases).
+// The server container holds the actual data, so dropping it removes those databases.
 func (r *DatabaseRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Drop backups of this instance's logical databases first, so no backup row
-		// orphans against a removed database_id.
+		// Backups go first so no backup row orphans against a removed database_id.
 		if err := tx.Where("database_id IN (?)",
 			tx.Model(&models.Database{}).Select("id").Where("instance_id = ?", id),
 		).Delete(&models.Backup{}).Error; err != nil {
@@ -61,8 +55,6 @@ func (r *DatabaseRepository) Delete(id uint) error {
 		if err := tx.Where("instance_id = ?", id).Delete(&models.DatabaseInstanceLink{}).Error; err != nil {
 			return err
 		}
-		// Clear the network associations (join rows) so the instance row is no
-		// longer referenced by database_instance_networks.
 		if err := tx.Model(&models.DatabaseInstance{ID: id}).Association("Networks").Clear(); err != nil {
 			return err
 		}
@@ -97,17 +89,13 @@ func (r *DatabaseRepository) RemoveNetwork(inst *models.DatabaseInstance, net *m
 	return r.db.Model(inst).Association("Networks").Delete(net)
 }
 
-// ListAllInstances returns every managed database instance across workspaces.
-// Used by platform-wide passes — disaster recovery has to bring back every
-// tenant's databases, not one workspace's.
 func (r *DatabaseRepository) ListAllInstances() ([]models.DatabaseInstance, error) {
 	var out []models.DatabaseInstance
 	err := r.db.Preload("Networks").Order("workspace_id ASC, id ASC").Find(&out).Error
 	return out, err
 }
 
-// SetVolumeEngineCreatedAt records the creation timestamp Docker reports for an instance's data volume,
-// and only while the row has none, so a volume recreated by hand keeps the original and reads as replaced.
+// Set only while empty, so a volume recreated by hand keeps the original timestamp and reads as replaced.
 func (r *DatabaseRepository) SetVolumeEngineCreatedAt(id uint, at string) error {
 	if at == "" {
 		return nil
@@ -130,9 +118,7 @@ func (r *DatabaseRepository) ExistsByName(workspaceID uint, name string) (bool, 
 	return count > 0, err
 }
 
-// ExistsByID reports whether a non-deleted database instance exists. A
-// soft-deleted instance reads as absent — the housekeeping "orphan" condition
-// (deleted in Miabi but whose container still runs).
+// A soft-deleted instance reads as absent: the housekeeping orphan condition.
 func (r *DatabaseRepository) ExistsByID(id uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.DatabaseInstance{}).Where("id = ?", id).Count(&count).Error
@@ -151,9 +137,6 @@ func (r *DatabaseRepository) ListDatabases(instanceID uint) ([]models.Database, 
 	return dbs, err
 }
 
-// ListDatabasesByWorkspace returns every logical database in a workspace, across
-// all instances. Used by the declarative reconcile to map manifest names to the
-// exact logical database they own (via the declarative-name label).
 func (r *DatabaseRepository) ListDatabasesByWorkspace(workspaceID uint) ([]models.Database, error) {
 	var dbs []models.Database
 	err := r.db.Where("workspace_id = ?", workspaceID).
@@ -199,8 +182,7 @@ func (r *DatabaseRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.DatabaseInstance](r.db, uid)
 }
 
-// ImageRefs returns the server image every database instance was provisioned with, so housekeeping
-// never reclaims the image a stopped instance needs to come back up.
+// Housekeeping must never reclaim the image a stopped instance needs to come back up.
 func (r *DatabaseRepository) ImageRefs() ([]string, error) {
 	var refs []string
 	err := r.db.Model(&models.DatabaseInstance{}).

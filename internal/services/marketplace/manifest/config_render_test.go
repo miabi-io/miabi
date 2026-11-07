@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// A Prometheus rules file contains literal {{ $labels.instance }}, which is a
-// hard render error under the default delimiters. Custom delimiters are what
-// make such a file storable at all.
+// Literal {{ $labels.instance }} is a hard render error under default delimiters.
 func TestRenderFilesHonoursDelimiters(t *testing.T) {
 	r := NewRenderer(Context{
 		Inputs:       map[string]string{"for_duration": "5m"},
@@ -48,8 +46,7 @@ func TestRenderFilesHonoursDelimiters(t *testing.T) {
 		t.Errorf("the file's own {{ }} was mangled: %q", got)
 	}
 
-	// The same file under default delimiters must fail rather than silently drop
-	// the label expression.
+	// Must fail rather than silently drop the label expression.
 	if _, err := r.RenderFiles("rules", files, nil); err == nil {
 		t.Error("expected a render error for {{ $labels.instance }} under default delimiters")
 	}

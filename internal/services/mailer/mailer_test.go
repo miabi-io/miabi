@@ -101,9 +101,7 @@ func TestLink(t *testing.T) {
 	}
 }
 
-// A template that fails to parse or references a missing field only breaks at
-// send time, in a goroutine, where nobody sees it. Rendering every one here is
-// the cheapest way to keep that from shipping.
+// Template errors only surface at send time in a goroutine, so render every one here.
 func TestRenderEveryTemplate(t *testing.T) {
 	s := NewService(configured(), "Miabi", "https://miabi.example.com/")
 
@@ -150,8 +148,6 @@ func TestRenderEveryTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render: %v", err)
 		}
-		// Both roles must appear: "your role changed" without saying from what is
-		// not much of a notice.
 		for _, want := range []string{"Acme", "Jonas", "developer", "viewer", "read-only"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("role change email missing %q", want)

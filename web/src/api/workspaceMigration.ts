@@ -3,9 +3,6 @@ import api from './client'
 import type { ApiResponse } from './types'
 import type { BundleRun } from './portableBackup'
 
-// Miabi → Miabi migration: the source's owner starts a migration and hands over its code; the
-// target pastes the code and pulls the workspace directly.
-
 export interface MigrationStatus {
   enabled: boolean
   url?: string

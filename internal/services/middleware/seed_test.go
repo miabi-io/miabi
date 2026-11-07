@@ -77,8 +77,7 @@ func TestSeedDefaultsIsIdempotent(t *testing.T) {
 
 func TestSeedDefaultsSkipsWhenPoliciesExist(t *testing.T) {
 	svc, repo := newSeedService(t)
-	// A pre-existing user policy means the workspace is "not new" — skip seeding
-	// entirely so we never add policies the user didn't ask for.
+	// A pre-existing user policy means the workspace is not new, so seeding is skipped entirely.
 	if err := repo.Create(&models.Middleware{WorkspaceID: 2, Name: "mine", Type: "access", Rule: map[string]any{"statusCode": 403}}); err != nil {
 		t.Fatal(err)
 	}

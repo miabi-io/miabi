@@ -53,9 +53,7 @@ type ApplicationHandler struct {
 	upgrader websocket.Upgrader
 }
 
-// SetLogStore wires the shared execution-log store so deployment log reads replay a finished
-// deployment's full history, falling back to the DB tail when the store is disabled, the ref is
-// empty, or the object is gone. nil keeps DB-tail-only reads.
+// Falls back to the DB tail when the store is disabled, the ref is empty, or the object is gone.
 func (h *ApplicationHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 // SetPlacer wires location placement for app creates.
@@ -70,17 +68,13 @@ func NewApplicationHandler(svc *application.Service, bus *eventbus.Bus, auditLog
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
-			// Browser clients (exec/log terminals): reject cross-site Origins to
-			// prevent cross-site WebSocket hijacking. Defaults to same-origin only
-			// until SetAllowedOrigins wires the configured allowlist.
+			// Rejects cross-site Origins to prevent cross-site WebSocket hijacking.
 			CheckOrigin: allowWSOrigin(nil),
 		},
 	}
 }
 
-// SetAllowedOrigins restricts WebSocket upgrades to same-origin plus the given
-// browser origins (the CORS allowlist + web UI URL). A "*" entry disables the
-// check (dev).
+// A "*" entry disables the origin check (dev).
 func (h *ApplicationHandler) SetAllowedOrigins(origins []string) {
 	h.upgrader.CheckOrigin = allowWSOrigin(origins)
 }
@@ -95,8 +89,7 @@ type PortSpecBody struct {
 
 type CreateAppRequest struct {
 	Body struct {
-		// DisplayName is the free-text label. Name (optional) is the desired unique
-		// slug handle; derived from DisplayName when blank.
+		// Name is derived from DisplayName when blank.
 		DisplayName string `json:"display_name" required:"true"`
 		Name        string `json:"name"`
 		// Location is where the app runs; empty uses the workspace's default location.
@@ -108,16 +101,12 @@ type CreateAppRequest struct {
 		Tag        string `json:"tag"`
 		GitRepo    string `json:"git_repo"`
 		GitRef     string `json:"git_ref"`
-		// Build config (git source). BuildMethod: auto (default) | dockerfile |
-		// buildpack. Builder optionally overrides the buildpack builder image;
-		// Buildpacks/BuildEnv tune a buildpack build. Rejected for image apps.
+		// Rejected for image apps.
 		BuildMethod string            `json:"build_method" enum:"auto,dockerfile,buildpack"`
 		Builder     string            `json:"builder"`
 		Buildpacks  []string          `json:"buildpacks"`
 		BuildEnv    map[string]string `json:"build_env"`
-		// UsePipeline adopts the pipeline-as-code the repository carries at .miabi/pipeline.yaml (git
-		// source only), so deploys run through it instead of building directly. A repository that turns
-		// out to carry none still creates the app, which then builds directly.
+		// Git source only; a repository with no pipeline still creates the app, which then builds directly.
 		UsePipeline     bool           `json:"use_pipeline"`
 		RegistryID      *uint          `json:"registry_id"`
 		GitRepositoryID *uint          `json:"git_repository_id"`
@@ -128,26 +117,21 @@ type CreateAppRequest struct {
 		Port            int            `json:"port"`
 		MemoryBytes     int64          `json:"memory_bytes" min:"0"`
 		NanoCPUs        int64          `json:"nano_cpus" min:"0"`
-		// GPUCount requests whole GPU devices (0 = none); GPUKind narrows to a
-		// vendor/model. Gated by the AllowGPU plan capability.
+		// GPUCount requests whole devices (0 = none); gated by the AllowGPU plan capability.
 		GPUCount int    `json:"gpu_count" min:"0"`
 		GPUKind  string `json:"gpu_kind"`
-		// RunAsUser pins the container to an account ("1000", "1000:1000", "node"),
-		// like `docker run --user`. Empty keeps the image's own user; a workspace
-		// under the restricted security profile must give a non-root numeric uid.
+		// Like docker run --user; a restricted-profile workspace must give a non-root numeric uid.
 		RunAsUser string `json:"run_as_user"`
 		// Allow-listed kernel privileges; need a privileged workspace.
 		AddCapabilities []string `json:"add_capabilities"`
 		Devices         []string `json:"devices"`
-		// Hardening on top of the workspace's security profile. drop_capabilities takes any Linux
-		// capability, or ALL.
+		// drop_capabilities takes any Linux capability, or ALL.
 		ReadOnlyRootFilesystem bool     `json:"read_only_root_filesystem"`
 		NoNewPrivileges        bool     `json:"no_new_privileges"`
 		DropCapabilities       []string `json:"drop_capabilities"`
 		RestartPolicy          string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy        string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
-		// "service" runs the app as a replicated Swarm service; omitted means a
-		// container, which Okapi fills in so the stored kind is never empty.
+		// Omitted means container, which Okapi fills in so the stored kind is never empty.
 		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service" default:"container"`
 		Replicas             int                      `json:"replicas" min:"0" max:"100"`
 		PlacementConstraints []string                 `json:"placement_constraints"`
@@ -250,8 +234,7 @@ func (b *UpdateAppBody) sent(key string) bool {
 	return b.present == nil || b.present[key]
 }
 
-// changesSource reports whether applying the update would change app's image source. It compares what
-// would be written, so a sent empty tag, which clears the tag, is a change too.
+// Compares what would be written, so a sent empty tag (which clears it) counts as a change.
 func (b *UpdateAppBody) changesSource(app *models.Application) bool {
 	changed := (b.Image != "" && b.Image != app.Image) || (b.sent("tag") && b.Tag != app.Tag)
 	if app.SourceType == models.AppSourceGit {
@@ -338,9 +321,7 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 	if b.sent("stack_id") {
 		app.StackID = b.StackID
 	}
-	// Git source + build config apply only to git apps; an empty build_method
-	// leaves the stored method unchanged. The service validates/normalizes on
-	// Update (an empty git_repo is valid when a repository is attached).
+	// An empty git_repo is valid when a repository is attached.
 	if app.SourceType == models.AppSourceGit {
 		if b.sent("git_repo") {
 			app.GitRepo = strings.TrimSpace(b.GitRepo)
@@ -411,19 +392,12 @@ func toPortSpecs(in []PortSpecBody) []application.PortSpec {
 }
 
 type DeployRequest struct {
-	// Wait blocks up to this many seconds (max 900) until the deployment succeeds, fails or reaches
-	// a canary, and returns it in that state. 0 returns at once.
+	// Max 900 seconds; 0 returns at once.
 	Wait int `query:"wait"`
 	Body struct {
-		// RegistryID optionally overrides the app's registry credential for this
-		// one deploy. Omit to use the app's configured credential.
-		RegistryID *uint `json:"registry_id"`
-		// Tag optionally deploys a specific image tag (image source) for this
-		// one deploy. Omit to use the app's configured tag.
-		Tag string `json:"tag"`
-		// Strategy overrides the app's default rollout method for this deploy.
-		// Omit to use the app's configured default.
-		Strategy string `json:"strategy" enum:"recreate,rolling,canary"`
+		RegistryID *uint  `json:"registry_id"`
+		Tag        string `json:"tag"`
+		Strategy   string `json:"strategy" enum:"recreate,rolling,canary"`
 		// NoCache rebuilds the image from scratch for this deploy only (git-source apps).
 		NoCache bool `json:"no_cache"`
 	} `json:"body"`
@@ -527,8 +501,6 @@ type ResourceLimitsResponse struct {
 	MaxMemoryMB int `json:"max_memory_mb"` // 0 = unlimited
 }
 
-// ResourceLimits returns the platform-configured per-app resource caps so the UI
-// can show them as hints and pre-validate.
 func (h *ApplicationHandler) ResourceLimits(c *okapi.Context) error {
 	cores, mem := h.svc.ResourceLimits()
 	return ok(c, ResourceLimitsResponse{MaxCPUCores: cores, MaxMemoryMB: mem})
@@ -542,8 +514,7 @@ func (h *ApplicationHandler) Get(c *okapi.Context) error {
 	return ok(c, app)
 }
 
-// Status returns the live container status (and a stats snapshot) for the app,
-// inspected from Docker rather than the stored deploy-time status.
+// Inspected from Docker rather than the stored deploy-time status.
 func (h *ApplicationHandler) Status(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -552,8 +523,6 @@ func (h *ApplicationHandler) Status(c *okapi.Context) error {
 	return ok(c, h.svc.LiveStatus(c.Request().Context(), app))
 }
 
-// Overview returns an aggregated summary (status, source, current release,
-// resource counts) for the app detail page.
 func (h *ApplicationHandler) Overview(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -570,9 +539,7 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	if req.Body.DisplayName != "" {
 		app.DisplayName = req.Body.DisplayName
 	}
-	// The source is owned elsewhere for marketplace/GitOps apps. Reject only an actual CHANGE, so a
-	// client that PATCHes the object back with its current image still works — many do, and failing
-	// those would break callers that are not touching the source at all.
+	// Reject only an actual change: many clients PATCH the object back with its current image.
 	if err := sourceUnchangedLock(app, req); err != nil {
 		return c.AbortWithError(http.StatusConflict, err)
 	}
@@ -581,8 +548,7 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 		return c.AbortWithError(http.StatusConflict, application.ErrRuntimeChangeViaSettings)
 	}
 	if req.Body.ContainerLabels != nil {
-		// Gated + validated + persisted here (reserved keys rejected). Sets
-		// app.ContainerLabels so the later Update save stays consistent.
+		// Sets app.ContainerLabels so the later Update save stays consistent.
 		if err := h.svc.SetContainerLabels(app, req.Body.ContainerLabels); err != nil {
 			return h.mapLabelErr(c, err)
 		}
@@ -664,9 +630,7 @@ func (h *ApplicationHandler) ImportEnvVars(c *okapi.Context, req *ImportEnvVarsR
 	return ok(c, map[string]any{"imported": n, "redeploying": redeployed})
 }
 
-// RevealEnvVar returns a single env var's decrypted value (Admin only, audited).
-// Mirrors the Secret Manager reveal: list/set are lower-privileged, but reading
-// a secret's plaintext is gated to workspace admins.
+// Reading a secret's plaintext is gated to workspace admins, mirroring the Secret Manager reveal.
 func (h *ApplicationHandler) RevealEnvVar(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -696,16 +660,12 @@ func (h *ApplicationHandler) DeleteEnvVar(c *okapi.Context) error {
 	return message(c, changeMsg("environment variable deleted", h.markRedeploy(c, app)))
 }
 
-// SetLabelsRequest replaces an app's user-defined Docker labels wholesale (the
-// Detail page edits locally and PUTs the full set).
 type SetLabelsRequest struct {
 	Body struct {
 		Labels map[string]string `json:"labels"`
 	} `json:"body"`
 }
 
-// ListLabels returns the app's user-defined container labels (never the platform
-// io.miabi.* labels, which are not user-managed).
 func (h *ApplicationHandler) ListLabels(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -718,9 +678,7 @@ func (h *ApplicationHandler) ListLabels(c *okapi.Context) error {
 	return ok(c, labels)
 }
 
-// SetLabels replaces the app's user-defined container labels. Gated by the AllowCustomLabels
-// plan capability plus a global kill-switch; reserved keys are rejected (422). Changes apply on
-// the next deploy, exactly like editing ports, volumes or env vars.
+// Changes apply on the next deploy, like ports, volumes or env vars.
 func (h *ApplicationHandler) SetLabels(c *okapi.Context, req *SetLabelsRequest) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -733,8 +691,6 @@ func (h *ApplicationHandler) SetLabels(c *okapi.Context, req *SetLabelsRequest) 
 	return message(c, changeMsg("labels updated", h.markRedeploy(c, app)))
 }
 
-// mapLabelErr maps the gate + validation errors to their HTTP status, preserving
-// the stable machine code carried by the coded errors.
 func (h *ApplicationHandler) mapLabelErr(c *okapi.Context, err error) error {
 	if a := quotaAbort(c, err); a != nil { // CAPABILITY_DENIED -> 403
 		return a
@@ -780,8 +736,6 @@ func (h *ApplicationHandler) AttachConfig(c *okapi.Context, req *AttachConfigReq
 	return ok(c, app)
 }
 
-// DetachConfig removes one config mount. The optional `key` query parameter picks
-// between several mounts of the same config; omit it for the whole-config mount.
 func (h *ApplicationHandler) DetachConfig(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -893,9 +847,7 @@ func (h *ApplicationHandler) HostMountPresets(c *okapi.Context) error {
 	return ok(c, hostmount.All())
 }
 
-// markRedeploy flags a deployed app as needing a redeploy after a config change
-// (config changes no longer auto-deploy). Best-effort; reports whether the flag
-// was set so handlers can tailor their response message.
+// Config changes no longer auto-deploy; reports whether the flag was set to tailor the message.
 func (h *ApplicationHandler) markRedeploy(c *okapi.Context, app *models.Application) bool {
 	marked, err := h.svc.MarkRedeployRequired(app)
 	if err != nil || !marked {
@@ -922,9 +874,7 @@ func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error 
 		return h.mapErr(c, err)
 	}
 	h.record(c, app.WorkspaceID, "app.deploy", app.ID)
-	// An app whose repository owns a pipeline deploys by running it: return the run so the client follows its
-	// logs instead of a deployment's. Only an app with an adopted pipeline can reach this branch — a direct
-	// deploy still returns the bare Deployment, so existing clients see no change.
+	// A direct deploy still returns the bare Deployment, so existing clients see no change.
 	if res.Run != nil {
 		run := res.Run
 		if req.Wait > 0 {
@@ -945,8 +895,6 @@ func (h *ApplicationHandler) Deploy(c *okapi.Context, req *DeployRequest) error 
 	return created(c, dep)
 }
 
-// InvalidateBuildCache drops the app's build cache by naming a new generation, so the next build
-// (deploy or pipeline run) rebuilds every layer and repopulates it.
 func (h *ApplicationHandler) InvalidateBuildCache(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -959,8 +907,6 @@ func (h *ApplicationHandler) InvalidateBuildCache(c *okapi.Context) error {
 	return message(c, "build cache invalidated — the next build will rebuild every layer")
 }
 
-// PipelineRunAccepted is the deploy response for an app whose repository owns a
-// pipeline. Kind discriminates it from the Deployment a direct deploy returns.
 type PipelineRunAccepted struct {
 	Kind string              `json:"kind"` // always "pipeline_run"
 	Run  *models.PipelineRun `json:"run"`
@@ -1003,12 +949,8 @@ func (h *ApplicationHandler) lifecycle(c *okapi.Context, action string) error {
 		return c.AbortInternalServerError("failed to "+action+" application", err)
 	}
 	h.record(c, app.WorkspaceID, "app."+action, app.ID)
-	// Stamped for every successful start/stop/restart, including one that turned into a redeploy:
-	// the user asked for a restart, and that is what the app detail should say happened to it. The
-	// deployment it produced keeps its own row and its own actor.
+	// Stamped even when the action became a redeploy: the user asked for a restart, so that is what happened.
 	h.svc.RecordLifecycle(app.ID, action, userIDPtr(c))
-	// A start/restart that applied pending changes returns the deployment so the
-	// client can follow its logs; a plain lifecycle action returns a message.
 	if dep != nil {
 		return created(c, dep)
 	}
@@ -1061,8 +1003,6 @@ type ScaleRequest struct {
 	} `json:"body"`
 }
 
-// Scale changes the replica count of a cluster (service) app, applied to the
-// live Swarm service immediately.
 func (h *ApplicationHandler) Scale(c *okapi.Context, req *ScaleRequest) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -1127,9 +1067,7 @@ type CanaryRoutingRequest struct {
 	} `json:"body"`
 }
 
-// CanaryRoutingResponse confirms a saved rule set. Warnings are advisory — the
-// save happened — and describe something outside Miabi that has to be true for
-// the rules to route as they read (see the client-IP warning).
+// Warnings are advisory: the save happened, but something outside Miabi must hold for the rules to route.
 type CanaryRoutingResponse struct {
 	Message  string   `json:"message"`
 	Warnings []string `json:"warnings,omitempty"`
@@ -1391,8 +1329,6 @@ func (h *ApplicationHandler) mapReleaseErr(c *okapi.Context, err error) error {
 	}
 }
 
-// DeploymentLogs streams a deployment's build/deploy logs over SSE: the stored
-// tail first, then live events until the deployment reaches a terminal state.
 func (h *ApplicationHandler) DeploymentLogs(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -1411,9 +1347,7 @@ func (h *ApplicationHandler) DeploymentLogs(c *okapi.Context) error {
 	events, unsubscribe := h.bus.Subscribe(worker.DeployTopic(dep.ID))
 	defer unsubscribe()
 
-	// History: a finished deployment's full log is replayed from the store; an
-	// in-progress one (or a store miss) replays the bounded DB tail, then streams
-	// live from the bus — the unchanged SSE contract.
+	// A store miss or in-progress deployment replays the bounded DB tail before streaming live.
 	for _, line := range replayLogHistory(h.logs, dep.LogRef, dep.Logs) {
 		_ = c.SSESendJSON(eventbus.Event{Type: "log", Data: line})
 	}
@@ -1441,8 +1375,6 @@ func (h *ApplicationHandler) DeploymentLogs(c *okapi.Context) error {
 	}
 }
 
-// DeploymentLogsDownload streams a deployment's full build/deploy log as a file
-// download, workspace-scoped through the owning application.
 func (h *ApplicationHandler) DeploymentLogsDownload(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -1466,9 +1398,6 @@ type DeploymentLogHistory struct {
 	Truncated bool     `json:"truncated"`
 }
 
-// DeploymentLogsHistory returns a deployment's full build/deploy log (from the
-// store, else the bounded DB tail) as JSON — the load-once counterpart to the SSE
-// stream, for viewing a finished deployment.
 func (h *ApplicationHandler) DeploymentLogsHistory(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -1502,9 +1431,7 @@ func (h *ApplicationHandler) record(c *okapi.Context, wsID uint, action string, 
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "application", TargetID: strconv.Itoa(int(appID)), IP: c.RealIP()})
 }
 
-// sourceUnchangedLock enforces, on the general update path, the same rule SetSource enforces:
-// an application whose source is owned by a marketplace template or by GitOps cannot have it edited
-// interactively. It compares against the stored values so a no-op passes through untouched.
+// Compares against stored values so a no-op passes through untouched.
 func sourceUnchangedLock(app *models.Application, req *UpdateAppRequest) error {
 	if !req.Body.changesSource(app) {
 		return nil

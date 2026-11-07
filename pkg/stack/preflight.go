@@ -27,19 +27,13 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// gatewayPorts are the host ports the gateway must publish: HTTP for the ACME
-// challenge and the redirect, HTTPS for everything else.
 var gatewayPorts = []int{80, 443}
 
 // PortConflict is something already holding a port the gateway needs.
 type PortConflict struct {
 	Port int
-	// Holder names what has it — a container, or the host itself when the port is
-	// taken by a process Docker knows nothing about (a system nginx, Apache, or a
-	// Caddy installed from a package).
-	Holder string
-	// Container is true when Holder is a container name, which the operator can
-	// simply stop.
+	// The host itself holds it when Docker can't see the process (system nginx, Apache, packaged Caddy).
+	Holder    string
 	Container bool
 }
 
@@ -50,9 +44,7 @@ func (c PortConflict) String() string {
 	return fmt.Sprintf("port %d is in use by a process on this host", c.Port)
 }
 
-// CheckPorts reports what would stop the gateway from binding 80 and 443, BEFORE anything is created.
-// Two passes: Docker's own containers, which lets the message name the culprit; and an actual bind, for
-// anything Docker cannot see — a system nginx is invisible to `docker ps` and to our netns.
+// Two passes: Docker's containers to name the culprit, then a real bind for processes Docker can't see.
 func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 	containers, err := s.dc.ListContainers(ctx, false)
 	if err != nil {
@@ -73,8 +65,7 @@ func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 	var out []PortConflict
 	for _, port := range gatewayPorts {
 		if name, taken := held[port]; taken {
-			// Our own gateway holding the port is not a conflict — converge replaces it.
-			// Neither is its test sibling from a rollout that died mid-flight.
+			// Our own gateway, or a test sibling from a dead rollout, is replaced by converge.
 			if name == ContainerGateway || name == ContainerGateway+"-test" {
 				continue
 			}
@@ -83,8 +74,7 @@ func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 		}
 		free, err := s.portBindable(ctx, port)
 		if err != nil {
-			// The probe itself failed (no helper image, no network). Do not invent a
-			// conflict out of it: a false alarm here blocks a perfectly good install.
+			// A broken probe is not a conflict; a false alarm would block a good install.
 			s.log("could not probe port %d (%v) — continuing", port, err)
 			continue
 		}
@@ -95,13 +85,9 @@ func (s *Service) CheckPorts(ctx context.Context) ([]PortConflict, error) {
 	return out, nil
 }
 
-// ErrOrphanedData means Postgres data is already on this host, but the manifest that
-// holds its password is gone.
 var ErrOrphanedData = errors.New("an existing Miabi database was found, but its manifest is missing")
 
-// CheckOrphanedData refuses a FRESH install onto an existing Postgres volume. Postgres only honours
-// POSTGRES_PASSWORD when it initializes an EMPTY data directory, so a freshly generated password can
-// never authenticate. pg_isready does not check credentials, so nothing else catches it.
+// Postgres honours POSTGRES_PASSWORD only on an empty data dir, and pg_isready doesn't check credentials.
 func (s *Service) CheckOrphanedData(ctx context.Context) error {
 	if _, err := s.dc.InspectVolume(ctx, VolumePGData); err != nil {
 		if isNotFound(err) {
@@ -127,8 +113,7 @@ func (s *Service) CheckOrphanedData(ctx context.Context) error {
 // ErrRootlessDaemon is returned by CheckDaemon for a rootless Docker daemon.
 var ErrRootlessDaemon = errors.New("this Docker daemon runs rootless, which Miabi does not support")
 
-// CheckDaemon refuses a rootless daemon. The control plane gives the containers it starts the host's
-// /var/run/docker.sock, a path a rootless daemon does not serve, so the install would come up half-working.
+// The control plane hands containers /var/run/docker.sock, which a rootless daemon doesn't serve.
 func (s *Service) CheckDaemon(ctx context.Context) error {
 	rootless, err := s.dc.Rootless(ctx)
 	if err != nil {
@@ -143,9 +128,7 @@ func (s *Service) CheckDaemon(ctx context.Context) error {
 	return nil
 }
 
-// portBindable asks Docker to publish the port on a container that exits at once. If
-// something else owns it, Docker refuses at start ("port is already allocated") and
-// we have our answer without ever touching the host's network namespace.
+// Docker refuses to start a container on a taken port, so we never touch the host's network namespace.
 func (s *Service) portBindable(ctx context.Context, port int) (bool, error) {
 	if err := ensureImage(ctx, s.dc, helperImage, s.log); err != nil {
 		return false, err
@@ -155,8 +138,7 @@ func (s *Service) portBindable(ctx context.Context, port int) (bool, error) {
 		Image: helperImage,
 		Cmd:   []string{"true"},
 		Ports: map[string]string{fmt.Sprintf("%d/tcp", port): fmt.Sprintf("%d", port)},
-		// Not PlatformLabels: this is a transient probe, and marking it protected would
-		// make a leftover from a killed run undeletable from the containers page.
+		// Not PlatformLabels: a leftover transient probe must stay deletable from the containers page.
 		Labels: map[string]string{docker.LabelPartOf: docker.PartOfMiabi, docker.LabelRole: "portcheck"},
 	}
 	_ = s.dc.RemoveContainer(ctx, spec.Name, true) // a leftover from a killed run
@@ -171,9 +153,7 @@ func (s *Service) portBindable(ctx context.Context, port int) (bool, error) {
 	return false, err
 }
 
-// isPortTaken distinguishes "the port is busy" from "the probe broke". Docker's
-// wording varies by platform and version, so match on the shapes it actually uses
-// rather than one exact string.
+// Docker's wording varies by platform and version, so match the shapes it uses rather than one string.
 func isPortTaken(err error) bool {
 	e := strings.ToLower(err.Error())
 	return strings.Contains(e, "port is already allocated") ||
@@ -191,8 +171,7 @@ func PortConflictError(conflicts []PortConflict) error {
 	}
 	b.WriteString("\n  Stop whatever is holding them, then re-run.")
 
-	// One `docker stop` per container, not per port: a proxy holding BOTH 80 and 443
-	// is one container and one command, and printing it twice reads like two problems.
+	// One `docker stop` per container, not per port, so one proxy isn't reported as two problems.
 	seen := map[string]bool{}
 	for _, c := range conflicts {
 		if c.Container && !seen[c.Holder] {

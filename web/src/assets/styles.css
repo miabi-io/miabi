@@ -104,11 +104,7 @@
   --checkmark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='black'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m4.5 12.75 6 6 9-13.5' /%3E%3C/svg%3E");
   --checkmark-color: var(--primary-900);
 
-  /* Status-class colors for chart marks. 5xx steps deeper than --danger-500
-     because 4xx and 5xx sit against each other as adjacent pie wedges and
-     stacked bar segments: amber #d97706 vs #ef4444 measures ΔE 11.8 to normal
-     vision and 4.4 under deuteranopia — indistinguishable where they touch.
-     Dark mode gets its own step; #b91c1c goes muddy on a dark surface. */
+  /* 5xx steps past --danger-500 so it stays distinct from 4xx amber when adjacent, including under deuteranopia. */
   --chart-2xx: var(--success-600);
   --chart-3xx: #2563eb;
   --chart-4xx: var(--warning-600);
@@ -437,13 +433,6 @@ tbody tr:last-child td { border-bottom: none; }
 tr { transition: background var(--transition); }
 tbody tr:hover td { background: var(--bg-hover); }
 
-/* th:first-child, td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 10;
-  background: var(--bg-surface, var(--bg-primary));
-  box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.1);
-} */
 .table-desc {  
     max-width: 80px;
     white-space: nowrap;
@@ -469,9 +458,7 @@ tbody tr:hover td { background: var(--bg-hover); }
 .badge-secondary { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 /* ─── Banners / Inline notices ─── */
-/* A cohesive inline banner. Set the accent with a variant class
-   (.app-banner--info / --warning / --success / --danger). All colors derive
-   from the accent vars so light/dark themes stay correct. */
+/* All colors derive from the accent vars so light/dark themes stay correct. */
 .app-banner {
   --banner-accent: var(--primary-500);
   --banner-accent-strong: var(--primary-600);
@@ -689,9 +676,7 @@ tbody tr:hover td { background: var(--bg-hover); }
   animation: fadeIn 150ms ease;
 }
 
-/* Elevated overlay for a dialog that must stack on top of another open modal
-   (e.g. a confirm prompt raised from within a modal). Sits above base modals
-   (1000) and below toasts (2000). */
+/* Stacks a dialog over another open modal: above base modals (1000), below toasts (2000). */
 .modal-overlay-elevated {
   z-index: 1100;
 }
@@ -708,8 +693,7 @@ tbody tr:hover td { background: var(--bg-hover); }
   animation: modalSlideUp 200ms ease;
 }
 
-/* Size variants. These must live here, not in a view's scoped block: the class
-   lands on AppModal's element, which carries no caller scope id. */
+/* Must be global: the class lands on AppModal's element, which carries no caller scope id. */
 .modal-sm { max-width: 440px; }
 .modal-lg { max-width: 720px; }
 .modal-xl { max-width: 960px; }
@@ -906,8 +890,7 @@ input[type="radio"]:focus-visible {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 13px;
   overflow-x: auto;
-  /* One click grabs the whole block: these are short snippets to copy — a token,
-     a join command — where selecting part of it is never what you meant. */
+  /* Short snippets to copy (a token, a join command), where a partial selection is never intended. */
   user-select: all;
   border: 1px solid var(--border-primary);
   max-width: 100%;
@@ -916,10 +899,7 @@ input[type="radio"]:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* A log panel borrows .code-block for its type, but it is scrollable output
-   rather than a snippet: with select-all inherited, a click selects the entire
-   buffer and dragging out one line is impossible. Copying it whole is what the
-   toolbar's copy button is for. */
+/* Inherited select-all would make one click select the whole log buffer; the copy button handles copying it whole. */
 .code-block.log-view {
   -webkit-user-select: text;
   user-select: text;
@@ -1087,15 +1067,9 @@ input[type="radio"]:focus-visible {
 /* Rounded scroll container so wide tables clip cleanly inside cards. */
 .table-wrapper { overflow-x: auto; border-radius: var(--radius); }
 
-/* Two-line identity cell: avatar + stacked title/subtitle.
-   <td><div class="cell-id"><span class="avatar">JK</span>
-     <span class="cell-text"><span class="cell-title">Name</span>
-     <span class="cell-sub">email</span></span></div></td> */
 .cell-id { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .cell-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-/* max-width gives the ellipsis something to bite against: in an auto-layout
-   table the column would otherwise grow to fit a long value (image ref, git
-   URL, release name) and the truncation would never trigger. */
+/* Without max-width an auto-layout column grows to fit long values and the ellipsis never triggers. */
 .cell-title {
   font-weight: 550;
   color: var(--text-primary);
@@ -1125,9 +1099,7 @@ input[type="radio"]:focus-visible {
 [data-theme="dark"] .avatar { background: var(--primary-900); color: var(--primary-200); }
 .avatar-sm { width: 26px; height: 26px; font-size: 11px; }
 
-/* A workspace trait recolours the avatar it replaces the initial in. Both are off the brand accent
-   on purpose: system names the platform's own workspace, privileged relaxes the security profile.
-   The dark rules only restate the tokens, to outrank `[data-theme="dark"] .avatar` above. */
+/* Off the brand accent on purpose; the dark rules only restate tokens to outrank `[data-theme="dark"] .avatar`. */
 .avatar-system { background: var(--danger-50); color: var(--danger-600); }
 .avatar-privileged { background: var(--warning-50); color: var(--warning-600); }
 [data-theme="dark"] .avatar-system { background: var(--danger-50); color: var(--danger-600); }
@@ -1168,15 +1140,10 @@ input[type="radio"]:focus-visible {
   background: transparent; border-color: transparent; color: var(--text-tertiary);
 }
 .btn-icon-danger:hover:not(:disabled) { background: var(--danger-50); color: var(--danger-600); }
-/* Accent icon button. Unlike the muted and danger variants it carries the accent AT REST: it marks an
-   action worth noticing in a row rather than one you reach for only when you already mean to. The
-   accent ramp is themeable (assets/accents.css), so this follows whatever the install has chosen. */
 .btn-icon-accent {
   background: transparent; border-color: transparent; color: var(--primary-500);
 }
 .btn-icon-accent:hover:not(:disabled) { background: var(--primary-50); color: var(--primary-600); }
-/* Compact icon button for dense row actions sitting beside text, where the 32px square is heavier
-   than the line it belongs to. */
 .btn-icon-sm {
   width: 26px; height: 26px;
   font-size: 15px;
@@ -1204,11 +1171,7 @@ input[type="radio"]:focus-visible {
 ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-/* ============================================================
-   Analytics pages — shared visual primitives (Traffic/HTTP/
-   Performance/Web Analytics). Kept global so the pages and the
-   AnalyticsHeader/WorldMap components share one look.
-   ============================================================ */
+/* Kept global so the analytics pages and AnalyticsHeader/WorldMap share one look. */
 .a-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .a-tile { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 16px 18px; }
 .a-tile .t-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1365,8 +1328,6 @@ input[type="radio"]:focus-visible {
     font-size: 18px;
   }
 
-  /* Actions wrap onto their own row, each button sized to its content — not
-     stretched full-width. */
   .page-header-actions {
     display: flex;
     flex-wrap: wrap;
@@ -1387,8 +1348,6 @@ input[type="radio"]:focus-visible {
     padding: 16px;
   }
 
-  /* Keep table cells compact so more columns stay on screen; long values
-     truncate with an ellipsis and the table scrolls inside its wrapper. */
   .cell-title,
   .cell-sub {
     max-width: 160px;

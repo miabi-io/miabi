@@ -35,34 +35,27 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A swarm member with no Miabi agent runs tasks perfectly well but Miabi holds no Docker client for it,
-// so an app scheduled there has no metrics, stats or shell. Swarm can fix this itself: a GLOBAL service
-// runs one task on every node the constraints allow, including nodes that join later.
+// Unagented swarm members have no metrics, stats or shell; a global service puts an agent on every node.
 const (
 	// AgentServiceName is the global service that carries the agent to every swarm member.
 	AgentServiceName = "miabi-agent"
 	// dockerSock is bind-mounted into each agent task; it is the agent's whole job.
 	dockerSock = "/var/run/docker.sock"
-	// clusterTokenPrefix marks a cluster-wide agent token, distinct from the per-node
-	// mbn_ tokens an admin hands to install-agent.sh.
+	// Distinct from the per-node mbn_ tokens used by install-agent.sh.
 	clusterTokenPrefix = "mbc_"
 )
 
 var (
-	// ErrControlURLRequired is returned when the control plane has no address that
-	// workers could dial. Without it the agents would start and never connect.
+	// Without it the agents would start and never connect.
 	ErrControlURLRequired = errors.New("MIABI_CONTROL_URL must be set: it is the address the agents dial back on")
 	// ErrAgentImageRequired is returned when no agent image is configured.
 	ErrAgentImageRequired = errors.New("no agent image is configured")
-	// ErrNotSwarmMember is returned when an agent presents a cluster token but the swarm node id it claims
-	// is not a member of that cluster's swarm. This is the check that makes a shared token safe.
+	// This membership check is what makes a shared token safe.
 	ErrNotSwarmMember = errors.New("the agent's swarm node id is not a member of this cluster")
 	// ErrBadClusterToken is returned when the presented cluster agent token is unknown.
 	ErrBadClusterToken = errors.New("invalid cluster agent token")
 )
 
-// NodeRegistrar creates or updates the Miabi node record an agent registers as.
-// Satisfied by services/node.
 type NodeRegistrar interface {
 	FindBySwarmNodeID(swarmNodeID string) (*models.Server, error)
 	RegisterClusterNode(clusterID uint, swarmNodeID, hostname string) (*models.Server, error)
@@ -86,19 +79,15 @@ func (s *Service) agentImage() string {
 const (
 	// insecureEnv is the agent's opt-out of certificate verification entirely.
 	insecureEnv = "MIABI_AGENT_INSECURE_SKIP_VERIFY"
-	// caCertEnv trusts a specific CA instead. Verification still happens, anchored on the
-	// operator's own authority, which is why the UI offers it before skipping.
+	// Verification still happens, anchored on the operator's own authority.
 	caCertEnv = "MIABI_CA_CERT"
 )
 
-// AgentStatus reports whether the global agent service is deployed, how many of its
-// tasks are up, and whether those agents are skipping TLS verification.
 type AgentStatus struct {
 	Deployed bool   `json:"deployed"`
 	Running  int    `json:"running_tasks"`
 	Image    string `json:"image,omitempty"`
-	// InsecureTLS is true when the agents do NOT verify the control plane's certificate, surfaced so a
-	// one-off workaround for a self-signed cert cannot quietly become permanent.
+	// Surfaced so a one-off self-signed workaround cannot quietly become permanent.
 	InsecureTLS bool `json:"insecure_tls"`
 	// CustomCA is true when the agents verify against an operator-supplied CA.
 	CustomCA bool `json:"custom_ca"`
@@ -143,14 +132,11 @@ type AgentOptions struct {
 	InsecureTLS bool
 	// CACert is the PEM itself, shipped to the agents in their environment.
 	CACert string
-	// CACertPath is a CA file that already exists on every node, bind-mounted into each agent. The agent
-	// container has its own stock bundle, which is why agents fail while hosts are fine.
+	// The agent container has its own stock bundle, which is why agents fail while hosts are fine.
 	CACertPath string
 }
 
-// DeployAgents installs the Miabi agent on every node of a cluster's swarm as a global service. It is an
-// explicit admin action because it grants Miabi the Docker socket, root-equivalent, on every machine that
-// is now, or ever becomes, a member of this swarm.
+// DeployAgents is explicit because it grants root-equivalent Docker access on every current and future swarm member.
 func (s *Service) DeployAgents(ctx context.Context, clusterID uint, opts AgentOptions) error {
 	if !s.IsSwarm(clusterID) {
 		return ErrNotEnabled
@@ -174,8 +160,7 @@ func (s *Service) DeployAgents(ctx context.Context, clusterID uint, opts AgentOp
 		return err
 	}
 
-	// Store only the hash: the plaintext lives in the service spec, which Docker already holds. Rotating on
-	// every deploy means a token that ever escaped stops working at the next redeploy.
+	// The plaintext lives in the service spec; rotating each deploy kills any escaped token at the next redeploy.
 	token := clusterTokenPrefix + randHex(32)
 	if err := s.store.UpdateColumns(c.ID, map[string]any{"agent_token_hash": hashClusterToken(token)}); err != nil {
 		return fmt.Errorf("store the cluster agent token: %w", err)
@@ -228,8 +213,7 @@ func (s *Service) DeployAgents(ctx context.Context, clusterID uint, opts AgentOp
 	return nil
 }
 
-// labelDirectNodes marks the cluster's nodes Miabi already reaches directly: the local socket, or an agent
-// an admin installed. Nodes the agent service registered itself stay unlabelled, so it keeps running there.
+// Nodes the agent service registered itself stay unlabelled so it keeps running there.
 func (s *Service) labelDirectNodes(ctx context.Context, mgr docker.Client, clusterID uint) {
 	servers, err := s.nodes.List(ctx)
 	if err != nil {
@@ -244,8 +228,7 @@ func (s *Service) labelDirectNodes(ctx context.Context, mgr docker.Client, clust
 	}
 }
 
-// RemoveAgents tears a cluster's global agent service down. The node records stay; those nodes simply go
-// back to being unmanaged.
+// Node records stay; those nodes go back to being unmanaged.
 func (s *Service) RemoveAgents(ctx context.Context, clusterID uint) error {
 	if !s.IsSwarm(clusterID) {
 		return ErrNotEnabled
@@ -265,9 +248,7 @@ func (s *Service) RemoveAgents(ctx context.Context, clusterID uint) error {
 	return nil
 }
 
-// AuthenticateAgent authorizes an agent that presented a cluster token and returns the Miabi node it is.
-// The token only names the cluster; identity comes from the swarm node id the agent read off its engine,
-// trusted only because that cluster's manager confirms the membership.
+// The token only names the cluster; identity is trusted only because the cluster manager confirms membership.
 func (s *Service) AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
 	if s.store == nil || s.registrar == nil {
 		return nil, ErrBadClusterToken

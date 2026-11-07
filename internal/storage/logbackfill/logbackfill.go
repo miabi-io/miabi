@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package logbackfill migrates pre-existing large log rows out of Postgres into the shared log
-// store. It runs at boot, not as a migration.Step, because it needs the store and must defer
-// until it is enabled; it records an UpgradeStep marker once complete and never scans again.
+// Package logbackfill moves old large log rows to the log store at boot, since it must wait for the store.
 package logbackfill
 
 import (
@@ -33,17 +31,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// stepName marks the backfill complete in the upgrade_steps table (reusing the
-// same once-only ledger the migration/upgrade package uses).
+// Reuses the once-only upgrade_steps ledger the migration/upgrade package uses.
 const stepName = "2026.07-log-externalize-backfill"
 
-// batchSize bounds how many rows are loaded (with their full logs) at once, so a
-// large history doesn't pull every log into memory in one query.
+// Bounds memory so a large history doesn't pull every log in one query.
 const batchSize = 200
 
-// Run externalizes every log-bearing row above thresholdBytes that is not yet externalized.
-// No-op and unrecorded when the store is disabled, so a later boot still runs it. A log no
-// larger than the DB tail isn't worth moving — the reader serves it with an empty ref.
+// Unrecorded when the store is disabled so a later boot still runs it; logs within the DB tail stay put.
 func Run(ctx context.Context, db *gorm.DB, store *logstore.Store, thresholdBytes int, version string) error {
 	if !store.Enabled() {
 		return nil
@@ -80,8 +74,6 @@ func Run(ctx context.Context, db *gorm.DB, store *logstore.Store, thresholdBytes
 	return nil
 }
 
-// logRow is one externalizable row: its id, the full log, and the identifiers its object key
-// is derived from (workspace/parent/ordinal, per kind).
 type logRow struct {
 	ID          uint
 	WorkspaceID uint
@@ -90,13 +82,9 @@ type logRow struct {
 	Logs        string
 }
 
-// kind describes one log-bearing table: how to select its externalizable rows (joining for the
-// workspace id where the row doesn't carry it) and how to build each row's object key.
 type kind struct {
-	name  string
-	table string
-	// query returns rows with COALESCE(log_ref,'')='' and length(logs) > threshold, limited to
-	// batchSize, each populated with the fields refFor needs.
+	name   string
+	table  string
 	query  func(ctx context.Context, db *gorm.DB, threshold int) ([]logRow, error)
 	refFor func(r logRow) string
 }
@@ -157,8 +145,6 @@ func plainQuery(table, cols string) func(context.Context, *gorm.DB, int) ([]logR
 	}
 }
 
-// joinQuery selects externalizable rows from a table that must join a parent for the workspace
-// id (deployments -> applications, pipeline steps -> runs).
 func joinQuery(from, join, cols, alias string) func(context.Context, *gorm.DB, int) ([]logRow, error) {
 	where := fmt.Sprintf("COALESCE(%s.log_ref, '') = '' AND length(%s.logs) > ?", alias, alias)
 	order := alias + ".id"
@@ -170,8 +156,6 @@ func joinQuery(from, join, cols, alias string) func(context.Context, *gorm.DB, i
 	}
 }
 
-// backfillKind drains one table's externalizable rows in batches, writing each full log to the
-// store and trimming the row to a tail + ref.
 func backfillKind(ctx context.Context, db *gorm.DB, store *logstore.Store, k kind, threshold int) (int, error) {
 	done := 0
 	for {
@@ -189,8 +173,7 @@ func backfillKind(ctx context.Context, db *gorm.DB, store *logstore.Store, k kin
 				return done, fmt.Errorf("externalize id=%d: %w", r.ID, err)
 			}
 			if res.Ref == "" {
-				// Store disabled mid-run (shouldn't happen; Run guards it). Stop
-				// so we don't loop forever on rows that never gain a ref.
+				// Store disabled mid-run: stop rather than loop forever on rows that never gain a ref.
 				return done, nil
 			}
 			if err := db.WithContext(ctx).Table(k.table).Where("id = ?", r.ID).

@@ -32,8 +32,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// DeploymentConfigHandler is the admin Deployment Config: the catalog of every
-// image the platform runs, with per-image overrides and a global registry mirror.
 type DeploymentConfigHandler struct {
 	resolver *platformimage.Resolver
 	repo     *repositories.SettingRepository
@@ -46,14 +44,11 @@ func NewDeploymentConfigHandler(resolver *platformimage.Resolver, repo *reposito
 	return &DeploymentConfigHandler{resolver: resolver, repo: repo, provider: provider, audit: auditLog, ee: ee}
 }
 
-// mirrorEditable reports whether this licence may change the registry mirror.
 // Per-image overrides stay Community; only the mirror is gated.
 func (h *DeploymentConfigHandler) mirrorEditable() bool {
 	return h.ee != nil && h.ee.Mutable(enterprise.FlagPrivateRegistry)
 }
 
-// Get returns the image catalog (default / override / effective per image) and
-// the registry mirror.
 func (h *DeploymentConfigHandler) Get(c *okapi.Context) error {
 	return ok(c, map[string]any{
 		"images":          h.resolver.Catalog(),
@@ -71,13 +66,7 @@ type UpdateDeploymentConfigRequest struct {
 	} `json:"body"`
 }
 
-// Update writes image overrides + the mirror. Unknown keys are ignored.
-//
-// The registry mirror needs the private_registry entitlement to CHANGE, not to
-// keep. A mirror set under a licence goes on working after it lapses — an
-// air-gapped platform that suddenly resolved every image to an unreachable
-// registry would stop being able to start anything, which is not a licensing
-// outcome worth defending. Per-image overrides are unaffected and stay Community.
+// A mirror set under a licence keeps working after it lapses, or an air-gapped install could not start anything.
 func (h *DeploymentConfigHandler) Update(c *okapi.Context, req *UpdateDeploymentConfigRequest) error {
 	mirror := normalizeMirror(req.Body.Mirror)
 	if mirrorChangeRefused(h.resolver.Mirror(), mirror, h.mirrorEditable()) {
@@ -101,18 +90,12 @@ func (h *DeploymentConfigHandler) Update(c *okapi.Context, req *UpdateDeployment
 	return h.Get(c)
 }
 
-// normalizeMirror trims the value the way Resolver.Mirror reports it, so a
-// trailing slash or stray space is not mistaken for a change.
+// Trims like Resolver.Mirror so a trailing slash or space is not mistaken for a change.
 func normalizeMirror(v string) string {
 	return strings.TrimRight(strings.TrimSpace(v), "/")
 }
 
-// mirrorChangeRefused reports whether this request tries to change the registry
-// mirror without the entitlement to.
-//
-// Only a real change is refused. The admin form round-trips the current mirror on
-// every save, so refusing on presence rather than on difference would stop a
-// Community admin editing the per-image overrides that are theirs to edit.
+// Only a real change is refused: the admin form round-trips the current mirror on every save.
 func mirrorChangeRefused(current, requested string, editable bool) bool {
 	return !editable && normalizeMirror(requested) != normalizeMirror(current)
 }

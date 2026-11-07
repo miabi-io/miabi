@@ -35,9 +35,7 @@ func TestMissingConfigKey(t *testing.T) {
 			servers: []models.Server{{Name: "edge-1", GatewayImported: true}},
 			want:    []string{"edge-1"},
 		},
-		// AdoptCentral marks the manager's gateway imported so Miabi never deploys a second one beside
-		// it — but the stack installer hands that container the key. Reporting it would cry wolf on
-		// every managed install, and a warning that always fires is one nobody reads.
+		// The stack installer gives the manager's adopted gateway the key, so reporting it would always fire.
 		"the manager's own adopted gateway": {
 			servers: []models.Server{{Name: "manager", GatewayImported: true, IsLocal: true}},
 			want:    nil,

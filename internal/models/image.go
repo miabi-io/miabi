@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// Image is a built container artifact with provenance. Deploy-by-digest records
-// exactly what ran; the catalog/GC reasons about retention without ever
-// collecting a digest a live deployment or pinned release references.
+// Image is a built artifact; GC never collects a digest a live deployment or pinned release references.
 type Image struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint   `json:"workspace_id" gorm:"index:idx_image_ws_digest,unique;not null"`

@@ -32,9 +32,7 @@ const repos = ref<RegistryRepository[]>([])
 const loading = ref(true)
 const reposLoading = ref(false)
 
-// Search filters repository *names*, server-side. Searching within a
-// repository's tags belongs on its own page, where the tags are paginated —
-// filtering them here would mean reading every tag of every repository.
+// Tag search belongs on the repository page; filtering here would read every tag of every repository.
 const search = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -48,11 +46,7 @@ function openRepo(name: string) {
   router.push({ name: 'registry-image', params: { repo: name } })
 }
 
-/**
- * A repository's tag preview, tolerating a null list. A repository whose last
- * tag was deleted still appears in the registry catalog until garbage
- * collection, and its tag list comes back empty.
- */
+/** A repository whose last tag was deleted stays in the catalog with an empty tag list until GC. */
 function preview(r: RegistryRepository): string[] {
   return r.tags ?? []
 }
@@ -71,8 +65,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
     repos.value = []
     return
   }
-  // The pager fires on mount, possibly before the info call lands; the enabled
-  // flag gates whether there is anything to list at all.
+  // The pager may fire before the info call lands.
   if (!info.value) await loadInfo()
   loading.value = false
   if (!info.value?.enabled) {
@@ -280,8 +273,6 @@ watch(wsId, async () => {
 .search .mdi { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
 .search .form-input { padding-left: 32px; width: 260px; max-width: 100%; }
 .repo-list { display: flex; flex-direction: column; }
-/* The repository name is the link into the image; the row itself stays a plain
-   row so the list reads as content rather than a stack of buttons. */
 .repo-name.link {
   border: 0; background: none; padding: 0; font-family: inherit; font-size: 14px;
   color: var(--text-primary); cursor: pointer;
@@ -297,8 +288,6 @@ watch(wsId, async () => {
 .repo-icon { color: var(--primary-500); font-size: 18px; }
 .repo-name { font-size: 14px; color: var(--text-primary); }
 .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-/* Chips are labels here, not controls — the per-tag actions live on the image
-   page, so the padding is symmetric again. */
 .tag {
   display: inline-flex; align-items: center; padding: 3px 10px; font-size: 12px;
   color: var(--text-primary);

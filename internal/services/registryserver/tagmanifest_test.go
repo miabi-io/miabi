@@ -27,8 +27,6 @@ import (
 	"testing"
 )
 
-// TagManifest must fetch the digest's manifest and re-PUT the identical bytes +
-// media type under the new tag — adding a tag without re-uploading blobs.
 func TestTagManifest(t *testing.T) {
 	const (
 		repo   = "ws_7/nginx"

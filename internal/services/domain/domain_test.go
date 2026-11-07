@@ -104,8 +104,6 @@ func TestDomainsOverlap(t *testing.T) {
 	}
 }
 
-// TestReverifyDecisionProofDecays pins the existing drift behaviour for a DNS-proven
-// domain: consecutive misses accumulate and the proof is revoked at the threshold.
 func TestReverifyDecisionProofDecays(t *testing.T) {
 	misses := 0
 	for i := 1; i < verifyMissThreshold; i++ {
@@ -124,10 +122,7 @@ func TestReverifyDecisionProofDecays(t *testing.T) {
 	}
 }
 
-// TestReverifyDecisionWaiverSurvives is the regression for the reported bug: an admin
-// override used to be re-checked like a proof, so the drift cron un-verified it a few
-// runs later and took its routes offline. A waiver must never be revoked, however many
-// times the TXT it never had fails to resolve.
+// An admin override must never be revoked, however often the TXT it never had fails to resolve.
 func TestReverifyDecisionWaiverSurvives(t *testing.T) {
 	misses := 0
 	for i := 1; i <= verifyMissThreshold*3; i++ {
@@ -145,8 +140,7 @@ func TestReverifyDecisionWaiverSurvives(t *testing.T) {
 	}
 }
 
-// TestReverifyDecisionWaiverGraduates covers the promotion path: once an overridden
-// domain can prove itself, it stops being an override nobody remembers granting.
+// Once an overridden domain can prove itself it stops being an override.
 func TestReverifyDecisionWaiverGraduates(t *testing.T) {
 	out := reverifyDecision(models.VerifiedViaAdmin, 4, true, true)
 	if !out.Promote || !out.Write {
@@ -157,8 +151,7 @@ func TestReverifyDecisionWaiverGraduates(t *testing.T) {
 	}
 }
 
-// TestReverifyDecisionCleanProofSkipsWrite keeps the steady state free of database
-// writes: a proven domain that still resolves changes nothing.
+// A proven domain that still resolves must cause no database write.
 func TestReverifyDecisionCleanProofSkipsWrite(t *testing.T) {
 	if out := reverifyDecision(models.VerifiedViaDNS, 0, false, true); out.Write {
 		t.Fatalf("a clean re-check = %+v, want no write", out)

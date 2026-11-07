@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/mwcatalog"
 )
 
-// Reencrypt re-encrypts the secrets in the workspace's middleware rules under the workspace's active
-// DEK (key rotation). Idempotent; returns the number of middlewares rewritten. The gateway needs no
-// resync: the decrypted values it renders are unchanged.
+// Reencrypt re-encrypts middleware secrets under the active DEK; the gateway needs no resync since decrypted values are unchanged.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	rows, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

@@ -122,9 +122,7 @@ func TestSelectionPrefersLeastLoadedWithCapacity(t *testing.T) {
 	}
 }
 
-// A workspace that registered its own runner must get it, even when a shared runner is idle and
-// has a lower id. This was decided by primary-key order before: operators register the platform
-// pool first, so the shared runner won every tie and the tenant's machine sat idle.
+// Primary-key order used to win, so the shared pool beat every tie and the tenant's machine sat idle.
 func TestSelectionPrefersTheWorkspacesOwnRunner(t *testing.T) {
 	shared := models.Runner{ID: 1, Scope: models.ScopeShared, Enabled: true, Concurrency: 2}
 	own := models.Runner{ID: 9, WorkspaceID: ptr(1), Scope: models.ScopeWorkspace, Enabled: true, Concurrency: 2}
@@ -169,8 +167,7 @@ func TestSelectionRanksWithinTheOwnedTierByLoad(t *testing.T) {
 	}
 }
 
-// A job needing a feature goes only to a runner that reports it: an older runner accepts the job and drops
-// what it does not understand, building a single-platform image as if nothing had been asked.
+// An older runner drops features it doesn't understand, building a single-platform image silently.
 func TestFeaturesGateEligibility(t *testing.T) {
 	always := func(uint) bool { return true }
 	old := models.Runner{ID: 1, Name: "old", Enabled: true, Concurrency: 2, Scope: models.ScopeShared}
@@ -188,8 +185,7 @@ func TestFeaturesGateEligibility(t *testing.T) {
 	}
 }
 
-// Context and build-args shipped before runners advertised features; an older runner drops them and builds
-// the wrong image, so a job using them waits for a runner new enough.
+// An older runner drops context and build-args and builds the wrong image, so such jobs wait.
 func TestMinVersionGatesEligibility(t *testing.T) {
 	always := func(uint) bool { return true }
 	runner := func(id uint, version string) models.Runner {

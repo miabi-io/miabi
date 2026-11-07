@@ -42,14 +42,12 @@ const DARK_BG = '#1a1a2e'
 const ON_PRIMARY = '#ffffff' // --text-on-primary
 
 describe('accent contrast', () => {
-  // The pair that matters most: every primary button is white text on primary-600.
-  // A theme that fails here ships an unreadable button, which no other test sees.
+  // Every primary button is white on primary-600; failing here ships an unreadable button.
   it.each(data.accents)('$label: white text on primary-600 meets 4.5:1', (accent) => {
     expect(contrast(ON_PRIMARY, accent.ramp['600'])).toBeGreaterThanOrEqual(4.5)
   })
 
-  // Focus rings and links use primary-500 on both grounds. 3:1 is the WCAG
-  // threshold for a non-text indicator.
+  // 3:1 is the WCAG threshold for a non-text indicator.
   it.each(data.accents)('$label: primary-500 is visible on both grounds', (accent) => {
     expect(contrast(accent.ramp['500'], LIGHT_BG)).toBeGreaterThanOrEqual(3)
     expect(contrast(accent.ramp['500'], DARK_BG)).toBeGreaterThanOrEqual(3)
@@ -57,12 +55,7 @@ describe('accent contrast', () => {
 })
 
 describe('accent selection', () => {
-  // State is not decoration. An accent that reads as "danger" or "success" is a
-  // hazard for anyone who takes colour before text, so accents must stay clear of
-  // the semantic hues.
-  // The three that demand action. --info (#0ea5e9) is deliberately absent: it
-  // signals nothing to act on, and excluding every blue would rule out the accent
-  // people most expect a console to offer.
+  // Accents stay clear of action-state hues; --info is excluded since blocking blue would rule out the expected accent.
   const SEMANTIC = { success: '#22c55e', warning: '#f59e0b', danger: '#ef4444' }
 
   function hue(hex: string): number {
@@ -84,11 +77,7 @@ describe('accent selection', () => {
     return Math.min(raw, 360 - raw)
   }
 
-  // An accent may sit on a state hue — orange, green and red were asked for — but
-  // it has to say so. The declaration is checked against reality rather than
-  // trusted: it must name the state the accent is actually nearest, and an accent
-  // that has moved away from every state must drop it. So this still catches the
-  // case it exists for, which is a colliding accent added without noticing.
+  // A state-hue overlap must be declared and is checked against the nearest actual state, catching unnoticed collisions.
   it.each(data.accents)('$label: any state-hue overlap is declared, not accidental', (accent) => {
     const h = hue(accent.ramp['500'])
     if (h < 0) return // an achromatic accent reads as grey, not as a hue
@@ -111,9 +100,7 @@ describe('accent selection', () => {
     ).toBe(nearest)
   })
 
-  // Not a limit for its own sake: every accent is a permanent contrast and
-  // screenshot obligation on every future change. Eight is a decision, so raising
-  // it should be one too rather than something that drifts.
+  // Every accent is a permanent contrast and screenshot obligation, so raising the cap must be deliberate.
   it('keeps the set to a reviewed size', () => {
     expect(data.accents.length).toBeLessThanOrEqual(6)
   })

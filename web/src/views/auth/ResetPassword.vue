@@ -20,8 +20,6 @@ const done = ref(false)
 const passwordInput = ref<HTMLInputElement | null>(null)
 
 const MIN_LEN = MIN_PASSWORD_LENGTH
-// Mirror the backend rules plus a local match check so the user
-// gets immediate feedback before submitting.
 const tooShort = computed(() => password.value.length > 0 && password.value.length < MIN_LEN)
 const mismatch = computed(() => confirm.value.length > 0 && confirm.value !== password.value)
 const canSubmit = computed(

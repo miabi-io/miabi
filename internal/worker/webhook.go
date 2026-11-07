@@ -37,9 +37,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// WebhookDeliverHandler delivers one event to one webhook endpoint, recording
-// the outcome of each attempt. Returning an error lets asynq retry with
-// exponential backoff.
+// Returning an error lets asynq retry with exponential backoff.
 type WebhookDeliverHandler struct {
 	webhooks   *repositories.WebhookRepository
 	deliveries *repositories.WebhookDeliveryRepository

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package apply is the imperative, one-shot sibling of GitOps: it turns a bundle of miabi.io/v1
-// manifests into a plan or converges the workspace to them, by diffing desired state against a live
-// snapshot and driving the existing services. GitOps reuses this engine, so both share one code path.
+// Package apply converges a workspace to miabi.io/v1 manifests; GitOps reuses the same engine.
 package apply
 
 import (
@@ -58,15 +56,12 @@ import (
 	"github.com/miabi-io/miabi/pkg/sealed"
 )
 
-// MetaDigest records the image digest a manifest pins an application to. Deploys
-// pull image@digest while it is set, and the live snapshot reports the digest the
-// active release runs, so a pin whose deploy failed shows as drift.
+// MetaDigest pins image@digest; the snapshot reports the running digest, so a failed pin shows as drift.
 const MetaDigest = models.MetaDigest
 
 // ManagedByGitOps marks resources the declarative engine reconciles for a GitOps project.
 const ManagedByGitOps = models.ManagedByGitOps
 
-// ManagedByApply marks resources the declarative engine created from a one-shot apply (CLI or API).
 // Each run prunes only its own owner's resources, so a CLI prune never deletes a GitOps project's.
 const ManagedByApply = models.ManagedByApply
 
@@ -77,11 +72,8 @@ var (
 	ErrOwnedByGitOps = errors.New("owned by a GitOps project")
 	// ErrPlainSecret refuses a Secret with a plaintext value where only sealed values are allowed.
 	ErrPlainSecret = errors.New("this source only accepts sealed secrets, but these Secrets carry a plaintext value")
-	// ErrUnsupportedKind is returned when a plan needs a mutation the v1 executor
-	// does not perform. The plan still lists the change.
-	ErrUnsupportedKind = errors.New("kind not yet supported by apply")
-	// ErrResourceNotFound is returned by ApplyResource when the named resource is
-	// not present in the desired manifest bundle (HTTP 404).
+	// The plan still lists the change.
+	ErrUnsupportedKind  = errors.New("kind not yet supported by apply")
 	ErrResourceNotFound = errors.New("resource not found in manifests")
 )
 
@@ -96,27 +88,17 @@ type Service struct {
 	domains    *domain.Service
 	registries *registry.Service
 
-	// Port-exposure reconcilers (optional; wired via SetPortExposure). extAccess
-	// reconciles externalAccess ports under the app's cluster domain; bindings
-	// manages host-port bindings.
 	extAccess bool
 	bindings  *portbinding.Service
 
-	// configs converges kind: Config; nil leaves a manifest declaring one
-	// erroring rather than silently skipping the resource an app mounts.
+	// nil makes a manifest declaring one error rather than silently skip what an app mounts.
 	configs *configsvc.Service
-	// cluster decides whether a reference resolves: locations never share a network, and a location's
-	// nodes share one only in a swarm. Nil means "assume not clustered", the conservative reading.
+	// Locations never share a network, and a location's nodes share one only in a swarm; nil means not clustered.
 	cluster ClusterCap
 	placer  Placer
-	// certificates resolves a Route's certificate: <name> to the stored certificate it serves.
-	// Certificates are not a declarable kind — they carry a private key — so a manifest can only
-	// reference one that already exists. Nil leaves tls: custom unresolvable rather than silently
-	// applying a route with no certificate.
+	// Certificates carry a private key so they are not declarable; nil leaves tls: custom unresolvable.
 	certificates *certificatesvc.Service
-	// middlewares converges kind: Middleware, and is what lets a Route name a chain.
-	// Nil for the same reason as configs: a manifest declaring one must fail loudly
-	// rather than have the resource its routes depend on quietly disappear.
+	// nil makes a declared middleware fail loudly instead of silently vanishing from its routes.
 	middlewares *middlewaresvc.Service
 	// jobs converges kinds CronJob and Job.
 	jobs *job.Service
@@ -139,16 +121,12 @@ func (s *Service) SetUnsealer(u Unsealer) { s.unsealer = u }
 // SetConfigs wires the config service (kind: Config).
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
 
-// ClusterCap describes the clusters workloads run in, which decides whether a reference between two
-// of them can resolve.
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
 	ClusterOfServer(serverID uint) uint
 	LocationLabel(clusterID uint) string
 }
 
-// SetCluster wires cluster detection, used to decide whether a reference across two nodes or two
-// locations can resolve.
 func (s *Service) SetCluster(c ClusterCap) { s.cluster = c }
 
 // Placer resolves where a created resource lands. Satisfied by the placement service.
@@ -172,8 +150,7 @@ func (s *Service) place(ctx context.Context, workspaceID uint, ch declarative.Ch
 	return res, nil
 }
 
-// placeApp puts a new app in its location, else its stack's, and on the node of a volume it mounts. With
-// none of those it follows the databases it references, when they share one location.
+// With no location, stack or volume, the app follows its referenced databases when they share a location.
 func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, spec *declarative.ApplicationSpec, refs specRefs) (placement.Result, error) {
 	if s.placer == nil {
 		return placement.Result{}, nil
@@ -219,9 +196,7 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 	return res, nil
 }
 
-// placeVolume puts a new volume where the app mounting it runs: in its location, and on the node of that
-// app or of the app's other volumes, since node-local data is only reachable from one node. Placed on its
-// own, a volume takes the least-loaded node, and the app mounting it then fails half-applied.
+// Node-local data is reachable from one node; placed alone, the volume would leave its app half-applied.
 func (s *Service) placeVolume(ctx context.Context, workspaceID uint, ch declarative.Change, spec *declarative.VolumeSpec, set *declarative.ResourceSet) (placement.Result, error) {
 	location := spec.Location()
 	if s.placer == nil || set == nil {
@@ -283,8 +258,7 @@ func mountingApp(set *declarative.ResourceSet, volume string) (*declarative.Appl
 	return nil, ""
 }
 
-// appLocation is where an app declared in the bundle runs: its own location, else its stack's, whether
-// that stack is declared alongside it or already exists. Empty when neither says.
+// Empty when neither the app nor its stack names a location.
 func (s *Service) appLocation(workspaceID uint, app *declarative.ApplicationSpec, set *declarative.ResourceSet) string {
 	if l := app.Location(); l != "" || app.Stack == "" {
 		return l
@@ -303,8 +277,7 @@ func volumeLocationError(app, appLocation, volume, volumeLocation string) error 
 		"Declare the same location on both", ErrInvalidManifest, app, appLocation, volume, volumeLocation)
 }
 
-// sharedCluster is the one cluster every known referenced resource sits in, or 0 when they span several
-// or none is known.
+// 0 when the resources span several clusters or none is known.
 func sharedCluster(refs map[string]bool, nodes map[string]appPlacement) uint {
 	var cluster uint
 	for ref := range refs {
@@ -325,15 +298,13 @@ func stackLocationError(app, location, stack, stackLocation string) error {
 		"Set location to %q or leave it out", ErrInvalidManifest, app, location, stack, stackLocation, stackLocation)
 }
 
-// checkLocations fails the whole plan when a create names a location it cannot use, before anything in
-// the bundle is applied. Existing resources are not judged: a location cordoned since is not an error.
+// Existing resources are not judged: a location cordoned since is not an error.
 func (s *Service) checkLocations(workspaceID uint, plan *declarative.Plan, desired *declarative.ResourceSet, admin bool) error {
 	if s.placer == nil {
 		return nil
 	}
 	for _, ch := range plan.Changes {
-		// A move is refused at apply time too; refusing it here keeps the rest of the bundle from applying
-		// around a change that was never going to happen.
+		// Refused here so the rest of the bundle doesn't apply around a change that can't happen.
 		if ch.Action == declarative.ActionUpdate {
 			if err := refuseImmutable(ch); err != nil {
 				return err
@@ -371,9 +342,7 @@ func (s *Service) checkLocations(workspaceID uint, plan *declarative.Plan, desir
 	return s.checkMountLocations(workspaceID, desired)
 }
 
-// checkMountLocations fails the plan when an app cannot mount a volume it names, before anything is
-// created: found at apply time, the volume and whatever preceded it would already exist. The app and the
-// volume must share a location, and a replicated service cannot mount node-local storage.
+// Found at apply time, the volume and earlier resources would already exist.
 func (s *Service) checkMountLocations(workspaceID uint, desired *declarative.ResourceSet) error {
 	for _, r := range desired.ByKind(declarative.KindApplication) {
 		a := r.Application
@@ -455,8 +424,7 @@ func (s *Service) locationName(clusterID uint) string {
 	return s.placer.LocationName(clusterID)
 }
 
-// refuseMove fails an update that would move a resource to another location: nothing is rescheduled
-// after create.
+// Nothing is rescheduled after create.
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
 		if f.Field == "placement.location" {
@@ -471,9 +439,7 @@ func refuseMove(ch declarative.Change) error {
 	return nil
 }
 
-// refuseImmutable fails an update that changes a field the platform cannot converge without
-// destroying data. A volume's storage class is where its bytes physically are, so converging one
-// would mean deleting and recreating the volume — silently, from a git push.
+// A volume's storage class is where its bytes live; converging it would silently recreate the volume.
 func refuseImmutable(ch declarative.Change) error {
 	if err := refuseMove(ch); err != nil {
 		return err
@@ -490,9 +456,7 @@ func refuseImmutable(ch declarative.Change) error {
 	return nil
 }
 
-// resizeVolume converges the one volume field that can change in place. The declared size is a
-// soft number used for quota accounting, so growing it is a row update rather than a data move.
-// Shrinking is refused: a manifest behind a capacity expanded in the console must catch up, not undo it.
+// Size is a soft quota number; shrinking is refused so a manifest can't undo a console expansion.
 func (s *Service) resizeVolume(workspaceID uint, ch declarative.Change) error {
 	for _, f := range ch.Fields {
 		if f.Field != "size" {
@@ -524,8 +488,6 @@ func (s *Service) clusterID(id uint) uint {
 	return id
 }
 
-// SetCertificates wires the certificate service, so a Route may name the stored certificate it
-// serves with tls: custom.
 func (s *Service) SetCertificates(c *certificatesvc.Service) { s.certificates = c }
 
 // SetMiddlewares wires the gateway-middleware service (kind: Middleware).
@@ -539,9 +501,7 @@ func NewService(apps *application.Service, storage *storage.Service, dbs *databa
 	}
 }
 
-// SetPortExposure wires the reconcilers for an Application's per-port exposure:
-// externalAccess (reverse-proxy URLs) and publish/hostPort (host-port bindings).
-// Nil-safe: when unset, those manifest fields are ignored.
+// Nil-safe: when unset, the exposure fields are ignored.
 func (s *Service) SetPortExposure(bindings *portbinding.Service) {
 	s.extAccess, s.bindings = true, bindings
 }
@@ -549,21 +509,15 @@ func (s *Service) SetPortExposure(bindings *portbinding.Service) {
 // Options tunes a plan/apply.
 type Options struct {
 	Prune bool
-	// OwnerSource, when set, is the GitOps project id that owns this apply. Every
-	// resource created/updated in the run is labeled with it (miabi.io/gitops-source)
-	// so the project's resources can later be listed or torn down on their own.
+	// Labels every touched resource with the GitOps project id so it can be listed or torn down alone.
 	OwnerSource string
-	// Admin marks an apply run by a platform admin, who may create in restricted locations. GitOps never
-	// sets it: a sync acts on nobody's behalf.
+	// GitOps never sets it: a sync acts on nobody's behalf.
 	Admin bool
-	// CheckReferences fails the plan on a {{ … }} reference to something that exists neither in the
-	// bundle nor in the workspace. For previews: a real apply still converges everything else and
-	// records the app that cannot render as a failure.
+	// For previews; a real apply still converges everything else and records the app as failed.
 	CheckReferences bool
 	// RequireSealedSecrets refuses the bundle when a Secret carries a plaintext value.
 	RequireSealedSecrets bool
-	// Force lets a one-shot apply change resources a GitOps project owns. They stay the project's,
-	// so its next sync reverts the change.
+	// The resources stay the project's, so its next sync reverts the change.
 	Force bool
 }
 
@@ -582,9 +536,7 @@ func isAdmin(ctx context.Context) bool {
 	return v
 }
 
-// ownerSourceCtxKey carries the owning GitOps source id through execute → applyX
-// without widening every signature. Set per-apply, so concurrent applies don't
-// share state.
+// Carried in the context to avoid widening every signature; per-apply so concurrent runs don't share it.
 type ownerSourceCtxKey struct{}
 
 func withOwnerSource(ctx context.Context, src string) context.Context {
@@ -599,8 +551,6 @@ func ownerSource(ctx context.Context) string {
 	return v
 }
 
-// managedBy is the owner the run stamps on what it creates: the GitOps project's engine when the run
-// has a source, the one-shot apply otherwise.
 func managedBy(ctx context.Context) string {
 	return ownerOf(ownerSource(ctx))
 }
@@ -622,8 +572,7 @@ func claim(ctx context.Context, m models.Metadata) models.Metadata {
 	return tagSource(ctx, models.SetBuiltin(m, models.MetaManagedBy, ManagedByGitOps))
 }
 
-// refuseGitOpsOwned fails a one-shot apply that would update a resource a GitOps project owns: the
-// project's next sync would silently revert it. Judged by managed-by, as older resources carry no source label.
+// Judged by managed-by, since older resources carry no source label.
 func refuseGitOpsOwned(plan *declarative.Plan, actual *declarative.ResourceSet) error {
 	var owned []string
 	for _, ch := range plan.Changes {
@@ -641,8 +590,6 @@ func refuseGitOpsOwned(plan *declarative.Plan, actual *declarative.ResourceSet) 
 		ErrOwnedByGitOps, strings.Join(owned, ", "))
 }
 
-// tagSource adds the owning GitOps source label to m when the apply runs for a
-// source. A no-op for a one-shot apply (no source), keeping that metadata clean.
 func tagSource(ctx context.Context, m models.Metadata) models.Metadata {
 	if src := ownerSource(ctx); src != "" {
 		return models.SetBuiltin(m, models.MetaGitOpsSource, src)
@@ -657,8 +604,7 @@ type Result struct {
 	DryRun      bool              `json:"dry_run"`
 	Failures    []Failure         `json:"failures,omitempty"`
 	WorkspaceID uint              `json:"workspace_id"`
-	// FailedJobs names the declared Jobs of the run's source whose last run
-	// failed or was skipped; a sync that converged is still degraded by them.
+	// A converged sync is still degraded by these.
 	FailedJobs []string `json:"failed_jobs,omitempty"`
 }
 
@@ -670,8 +616,6 @@ type Failure struct {
 	Error  string `json:"error"`
 }
 
-// Plan parses the manifests and diffs them against live state, returning the
-// convergence plan without mutating anything.
 func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, opts Options) (*declarative.Plan, *declarative.ResourceSet, error) {
 	desired, err := declarative.Parse(manifests)
 	if err != nil {
@@ -709,8 +653,7 @@ func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, 
 	return plan, desired, nil
 }
 
-// Apply computes the plan and executes it. A change that fails is recorded in
-// Result.Failures; the run continues so independent resources still converge.
+// A failed change is recorded and the run continues so independent resources still converge.
 func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte, opts Options) (*Result, error) {
 	plan, desired, err := s.Plan(ctx, workspaceID, manifests, opts)
 	if err != nil {
@@ -732,9 +675,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 		}
 		res.Applied++
 	}
-	// Link each manifest database to the application that consumes it, so the database becomes a first-class
-	// dependency of the app rather than only an env-template reference — mirroring the marketplace install.
-	// Derived from the raw manifest, because the change loop has since resolved the apps' env templates.
+	// Derived from the raw manifest because the change loop has already resolved env templates.
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
 	}
@@ -791,9 +732,7 @@ func (s *Service) DeleteResource(ctx context.Context, workspaceID uint, kind, na
 	return res, nil
 }
 
-// linkDatabasesToApps attaches each manifest database to the application that consumes it, so it appears under
-// the app's Databases with its scoped connection revealable there. Best-effort and idempotent: it never steals
-// a database already attached, and skips engines with none. The consumer is read from the RAW manifest.
+// Best-effort and idempotent: never steals an already attached database.
 func (s *Service) linkDatabasesToApps(workspaceID uint, raw *declarative.ResourceSet) {
 	if raw == nil {
 		return
@@ -808,13 +747,10 @@ func (s *Service) linkDatabasesToApps(workspaceID uint, raw *declarative.Resourc
 		if appName == "" {
 			continue
 		}
-		// Resolve the dependency to its specific logical database (the one stamped
-		// with this manifest name), so we attach the app's own database and never
-		// another app's database that shares the same instance.
+		// Resolve the declaratively named database so we never attach another app's database on the same instance.
 		db, _, ok := s.dbs.FindDatabaseByDeclName(workspaceID, dep)
 		if !ok {
-			// Fallback for instances without a declaratively-named database (legacy
-			// rows): the sole logical database on the instance named after dep.
+			// Legacy rows without a declaratively named database.
 			inst, err := s.findInstance(workspaceID, dep)
 			if err != nil {
 				continue
@@ -836,9 +772,7 @@ func (s *Service) linkDatabasesToApps(workspaceID uint, raw *declarative.Resourc
 	}
 }
 
-// rawConsumerApp returns the name of the application consuming database dep: the first app whose env
-// references {{ .databases.<dep>.* }}, or the sole declared app when nothing references it. Empty when the
-// consumer is ambiguous. Mirrors the marketplace consumerApp heuristic.
+// Empty when the consumer is ambiguous; mirrors the marketplace consumerApp heuristic.
 func rawConsumerApp(all []declarative.Resource, dep string) string {
 	token := ".databases." + dep + "."
 	apps, sole := 0, ""
@@ -854,9 +788,7 @@ func rawConsumerApp(all []declarative.Resource, dep string) string {
 			}
 		}
 	}
-	// Connection details declared once on a stack are shared by its members, so no single app's env names
-	// the database. The stack's first member in the bundle owns the link then, as the marketplace's primary
-	// does; otherwise moving them onto the stack would silently unlink the database.
+	// Stack-shared connection details name no app, so the stack's first member owns the link.
 	for i := range all {
 		st := all[i].Stack
 		if st == nil || !referencesToken(st.Env, token) {
@@ -883,9 +815,7 @@ func referencesToken(env map[string]string, token string) bool {
 	return false
 }
 
-// Teardown deletes every resource owned by a single GitOps source — those tagged with its
-// gitops-source label — in dependency-safe order. Used for a cascade project delete, so one project's
-// resources go without touching another's. Resources predating per-source labeling are left untouched.
+// Teardown leaves resources that predate per-source labeling untouched.
 func (s *Service) Teardown(ctx context.Context, workspaceID uint, sourceID string) (*Result, error) {
 	if sourceID == "" {
 		return &Result{}, nil
@@ -894,8 +824,7 @@ func (s *Service) Teardown(ctx context.Context, workspaceID uint, sourceID strin
 	if err != nil {
 		return nil, err
 	}
-	// Keep only this source's resources, then diff against an empty desired set so
-	// BuildPlan emits deletes for exactly them, ordered (dependents before deps).
+	// Diffing against an empty set makes BuildPlan emit ordered deletes for exactly these.
 	owned := declarative.NewResourceSet()
 	for _, r := range actual.All() {
 		if r.Metadata.Labels[declarative.LabelManagedBy] == ManagedByGitOps &&
@@ -922,9 +851,7 @@ func (s *Service) Teardown(ctx context.Context, workspaceID uint, sourceID strin
 	return res, nil
 }
 
-// Delete removes exactly the resources a manifest bundle names — the inverse of Apply. It matches each
-// entry by kind+name and deletes in dependency-safe order, skipping entries that don't exist. Unlike a
-// pruning Apply it deletes regardless of which subsystem owns it, since the caller named it explicitly.
+// Delete ignores ownership, unlike a pruning Apply, since the caller named each resource explicitly.
 func (s *Service) Delete(ctx context.Context, workspaceID uint, manifests []byte, dryRun bool) (*Result, error) {
 	desired, err := declarative.Parse(manifests)
 	if err != nil {
@@ -934,8 +861,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID uint, manifests []byte
 	if err != nil {
 		return nil, err
 	}
-	// Keep only the live resources the manifest names, then diff against an empty
-	// desired set so BuildPlan emits ordered deletes for exactly them.
+	// Diffing against an empty set makes BuildPlan emit ordered deletes for exactly these.
 	targets := declarative.NewResourceSet()
 	for _, d := range desired.All() {
 		if a, ok := actual.Get(d.Key()); ok {
@@ -962,15 +888,12 @@ func (s *Service) Delete(ctx context.Context, workspaceID uint, manifests []byte
 	return res, nil
 }
 
-// render interpolates each application's env against the workspace's resolvable databases, so
-// {{ .databases.<name>.uri }} resolves in the plan just as in templates. It is lenient: a reference to a
-// database declared in the same bundle but not yet provisioned is left as its template rather than aborting.
+// Lenient: a reference to a not-yet-provisioned database in the same bundle stays a template.
 func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 	ctx := declarative.RenderContext{
 		Databases: s.databaseViews(workspaceID),
 		Secrets:   s.secretViews(workspaceID),
-		// Overlaid with the bundle, so an app referencing a sibling declared in the same
-		// apply resolves on the first run rather than only once that sibling exists.
+		// Overlaid with the bundle so a sibling reference resolves on the first run.
 		Apps: s.appViews(workspaceID, desired),
 	}
 	r := declarative.NewRenderer(ctx)
@@ -989,9 +912,7 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
 			desired.Add(res)
 		case res.Config != nil:
-			// Lenient: a reference that cannot resolve yet (a database created
-			// later in the same bundle) must not break planning; applyConfig
-			// re-renders strictly before writing.
+			// Lenient so a later database in the bundle doesn't break planning; applyConfig re-renders strictly.
 			if data, err := s.renderConfigData(workspaceID, res.Metadata.Name, res.Config); err == nil {
 				res.Config.DigestFP = configsvc.Digest(data)
 			}
@@ -1000,8 +921,7 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 			res.SealedSecret.SealedFP = sealed.Fingerprint(res.SealedSecret.Value)
 			desired.Add(res)
 		case res.Middleware != nil:
-			// Lenient for the same reason, and fingerprinted from the RENDERED rule so
-			// a rotated "{{ .secrets.x }}" converges instead of comparing equal.
+			// Fingerprinted from the rendered rule so a rotated secret converges instead of comparing equal.
 			if rule, err := s.renderMiddlewareRule(workspaceID, res.Middleware); err == nil {
 				res.Middleware.RuleFP = middlewareRuleFP(rule)
 			}
@@ -1011,8 +931,7 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 	s.stampConfigFP(workspaceID, desired)
 }
 
-// knownNames is every name a reference in desired may resolve to: those declared in the bundle and
-// those live in the workspace. Inputs exist only in marketplace templates, never in an apply.
+// Inputs exist only in marketplace templates, never in an apply.
 func (s *Service) knownNames(workspaceID uint, desired *declarative.ResourceSet) declarative.KnownNames {
 	known := declarative.KnownNames{"databases": {}, "secrets": {}, "applications": {}, "inputs": {}}
 	for name := range s.databaseViews(workspaceID) {
@@ -1037,11 +956,7 @@ func (s *Service) knownNames(workspaceID uint, desired *declarative.ResourceSet)
 	return known
 }
 
-// stampConfigFP gives every application the fingerprint of the configs it mounts,
-// on both sides of the diff. Mounted content is invisible to every other diffed
-// field, so this is what makes a config edit converge as an application update.
-// An app with reloadPolicy: none is left empty, which is how that policy
-// suppresses the redeploy.
+// Mounted content is invisible to other diffed fields; reloadPolicy: none stays empty to suppress the redeploy.
 func (s *Service) stampConfigFP(workspaceID uint, set *declarative.ResourceSet) {
 	digests := map[string]string{}
 	if s.configs != nil {
@@ -1051,8 +966,7 @@ func (s *Service) stampConfigFP(workspaceID uint, set *declarative.ResourceSet) 
 			}
 		}
 	}
-	// A config declared in the same bundle is not live yet, so its rendered
-	// fingerprint stands in — otherwise the first apply would show drift.
+	// A config in the same bundle isn't live yet, so its rendered fingerprint stands in to avoid false drift.
 	for _, res := range set.All() {
 		if res.Config != nil && res.Config.DigestFP != "" {
 			digests[res.Metadata.Name] = res.Config.DigestFP
@@ -1067,8 +981,7 @@ func (s *Service) stampConfigFP(workspaceID uint, set *declarative.ResourceSet) 
 	}
 }
 
-// middlewareRuleFP fingerprints a rule, secrets included. Canonical JSON, so map ordering — which Go
-// randomizes — cannot make an unchanged rule look changed on every plan.
+// Canonical JSON so Go's randomized map ordering can't make an unchanged rule look changed.
 func middlewareRuleFP(rule map[string]any) string {
 	if len(rule) == 0 {
 		return ""
@@ -1081,8 +994,7 @@ func middlewareRuleFP(rule map[string]any) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// canonicalRule rebuilds a rule with every map replaced by a key-sorted ordered form, so
-// encoding/json emits the same bytes for the same content regardless of how it was parsed.
+// Key-sorted maps so encoding/json emits the same bytes for the same content.
 func canonicalRule(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
@@ -1107,8 +1019,7 @@ func canonicalRule(v any) any {
 	}
 }
 
-// configFingerprint hashes each mount path against its config's digest, sorted by
-// path so the value is stable across mount reordering.
+// Sorted by path so the value is stable across mount reordering.
 func configFingerprint(mounts []declarative.MountSpec, digests map[string]string) string {
 	var parts []string
 	for _, mt := range mounts {
@@ -1125,19 +1036,14 @@ func configFingerprint(mounts []declarative.MountSpec, digests map[string]string
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// renderRegistryPassword resolves a registry password's templates and stamps the fingerprint the plan compares
-// against the stored credential. Strict: a reference that cannot resolve is a real error, so an apply fails
-// rather than storing a broken credential. Nothing is written before the render succeeds.
+// Strict: an unresolvable reference fails the apply rather than storing a broken credential.
 func (s *Service) renderRegistryPassword(r *declarative.Renderer, name string, spec *declarative.RegistrySpec) error {
 	if spec.Password == "" {
 		return nil
 	}
-	// `${{ secrets.X }}` is the *runtime* reference form: it is stored as a live pointer at the vault and
-	// resolved at every pull, so it must reach the registry service untouched. Rendering it would fail anyway
-	// — Go's template engine would read the inner {{ … }} as an undefined function call.
+	// The runtime ${{ secrets.X }} form must pass through untouched; Go templates would misread the inner {{ }}.
 	if ref := secret.RefName(spec.Password); ref != "" {
-		// Fingerprint the canonical spelling, so "${{secrets.x}}" and
-		// "${{ secrets.x }}" are the same credential rather than perpetual drift.
+		// Fingerprint the canonical spelling so spacing variants don't cause perpetual drift.
 		spec.PasswordFP = registry.Fingerprint(name, secret.Ref(ref))
 		return nil
 	}
@@ -1156,9 +1062,7 @@ func (s *Service) renderRegistryPasswordLenient(r *declarative.Renderer, name st
 	_ = s.renderRegistryPassword(r, name, spec)
 }
 
-// renderAppEnv resolves an application's env templates at execution time, against the databases that are
-// live right now — including any declared earlier in the same bundle and just created. Strict: a reference
-// that still cannot resolve (a typo, or a database that genuinely does not exist) is a real error.
+// Strict: a reference that still cannot resolve at execution time is a real error.
 func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSpec, set *declarative.ResourceSet) error {
 	if spec == nil || len(spec.Env) == 0 {
 		return nil
@@ -1166,9 +1070,7 @@ func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSp
 	r := declarative.NewRenderer(declarative.RenderContext{
 		Databases: s.databaseViews(workspaceID),
 		Secrets:   s.secretViews(workspaceID),
-		// Applications share a plan rank, so a referenced sibling may not exist yet when this runs.
-		// The bundle overlay is what makes that work: an app's address is its own name, which is
-		// known from the manifest alone.
+		// Apps share a plan rank, so the bundle overlay makes a not-yet-created sibling addressable by name.
 		Apps: s.appViews(workspaceID, set),
 	})
 	rendered, err := r.RenderEnv("application", spec.Env)
@@ -1180,8 +1082,7 @@ func (s *Service) renderAppEnv(workspaceID uint, spec *declarative.ApplicationSp
 	return nil
 }
 
-// withKeys adds the keys a render resolved a credential into, so they are stored encrypted (and masked
-// in the plan) even when the manifest's secretEnv leaves them out.
+// Keys a render resolved a credential into are stored encrypted even when secretEnv omits them.
 func withKeys(secretEnv, keys []string) []string {
 	for _, k := range keys {
 		if !slices.Contains(secretEnv, k) {
@@ -1191,8 +1092,7 @@ func withKeys(secretEnv, keys []string) []string {
 	return secretEnv
 }
 
-// appRefPattern finds the applications this spec's env addresses. It runs on the RAW env, so it has
-// to be called before renderAppEnv replaces the templates with their values.
+// Must run on the raw env, before renderAppEnv replaces the templates.
 var appRefPattern = regexp.MustCompile(`\{\{[-\s]*\.applications\.([A-Za-z0-9_-]+)`)
 
 var dbRefPattern = regexp.MustCompile(`\{\{[-\s]*\.databases\.([A-Za-z0-9_-]+)`)
@@ -1208,8 +1108,7 @@ func refsOf(spec *declarative.ApplicationSpec) specRefs {
 	return specRefs{apps: envRefs(spec.Env, appRefPattern), dbs: envRefs(spec.Env, dbRefPattern)}
 }
 
-// withStackRefs adds what the app's stack env addresses, since a member receives that env too. Only a stack
-// declared in the bundle is read; one set up in the console has no references for apply to place by.
+// Only stacks declared in the bundle are read; console-made stacks carry no references.
 func (r specRefs) withStackRefs(spec *declarative.ApplicationSpec, set *declarative.ResourceSet) specRefs {
 	if spec == nil || spec.Stack == "" || set == nil {
 		return r
@@ -1232,12 +1131,7 @@ func (r specRefs) withStackRefs(spec *declarative.ApplicationSpec, set *declarat
 	return r
 }
 
-// checkAppRefPlacement refuses an application or database reference that cannot resolve at runtime:
-// the two sit in different locations, or on different nodes of a location that runs no swarm. self is
-// where an app not created yet is about to land.
-//
-// Only a reference whose target placement is actually known is judged; a resource declared without a
-// node, or absent from both the bundle and the workspace, is left to the render to report.
+// Only references whose target placement is known are judged; the rest are left to the render.
 func (s *Service) checkAppRefPlacement(workspaceID uint, name string, refs specRefs, self *appPlacement) error {
 	if len(refs.apps) == 0 && len(refs.dbs) == 0 {
 		return nil
@@ -1288,8 +1182,7 @@ func (c refCheck) location(clusterID uint) string {
 	return c.label(clusterID)
 }
 
-// refError names the first reference that cannot resolve, or nil when every one of them can. Pure,
-// so the rule can be tested without a workspace behind it.
+// Pure so the rule can be tested without a workspace.
 func (c refCheck) refError(name string, apps map[string]appPlacement, kind string, refs map[string]bool, targets map[string]appPlacement) error {
 	self, ok := apps[name]
 	if !ok {
@@ -1315,8 +1208,7 @@ func (c refCheck) refError(name string, apps map[string]appPlacement, kind strin
 	return nil
 }
 
-// sortedKeys makes the reported reference deterministic: with two offending refs, an operator who
-// re-runs an apply must see the same message rather than a coin flip.
+// Deterministic so re-running an apply shows the same message.
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -1356,8 +1248,6 @@ func (s *Service) appNodes(workspaceID uint) (map[string]appPlacement, error) {
 	return out, nil
 }
 
-// databaseNodes keys instances the way {{ .databases.<name> }} resolves: a declared logical database
-// by its manifest name, anything else by its instance name.
 func (s *Service) databaseNodes(workspaceID uint) map[string]appPlacement {
 	out := map[string]appPlacement{}
 	instances, err := s.dbs.List(workspaceID)
@@ -1385,9 +1275,7 @@ func (s *Service) databaseNodes(workspaceID uint) map[string]appPlacement {
 	return out
 }
 
-// databaseViews resolves connection details for {{ .databases.<name>.* }}, keyed by the declarative Database name.
-// A manifest Database resolves to the *specific* logical database stamped with that name, so it yields that
-// database's own credentials. Instances with none keep instance-name keying and fall back via appConnection.
+// A manifest Database resolves to its own logical database's credentials, not the instance's.
 func (s *Service) databaseViews(workspaceID uint) map[string]declarative.ConnView {
 	out := map[string]declarative.ConnView{}
 	instances, err := s.dbs.List(workspaceID)
@@ -1399,8 +1287,6 @@ func (s *Service) databaseViews(workspaceID uint) map[string]declarative.ConnVie
 		instByID[instances[i].ID] = &instances[i]
 	}
 
-	// Declaratively-named logical databases map by their manifest name to their
-	// own exact connection.
 	claimed := map[uint]bool{} // instance ids represented by a decl-named database
 	if dbs, dErr := s.dbs.ListDatabasesByWorkspace(workspaceID); dErr == nil {
 		for i := range dbs {
@@ -1440,9 +1326,7 @@ func (s *Service) databaseViews(workspaceID uint) map[string]declarative.ConnVie
 	return out
 }
 
-// appConnection returns the connection an application should use for an instance:
-// the scoped logical-database credentials when one exists, else the admin/direct
-// connection (Redis, or a legacy instance with no logical database).
+// Falls back to the admin connection for Redis or legacy instances without a logical database.
 func (s *Service) appConnection(workspaceID uint, inst *models.DatabaseInstance) (declarative.ConnView, error) {
 	if inst.SupportsLogicalDatabases() {
 		if dbs, err := s.dbs.ListDatabases(workspaceID, inst.ID); err == nil && len(dbs) > 0 {
@@ -1476,13 +1360,7 @@ func connView(conn database.ConnectionInfo) declarative.ConnView {
 	}
 }
 
-// secretViews resolves the plaintext value of every workspace secret, keyed by name, so {{ .secrets.<name> }}
-// resolves during render in both the lenient plan pass and the strict execute-time re-render. Without it any
-// env referencing a secret fails the strict render, so the app update errors out and never redeploys.
-// appViews exposes how each application is addressed by a sibling: its own name, which the deploy
-// path registers as a DNS alias on every workspace network it joins, plus the port and scheme to
-// dial. desired, when given, overlays the live workspace so an app declared in the same bundle —
-// and therefore not created yet — is still addressable. The bundle wins: it is the desired state.
+// Without secret values, any env referencing a secret fails the strict render and the app never redeploys.
 func (s *Service) appViews(workspaceID uint, desired *declarative.ResourceSet) map[string]declarative.AppView {
 	out := map[string]declarative.AppView{}
 	if apps, err := s.apps.List(workspaceID); err == nil {
@@ -1496,8 +1374,7 @@ func (s *Service) appViews(workspaceID uint, desired *declarative.ResourceSet) m
 	return overlayDesiredApps(out, desired)
 }
 
-// overlayDesiredApps layers the bundle's applications over the live ones. Split out because it is
-// the half that decides whether a first apply works, and it needs no database to exercise.
+// Split out because it decides whether a first apply works, and needs no database to test.
 func overlayDesiredApps(live map[string]declarative.AppView, desired *declarative.ResourceSet) map[string]declarative.AppView {
 	out := make(map[string]declarative.AppView, len(live))
 	for k, v := range live {
@@ -1518,8 +1395,7 @@ func overlayDesiredApps(live map[string]declarative.AppView, desired *declarativ
 				view.Scheme = p.Scheme
 			}
 		} else {
-			// Declared without ports: keep whatever the live app reports rather than
-			// dropping to a portless URL on a bundle that simply omits them.
+			// Keep the live app's ports when the bundle omits them rather than dropping to a portless URL.
 			view.Port, view.Scheme = out[name].Port, firstNonEmpty(out[name].Scheme, "http")
 		}
 		out[name] = view
@@ -1527,8 +1403,7 @@ func overlayDesiredApps(live map[string]declarative.AppView, desired *declarativ
 	return out
 }
 
-// primaryPort is the port a sibling dials: the manifest's first, which is the same rule the app
-// service uses when it records models.Application.Port.
+// Same rule the app service uses when it records Application.Port.
 func primaryPort(ports []declarative.PortSpec) (declarative.PortSpec, bool) {
 	for _, p := range ports {
 		if p.Container > 0 {
@@ -1554,8 +1429,7 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// appAliasViews is the pre-reference view: name -> container alias only. Kept for the render paths
-// that predate application references and have no desired set to overlay.
+// Kept for render paths that predate application references.
 func (s *Service) appAliasViews(workspaceID uint) map[string]declarative.AppView {
 	return s.appViews(workspaceID, nil)
 }
@@ -1576,20 +1450,9 @@ func (s *Service) secretViews(workspaceID uint) map[string]string {
 	return out
 }
 
-// snapshot builds the live ResourceSet for the workspace across every kind the
-// executor manages. Each resource is labeled with its owner so prune stays safe.
-// ErrNotExportable is returned for an application a manifest cannot faithfully describe.
 var ErrNotExportable = errors.New("this application cannot be exported as a manifest")
 
-// ExportApplication renders one application, and the volumes it mounts, as a miabi.io/v1 bundle —
-// the starting point for moving an app that was created in the console into Git.
-//
-// It reuses the snapshot the plan engine already builds, rather than projecting the app a second
-// time: an export that drifted from what apply reads back would hand someone a manifest that plans
-// changes the moment they applied it.
-//
-// Only the volumes this app mounts are included. A workspace's other resources are not this app's to
-// describe, and a bundle that carried them would prune them if applied elsewhere with --prune.
+// Reuses the plan snapshot so an export can't drift; only mounted volumes are included so --prune can't delete others.
 func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name string, includeJobs bool) ([]byte, error) {
 	set, err := s.snapshot(ctx, workspaceID)
 	if err != nil {
@@ -1615,8 +1478,7 @@ func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name 
 		}
 	}
 	trimDefaults(app.Application, defaultLocation)
-	// Identity is per-install: a uid exported into a manifest would be matched ahead of the name on
-	// another install and bind this document to a resource that is not the same resource.
+	// Uids are per-install and would bind this document to a different resource elsewhere.
 	app.Metadata = declarative.Meta{Name: app.Metadata.Name, Annotations: app.Metadata.Annotations}
 	out.Add(app)
 	if includeJobs {
@@ -1666,8 +1528,7 @@ func locationSpec(location string) *declarative.PlacementSpec {
 	return &declarative.PlacementSpec{Location: location}
 }
 
-// databaseResourcesSpec always states both limits on the live side, "0" for none, so a manifest removing a limit
-// with "0" still compares against it.
+// "0" means none, so a manifest removing a limit with "0" still compares against it.
 func databaseResourcesSpec(inst *models.DatabaseInstance) *declarative.DatabaseResourcesSpec {
 	return &declarative.DatabaseResourcesSpec{
 		Memory: strconv.FormatInt(inst.MemoryBytes, 10),
@@ -1696,8 +1557,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	set := declarative.NewResourceSet()
 	appSlugByID := map[uint]string{}
 
-	// Volumes first: apps reference them by name in their mounts, so build the
-	// id -> name map before emitting apps.
+	// Apps reference volumes by name, so the id -> name map must exist first.
 	vols, err := s.storage.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot volumes: %w", err)
@@ -1728,9 +1588,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		})
 	}
 
-	// Registry credentials before apps, for the same reason as volumes: an app references one by name, so the
-	// id -> name map has to exist first. Their password fingerprints let the plan see a rotation without ever
-	// handling the token (see registry.Fingerprints).
+	// Apps reference registries by name; password fingerprints reveal rotations without handling the token.
 	regs, err := s.registries.List(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot registries: %w", err)
@@ -1794,9 +1652,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	if err != nil {
 		return nil, fmt.Errorf("snapshot databases: %w", err)
 	}
-	// A manifest Database is identified by name. When provisioned as a logical database it carries that name as
-	// its declarative-name label, so surface it under that name with its own uid and provenance — the diff then
-	// matches the manifest and a prune removes exactly that database, not the instance it may share.
+	// Surfaced under the manifest name so a prune removes exactly that database, not its shared instance.
 	declDBsByInstance := map[uint][]models.Database{}
 	if dbs, dErr := s.dbs.ListDatabasesByWorkspace(workspaceID); dErr == nil {
 		for i := range dbs {
@@ -1808,8 +1664,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	for i := range instances {
 		inst := &instances[i]
 		if decls := declDBsByInstance[inst.ID]; len(decls) > 0 {
-			// Represented by its declaratively-named logical database(s), not by the
-			// instance host (which has no manifest identity of its own).
+			// The instance host has no manifest identity of its own.
 			for j := range decls {
 				d := &decls[j]
 				set.Add(declarative.Resource{
@@ -1871,8 +1726,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 				Mode: c.Mode, Sensitive: c.Sensitive, Delimiters: c.Delimiters,
 				DigestFP: c.Digest,
 			}
-			// A sensitive config's content never enters a plan, so only its
-			// fingerprint is carried; a plain one also surfaces per-key presence.
+			// A sensitive config's content never enters a plan; only its fingerprint is carried.
 			if !c.Sensitive {
 				if data, derr := s.configs.Data(&c); derr == nil {
 					spec.Data = data
@@ -1892,9 +1746,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 		for i := range mws {
 			mw := mws[i]
-			// Stored secrets are ciphertext, so the fingerprint is taken over the decrypted
-			// rule — the same value the desired side renders — and the rule that reaches the
-			// plan is redacted, so no credential is ever printed.
+			// Fingerprint the decrypted rule to match the desired side, and redact what reaches the plan.
 			plain, derr := mwcatalog.DecryptSecrets(mw.Type, mw.Rule)
 			if derr != nil {
 				plain = mw.Rule
@@ -1920,8 +1772,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		return nil, err
 	}
 
-	// Certificates are not a declarable kind, but a route names the one it serves — so the id has to
-	// be mapped back to that name or every custom-TLS route would read as drift.
+	// Map certificate ids back to names or every custom-TLS route would read as drift.
 	certNameByID := map[uint]string{}
 	if s.certificates != nil {
 		if certs, cerr := s.certificates.List(workspaceID); cerr == nil {
@@ -1937,8 +1788,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	}
 	for i := range routes {
 		r := routes[i]
-		// Generated external-access routes are owned by the externalAccess port
-		// flag, not the Route kind — skip them so they aren't phantom Routes.
+		// Generated routes are owned by the externalAccess port flag, so skip them as phantom Routes.
 		if r.Generated {
 			continue
 		}
@@ -1959,9 +1809,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	}
 	for i := range domains {
 		d := domains[i]
-		// Domains carry no managed-by label (the model has no metadata), so a
-		// GitOps prune treats them as user-owned and never deletes them — a safe
-		// default. Apply still creates/updates them from the manifest.
+		// Domains have no managed-by label, so a GitOps prune treats them as user-owned and never deletes them.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindDomain,
 			Metadata: declarative.Meta{Name: d.Name},
@@ -1976,8 +1824,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	return set, nil
 }
 
-// meta builds a declarative Meta carrying the resource name plus its owner label
-// (from the live resource's managed-by metadata) so prune can stay scoped.
+// The owner label keeps prune scoped.
 func meta(uid, name string, m models.Metadata) declarative.Meta {
 	out := declarative.Meta{UID: uid, Name: name}
 	if owner := m[models.MetaManagedBy]; owner != "" {
@@ -1993,8 +1840,6 @@ func meta(uid, name string, m models.Metadata) declarative.Meta {
 	return out
 }
 
-// metaA is meta() with the resource's annotations attached when present, for the
-// live→manifest reverse mapping.
 func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 	out := meta(uid, name, m)
 	if len(annotations) > 0 {
@@ -2003,8 +1848,7 @@ func metaA(uid, name string, m, annotations models.Metadata) declarative.Meta {
 	return out
 }
 
-// liveDigest is the digest a pinned application actually runs, so a pin whose deploy failed plans
-// an update instead of reading as converged.
+// A pin whose deploy failed plans an update instead of reading as converged.
 func (s *Service) liveDigest(app *models.Application) string {
 	var latest *models.Deployment
 	if deps, err := s.apps.ListDeployments(app.ID, 1); err == nil && len(deps) > 0 {
@@ -2017,10 +1861,7 @@ func (s *Service) liveDigest(app *models.Application) string {
 	return runningDigest(app.Metadata[MetaDigest], latest, active)
 }
 
-// runningDigest is the digest to report for a pinned app, from its newest deployment and its
-// active release. When the active release runs the pin, or a deploy towards it is still in flight
-// (else a slow rollout would be enqueued again by every sync), it is the pin. Otherwise it names
-// both, a value no manifest digest equals, so the plan updates the app and redeploys or re-pins it.
+// An in-flight deploy toward the pin counts as the pin, or every sync would re-enqueue a slow rollout.
 func runningDigest(pin string, latest *models.Deployment, active *models.Release) string {
 	if latest != nil && !latest.Status.IsTerminal() && refDigest(latest.Image) == pin {
 		return pin
@@ -2049,9 +1890,7 @@ func refDigest(ref string) string {
 	return ""
 }
 
-// appResource maps a live application to its declarative form for diffing. ext
-// and pub are the container ports currently exposed externally (generated route)
-// and published (host-port binding), so per-port exposure converges idempotently.
+// ext and pub are the currently exposed and published ports, so exposure converges idempotently.
 func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, regNameByID, cfgNameByID map[uint]string) declarative.Resource {
 	spec := &declarative.ApplicationSpec{
 		Image:           app.Image,
@@ -2064,9 +1903,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 		Deployment:      deploymentSpecOf(app),
 		Healthcheck:     healthcheckSpecOf(app),
 	}
-	// A git app is described by what it builds, not by the image that build produced: the image ref
-	// carries a generated tag that means nothing in a manifest, and re-applying it elsewhere would
-	// pull an artefact instead of rebuilding the code.
+	// A git app is described by its source; the generated image tag means nothing in a manifest.
 	if app.SourceType == models.AppSourceGit {
 		spec.Image, spec.Tag, spec.Digest = "", "", ""
 		spec.Source = &declarative.SourceSpec{
@@ -2077,9 +1914,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 			spec.Source.BuildMethod = string(app.BuildMethod)
 		}
 	}
-	// The pull credential, by its manifest name. A credential deleted out from
-	// under the app leaves RegistryID dangling only until the FK nulls it, so an
-	// unresolved id reads as "anonymous" rather than inventing a name.
+	// A deleted credential's dangling id reads as anonymous rather than inventing a name.
 	if app.RegistryID != nil {
 		spec.Registry = regNameByID[*app.RegistryID]
 	}
@@ -2089,8 +1924,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	if app.RuntimeKind == models.RuntimeService && len(app.PlacementConstraints) > 0 {
 		spec.Placement = &declarative.ApplicationPlacementSpec{Constraints: app.PlacementConstraints}
 	}
-	// Managed volume mounts, by the volume's manifest name. Privileged host-preset
-	// binds (VolumeID 0) aren't manifest-expressible, so they're omitted.
+	// Privileged host-preset binds (VolumeID 0) aren't manifest-expressible.
 	for _, m := range app.Mounts {
 		if m.ConfigID != 0 {
 			name := cfgNameByID[m.ConfigID]
@@ -2166,9 +2000,7 @@ func tlsFromSpec(tls string) models.RouteTLSMode {
 	}
 }
 
-// set is the whole desired bundle, needed where one resource's values reference another that the same
-// apply is still creating — an application addressing a sibling. Nil on the delete-only paths, which
-// render nothing.
+// set is nil on the delete-only paths, which render nothing.
 func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	switch ch.Kind {
 	case declarative.KindApplication:
@@ -2206,8 +2038,7 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 	}
 }
 
-// applyDomain converges an owned domain (name = the FQDN). Verification is a
-// runtime action, so a freshly-applied domain starts unverified.
+// Verification is a runtime action, so a freshly applied domain starts unverified.
 func (s *Service) applyDomain(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	switch ch.Action {
 	case declarative.ActionCreate:
@@ -2253,8 +2084,7 @@ func (s *Service) findDomain(workspaceID uint, name string) (*models.Domain, err
 
 func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	if ch.Action != declarative.ActionDelete {
-		// Databases rank with stacks but sort before them, so {{ .databases.x.host }} is live here even on a
-		// first apply. The plan-time render was lenient and may have left templates behind.
+		// Databases sort before stacks, so database refs are live here; the plan-time render was lenient.
 		if err := s.renderStackEnv(workspaceID, desired.Stack, set); err != nil {
 			return fmt.Errorf("%w: stack %q: %v", ErrInvalidManifest, ch.Name, err)
 		}
@@ -2322,7 +2152,6 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 	return nil
 }
 
-// applySealedSecret opens the sealed value with the workspace's sealing keys and stores it in the vault.
 // Create and update share a path: an update may be adopting a plain Secret of the same name.
 func (s *Service) applySealedSecret(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	if ch.Action == declarative.ActionDelete {
@@ -2344,10 +2173,7 @@ func (s *Service) applySealedSecret(workspaceID uint, ch declarative.Change, des
 	return err
 }
 
-// applyConfig converges a configuration file set. File content is rendered here
-// rather than in render(), because a config's own delimiters may differ per
-// resource and the strict render must fail the apply rather than store a file
-// with an unresolved reference.
+// Rendered here because delimiters differ per config and an unresolved reference must fail the apply.
 func (s *Service) applyConfig(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	if s.configs == nil {
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, declarative.KindConfig)
@@ -2386,9 +2212,7 @@ func (s *Service) applyConfig(workspaceID uint, ch declarative.Change, desired d
 	return nil
 }
 
-// applyMiddleware converges a gateway middleware. Its rule is rendered like any other manifest value,
-// so a password can be "{{ .secrets.basic_auth }}" instead of a literal in the repository — which is
-// the whole reason the rule is not simply passed through verbatim.
+// The rule is rendered so credentials can be vault references instead of literals in the repository.
 func (s *Service) applyMiddleware(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	if s.middlewares == nil {
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, declarative.KindMiddleware)
@@ -2424,9 +2248,7 @@ func (s *Service) applyMiddleware(ctx context.Context, workspaceID uint, ch decl
 	return nil
 }
 
-// renderMiddlewareRule interpolates the rule's string values, so a credential can be a vault
-// reference rather than a literal committed to Git. Only strings are touched; numbers, booleans and
-// the structure itself pass through as authored.
+// Only strings are rendered; numbers, booleans and structure pass through.
 func (s *Service) renderMiddlewareRule(workspaceID uint, spec *declarative.MiddlewareSpec) (map[string]any, error) {
 	if len(spec.Rule) == 0 {
 		return nil, nil
@@ -2443,9 +2265,7 @@ func (s *Service) renderMiddlewareRule(workspaceID uint, spec *declarative.Middl
 	return mwcatalog.DropRetired(spec.Type, out), nil
 }
 
-// renderRuleValues walks a rule and renders every string it finds, at any depth. A middleware rule is
-// free-form by design (the gateway's catalogue owns its shape), so the walk cannot be driven by a
-// struct — it has to handle whatever nesting the type uses.
+// Rules are free-form (the gateway catalogue owns the shape), so the walk can't be struct-driven.
 func renderRuleValues(r *declarative.Renderer, scope string, in map[string]any) (map[string]any, error) {
 	out := make(map[string]any, len(in))
 	for k, v := range in {
@@ -2479,8 +2299,7 @@ func renderRuleValue(r *declarative.Renderer, scope string, v any) (any, error) 
 	}
 }
 
-// renderConfigData interpolates a config's files, honouring its own delimiters so
-// a file whose syntax uses {{ }} is not mangled.
+// Honours the config's own delimiters so files using {{ }} are not mangled.
 func (s *Service) renderConfigData(workspaceID uint, name string, spec *declarative.ConfigSpec) (map[string]string, error) {
 	r := declarative.NewRenderer(declarative.RenderContext{
 		Databases: s.databaseViews(workspaceID),
@@ -2490,9 +2309,7 @@ func (s *Service) renderConfigData(workspaceID uint, name string, spec *declarat
 	return r.RenderFiles("config."+name, spec.Data, spec.Delimiters)
 }
 
-// applyRegistry converges a container-registry credential. The password is re-rendered strictly here: a bundle
-// that pulls its token from the vault must resolve against the secrets that exist now, including one declared
-// earlier in the same bundle — Secret ranks below Registry, so it is created first.
+// Re-rendered strictly; Secret ranks below Registry, so a secret in the same bundle already exists.
 func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	switch ch.Action {
 	case declarative.ActionCreate, declarative.ActionUpdate:
@@ -2509,9 +2326,7 @@ func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declar
 			Server:   spec.Server,
 			Username: spec.Username,
 			Secret:   spec.Password,
-			// Labels are sanitized so a manifest can never spoof provenance; the
-			// managed-by label is what scopes a later prune to this engine's own
-			// credentials.
+			// Sanitized so a manifest can't spoof provenance; managed-by scopes a later prune.
 			Metadata: tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(desired.Metadata.Labels),
 				models.MetaManagedBy, managedBy(ctx),
 			)),
@@ -2528,9 +2343,7 @@ func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declar
 		if err != nil {
 			return fmt.Errorf("registry %q: %w", ch.Name, err)
 		}
-		// An empty password leaves the stored one untouched (registry.Update only
-		// rotates on a non-empty value), which is what lets a token be managed
-		// out-of-band while the rest of the credential stays declarative.
+		// An empty password leaves the stored one, so a token can be managed out-of-band.
 		_, err = s.registries.Update(workspaceID, reg.ID, in)
 		return err
 	case declarative.ActionDelete:
@@ -2538,8 +2351,7 @@ func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declar
 		if err != nil {
 			return fmt.Errorf("registry %q: %w", ch.Name, err)
 		}
-		// Applications referencing it keep running: the FK nulls their RegistryID
-		// (ON DELETE SET NULL), so they fall back to an anonymous pull.
+		// The FK nulls dependent apps' RegistryID (ON DELETE SET NULL), so they fall back to anonymous pulls.
 		return s.registries.Delete(workspaceID, reg.ID)
 	}
 	return nil
@@ -2606,25 +2418,20 @@ func (s *Service) routeInput(workspaceID uint, name string, appID uint, spec *de
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
 		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
 		CertificateID: certID,
-		// Always non-nil from a manifest: the bundle is desired state, so clearing the field in the
-		// manifest has to clear it on the route.
+		// Always non-nil: clearing the field in the manifest must clear it on the route.
 		TLSProvider: &spec.TLSProvider,
 		Middlewares: spec.Middlewares,
-		// Carried explicitly because route.Update assigns them unconditionally: leaving them out of
-		// the input does not preserve what is stored, it erases it.
+		// route.Update assigns these unconditionally, so omitting them would erase what is stored.
 		Rewrite:           spec.Rewrite,
 		Methods:           spec.Methods,
 		AdvancedConfig:    spec.AdvancedConfig,
 		ExploitProtection: &exploit,
-		// Always non-nil: the manifest is the desired state, so dropping the
-		// maintenance block has to resume traffic rather than leave it parked.
+		// Always non-nil: dropping the maintenance block must resume traffic.
 		Maintenance: &mt,
 	}, nil
 }
 
-// resolveCertificate turns a route's certificate: <name> into the stored certificate's id. A name
-// that matches nothing fails the change rather than creating a custom-TLS route with no certificate,
-// which would serve no TLS at all on the hosts it claims.
+// An unknown name fails the change rather than creating a custom-TLS route that serves no TLS.
 func (s *Service) resolveCertificate(workspaceID uint, routeName string, spec *declarative.RouteSpec) (*uint, error) {
 	if spec.Certificate == "" {
 		return nil, nil
@@ -2647,9 +2454,7 @@ func (s *Service) resolveCertificate(workspaceID uint, routeName string, spec *d
 		ErrInvalidManifest, routeName, spec.Certificate)
 }
 
-// routeSpecOf projects a live route onto its manifest shape. Maintenance is
-// emitted only while parked, so an exported bundle stays clean and matches a
-// manifest that simply omits the block.
+// Maintenance is emitted only while parked so exports match a manifest that omits it.
 func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string) *declarative.RouteSpec {
 	spec := &declarative.RouteSpec{
 		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
@@ -2660,9 +2465,7 @@ func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string)
 		AdvancedConfig: r.AdvancedConfig,
 		TLSProvider:    r.TLSProvider,
 	}
-	// The certificate by its manifest name. A certificate deleted out from under the route leaves the
-	// FK nulled, so an unresolved id emits nothing rather than inventing a name the manifest could
-	// not resolve back.
+	// A deleted certificate leaves the FK nulled, so emit nothing rather than invent a name.
 	if r.CertificateID != nil {
 		spec.Certificate = certNameByID[*r.CertificateID]
 	}
@@ -2717,9 +2520,7 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 	case declarative.ActionCreate:
 		spec := desired.Database
 		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
-		// Honor the manifest's placement via the shared resolver, mirroring the marketplace install. The logical
-		// database is stamped with the manifest name so databaseViews resolves to this exact database, not "the first
-		// on the instance". The CREATE DDL is deferred for a freshly provisioned instance and runs when it comes up.
+		// Stamped with the manifest name so databaseViews resolves this exact database; DDL waits for a new instance.
 		target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
 		if err != nil {
 			return err
@@ -2739,9 +2540,7 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		}
 		return nil
 	case declarative.ActionDelete:
-		// A manifest database may be a dedicated instance or a logical database sharing another. Resolve which by its
-		// declarative name and tear down only what we own: drop just the logical database when the instance hosts
-		// others, and remove the whole instance only when it was provisioned for this dependency alone.
+		// Tear down only what we own: the logical database when shared, the instance only when dedicated.
 		if db, inst, ok := s.dbs.FindDatabaseByDeclName(workspaceID, ch.Name); ok {
 			remaining, _ := s.dbs.ListDatabases(workspaceID, inst.ID)
 			shared := len(remaining) > 1 || inst.Name != ch.Name
@@ -2750,8 +2549,7 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 			}
 			return s.deleteInstance(ctx, inst)
 		}
-		// Fallback: a dedicated instance named after the dependency (Redis, libSQL,
-		// or a legacy row created before logical databases were tagged).
+		// Dedicated instances (Redis, libSQL) or legacy rows created before logical databases were tagged.
 		inst, err := s.findInstance(workspaceID, ch.Name)
 		if err != nil {
 			return err
@@ -2801,8 +2599,7 @@ func (s *Service) setReadOnly(ctx context.Context, workspaceID uint, name string
 	return s.dbs.DisableReadOnly(ctx, db)
 }
 
-// resizeDatabase converges a manifest database's limits onto its instance, which has to be its own: an instance
-// other databases share runs with limits that are not one manifest's to set.
+// A shared instance's limits are not one manifest's to set.
 func (s *Service) resizeDatabase(ctx context.Context, workspaceID uint, name string, spec *declarative.DatabaseSpec) error {
 	inst, err := s.ownedInstance(workspaceID, name)
 	if err != nil {
@@ -2836,9 +2633,7 @@ func (s *Service) ownedInstance(workspaceID uint, name string) (*models.Database
 	return s.findInstance(workspaceID, name)
 }
 
-// deleteInstance tears down a database instance during a prune. Prune is an automated reconcile, not an
-// interactive action, so a running instance is stopped first — the "stop the database before deleting it"
-// guard (meant for the UI) would otherwise block teardown.
+// Prune is automated, so stop first or the UI's stop-before-delete guard blocks teardown.
 func (s *Service) deleteInstance(ctx context.Context, inst *models.DatabaseInstance) error {
 	if inst.Status == models.DBStatusRunning {
 		if err := s.dbs.Stop(ctx, inst); err != nil {
@@ -2851,22 +2646,18 @@ func (s *Service) deleteInstance(ctx context.Context, inst *models.DatabaseInsta
 func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	spec := desired.Application
 	refs := refsOf(spec).withStackRefs(spec, set)
-	// Resolve env templates now: databases declared in the same bundle run before applications (plan order),
-	// so {{ .databases.x.host }} references are live by this point even on a first apply. The plan-time render
-	// was lenient and may have left them as templates.
+	// Databases run before applications, so their refs are live now; the plan-time render was lenient.
 	if err := s.renderAppEnv(workspaceID, spec, set); err != nil {
 		return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, ch.Name, err)
 	}
-	// A reference across locations, or across nodes without a swarm, renders a hostname that never
-	// resolves. Refusing here beats a connection refused hours later.
+	// A cross-location or swarmless cross-node reference renders a hostname that never resolves.
 	if err := s.checkAppRefPlacement(workspaceID, ch.Name, refs, nil); err != nil {
 		return err
 	}
 	if err := s.refuseWeakerThanProfile(workspaceID, ch.Name, spec); err != nil {
 		return err
 	}
-	// Resolve the pull credential before anything is created, so a typo'd name
-	// fails the change instead of deploying an app that cannot pull its image.
+	// Resolve before creating so a typo fails the change instead of deploying an app that can't pull.
 	regID, err := s.resolveRegistry(workspaceID, ch.Name, spec)
 	if err != nil {
 		return err
@@ -2898,13 +2689,11 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileEnv(app.ID, spec); err != nil {
 			return err
 		}
-		// Reconcile exposure before deploy so host-port bindings publish in the
-		// first container.
+		// Before deploy so host-port bindings publish in the first container.
 		if err := s.reconcileExposure(ctx, workspaceID, app, spec); err != nil {
 			return err
 		}
-		// Attach declared volumes before the first deploy so the container mounts
-		// them from the start.
+		// Before the first deploy so the container mounts them from the start.
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
@@ -2921,8 +2710,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.Image = spec.Image
 		app.Tag = spec.Tag
 		app.Command = spec.Command
-		// Converge the build source. Switching an app between pulling and building is a real change a
-		// manifest may express, so both directions are written rather than only the git one.
+		// Both directions are written because switching between pulling and building is a real manifest change.
 		if src := spec.Source; src != nil {
 			app.SourceType = models.AppSourceGit
 			app.Image, app.Tag = "", ""
@@ -2933,9 +2721,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			app.SourceType = models.AppSourceImage
 			app.GitRepo, app.GitRef, app.Builder, app.Buildpacks, app.BuildEnv = "", "", "", nil, nil
 		}
-		// Dropping spec.registry clears the credential (regID is nil), so the app
-		// converges back to an anonymous pull instead of silently keeping the old
-		// one.
+		// Dropping spec.registry clears the credential instead of silently keeping the old one.
 		app.RegistryID = regID
 		if spec.Resources != nil {
 			mb, _ := spec.Resources.MemoryBytes()
@@ -2943,19 +2729,14 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			app.MemoryBytes, app.NanoCPUs = mb, nc
 			app.GPUCount, app.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
 		}
-		// Reconcile user labels (built-in keys preserved) + annotations from the
-		// manifest, then re-stamp the digest built-in.
 		app.Metadata = claim(ctx, models.SetBuiltin(
 			models.MergeUserMetadata(app.Metadata, desired.Metadata.Labels),
 			MetaDigest, spec.Digest,
 		))
 		app.Annotations = desired.Metadata.Annotations
-		// Container labels round-trip through the manifest; the app service
-		// sanitizes reserved keys (fail-soft) so a manifest can never spoof
-		// platform labels.
+		// The app service sanitizes reserved keys so a manifest can't spoof platform labels.
 		app.ContainerLabels = spec.ContainerLabels
-		// Validated against the workspace's security profile by the app service, which
-		// refuses a run-as user that would escape a non-root mandate.
+		// The app service refuses a run-as user that would escape a non-root mandate.
 		app.RunAsUser = spec.RunAsUser()
 		// Absent means "no grants" and "no hardening", not "unchanged", or GitOps could never revoke.
 		app.AddCapabilities = spec.AddCapabilities()
@@ -2963,8 +2744,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.Devices = spec.Devices()
 		app.ReadOnlyRootFilesystem = spec.ReadOnlyRootFilesystem()
 		app.NoNewPrivileges = spec.NoNewPrivileges()
-		// Only when the manifest states one. A bundle silent about rollout mechanics must leave the
-		// console's setting alone rather than reset every app it touches to rolling.
+		// A manifest silent on strategy must not reset the console setting to rolling.
 		if s := spec.Strategy(); s != "" {
 			app.DeployStrategy = models.DeployStrategy(s)
 		}
@@ -2981,8 +2761,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if spec.Update() != nil {
 			app.UpdateConfig = updateConfigOf(spec)
 		}
-		// Only when stated, like deployment: a manifest silent about the stack leaves a membership set
-		// in the console alone.
+		// A manifest silent on stack leaves a console-set membership alone.
 		if stackID != nil {
 			app.StackID = stackID
 		}
@@ -3006,8 +2785,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err != nil {
 			return err
 		}
-		// Prune is automated: stop a running app first so the interactive "stop
-		// before deleting" guard doesn't block teardown.
+		// Prune is automated, so stop first or the stop-before-delete guard blocks teardown.
 		if s.apps.LiveStatus(ctx, app).Running {
 			if err := s.apps.Stop(ctx, app); err != nil {
 				return err
@@ -3018,8 +2796,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	return nil
 }
 
-// resolveStack maps an application's spec.stack to the stack's id, or nil when it names none. The Stack
-// is in the same bundle (validation requires it) and ranks before applications, so it exists by now.
+// Validation requires the Stack in the bundle and it ranks before applications, so it exists by now.
 func (s *Service) resolveStack(workspaceID uint, appName string, spec *declarative.ApplicationSpec) (*uint, error) {
 	if spec == nil || spec.Stack == "" {
 		return nil, nil
@@ -3031,12 +2808,9 @@ func (s *Service) resolveStack(workspaceID uint, appName string, spec *declarati
 	return &st.ID, nil
 }
 
-// resolveRegistry maps an application's spec.registry to the id of the workspace credential it names, or nil for
-// an anonymous pull. It resolves against the live workspace, since a token created once in the UI is referenced
-// by name. A name matching nothing is a manifest error — otherwise a private image fails opaquely at deploy.
+// Resolved against the live workspace; an unknown name is a manifest error, not an opaque deploy failure.
 func (s *Service) resolveRegistry(workspaceID uint, appName string, spec *declarative.ApplicationSpec) (*uint, error) {
-	// A delete carries no desired spec (a pruned resource is absent from the
-	// manifest by definition), so nil is normal here, not a caller error.
+	// A pruned resource has no desired spec, so nil is normal here.
 	if spec == nil || spec.Registry == "" {
 		return nil, nil
 	}
@@ -3048,13 +2822,8 @@ func (s *Service) resolveRegistry(workspaceID uint, appName string, spec *declar
 	return &reg.ID, nil
 }
 
-// reconcileExposure converges an app's per-port exposure to the manifest: pins
-// the external-access label, reconciles host-port bindings, and reconciles the
-// reverse-proxy external-access routes. Idempotent.
 func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *models.Application, spec *declarative.ApplicationSpec) error {
-	// Pin the external-access subdomain so the public URL is deterministic. The label maps to a platform-wide
-	// host, so a value already claimed by another app can't be honored — ignore it and fall back to a
-	// generated label (keeping any label this app already has) instead of failing the apply.
+	// A label claimed by another app is ignored in favour of a generated one rather than failing the apply.
 	if spec.ExternalLabel != "" && app.ExternalLabel != spec.ExternalLabel {
 		taken, err := s.apps.ExternalLabelTaken(spec.ExternalLabel, app.ID)
 		if err != nil {
@@ -3075,8 +2844,7 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 			return err
 		}
 	}
-	// Reverse-proxy external access: the set of ports flagged externalAccess.
-	// SetExternalAccess is idempotent and also tears down ports no longer flagged.
+	// SetExternalAccess is idempotent and tears down ports no longer flagged.
 	if s.extAccess {
 		var ext []int
 		for _, p := range spec.Ports {
@@ -3091,9 +2859,7 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 	return nil
 }
 
-// reconcileBindings converges an app's host-port bindings to the manifest's publish/hostPort ports.
-// Presence-based: an existing binding for a still-desired port is left as-is, so a possibly auto-allocated
-// host port is not churned; bindings for ports no longer published are cancelled.
+// Presence-based so an auto-allocated host port isn't churned.
 func (s *Service) reconcileBindings(workspaceID, appID uint, spec *declarative.ApplicationSpec) error {
 	// Keyed by port and protocol: DNS-style services publish one port over both udp and tcp.
 	type key struct {
@@ -3141,9 +2907,6 @@ func bindingProto(p string) string {
 	return "tcp"
 }
 
-// exposedPorts derives an app's live exposure: container ports that have a
-// generated external-access route, and container ports with a host-port binding.
-// Powers idempotent diffing.
 func (s *Service) exposedPorts(workspaceID, appID uint) (ext, pub map[int]bool) {
 	ext, pub = map[int]bool{}, map[int]bool{}
 	if routes, err := s.routes.ListByApp(workspaceID, appID); err == nil {
@@ -3164,8 +2927,7 @@ func (s *Service) exposedPorts(workspaceID, appID uint) (ext, pub map[int]bool) 
 }
 
 func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *declarative.ApplicationSpec) application.CreateInput {
-	// Manifest labels become user metadata (reserved keys are stripped so a
-	// manifest can never spoof provenance); annotations are stored verbatim.
+	// Reserved keys are stripped so a manifest can't spoof provenance; annotations are stored verbatim.
 	md := tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(m.Labels),
 		models.MetaManagedBy, managedBy(ctx),
 		MetaDigest, spec.Digest,
@@ -3195,8 +2957,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		PlacementConstraints: spec.Constraints(),
 		UpdateConfig:         updateConfigOf(spec),
 	}
-	// A source block makes this a build-from-git app instead of an image pull. Validation has already
-	// refused a manifest declaring both, so the two branches cannot overlap.
+	// Validation already refuses a manifest declaring both source and image.
 	if src := spec.Source; src != nil {
 		in.SourceType = models.AppSourceGit
 		in.Image, in.Tag = "", ""
@@ -3226,8 +2987,7 @@ func updateConfigOf(spec *declarative.ApplicationSpec) *models.ServiceUpdateConf
 	return &models.ServiceUpdateConfig{Parallelism: u.Parallelism, DelaySeconds: u.DelaySeconds}
 }
 
-// refuseWeakerThanProfile fails a manifest that turns no-new-privileges off where the workspace's profile
-// forces it on: the container would never run as described, so it is refused like runAsUser: root.
+// The container would never run as described, so it is refused like runAsUser: root.
 func (s *Service) refuseWeakerThanProfile(workspaceID uint, name string, spec *declarative.ApplicationSpec) error {
 	if spec == nil || spec.Security == nil {
 		return nil
@@ -3282,10 +3042,7 @@ func (s *Service) renderStackEnv(workspaceID uint, spec *declarative.StackSpec, 
 	return nil
 }
 
-// reconcileStackEnv converges a stack's shared env to the manifest: it sets each declared variable that
-// differs and removes the ones no longer declared. A manifest silent about env leaves the stack's variables
-// alone. Every write flags the members already deployed for redeploy, as a console edit does, so a variable
-// that already holds its value is not rewritten.
+// A manifest silent on env leaves the stack alone; unchanged values aren't rewritten, as writes trigger redeploys.
 func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative.StackSpec) error {
 	if spec == nil || spec.Env == nil {
 		return nil
@@ -3329,8 +3086,7 @@ func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative
 	return nil
 }
 
-// stackEnvOf reads a live stack's shared env for the snapshot, secret values blanked as an app's are: the
-// diff masks them, so only their presence and secrecy are compared.
+// Secret values are blanked because the diff masks them, comparing only presence and secrecy.
 func (s *Service) stackEnvOf(workspaceID, stackID uint) (map[string]string, []string) {
 	vars, err := s.stacks.ListEnvVars(workspaceID, stackID)
 	if err != nil || len(vars) == 0 {
@@ -3349,13 +3105,10 @@ func (s *Service) stackEnvOf(workspaceID, stackID uint) (map[string]string, []st
 	return env, secretEnv
 }
 
-// reconcileMounts converges the app's volume mounts to the manifest: it attaches or re-paths each declared
-// Volume and detaches managed mounts no longer present. Privileged host-preset binds aren't
-// manifest-expressible and are left untouched. Volumes apply before their app, so they resolve on a first apply.
+// Host-preset binds aren't manifest-expressible and are left untouched.
 func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spec *declarative.ApplicationSpec) error {
 	keep := make(map[uint]bool, len(spec.Mounts))
-	// configMountKey identifies one config mount: the same config may be mounted
-	// several times, once per file it projects.
+	// The same config may be mounted once per file it projects.
 	type configMountKey struct {
 		id  uint
 		key string
@@ -3510,8 +3263,6 @@ func (s *Service) findRoute(workspaceID uint, name string) (*models.Route, error
 	return nil, fmt.Errorf("route %q not found", name)
 }
 
-// securitySpecOf renders an app's account, hardening and grants into a manifest, omitting the block when
-// the container runs with the defaults.
 func securitySpecOf(app *models.Application) *declarative.SecuritySpec {
 	sec := &declarative.SecuritySpec{RunAsUser: app.RunAsUser, ReadOnlyRootFilesystem: app.ReadOnlyRootFilesystem}
 	if app.NoNewPrivileges {
@@ -3530,8 +3281,7 @@ func securitySpecOf(app *models.Application) *declarative.SecuritySpec {
 	return sec
 }
 
-// healthcheckSpecOf states every field, so whatever a manifest states diffs against the live value; an
-// export trims the defaults back out.
+// healthcheckSpecOf states every field so a manifest diffs against the live value; export trims defaults.
 func healthcheckSpecOf(app *models.Application) *declarative.HealthcheckSpec {
 	t := app.HealthcheckType
 	if t == "" {
@@ -3556,8 +3306,7 @@ func healthcheckInput(hc *declarative.HealthcheckSpec) *application.Healthcheck 
 	}
 }
 
-// applyHealthcheck writes only the fields a manifest states, matching the diff, so a bundle stating
-// type and path leaves the timing set in the console alone.
+// Only stated fields are written so console-set timing survives a partial manifest.
 func applyHealthcheck(app *models.Application, hc *declarative.HealthcheckSpec) {
 	if hc == nil {
 		return
@@ -3593,8 +3342,7 @@ func trimDefault(v, def int) int {
 	return v
 }
 
-// deploymentSpecOf always states the runtime and strategy, so a manifest naming the default still diffs
-// against an app that is not on it; an export trims them back out.
+// Always states runtime and strategy so a manifest naming the default still diffs; export trims them.
 func deploymentSpecOf(app *models.Application) *declarative.DeploymentSpec {
 	d := &declarative.DeploymentSpec{Runtime: string(models.RuntimeContainer), Strategy: string(models.DeployRolling)}
 	if app.DeployStrategy != "" {

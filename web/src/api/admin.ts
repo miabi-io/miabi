@@ -74,10 +74,7 @@ export interface ImageCatalogItem {
 export interface DeploymentConfig {
   images: ImageCatalogItem[]
   mirror: string
-  /**
-   * Whether this licence may CHANGE the mirror. A mirror set under a licence
-   * keeps working after it lapses — only editing it needs private_registry.
-   */
+  /** A mirror set under a licence keeps working after it lapses; only editing needs private_registry. */
   mirror_editable: boolean
 }
 
@@ -115,11 +112,7 @@ export interface OAuthProviderPayload {
   name_claim?: string
   username_claim?: string
   default_workspace_id?: number
-  /**
-   * The organization accounts this provider registers belong to. Accepted on create only: an
-   * existing account is never moved between organizations by signing in, so changing it later
-   * would split the provider's users across two tenants.
-   */
+  /** Create only: changing it later would split the provider's users across two tenants. */
   organization_id?: number
   default_role?: string
   groups_claim?: string
@@ -239,8 +232,7 @@ export const adminApi = {
     api.post<ApiResponse<AdminUser & { password?: string }>>('/admin/users', payload),
   updateUser: (id: number, payload: UpdateUserPayload) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, payload),
-  // Enterprise per-user override of how many workspaces the user may own
-  // (null clears it → inherit the platform default; -1 = unlimited).
+  // null clears the override to inherit the platform default; -1 = unlimited.
   setWorkspaceLimit: (id: number, limit: number | null) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}/workspace-limit`, { limit }),
   // Enterprise per-user allow/deny of workspace creation (null clears it → inherit).
@@ -249,14 +241,11 @@ export const adminApi = {
   // Enterprise per-user override of how many workspaces the user may join as a member.
   setWorkspaceMembershipLimit: (id: number, limit: number | null) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}/workspace-membership-limit`, { limit }),
-  // Schedule a disabled account for deletion after the grace period, optionally
-  // transferring ownership of some of its workspaces first.
   scheduleDeletion: (id: number, transfers: OwnershipTransfer[] = []) =>
     api.post<ApiResponse<AdminUser>>(`/admin/users/${id}/schedule-deletion`, { transfers }),
   cancelDeletion: (id: number) =>
     api.post<ApiResponse<AdminUser>>(`/admin/users/${id}/cancel-deletion`),
-  // Permanently delete an account that is already pending deletion, skipping the
-  // remaining grace period. Only valid while scheduled_deletion_at is set.
+  // Only valid while scheduled_deletion_at is set.
   forceDeletion: (id: number) =>
     api.post<ApiResponse<{ message: string }>>(`/admin/users/${id}/force-deletion`),
   revokeSessions: (id: number) =>
@@ -327,8 +316,7 @@ export const adminApi = {
     }),
   getEvent: (id: number) => api.get<ApiResponse<AdminEvent>>(`/admin/events/${id}`),
 
-  // Update notice. Served from the cache the daily check writes — this request
-  // never reaches GitHub, so refreshing the dashboard costs no API quota.
+  // Served from the daily check's cache, so refreshing never spends GitHub API quota.
   getUpdate: () => api.get<ApiResponse<UpdateInfo>>('/admin/update'),
   dismissUpdate: (version: string) =>
     api.post<ApiResponse<{ message: string }>>('/admin/update/dismiss', { version }),
@@ -381,8 +369,7 @@ export const adminApi = {
   deleteLdapMapping: (id: number, mappingId: number) =>
     api.delete<ApiResponse<{ message: string }>>(`/admin/sso/ldap/${id}/mappings/${mappingId}`),
 
-  // Organizations: the tenant realm a workspace belongs to. Listing is always allowed — one
-  // organization always exists — while creating a second one is Enterprise.
+  // Listing is always allowed since one organization always exists; creating a second is Enterprise.
   listOrganizations: () => api.get<ApiResponse<Organization[]>>('/admin/organizations'),
   getOrganization: (id: number) => api.get<ApiResponse<OrganizationDetail>>(`/admin/organizations/${id}`),
   createOrganization: (payload: OrganizationInput) =>
@@ -411,8 +398,7 @@ export const adminApi = {
     api.put<ApiResponse<DatabaseSize>>(`/admin/database-sizes/${id}`, payload),
   deleteDatabaseSize: (id: number) => api.delete<ApiResponse<{ message: string }>>(`/admin/database-sizes/${id}`),
 
-  // Storage classes: where on a node the platform creates volumes. A class's name and path are
-  // immutable, so update only carries the editable fields.
+  // Name and path are immutable, so update only carries the editable fields.
   listStorageClasses: () => api.get<ApiResponse<StorageClass[]>>('/admin/storage-classes'),
   getStorageClass: (id: number) => api.get<ApiResponse<StorageClassDetail>>(`/admin/storage-classes/${id}`),
   createStorageClass: (payload: StorageClassInput) =>

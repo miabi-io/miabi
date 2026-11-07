@@ -17,9 +17,7 @@ import (
 	"testing"
 )
 
-// TestCommunityLDAPDisabled verifies the Community build links no LDAP
-// authenticator (so the go-ldap client is never compiled in) and that the
-// sso_ldap flag is denied.
+// The Community build must link no LDAP authenticator, so go-ldap is never compiled in.
 func TestCommunityLDAPDisabled(t *testing.T) {
 	ee := New(nil, "", "", "")
 	if ee.LDAP() != nil {
@@ -33,8 +31,7 @@ func TestCommunityLDAPDisabled(t *testing.T) {
 	}
 }
 
-// TestSSOLDAPFlagRegistered ensures the flag is in the canonical AllFlags list
-// (so the issuer tool + docs advertise it).
+// The flag must be in AllFlags so the issuer tool and docs advertise it.
 func TestSSOLDAPFlagRegistered(t *testing.T) {
 	if !IsKnownFlag(FlagSSOLDAP) {
 		t.Errorf("%q missing from AllFlags", FlagSSOLDAP)

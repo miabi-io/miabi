@@ -31,9 +31,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdminRouteHandler exposes platform-wide route administration: a searchable list
-// of every workspace's routes with their gateway sync status, and a one-click
-// resync that re-renders every workspace's gateway config from the database.
 type AdminRouteHandler struct {
 	db         *gorm.DB
 	routes     *repositories.RouteRepository
@@ -65,8 +62,6 @@ type AdminRoute struct {
 	CreatedAt     time.Time           `json:"created_at"`
 }
 
-// List returns a page of routes across every workspace, with workspace and app
-// names resolved, filterable by status, workspace, and a name/host search.
 func (h *AdminRouteHandler) List(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	var wsFilter *uint
@@ -113,9 +108,7 @@ type ResyncWorkspaceError struct {
 	Error       string `json:"error"`
 }
 
-// Resync re-renders every workspace's gateway config file from current database state. Each
-// file is replaced atomically (no directory wipe), so the gateway never sees an empty config.
-// Per-route sync status is committed per workspace, so the summary reflects the post-resync state.
+// Files are replaced atomically, so the gateway never sees an empty config.
 func (h *AdminRouteHandler) Resync(c *okapi.Context) error {
 	workspaces, err := h.workspaces.ListAll()
 	if err != nil {

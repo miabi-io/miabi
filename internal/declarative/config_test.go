@@ -74,8 +74,7 @@ func TestParseConfig(t *testing.T) {
 	}
 }
 
-// A config mount is always projected read-only: an explicit readOnly: false is
-// normalized away rather than rejected, so the guarantee holds either way.
+// readOnly: false is normalized away rather than rejected, so the guarantee holds either way.
 func TestConfigMountIsAlwaysReadOnly(t *testing.T) {
 	set := parseConfigSet(t, configYAML)
 	app, _ := set.Get(string(d.KindApplication) + "/prometheus")
@@ -292,10 +291,7 @@ func TestConfigMarshalRoundTrip(t *testing.T) {
 	}
 }
 
-// A config rendering under its own delimiters must still resolve hyphenated
-// names: expandRefs builds its action pattern from the delimiters, so a
-// hardcoded {{ }} pattern would leave << .databases.shop-db.uri >> unexpanded
-// and the render would fail.
+// expandRefs builds its pattern from the delimiters, so custom delimiters must still resolve hyphenated names.
 func TestRenderFilesWithCustomDelimitersResolvesHyphenatedNames(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"shop-db": {URI: "postgres://u:p@dp/shop", Host: "mb-db"}},

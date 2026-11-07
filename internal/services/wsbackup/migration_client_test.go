@@ -37,8 +37,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A dropped download resumes with Range from the bytes already written, and the result is checked
-// against the source's checksum, so a resumed file is the same file.
 func TestDownloadResumesAndVerifies(t *testing.T) {
 	payload := bytes.Repeat([]byte("miabi-migration-"), 4096)
 	sum := sha256.Sum256(payload)
@@ -106,8 +104,6 @@ func TestDownloadResumesAndVerifies(t *testing.T) {
 	}
 }
 
-// A source's error envelope reaches the operator as what the source said, and an old Miabi without
-// the migration API is named as such.
 func TestRemoteErrorMessages(t *testing.T) {
 	err := remoteError(403, []byte(`{"success":false,"error":{"code":"MIGRATION_KEY_SCOPE","message":"this migration key does not open that workspace"}}`))
 	if !strings.Contains(err.Error(), "MIGRATION_KEY_SCOPE") || !strings.Contains(err.Error(), "does not open") {

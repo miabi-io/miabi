@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package keyring manages per-workspace data-encryption keys. Each DEK is stored wrapped by the master KEK
-// and unwrapped into an in-memory cache on demand. It implements crypto.Keyring so the crypto package can
-// resolve workspace keys without importing it; the master KEK never leaves the crypto package.
+// Package keyring manages per-workspace DEKs wrapped by the master KEK, which never leaves the crypto package.
 package keyring
 
 import (
@@ -40,9 +38,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Reencryptor re-encrypts a workspace's stored secrets under its current active DEK. Implemented by each
-// service that owns workspace-scoped ciphertext and registered with the keyring; the rotation sweep calls
-// every registered one. Idempotent, and returns the number of values rewritten.
+// Reencryptor is implemented by each owner of workspace ciphertext; idempotent.
 type Reencryptor interface {
 	Reencrypt(ctx context.Context, workspaceID uint) (int, error)
 }
@@ -57,8 +53,7 @@ type RotateResult struct {
 
 const dekSize = 32 // AES-256
 
-// ErrStaleCiphertext reports that a rotation left values under an old key version, so the old versions
-// were kept. The data stays readable; the owner of the listed columns needs a Reencryptor.
+// ErrStaleCiphertext: old key versions were kept and data stays readable; the listed columns need a Reencryptor.
 var ErrStaleCiphertext = errors.New("keyring: old key versions kept, ciphertext still references them")
 
 // Service is the DB-backed keyring.
@@ -67,8 +62,7 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[cacheKey][]byte // (workspace, version) -> unwrapped DEK
-	// createMu serializes first-use DEK creation per process so two concurrent
-	// writers to a new workspace don't race to create duplicate keys.
+	// Serializes first-use DEK creation so concurrent writers don't create duplicate keys.
 	createMu sync.Mutex
 
 	reencryptors []Reencryptor
@@ -86,8 +80,6 @@ func NewService(repo *repositories.WorkspaceKeyRepository) *Service {
 	return &Service{repo: repo, cache: map[cacheKey][]byte{}}
 }
 
-// ActiveDEK returns the workspace's active key version + DEK, creating the first
-// key on demand. Implements crypto.Keyring.
 func (s *Service) ActiveDEK(workspaceID uint) (int, []byte, error) {
 	wk, err := s.repo.FindActive(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -103,8 +95,6 @@ func (s *Service) ActiveDEK(workspaceID uint) (int, []byte, error) {
 	return wk.Version, dek, nil
 }
 
-// DEK returns a specific key version's DEK (to decrypt older ciphertext).
-// Implements crypto.Keyring.
 func (s *Service) DEK(workspaceID uint, version int) ([]byte, error) {
 	ck := cacheKey{ws: workspaceID, ver: version}
 	s.mu.RLock()
@@ -158,9 +148,7 @@ func (s *Service) generate(workspaceID uint, version int, active bool) (*models.
 	}, nil
 }
 
-// Rotate creates a new active DEK version for the workspace and re-encrypts all registered owners' data to
-// it. On a partial sweep old versions are RETAINED but deactivated, so not-yet-swept ciphertext stays
-// decryptable — rotation is always safe. A full sweep retires them once no stored value references them.
+// Rotate keeps old versions on a partial sweep so unswept ciphertext stays decryptable.
 func (s *Service) Rotate(ctx context.Context, workspaceID uint) (RotateResult, error) {
 	next, err := s.repo.MaxVersion(workspaceID)
 	if err != nil {
@@ -189,7 +177,6 @@ func (s *Service) Rotate(ctx context.Context, workspaceID uint) (RotateResult, e
 	return res, err
 }
 
-// retireOldVersions deletes every DEK version but active once no stored value still references one.
 // A sweep only covers registered owners, so the database is checked rather than trusted.
 func (s *Service) retireOldVersions(workspaceID uint, active int) ([]string, error) {
 	stale, err := s.repo.StaleCiphertext(workspaceID, active)
@@ -213,9 +200,7 @@ func (s *Service) retireOldVersions(workspaceID uint, active int) ([]string, err
 	return nil, nil
 }
 
-// Migrate ensures the workspace has an active DEK and re-encrypts existing legacy
-// (master-key) data to it — without creating a new version. Used for the one-time
-// migration off the global key.
+// Migrate moves legacy master-key data to the workspace DEK without creating a new version.
 func (s *Service) Migrate(ctx context.Context, workspaceID uint) (int, error) {
 	if _, _, err := s.ActiveDEK(workspaceID); err != nil { // creates v1 if none
 		return 0, err
@@ -223,9 +208,7 @@ func (s *Service) Migrate(ctx context.Context, workspaceID uint) (int, error) {
 	return s.sweep(ctx, workspaceID)
 }
 
-// sweep runs every registered reencryptor for the workspace. A reencryptor error is logged and aggregated
-// but does not abort the others; the first error is returned so the caller knows coverage was partial (old
-// versions stay, so data remains safe).
+// One reencryptor's error doesn't abort the others; old versions stay, so data remains safe.
 func (s *Service) sweep(ctx context.Context, workspaceID uint) (int, error) {
 	total := 0
 	var firstErr error
@@ -242,8 +225,6 @@ func (s *Service) sweep(ctx context.Context, workspaceID uint) (int, error) {
 	return total, firstErr
 }
 
-// AutoRotateDue rotates every workspace whose active key is older than `older`.
-// Driven by the auto-rotate cron (off by default).
 func (s *Service) AutoRotateDue(ctx context.Context, older time.Duration) error {
 	keys, err := s.repo.ListActiveOlderThan(time.Now().Add(-older))
 	if err != nil {
@@ -260,8 +241,7 @@ func (s *Service) AutoRotateDue(ctx context.Context, older time.Duration) error 
 	return nil
 }
 
-// ShredWorkspace permanently deletes a workspace's keys (DB + in-memory cache),
-// rendering its ciphertext unrecoverable. Called on workspace delete.
+// ShredWorkspace deletes a workspace's keys, making its ciphertext unrecoverable.
 func (s *Service) ShredWorkspace(workspaceID uint) error {
 	s.mu.Lock()
 	for k := range s.cache {

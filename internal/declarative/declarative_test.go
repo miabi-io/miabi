@@ -203,8 +203,7 @@ spec: { image: nginx }
 }
 
 func TestParseRejectsMisplacedMetadataKey(t *testing.T) {
-	// A custom key written directly under metadata (instead of under labels)
-	// must be rejected, not silently dropped.
+	// A custom key directly under metadata must be rejected, not silently dropped.
 	const y = `
 apiVersion: miabi.io/v1
 kind: Application
@@ -250,8 +249,7 @@ func TestEdges(t *testing.T) {
 			t.Errorf("edge %q: want type %q, got %q", k, typ, got[k])
 		}
 	}
-	// The {{ .secrets.app_key }} reference must NOT produce an edge: no Secret
-	// named app_key is declared in the set, so there is no node to link to.
+	// No Secret named app_key is declared in the set, so there is no node to link to.
 	for k := range got {
 		if k == "Application/web -> Secret/app_key" {
 			t.Errorf("unexpected edge to undeclared secret: %q", k)
@@ -304,9 +302,7 @@ spec: { hosts: [shop.example.com], app: web }
 	}
 }
 
-// GitOps relies on ParseFS distinguishing an empty manifest set (ErrNoResources,
-// which AllowEmpty can turn into a teardown) from a missing path (fs.ErrNotExist,
-// always an error — never a prune).
+// GitOps relies on empty sets (may teardown) being distinct from missing paths (always an error, never a prune).
 func TestParseFSDistinguishesEmptyFromMissing(t *testing.T) {
 	// Path exists but holds no manifests → ErrNoResources.
 	fsys := fstest.MapFS{
@@ -391,8 +387,7 @@ func TestBuildPlanCreateUpdateNoopDelete(t *testing.T) {
 		t.Errorf("deletes: want 1, got %d", del)
 	}
 
-	// Ordering: the delete must precede the route create (teardown before
-	// dependent setup), and the create (route, rank 3) after the update (app).
+	// Teardown must precede dependent setup.
 	if plan.Changes[0].Action != d.ActionDelete {
 		t.Errorf("expected delete first, got %s", plan.Changes[0].Action)
 	}
@@ -488,8 +483,6 @@ spec:
 		t.Errorf("hostPort should imply publish: %+v", p5432)
 	}
 
-	// Diff is presence-based: an app with the same image but no exposure differs
-	// (the externalAccess/published port flags), producing one update.
 	actual := d.NewResourceSet()
 	actual.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindApplication, Metadata: d.Meta{Name: "web"},
@@ -550,9 +543,7 @@ func TestBuildPlanPruneManagedByOnlyDeletesOwned(t *testing.T) {
 	}
 }
 
-// TestBuildPlanPruneGitOpsSourceScopesToOwnProject models two GitOps projects backed by one repo
-// at different subpaths in the same workspace snapshot. Without source scoping each project saw
-// the other's app as an orphan and tore it down, so the two apps endlessly replaced each other.
+// Without source scoping, two GitOps projects on one repo pruned each other's apps endlessly.
 func TestBuildPlanPruneGitOpsSourceScopesToOwnProject(t *testing.T) {
 	app := func(name, source string) d.Resource {
 		labels := map[string]string{d.LabelManagedBy: "gitops"}
@@ -626,8 +617,7 @@ func TestRenderInterpolatesContext(t *testing.T) {
 	}
 }
 
-// Env keeps a secret as a runtime reference so the worker resolves it at deploy and rotation reaches the
-// app. Only a wrapped secret, which the worker cannot substitute, still renders its value at apply.
+// Only a wrapped secret, which the worker cannot substitute, still renders its value at apply.
 func TestRenderEnvDefersSecrets(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"pg": {Host: "mb-pg"}},
@@ -697,9 +687,7 @@ func TestRenderMissingKeyIsError(t *testing.T) {
 	}
 }
 
-// RenderEnvLenient resolves what it can and leaves the rest as templates, so a
-// reference to a not-yet-provisioned database in the same bundle doesn't abort
-// the plan (the apply path re-renders strictly once the database exists).
+// A not-yet-provisioned database must not abort the plan; apply re-renders strictly once it exists.
 func TestRenderEnvLenient(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"live-db": {Host: "mb-live"}},
@@ -720,8 +708,7 @@ func TestRenderEnvLenient(t *testing.T) {
 	}
 }
 
-// Reference names commonly contain hyphens (e.g. "shop-db"), which Go's template
-// language cannot access via dot notation. The renderer must resolve them.
+// Go templates cannot dot-access hyphenated names like "shop-db".
 func TestRenderHyphenatedRefs(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{"shop-db": {URI: "postgres://u:p@dp/shop", Host: "mb-db"}},
@@ -776,9 +763,7 @@ func TestMarshalRoundTripsUID(t *testing.T) {
 
 func TestBuildPlanUIDMatchIsRenameSafe(t *testing.T) {
 	const uid = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-	// Desired references the volume by uid under a new name; actual has the same
-	// uid under the old name. uid-matching must converge in place, never
-	// delete+create (which would destroy the volume's data).
+	// uid matching must converge in place; delete+create would destroy the volume's data.
 	desired := d.NewResourceSet()
 	desired.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindVolume,
@@ -806,8 +791,7 @@ func TestBuildPlanUIDMatchIsRenameSafe(t *testing.T) {
 	}
 }
 
-// A database password or URI in env points at the database's managed vault secret, like a secret
-// reference, so the credential is never stored in the app and a restore resolves it to the target's.
+// Database credentials stay vault references, so a restore resolves them to the target's.
 func TestRenderEnvDefersDatabaseCredentials(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{
 		Databases: map[string]d.ConnView{

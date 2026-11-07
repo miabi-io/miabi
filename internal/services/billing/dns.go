@@ -56,8 +56,6 @@ type ConsoleDNS interface {
 	DeleteAllConsole() error
 }
 
-// DomainConnector connects a workspace's domains to a provider whose zones cover them. Implemented by
-// the domain service.
 type DomainConnector interface {
 	ConnectToProvider(workspaceID uint, p *models.DNSProvider) (int, error)
 }
@@ -106,8 +104,6 @@ func normalizeZones(in []string) ([]string, error) {
 	return out, nil
 }
 
-// PushDNSProvider creates or updates the workspace's console-managed DNS provider, then connects the
-// workspace's domains under its zones and verifies them.
 func (s *Service) PushDNSProvider(ctx context.Context, externalID, ref string, in DNSProviderPush) (*DNSProviderView, error) {
 	if s.dns == nil {
 		return nil, ErrDNSUnavailable
@@ -165,8 +161,6 @@ func (s *Service) DNSProvider(externalID, ref string) (*DNSProviderView, error) 
 	return s.dnsView(p)
 }
 
-// DeleteDNSProvider removes the workspace's console-managed DNS provider; its domains fall back to
-// manual DNS.
 func (s *Service) DeleteDNSProvider(externalID, ref string) error {
 	if s.dns == nil {
 		return ErrDNSUnavailable

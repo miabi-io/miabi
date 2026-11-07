@@ -69,8 +69,6 @@ type RegisterRequest struct {
 
 // RegisterResponse tells the caller what to do next, which differs by policy.
 type RegisterResponse struct {
-	// VerificationRequired means the account exists but cannot sign in until the
-	// address is verified.
 	VerificationRequired bool   `json:"verification_required"`
 	Message              string `json:"message"`
 }
@@ -120,8 +118,7 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 		user.EmailVerifiedAt = &now
 	}
 	if err := h.users.Create(user); err != nil {
-		// Two sign-ups racing for one address: the loser must look like any other
-		// duplicate rather than a 500 that says the address was free a moment ago.
+		// A racing duplicate must look like any other duplicate, not a 500.
 		if dup, dupErr := h.users.ExistsByEmail(email); dupErr == nil && dup {
 			return h.declineQuietly(c, email, nil)
 		}
@@ -141,8 +138,7 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 	return ok(c, h.pendingResponse())
 }
 
-// sendVerification issues a link and mails it. Best-effort: the account exists
-// either way, and an admin can still verify it by hand from the user detail page.
+// Best-effort: an admin can still verify the account by hand.
 func (h *RegisterHandler) sendVerification(user *models.User) {
 	if h.auth == nil || h.mailer == nil {
 		return
@@ -162,8 +158,7 @@ func (h *RegisterHandler) VerifyEmail(c *okapi.Context, req *VerifyEmailRequest)
 	}
 	user, err := h.auth.ConfirmEmailVerification(strings.TrimSpace(req.Body.Token))
 	if err != nil {
-		// One answer for expired, spent and never-existed: a caller probing tokens
-		// learns nothing from the difference.
+		// One answer for expired, spent and never-existed, so probing tokens learns nothing.
 		return c.AbortBadRequest("that verification link is invalid or has expired")
 	}
 	h.audit.Record(audit.Entry{
@@ -195,8 +190,7 @@ func (h *RegisterHandler) declineQuietly(c *okapi.Context, email string, policy 
 	return ok(c, h.pendingResponse())
 }
 
-// pendingResponse is what both a real sign-up and a declined one return, so the
-// two cannot be told apart from outside.
+// A real and a declined sign-up must be indistinguishable from outside.
 func (h *RegisterHandler) pendingResponse() RegisterResponse {
 	if h.reg.RequiresVerification() {
 		return RegisterResponse{
@@ -216,8 +210,6 @@ type InvitationTokenRequest struct {
 	} `json:"body"`
 }
 
-// InvitationPreviewResponse describes an invitation to the holder of its token, and how they can
-// accept it.
 type InvitationPreviewResponse struct {
 	workspace.InvitationPreview
 	// SignupAllowed means an invitee without an account may create one from this invitation.
@@ -254,8 +246,7 @@ func (h *RegisterHandler) invitationSSORequired(orgID uint) bool {
 	return h.ssoEnforced(u)
 }
 
-// RegisterFromInvitationRequest is the sign-up form reached from an invitation. The email is the
-// invited one and cannot be chosen.
+// The email is the invited one and cannot be chosen.
 type RegisterFromInvitationRequest struct {
 	Body struct {
 		Token    string `json:"token" required:"true"`
@@ -271,8 +262,7 @@ type RegisterFromInvitationResponse struct {
 	Message       string `json:"message"`
 }
 
-// RegisterFromInvitation creates an account from a workspace invitation and joins it. Open while
-// self-service sign-up is closed: the invitation is the authorization.
+// Open while self-service sign-up is closed: the invitation is the authorization.
 func (h *RegisterHandler) RegisterFromInvitation(c *okapi.Context, req *RegisterFromInvitationRequest) error {
 	if h.workspaces == nil || !h.reg.InvitationSignupEnabled() {
 		return c.AbortWithError(403, errors.New("signing up from an invitation is not available on this platform; ask an administrator to create your account"))
@@ -296,8 +286,7 @@ func (h *RegisterHandler) RegisterFromInvitation(c *okapi.Context, req *Register
 	if err != nil {
 		return c.AbortInternalServerError("failed to hash password", err)
 	}
-	// The token reached the invited mailbox (Invite hides it from the inviter whenever mail can be
-	// sent), which proves the address.
+	// The token reached the invited mailbox, which proves the address.
 	now := time.Now()
 	user := &models.User{
 		Name: name, PasswordHash: string(hash), Role: models.SystemRoleUser,

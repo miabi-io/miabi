@@ -30,8 +30,7 @@ type intentKind int
 
 const (
 	fire intentKind = iota
-	// countFire opens/refreshes an alert only once a windowed signal count crosses
-	// Threshold (the crash-loop dedup — N dies in a window is one alert, not N).
+	// N dies in a window is one alert, not N.
 	countFire
 	// resolve closes the active alert for DedupKey, if any (auto-resolve).
 	resolve
@@ -50,10 +49,7 @@ type intent struct {
 	minRole     models.WorkspaceRole
 	title       string
 	body        string
-	// platform routes fan-out to the super-admins (attributed to the system
-	// workspace) instead of workspace members — for platform-scoped conditions
-	// (node offline, shared-runner offline).
-	platform bool
+	platform    bool
 
 	// countFire only.
 	threshold int
@@ -68,9 +64,7 @@ func databaseSubject(dbID uint) (typ, ref, link string) {
 	return "database", fmt.Sprintf("database:%d", dbID), fmt.Sprintf("/databases/%d", dbID)
 }
 
-// evaluate maps one event to zero or more alert intents, dispatching on its subject. name is the
-// resolved display name of that subject. It is pure: no I/O, no state — the engine handles
-// counting, persistence and fan-out.
+// Pure: no I/O or state; the engine handles counting, persistence and fan-out.
 func evaluate(e *models.AppEvent, name string) []intent {
 	if subject, id := e.Subject(); subject == models.SubjectDatabase {
 		return evaluateDatabase(e, id, name)
@@ -78,10 +72,7 @@ func evaluate(e *models.AppEvent, name string) []intent {
 	return evaluateApp(e, name)
 }
 
-// evaluateDatabase maps a database instance event to alert intents. Backup outcomes are
-// deliberately absent: the backup service already raises those through the Signal path
-// ("backup_failed"/"backup_ok"), and firing here as well would open a second alert for one
-// failure.
+// Backup outcomes are absent: the backup service raises them via Signal, and firing here would duplicate the alert.
 func evaluateDatabase(e *models.AppEvent, dbID uint, name string) []intent {
 	if dbID == 0 {
 		return nil
@@ -169,8 +160,6 @@ func evaluateDatabase(e *models.AppEvent, dbID uint, name string) []intent {
 	return nil
 }
 
-// evaluateApp maps one application event to zero or more alert intents. appName is the
-// resolved display name (falls back to "app #<id>" upstream).
 func evaluateApp(e *models.AppEvent, appName string) []intent {
 	if e.ApplicationID == 0 {
 		return nil

@@ -39,8 +39,7 @@ func TestClusterNameRoundTrips(t *testing.T) {
 	}
 }
 
-// An operator who no longer wants a label should be able to drop it, not be stuck with
-// one — so an empty name clears rather than being rejected.
+// An empty name clears the label rather than being rejected.
 func TestClusterNameCanBeCleared(t *testing.T) {
 	s := &Service{store: &memStore{}}
 	_ = s.SetName("staging")

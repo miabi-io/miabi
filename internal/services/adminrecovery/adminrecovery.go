@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package adminrecovery is the break-glass path for a platform admin locked out of the console. It
-// runs from a shell inside the control-plane container: access to that shell already means control
-// of the platform, so it is the trust boundary, and every use is audited and announced to the admins.
+// Package adminrecovery is the audited break-glass path; shell access to the control plane is the trust boundary.
 package adminrecovery
 
 import (
@@ -58,8 +56,7 @@ type Service struct {
 	recoveryCodes *repositories.TwoFactorRecoveryRepository
 	audit         *repositories.AuditLogRepository
 	notify        Notifier
-	// rdb is nil-safe: without Redis, sessions still end through the password fingerprint, and a
-	// console-unlock lockout simply runs out.
+	// Nil-safe: without Redis, sessions still end via the password fingerprint and the unlock lockout just expires.
 	rdb *redis.Client
 }
 
@@ -104,9 +101,7 @@ type Result struct {
 	SessionsEnded    int
 }
 
-// Recover gets a locked-out admin back in: a new password, two-factor turned off, the account enabled,
-// the console-unlock lockout cleared and every existing session ended, since a lockout can be a sign
-// the account was taken over.
+// Every session is ended since a lockout can be a sign the account was taken over.
 func (s *Service) Recover(ctx context.Context, u *models.User) (Result, error) {
 	password, err := generatePassword()
 	if err != nil {
@@ -134,8 +129,7 @@ func (s *Service) Recover(ctx context.Context, u *models.User) (Result, error) {
 	return res, nil
 }
 
-// ResetPassword sets an admin's password and ends their sessions. An empty password generates one that
-// must be changed at the next sign-in.
+// An empty password generates one that must be changed at the next sign-in.
 func (s *Service) ResetPassword(ctx context.Context, u *models.User, password string) (Result, error) {
 	generated := password == ""
 	if generated {
@@ -166,8 +160,7 @@ func (s *Service) ResetPassword(ctx context.Context, u *models.User, password st
 	return res, nil
 }
 
-// ResetTwoFactor turns off a user's two-factor authentication and deletes their recovery codes. It
-// reports false when two-factor was not on.
+// Reports false when two-factor was not on.
 func (s *Service) ResetTwoFactor(u *models.User) (bool, error) {
 	if !u.TwoFactorEnabled {
 		return false, nil
@@ -203,8 +196,7 @@ func (s *Service) clearTwoFactor(u *models.User) error {
 	return s.recoveryCodes.DeleteForUser(u.ID)
 }
 
-// endSessions revokes a user's live sessions. The new password already invalidates their tokens through
-// the password fingerprint; this also marks them revoked where the console lists them.
+// The new password already invalidates tokens; this also marks them revoked where the console lists them.
 func (s *Service) endSessions(ctx context.Context, userID uint) (int, error) {
 	list, err := s.sessions.ListByUser(userID)
 	if err != nil {
@@ -244,8 +236,7 @@ func (s *Service) announce(u *models.User, title, body string) {
 	})
 }
 
-// generatePassword returns a 20-character password without look-alike characters, as it is read off a
-// terminal and typed.
+// No look-alike characters, since it is read off a terminal and typed.
 func generatePassword() (string, error) {
 	const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	out := make([]byte, 20)

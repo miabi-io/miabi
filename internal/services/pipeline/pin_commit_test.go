@@ -33,8 +33,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
 )
 
-// newBranchedRepo builds a repository with a commit on main and a later one on dev, returning its path
-// (ending in .git, as the clone URL is normalized) and both heads.
+// The path ends in .git, as the clone URL is normalized.
 func newBranchedRepo(t *testing.T) (dir, mainHead, devHead string) {
 	t.Helper()
 	dir = filepath.Join(t.TempDir(), "app.git")

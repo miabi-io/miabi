@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// The escape, reproduced against a live daemon on 2026-09-18: `type=nfs, o=bind, device=/` created a
-// volume that bind-mounted the host's root filesystem, because the kernel ignores the filesystem
-// type once MS_BIND is set. Every shape of it must be refused.
+// Reproduced live 2026-09-18: type=nfs,o=bind,device=/ bind-mounted the host root filesystem.
 func TestValidateSharedDriverOptsRefusesTheHostEscape(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -34,8 +32,7 @@ func TestValidateSharedDriverOptsRefusesTheHostEscape(t *testing.T) {
 		opts    map[string]string
 		wantErr error
 	}{
-		// Two independent guards refuse the escape, and the device check runs first: a local path is
-		// never a share, flag or no flag. The flag cases below prove the second guard on its own.
+		// The device check runs first; the flag cases below prove the second guard on its own.
 		{"host root via bind", "nfs", map[string]string{"device": "/", "o": "bind"}, ErrDriverDeviceForm},
 		{"host etc via bind", "nfs", map[string]string{"device": "/etc", "o": "bind"}, ErrDriverDeviceForm},
 		{"rbind", "nfs", map[string]string{"device": "/", "o": "rbind"}, ErrDriverDeviceForm},
@@ -103,8 +100,6 @@ func TestValidateSharedDriverOptsForcesType(t *testing.T) {
 	}
 }
 
-// The deploy path and the boot audit re-check stored options, so a volume created before the
-// allow-list cannot mount just because its row survived.
 func TestSharedDriverOptsValidRechecksStoredRows(t *testing.T) {
 	if err := SharedDriverOptsValid(map[string]string{"type": "nfs", "device": "/", "o": "bind"}); err == nil {
 		t.Fatal("a stored host-escape volume must be refused at deploy")

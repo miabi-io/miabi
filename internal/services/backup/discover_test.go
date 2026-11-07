@@ -32,8 +32,6 @@ import (
 
 const discoverPass = "a-discovery-passphrase-1"
 
-// fakeFetch serves descriptors from memory, so the judgements below are tested
-// without a bucket.
 func fakeFetch(bodies map[string][]byte) fetcher {
 	return func(_ context.Context, key string) ([]byte, error) {
 		b, ok := bodies[key]
@@ -108,8 +106,7 @@ func TestDescribeSetReadsADescriptor(t *testing.T) {
 	}
 }
 
-// A descriptor records what happened at backup time; retention and bucket
-// lifecycle rules act afterwards, so presence is checked rather than trusted.
+// Retention and lifecycle rules act afterwards, so presence is checked rather than trusted.
 func TestDescribeSetReportsMissingArtifacts(t *testing.T) {
 	info := baseInfo(t, true, discoverPass)
 	body := map[string][]byte{infoKey: infoJSON(t, info)}
@@ -136,8 +133,6 @@ func TestDescribeSetReportsMissingArtifacts(t *testing.T) {
 	}
 }
 
-// The question a restore asks first, answered while browsing rather than at the
-// point of no return.
 func TestDescribeSetReportsWhetherThePassphraseOpensIt(t *testing.T) {
 	info := baseInfo(t, true, "the-original-passphrase-1")
 	body := map[string][]byte{infoKey: infoJSON(t, info)}
@@ -162,8 +157,7 @@ func TestDescribeSetReportsWhetherThePassphraseOpensIt(t *testing.T) {
 	}
 }
 
-// Listing must work without a passphrase — a user who lost their secret still has
-// to be able to see what they lost.
+// A user who lost their secret still has to see what they lost.
 func TestDescribeSetNeedsNoPassphraseToList(t *testing.T) {
 	info := baseInfo(t, true, discoverPass)
 	got, err := describeSet(context.Background(),
@@ -204,8 +198,7 @@ func TestDescribeSetRefusesWhatItCannotTrust(t *testing.T) {
 	}
 }
 
-// The prefix layout is what a restore uses to find the objects, so it has to be
-// stable and rooted at the workspace's configured path.
+// A restore uses this layout to find the objects, so it must be stable.
 func TestSetPrefix(t *testing.T) {
 	cases := []struct{ base, instance, ref, want string }{
 		{"backups/databases", "pg", "mbdb_pg_1", "backups/databases/pg/mbdb_pg_1"},

@@ -19,8 +19,7 @@
 
 import type { LanguageCode } from './languages'
 
-// Named Intl formats behind vue-i18n's $d and $n. Months are text, not digits: 9/10 is
-// the ninth of October to half the world and the tenth of September to the other half.
+// Months are text, not digits: 9/10 means different dates in different locales.
 const datetime = {
   date: { year: 'numeric', month: 'short', day: 'numeric' },
   datetime: {

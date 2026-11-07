@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package components describes the parts of Miabi that are versioned on their own, so the About
-// page can show how far each has come independently of the Miabi release number.
+// Package components lists the independently versioned parts of Miabi for the About page.
 package components
 
 import (
@@ -62,16 +61,14 @@ type Component struct {
 	ChangelogURL string   `json:"changelog_url"`
 }
 
-// Catalog reports the synced marketplace catalog: its template count, when it last synced (zero
-// before the first sync), and when the marketplace generated it (empty when it does not say).
+// Catalog reports the synced marketplace catalog; LastSynced is zero before the first sync.
 type Catalog struct {
 	Templates   int        `json:"templates"`
 	SyncedAt    *time.Time `json:"synced_at,omitempty"`
 	GeneratedAt string     `json:"generated_at,omitempty"`
 }
 
-// Probes answer the runtime questions a component's status depends on. Any may be nil, which reads
-// as "on" (or no detail), so a partially wired instance still lists every component.
+// Probes may be nil, which reads as "on", so a partially wired instance still lists every component.
 type Probes struct {
 	RegistryEnabled  func() bool
 	AnalyticsEnabled func() bool
@@ -110,8 +107,7 @@ func (s *Service) List() []Component {
 			ChangelogURL: historyURL + "internal/services/marketplace",
 		},
 		{
-			// events/v1 is the request-event format Goma gateways, the agent's forwarder and the
-			// rollup worker agree on; a change that breaks older gateways bumps it.
+			// events/v1 is shared by gateways, the agent forwarder and the rollup worker; breaking older gateways bumps it.
 			ID: "analytics", Name: "Web Analytics", Version: AnalyticsVersion, Stability: StabilityBeta,
 			FormatVersion: "events/v1", Status: onIf(s.probes.AnalyticsEnabled, StatusOff),
 			ChangelogURL: historyURL + "internal/services/analytics",

@@ -31,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/sealed"
 )
 
-// Config limits and defaults. The per-file cap is what matters against Docker's
-// 500 KB config-object limit, since projection is always per file.
+// The per-file cap matters against Docker's 500 KB config-object limit, since projection is per file.
 const (
 	MaxConfigFileBytes  = 256 * 1024
 	MaxConfigTotalBytes = 512 * 1024
@@ -45,12 +44,8 @@ var (
 	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	// configKeyRe matches a relative file key, optionally nested in subdirectories.
 	configKeyRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)
-	// hostnameRe matches a DNS hostname (dotted labels); used for Domain names,
-	// whose metadata.name is a real FQDN rather than a slug.
-	hostnameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
-	// labelKeyRe / labelValRe constrain label and annotation keys and values, mirroring the Kubernetes
-	// rules: an optional DNS-subdomain prefix plus a name segment, max 63 chars. Annotation values are
-	// exempt — they hold arbitrary descriptive text.
+	hostnameRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+	// Mirrors the Kubernetes label rules; annotation values are exempt.
 	labelKeyRe   = regexp.MustCompile(`^([a-z0-9]([-a-z0-9.]*[a-z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
 	labelValRe   = regexp.MustCompile(`^[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?$`)
 	validEngines = map[models.DBEngine]bool{
@@ -62,8 +57,6 @@ var (
 	placements     = map[string]bool{"auto": true, "dedicated": true, "shared": true}
 )
 
-// normalize fills per-kind defaults so downstream code never special-cases
-// empties.
 func (r *Resource) normalize() {
 	switch {
 	case r.Application != nil:
@@ -141,8 +134,7 @@ func (r *Resource) normalize() {
 	}
 }
 
-// adoptDeprecated moves the spellings from before these fields were grouped into their blocks. One given
-// alongside its new spelling stays put, for validate to refuse rather than pick a winner.
+// One given alongside its new spelling stays put, for validate to refuse rather than pick a winner.
 func (a *ApplicationSpec) adoptDeprecated() {
 	if a.DeprecatedStrategy != "" && a.Strategy() == "" {
 		if a.Deployment == nil {
@@ -164,14 +156,10 @@ func (a *ApplicationSpec) adoptDeprecated() {
 	}
 }
 
-// DefaultRegistryServer is the implicit registry host when a manifest names none. It mirrors
-// registry.DefaultServer — duplicated rather than imported so this package stays free of service
-// dependencies, and both sides must agree or a converged registry would diff.
+// DefaultRegistryServer duplicates registry.DefaultServer to avoid service deps; they must agree or registries diff.
 const DefaultRegistryServer = "registry-1.docker.io"
 
-// normalizeRegistryServer trims a registry host to its bare authority, matching
-// what the registry service stores, so an unqualified manifest converges instead
-// of drifting on every plan.
+// Matches what the registry service stores, so an unqualified manifest converges.
 func normalizeRegistryServer(server string) string {
 	server = strings.TrimSpace(server)
 	if server == "" {
@@ -182,8 +170,7 @@ func normalizeRegistryServer(server string) string {
 	return strings.TrimSuffix(server, "/")
 }
 
-// validate enforces a single resource's semantic rules. Manifests are untrusted
-// input, so validation is strict.
+// Manifests are untrusted input, so validation is strict.
 func (r *Resource) validate() error {
 	// A Domain's name is a real FQDN (dotted); every other kind uses a slug.
 	if r.Kind == KindDomain {
@@ -230,12 +217,10 @@ func (r *Resource) validate() error {
 	}
 }
 
-// validBuildMethod mirrors models.AppBuildMethod, duplicated for the same reason as validStrategy —
-// the declarative package keeps its single dependency, and a test asserts the lists agree.
+// Duplicated to keep the package's single dependency; a test asserts the lists agree.
 var validBuildMethod = map[string]bool{"auto": true, "dockerfile": true, "buildpack": true}
 
-// validateSource checks a build-from-git source. Whether the repository can actually be cloned is a
-// runtime question the build answers; this is the shape.
+// Whether the repository can be cloned is a runtime question the build answers.
 func (r *Resource) validateSource(src *SourceSpec) error {
 	name := r.Metadata.Name
 	if strings.TrimSpace(src.Git) == "" {
@@ -244,8 +229,7 @@ func (r *Resource) validateSource(src *SourceSpec) error {
 	if src.BuildMethod != "" && !validBuildMethod[src.BuildMethod] {
 		return fmt.Errorf("application %q: source.buildMethod %q must be auto, dockerfile or buildpack", name, src.BuildMethod)
 	}
-	// Buildpack-only settings on a Dockerfile build are silently ignored at build time, which reads
-	// as the manifest not working. Say so instead.
+	// Buildpack settings on a Dockerfile build are silently ignored at build time, so refuse them.
 	if src.BuildMethod == "dockerfile" && (src.Builder != "" || len(src.Buildpacks) > 0) {
 		return fmt.Errorf("application %q: source.builder and source.buildpacks apply to buildpack builds, not buildMethod: dockerfile", name)
 	}
@@ -255,15 +239,13 @@ func (r *Resource) validateSource(src *SourceSpec) error {
 	return nil
 }
 
-// validHTTPMethod is the set a route may be narrowed to. A typo here would silently drop every
-// request that used the method the author meant, which is the kind of thing found in production.
+// A typo would silently drop every request using the intended method.
 var validHTTPMethod = map[string]bool{
 	"GET": true, "HEAD": true, "POST": true, "PUT": true, "PATCH": true,
 	"DELETE": true, "CONNECT": true, "OPTIONS": true, "TRACE": true,
 }
 
-// validStrategy mirrors models.DeployStrategy. It is duplicated rather than imported so the
-// declarative package keeps its one dependency; a test asserts the two lists agree.
+// Duplicated to keep the package's single dependency; a test asserts the lists agree.
 var validStrategy = map[string]bool{"recreate": true, "rolling": true, "canary": true}
 
 var validHealthcheckType = map[string]bool{"image": true, "none": true, "http": true, "command": true}
@@ -292,8 +274,7 @@ func validateHealthcheck(hc *HealthcheckSpec) error {
 
 var constraintRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+\s*(==|!=)\s*[^\s=!].*$`)
 
-// validateRuntime refuses service settings on a container rather than ignoring them: a manifest
-// asking for three replicas must not quietly run one.
+// Refuse service settings on a container: three replicas must not quietly run one.
 func validateRuntime(name string, a *ApplicationSpec) error {
 	runtime := a.Runtime()
 	service := runtime == string(models.RuntimeService)
@@ -318,9 +299,6 @@ func validateRuntime(name string, a *ApplicationSpec) error {
 	return nil
 }
 
-// validateMeta enforces the key/value rules for the two free-form metadata maps.
-// Keys are constrained for both maps; label values are constrained too, while
-// annotation values are left arbitrary (they exist precisely to hold free text).
 const maxMetaSegment = 63
 
 func validateMeta(kind Kind, m Meta) error {
@@ -341,8 +319,7 @@ func validateMeta(kind Kind, m Meta) error {
 }
 
 func validMetaKey(what string, kind Kind, key string) error {
-	// Validate the name segment length (after any "prefix/") independently of the
-	// optional DNS-subdomain prefix, matching Kubernetes' 63-char name limit.
+	// Matches Kubernetes' 63-char name-segment limit, independent of the prefix.
 	name := key
 	if i := strings.LastIndex(key, "/"); i >= 0 {
 		name = key[i+1:]
@@ -363,8 +340,6 @@ func (r *Resource) validateDomain() error {
 	return nil
 }
 
-// registryServerRe matches a registry authority: a dotted host with an optional
-// port ("ghcr.io", "registry.example.com:5000", "localhost:5000").
 var registryServerRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
 
 func (r *Resource) validateSealedSecret() error {
@@ -377,8 +352,7 @@ func (r *Resource) validateSealedSecret() error {
 	return nil
 }
 
-// NormalizeGitURL trims a repository URL and appends ".git" when missing, as the credential store
-// does on save, so an unsuffixed manifest URL converges instead of drifting.
+// Matches the credential store's ".git" suffix so an unsuffixed URL converges.
 func NormalizeGitURL(raw string) string {
 	u := strings.TrimRight(strings.TrimSpace(raw), "/")
 	if u != "" && !strings.HasSuffix(strings.ToLower(u), ".git") {
@@ -432,14 +406,11 @@ func (r *Resource) validateRegistry() error {
 	if reg == nil {
 		return fmt.Errorf("registry %q: spec is required", r.Metadata.Name)
 	}
-	// normalize() has already stripped any scheme and defaulted the host, so what
-	// is left must be a bare authority.
+	// normalize() already stripped any scheme and defaulted the host.
 	if !registryServerRe.MatchString(reg.Server) {
 		return fmt.Errorf("registry %q: server %q must be a host, optionally with a port (no scheme, no path)", r.Metadata.Name, reg.Server)
 	}
-	// A password is optional in the manifest: a credential may be declared in git
-	// and have its token set out-of-band (once, in the UI). Creating it then fails
-	// loudly at apply time rather than silently storing an empty secret.
+	// Password is optional: the token may be set out-of-band; creating without one fails loudly at apply.
 	if strings.TrimSpace(reg.Username) == "" && strings.TrimSpace(reg.Password) != "" {
 		return fmt.Errorf("registry %q: username is required when a password is set", r.Metadata.Name)
 	}
@@ -464,8 +435,7 @@ func (r *Resource) validateApplication() error {
 	case !hasImage && !hasSource:
 		return fmt.Errorf("application %q: one of image or source is required", r.Metadata.Name)
 	case hasImage && hasSource:
-		// Both would leave the engine to pick, and whichever it picked would be the wrong one half
-		// the time — better to say so than to build an image the manifest also tells us to pull.
+		// Both would leave the engine to pick a winner.
 		return fmt.Errorf("application %q: image and source are mutually exclusive — an app either pulls an image or builds one", r.Metadata.Name)
 	case hasSource:
 		if err := r.validateSource(a.Source); err != nil {
@@ -492,8 +462,7 @@ func (r *Resource) validateApplication() error {
 			return fmt.Errorf("application %q: port %d externalAccess needs an http/https scheme", r.Metadata.Name, p.Container)
 		}
 	}
-	// Shape only: whether the account is allowed at all depends on the target workspace's
-	// security profile, which the app service checks on apply.
+	// Shape only: whether the account is allowed depends on the workspace profile, checked on apply.
 	if _, err := models.NormalizeRunAsUser(a.RunAsUser()); err != nil {
 		return fmt.Errorf("application %q: security.runAsUser %q: %w", r.Metadata.Name, a.RunAsUser(), err)
 	}
@@ -621,10 +590,7 @@ func hasNonEmpty(s []string) bool {
 	return false
 }
 
-// validateMiddleware checks the envelope only. The rule itself is deliberately not validated here:
-// the gateway's middleware catalogue already owns that schema, and a second copy in this package
-// would drift the moment the catalogue gains a field. An invalid rule fails on apply, where the
-// catalogue validates it — the same place an unpullable image fails.
+// The rule is validated by the gateway catalogue on apply; a copy here would drift.
 func (r *Resource) validateMiddleware() error {
 	mw := r.Middleware
 	if mw == nil {
@@ -674,8 +640,7 @@ func (r *Resource) validateRoute() error {
 			return fmt.Errorf("route %q: method %q is not an HTTP method", r.Metadata.Name, m)
 		}
 	}
-	// The chain is ordered and executed in order, so a repeated name is a mistake
-	// rather than a stronger policy — and the gateway would run it twice.
+	// A repeated name is a mistake, and the gateway would run it twice.
 	seen := map[string]bool{}
 	for _, name := range rt.Middlewares {
 		name = strings.TrimSpace(name)
@@ -690,9 +655,7 @@ func (r *Resource) validateRoute() error {
 	return nil
 }
 
-// validateMount enforces the one-source rule and the config-only field rules.
-// Setting key/mode without a config is an error rather than ignored, matching the
-// strict decoding used everywhere else.
+// Key/mode without a config is an error rather than ignored, matching strict decoding.
 func (r Resource) validateMount(mt MountSpec) error {
 	name := r.Metadata.Name
 	switch {
@@ -732,9 +695,7 @@ func (r Resource) validateMount(mt MountSpec) error {
 	return nil
 }
 
-// validateMountOverlap rejects a mount nested inside a volume, which the volume
-// would shadow. Config mounts are projected per file, so one config path inside
-// another is the normal directory-prefix form and is left alone.
+// Config mounts are projected per file, so one config path inside another is fine.
 func (r Resource) validateMountOverlap() error {
 	ms := r.Application.Mounts
 	for i := range ms {
@@ -791,8 +752,6 @@ func (r Resource) validateConfig() error {
 	return nil
 }
 
-// validateConfigKey constrains a file key to a relative path: no absolute paths,
-// no traversal, no empty segments.
 func validateConfigKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("file key must not be empty")
@@ -808,8 +767,6 @@ func validateConfigKey(key string) error {
 	return nil
 }
 
-// validateFileMode accepts a 3- or 4-digit octal mode and rejects setuid, setgid
-// and the sticky bit.
 func validateFileMode(mode string) error {
 	if mode == "" {
 		return nil
@@ -827,9 +784,6 @@ func validateFileMode(mode string) error {
 	return nil
 }
 
-// validateReferences checks cross-resource integrity once the whole set is
-// known: mounts point at declared volumes, domains target declared apps, and an
-// app's stack exists.
 func (s *ResourceSet) validateReferences() error {
 	for _, r := range s.list {
 		if r.Kind == KindSealedSecret && s.Has(KindSecret, r.Metadata.Name) {
@@ -860,8 +814,6 @@ func (s *ResourceSet) validateReferences() error {
 	return nil
 }
 
-// MemoryBytes parses the memory cap (e.g. "512Mi", "1Gi") into bytes. Empty or
-// "0" means unlimited (0).
 func (rs *ResourceSpec) MemoryBytes() (int64, error) {
 	s := strings.TrimSpace(rs.Memory)
 	if s == "" || s == "0" {
@@ -883,8 +835,6 @@ func (rs *ResourceSpec) MemoryBytes() (int64, error) {
 	return int64(n * float64(mult)), nil
 }
 
-// NanoCPUs parses the CPU cap (a core fraction, e.g. "0.5", "2") into nano-CPUs
-// (1 core = 1e9). Empty or "0" means unlimited (0).
 func (rs *ResourceSpec) NanoCPUs() (int64, error) {
 	s := strings.TrimSpace(rs.CPU)
 	if s == "" || s == "0" {

@@ -24,8 +24,6 @@ import (
 	"testing"
 )
 
-// TestGeneratePassword checks the admin-reset password generator: fixed length,
-// only characters from the unambiguous alphabet, and distinct across calls.
 func TestGeneratePassword(t *testing.T) {
 	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 

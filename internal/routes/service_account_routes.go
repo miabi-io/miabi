@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// serviceAccountRoutes registers a workspace's service accounts and their keys. Admins only, and
-// every change takes a signed-in session: like minting a personal key, a key must not be able to
-// mint a longer-lived or wider one for a machine identity.
+// Session-only so a key cannot mint a longer-lived or wider key for a machine identity.
 func (r *Router) serviceAccountRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces/{workspace}/service-accounts").WithTagInfo(okapi.GroupTag{Name: "Service accounts", Description: "Non-human workspace members that authenticate with API keys."})
 	read := []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(models.WorkspaceRoleAdmin)}

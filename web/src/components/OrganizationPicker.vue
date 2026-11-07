@@ -4,25 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { adminApi } from '@/api/admin'
 import type { Organization } from '@/api/types'
 
-/**
- * Picks one organization.
- *
- * A combobox rather than a <select> because an operator running many tenants has many of them, and
- * scanning a long native dropdown for "which Acme was it" is the moment this field gets skipped. The
- * whole list arrives in one call — organizations are few enough to hold and there is no paged
- * endpoint — so the filtering is local and instant.
- *
- * v-model is the organization id; 0 means the default organization, which is what a null
- * organization_id resolves to everywhere in the product.
- */
+/** A combobox because operators with many tenants skip a long dropdown; v-model 0 means the default organization. */
 const { t } = useI18n()
 const props = withDefaults(
   defineProps<{
     modelValue: number
     label?: string
     disabled?: boolean
-    /** Label for id 0. "Default organization" when creating; callers editing an existing row may
-     *  prefer to name the actual default org. */
     defaultLabel?: string
   }>(),
   { label: '', disabled: false, defaultLabel: '' },
@@ -53,8 +41,7 @@ const selectedLabel = computed(() =>
   props.modelValue === 0 ? (props.defaultLabel || t('orgPicker.defaultOrganization')) : (selected.value?.display_name || selected.value?.name || `#${props.modelValue}`),
 )
 
-// The default organization is offered as a real row so "put them back on the default" is a choice,
-// not an empty field.
+// The default organization is a real row so returning to it is a choice, not an empty field.
 interface Choice { id: number; label: string; hint: string }
 const choices = computed<Choice[]>(() => {
   const all: Choice[] = [{ id: 0, label: props.defaultLabel || t('orgPicker.defaultOrganization'), hint: '' }]

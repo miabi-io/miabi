@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Each exclusion here prevents a specific, silent failure. A backup volume that backs itself up grows
-// without bound; a tenant volume in a *platform* backup is not what the operator asked for; and the
-// registry's blob storage, archived mid-push, restores cleanly and then fails on pull.
+// Self-backup grows unbounded, tenant volumes weren't asked for, and mid-push registry blobs fail on pull.
 func TestExcludedVolume(t *testing.T) {
 	workspaceLabels := map[string]string{docker.LabelWorkspace: "7"}
 	registryLabels := docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil)

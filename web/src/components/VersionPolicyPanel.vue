@@ -74,8 +74,7 @@ async function save() {
   }
 }
 
-// Switching series is its own action rather than a settings edit: it is the decision to start a new
-// version line (2.x.x), or to ship a hotfix on an old one, and it is audited as such.
+// A separate, audited action: it starts a new version line or ships a hotfix on an old one.
 const showSwitch = ref(false)
 const nextSeries = ref('')
 const switching = ref(false)

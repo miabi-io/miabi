@@ -28,8 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// reconcileAppRow is a sqlite-friendly stand-in for models.Application, whose Postgres-specific column
-// defaults sqlite can't migrate. ListReconcilable only filters on status and current_release_id.
+// Stand-in for models.Application, whose Postgres-specific column defaults sqlite can't migrate.
 type reconcileAppRow struct {
 	ID               uint `gorm:"primaryKey"`
 	WorkspaceID      uint

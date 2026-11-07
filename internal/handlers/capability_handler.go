@@ -46,8 +46,6 @@ type CapabilityCatalog struct {
 	MaxDevices      int                    `json:"max_devices"`
 }
 
-// Catalog lists every grantable capability and device with its tier, so the
-// console renders a picker rather than a text box.
 func (h *CapabilityHandler) Catalog(c *okapi.Context) error {
 	if !h.enabled {
 		// Empty slices, not nil, so the console need not tell absent from empty.
@@ -76,8 +74,6 @@ type GrantedApp struct {
 	Devices         []string `json:"devices,omitempty"`
 }
 
-// Inventory lists every application on the platform holding a grant. A grant is
-// otherwise visible only inside the app that holds it.
 func (h *CapabilityHandler) Inventory(c *okapi.Context) error {
 	apps, err := h.apps.ListWithGrants()
 	if err != nil {

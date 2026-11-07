@@ -1,5 +1,4 @@
-// Auto-generated: ISO 3166-1 alpha-2 -> numeric-3 (matches world-atlas topojson feature ids).
-// The gateway emits alpha-2 country codes; the choropleth keys on numeric ids.
+// Auto-generated: alpha-2 to numeric-3 because the gateway emits alpha-2 but the choropleth keys on numeric ids.
 export const ALPHA2_TO_NUMERIC: Record<string, string> = {
   AD: '020',
   AE: '784',

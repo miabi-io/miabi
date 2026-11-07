@@ -121,8 +121,7 @@ const storagePct = computed(() => {
   return Math.round((m.storage_used_bytes / m.storage_declared_bytes) * 100)
 })
 
-// Whole days since the last successful platform backup; null when there has never been one, which
-// is not the same as stale and is reported separately.
+// null means never backed up, which is reported separately from stale.
 const backupAgeDays = computed<number | null>(() => {
   const at = metrics.value?.signals?.last_backup_at
   if (!at) return null
@@ -131,8 +130,6 @@ const backupAgeDays = computed<number | null>(() => {
   return Math.floor((Date.now() - then) / 86400000)
 })
 
-// "Never" is a different problem from "stale", so they read differently rather than both showing
-// as a dash.
 const backupLabel = computed<string>(() => {
   if (!metrics.value?.signals) return '—'
   if (metrics.value.signals.last_backup_at === undefined) return '—'
@@ -156,8 +153,7 @@ const meters = computed<Meter[]>(() => {
   if (!m) return []
   const out: Meter[] = []
 
-  // Stopping a container is usually deliberate, so this only escalates once a
-  // large share is down, and never past "degraded".
+  // Stopping a container is usually deliberate, so escalate only on a large share and never past "degraded".
   const stopped = Math.max(0, m.total_containers - m.running_containers)
   const stoppedPct = m.total_containers ? Math.round((stopped / m.total_containers) * 100) : 0
   out.push({
@@ -185,8 +181,7 @@ const meters = computed<Meter[]>(() => {
 
   const fleet = m.fleet
   if (fleet && fleet.nodes_sampled > 0) {
-    // Measured on the nodes themselves, so this is what the fleet is actually doing — as opposed
-    // to the commitment meters below, which are what it has promised.
+    // Measured on the nodes: actual load, unlike the commitment meters below.
     const cpuPct = Math.round(fleet.cpu_percent)
     out.push({
       key: 'cpu-used', label: 'CPU in use', icon: 'mdi-chart-areaspline', to: '/admin/nodes',
@@ -209,8 +204,7 @@ const meters = computed<Meter[]>(() => {
     }
   }
   if (fleet && fleet.nodes_counted > 0) {
-    // Commitment, not utilization: the control plane knows exactly what it has promised, and that
-    // is what decides whether the next workload fits. Apps with no limit set are invisible here.
+    // Commitment, not utilization, decides whether the next workload fits; apps with no limit are invisible here.
     if (fleet.cpu_cores > 0) {
       const cores = fleet.committed_nano_cpus / 1e9
       const pct = Math.round((cores / fleet.cpu_cores) * 100)
@@ -236,8 +230,7 @@ const meters = computed<Meter[]>(() => {
     }
   }
 
-  // Node disk: the filesystem Docker actually writes images, containers and unclassed volumes to.
-  // Distinct from the storage-class meter below, which covers the operator's extra disks.
+  // The filesystem Docker writes to; storage classes (the operator's extra disks) are metered separately.
   if (fleet && fleet.storage_bytes > 0) {
     const usedPct = Math.min(100, Math.round(((fleet.storage_bytes - fleet.storage_free_bytes) / fleet.storage_bytes) * 100))
     out.push({
@@ -250,8 +243,7 @@ const meters = computed<Meter[]>(() => {
     })
   }
 
-  // Disk pressure beats a class count: how many classes exist tells nobody anything, but the
-  // fullest one is what breaks first.
+  // The fullest class is what breaks first, so show disk pressure rather than a count.
   const sc = m.storage_classes
   if (sc && sc.managed > 0 && sc.capacity_bytes > 0) {
     out.push({

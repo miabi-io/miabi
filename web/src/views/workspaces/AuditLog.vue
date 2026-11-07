@@ -36,8 +36,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
     logs.value = res.data.data ?? []
     pageable.value = res.data.pageable
   } catch (e: unknown) {
-    // Audit log requires an Enterprise license (402) and owner/admin access (403);
-    // show a friendly notice for each, otherwise surface the error.
+    // 402 means no Enterprise license, 403 means not owner/admin.
     const status = (e as { response?: { status?: number } })?.response?.status
     if (status === 402) locked.value = true
     else if (status === 403) denied.value = true

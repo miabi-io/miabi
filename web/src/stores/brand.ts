@@ -3,8 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { authApi } from '@/api/auth'
 import type { Brand } from '@/api/types'
 
-// The operator's identity for the console chrome and the browser tab. Read from the
-// public auth status, which carries a brand only under a white_label licence.
+// The public auth status carries a brand only under a white_label licence.
 export const useBrandStore = defineStore('brand', () => {
   const brand = ref<Brand>({})
   const page = ref<string | undefined>()
@@ -18,8 +17,7 @@ export const useBrandStore = defineStore('brand', () => {
     brand.value = b ?? {}
   }
 
-  // force re-reads after an admin change: uploaded images reach the console only as
-  // the resolved URLs status hands out.
+  // Uploaded images reach the console only as the resolved URLs status hands out.
   function load(force = false): Promise<void> {
     if (!loading || force) {
       loading = authApi
@@ -32,8 +30,7 @@ export const useBrandStore = defineStore('brand', () => {
     return loading
   }
 
-  // setTitle names the page; the suffix follows the brand, including when the brand
-  // arrives after the first navigation.
+  // The suffix follows the brand, including when the brand arrives after the first navigation.
   function setTitle(base?: string) {
     page.value = base
   }
@@ -43,8 +40,7 @@ export const useBrandStore = defineStore('brand', () => {
     document.title = p ? `${p} — ${suffix}` : suffix
   }, { flush: 'sync' })
 
-  // index.html ships Miabi's icons. They are repointed rather than replaced, so
-  // clearing the brand favicon restores them; a stale type would make browsers skip one.
+  // Repointed, not replaced, so clearing the brand favicon restores Miabi's; a stale type makes browsers skip one.
   const originalIcons = new Map<HTMLLinkElement, { href: string; type: string | null }>()
 
   watch(() => brand.value.favicon_url, (url) => {

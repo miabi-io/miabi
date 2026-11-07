@@ -34,17 +34,13 @@ func (r *NetworkRepository) Create(n *models.Network) error { return r.db.Create
 func (r *NetworkRepository) Update(n *models.Network) error { return r.db.Save(n).Error }
 func (r *NetworkRepository) Delete(id uint) error           { return r.db.Delete(&models.Network{}, id).Error }
 
-// All returns every network record across workspaces. The ledger is authoritative after a
-// restore: recreating from it brings the same names and addresses back, so app
-// configuration that refers to them stays correct.
+// The ledger is authoritative after a restore, so recreating from it keeps names and addresses.
 func (r *NetworkRepository) All() ([]models.Network, error) {
 	var nets []models.Network
 	err := r.db.Order("id ASC").Find(&nets).Error
 	return nets, err
 }
 
-// ListByDriver returns every workspace network provisioned with the given Docker driver,
-// across all workspaces. Used by the bridge -> overlay migration when cluster mode is enabled.
 func (r *NetworkRepository) ListByDriver(driver string) ([]models.Network, error) {
 	var nets []models.Network
 	err := r.db.Where("driver = ?", driver).Order("workspace_id ASC, id ASC").Find(&nets).Error
@@ -82,9 +78,7 @@ func (r *NetworkRepository) ExistsByName(workspaceID uint, name string) (bool, e
 	return count > 0, err
 }
 
-// FindByDockerName returns the network referencing the given Docker network
-// name, or gorm.ErrRecordNotFound. DockerName is globally unique (used by the
-// import flow for idempotency).
+// DockerName is globally unique, which the import flow relies on for idempotency.
 func (r *NetworkRepository) FindByDockerName(dockerName string) (*models.Network, error) {
 	var n models.Network
 	if err := r.db.Where("docker_name = ?", dockerName).First(&n).Error; err != nil {

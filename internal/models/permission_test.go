@@ -21,9 +21,7 @@ package models
 
 import "testing"
 
-// TestRolePermissionsMonotonic is the core safety guarantee: each higher-ranked built-in role
-// is a strict superset of every lower one. That is what lets RequirePermission coexist with
-// rank-based RequireRole without silently changing access.
+// Monotonic role sets let RequirePermission coexist with rank-based RequireRole without changing access.
 func TestRolePermissionsMonotonic(t *testing.T) {
 	order := []WorkspaceRole{WorkspaceRoleViewer, WorkspaceRoleDeveloper, WorkspaceRoleAdmin, WorkspaceRoleOwner}
 	for i := 1; i < len(order); i++ {
@@ -39,8 +37,6 @@ func TestRolePermissionsMonotonic(t *testing.T) {
 	}
 }
 
-// TestOwnerHasEveryPermission ensures the catalog and the owner preset stay in
-// sync — owner must hold every catalogued permission.
 func TestOwnerHasEveryPermission(t *testing.T) {
 	for _, p := range AllPermissions() {
 		if !RoleHasPermission(WorkspaceRoleOwner, p) {
@@ -52,8 +48,6 @@ func TestOwnerHasEveryPermission(t *testing.T) {
 	}
 }
 
-// TestRoleSpotChecks pins the rank semantics the routes rely on: viewer reads
-// only, developer deploys but does not delete, admin deletes, owner governs.
 func TestRoleSpotChecks(t *testing.T) {
 	cases := []struct {
 		role WorkspaceRole

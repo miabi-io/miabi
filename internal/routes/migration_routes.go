@@ -30,8 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/wsbackup"
 )
 
-// migrationRoutes registers install-to-install migration. Without MIABI_MIGRATION_ENABLED every route is
-// disabled
+// Every route is disabled without MIABI_MIGRATION_ENABLED.
 func (r *Router) migrationRoutes() []okapi.RouteDefinition {
 	off := !r.cfg.MigrationEnabled
 

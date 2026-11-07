@@ -37,8 +37,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// invalidateChannel tells every process a policy changed. The TTL below bounds staleness when
-// Redis is absent or a message is lost.
+// The TTL bounds staleness when Redis is absent or a message is lost.
 const (
 	invalidateChannel = "miabi:secpolicy:changed"
 	cacheTTL          = 30 * time.Second
@@ -174,8 +173,7 @@ func (s *Service) effective(kind string, workspaceID uint) (*models.SecurityPoli
 	return resolve(rows, workspaceID, planID, orgID), nil
 }
 
-// resolve picks the most specific rule, falling back to the platform rule when the specific one
-// would loosen it without the platform allowing exceptions. Pure, for tests.
+// A specific rule that would loosen the platform rule falls back to it unless exceptions are allowed.
 func resolve(rows []models.SecurityPolicy, workspaceID, planID, orgID uint) *models.SecurityPolicy {
 	find := func(scope string, id uint) *models.SecurityPolicy {
 		if scope != ScopePlatform && id == 0 {
@@ -231,8 +229,6 @@ type SaveInput struct {
 // List returns every stored rule.
 func (s *Service) List() ([]models.SecurityPolicy, error) { return s.repo.ListAll() }
 
-// Save validates and upserts the rule for one kind at one scope. The change is audited with the
-// old and new spec, and is itself a security event.
 func (s *Service) Save(actorID uint, ip string, in SaveInput) (*models.SecurityPolicy, error) {
 	if err := ValidScope(in.ScopeType, in.ScopeID); err != nil {
 		return nil, err

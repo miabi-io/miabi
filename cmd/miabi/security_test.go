@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// The official-template exemption is about the UID and nothing else. It used to collapse into an
-// empty profile, so an app from an official template also lost no-new-privileges and the NET_RAW
-// drop — strictly less hardening than its workspace asked for.
+// The official-template exemption covers only the UID, not no-new-privileges or the NET_RAW drop.
 func TestSecurityForExemptsOnlyTheUID(t *testing.T) {
 	const uid = "100000:0"
 
@@ -51,8 +49,7 @@ func TestSecurityForExemptsOnlyTheUID(t *testing.T) {
 		t.Error("exempt app no longer reports as restricted, so nothing downstream knows the profile applies")
 	}
 
-	// An unrestricted workspace keeps the image's user and its setuid binaries — but not NET_RAW,
-	// which is the baseline rather than part of the restricted profile.
+	// An unrestricted workspace keeps the image's user and setuid binaries, but NET_RAW stays dropped (baseline).
 	for _, exemptUID := range []bool{false, true} {
 		got := securityFor(uid, false, exemptUID)
 		if got.User != "" || got.NoNewPrivileges || got.Restricted {
@@ -64,9 +61,7 @@ func TestSecurityForExemptsOnlyTheUID(t *testing.T) {
 	}
 }
 
-// NET_RAW is dropped for every workspace on every path, so a tenant cannot forge ARP on a bridge it
-// shares with other tenants. It is not part of the restricted opt-in, so it holds even on an
-// install that never configured a restricted UID.
+// NET_RAW is always dropped so a tenant cannot forge ARP on a shared bridge, even with no restricted UID configured.
 func TestNetRawIsDroppedEverywhere(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -83,10 +78,7 @@ func TestNetRawIsDroppedEverywhere(t *testing.T) {
 	}
 }
 
-// The baseline is not the restricted profile: it must not pin a user, set no-new-privileges (which
-// breaks setuid binaries such as sudo and some ping builds), or mark the workload restricted —
-// that last one would refuse every capability grant, including the NET_RAW grant that is the
-// documented way to get raw sockets back.
+// Baseline must not set no-new-privileges (breaks setuid) or mark restricted (would refuse the NET_RAW grant).
 func TestBaselineIsNotTheRestrictedProfile(t *testing.T) {
 	b := baselineSecurity()
 	if b.User != "" || b.NoNewPrivileges || b.Restricted {
@@ -94,8 +86,7 @@ func TestBaselineIsNotTheRestrictedProfile(t *testing.T) {
 	}
 }
 
-// An install with no configured UID still gets the baseline: the resolver used to be nil there,
-// which meant no profile was applied at all.
+// An install with no configured UID still gets the baseline profile.
 func TestResolverAppliesTheBaselineWithoutAConfiguredUID(t *testing.T) {
 	r := newSecurityResolver(&config.Config{}, nil)
 	if r == nil {

@@ -107,8 +107,7 @@ func (h *MigrationHandler) keyUser(c *okapi.Context) (*models.User, error) {
 	return h.users.FindByID(uint(middlewares.UserID(c)))
 }
 
-// sourceWorkspace resolves the named workspace and checks the key opens it: a workspace key its own,
-// held by that workspace's owner; an instance key any but the system workspace, held by a platform admin.
+// A workspace key needs the workspace owner; an instance key opens any but the system workspace.
 func (h *MigrationHandler) sourceWorkspace(c *okapi.Context, name string) (*models.Workspace, error) {
 	ws, err := h.workspaces.FindByName(name)
 	if err != nil || ws.System {
@@ -209,8 +208,7 @@ func (h *MigrationHandler) GetExport(c *okapi.Context, req *MigrationExportRef) 
 	return ok(c, wsbackup.ExportView(b))
 }
 
-// ExportState serves the workspace's state document. It carries every secret value, so the response is
-// never cached and its pull is audited.
+// Carries every secret value, so the response is never cached and its pull is audited.
 func (h *MigrationHandler) ExportState(c *okapi.Context, req *MigrationExportRef) error {
 	b, err := h.loadExport(c, req)
 	if err != nil {
@@ -317,8 +315,7 @@ func (h *MigrationHandler) Retire(c *okapi.Context, req *MigrationRetireRequest)
 	return ok(c, wsbackup.ExportView(b))
 }
 
-// Complete records that the importer has the workspace. A workspace migration is single use, so its
-// code stops working; an instance migration stays open for the importer's other workspaces.
+// A workspace migration is single use; an instance migration stays open for other workspaces.
 func (h *MigrationHandler) Complete(c *okapi.Context, req *MigrationRetireRequest) error {
 	b, err := h.loadExport(c, &MigrationExportRef{Workspace: req.Workspace, ID: req.ID})
 	if err != nil {
@@ -436,8 +433,6 @@ func (h *MigrationHandler) closeWindows(wsID *uint) error {
 	return nil
 }
 
-// startFor opens a migration held by userID — the owner, a platform admin, or an account's owner when
-// the Billing API asks — replacing any open one, and returns its code.
 func (h *MigrationHandler) startFor(userID uint, wsID *uint, hours int) (*MigrationStarted, error) {
 	if !h.enabled {
 		return nil, errMigrationOff
@@ -676,8 +671,7 @@ type MigrationBatch struct {
 	Errors  map[string]string        `json:"errors,omitempty"`
 }
 
-// ImportBatch starts one migration per source workspace. Platform admin only; the admin owns the new
-// workspaces, and their members come across by email.
+// The admin owns the new workspaces; members come across by email.
 func (h *MigrationHandler) ImportBatch(c *okapi.Context, req *MigrationBatchRequest) error {
 	if !h.enabled {
 		return c.AbortWithError(403, errMigrationOff)

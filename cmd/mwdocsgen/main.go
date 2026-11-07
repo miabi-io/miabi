@@ -17,20 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command mwdocsgen writes the middleware reference pages for the documentation
-// site from the middleware catalog.
-//
-// The catalog already carries every field's label, type, default, options and
-// help text — it is what the API returns and what the console's form renders
-// from. Hand-writing twenty pages of the same information guarantees the two
-// disagree within a release, and the docs are the copy nobody notices going
-// stale. So the reference is generated, and a test asserts the committed pages
-// match the catalog.
-//
-// Prose that is not derivable — what a middleware is for, when to reach for it —
-// lives in the hand-written overview page, which this does not touch.
-//
-//	go run ./cmd/mwdocsgen -o ../docs/docs/middlewares
+// Command mwdocsgen generates the middleware reference docs from the catalog; a test asserts they match.
 package main
 
 import (
@@ -288,12 +275,7 @@ func categoryRank(c mwcatalog.Category) int {
 	return 99
 }
 
-// escapeMD makes catalog prose safe inside an MDX table cell.
-//
-// A pipe would split the cell. Braces are worse: MDX reads `{` as the start of a
-// JSX expression, so a help string mentioning a `{{ .claim }}` template fails the
-// whole docs build rather than rendering oddly. Escaped as entities because no
-// help text uses code spans, where the braces would have been literal anyway.
+// Braces are escaped because MDX reads `{` as a JSX expression and would fail the whole docs build.
 func escapeMD(s string) string {
 	r := strings.NewReplacer(
 		"|", `\|`,

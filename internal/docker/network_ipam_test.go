@@ -28,10 +28,7 @@ import (
 	"time"
 )
 
-// Behind a build tag: needs a live daemon. Proves ListNetworks reports both address families and
-// their gateways, which is what the network detail modal renders.
-//
-//	go test -tags dockere2e ./internal/docker/ -run NetworkAddressing -v
+// Needs a live daemon: go test -tags dockere2e ./internal/docker/ -run NetworkAddressing -v
 func TestNetworkAddressingOnALiveDaemon(t *testing.T) {
 	cli, err := New()
 	if err != nil {

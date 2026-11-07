@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package platformrestore rebuilds a Miabi platform onto a fresh host from a recovery point. It runs OUTSIDE
-// the control plane, from `miabi restore` on a bare machine with nothing but Docker: no database to read
-// settings from, and the S3 credentials needed to fetch the backup are themselves inside the backup.
+// Package platformrestore rebuilds a platform onto a fresh host from a recovery point, outside the control plane.
 package platformrestore
 
 import (
@@ -50,9 +48,7 @@ const (
 	defaultVolImage = platformimage.DefaultVolumeBkup
 	volumeMount     = "/data"
 
-	// The control-plane database's name and role, fixed by the installer's
-	// Postgres spec (POSTGRES_USER=miabi / POSTGRES_DB=miabi). A restore must use
-	// the same values, because it is talking to the container that spec created.
+	// Fixed by the installer's Postgres spec; a restore talks to the container that spec created.
 	platformDBName = "miabi"
 	platformDBUser = "miabi"
 )
@@ -60,8 +56,7 @@ const (
 var (
 	// ErrHostNotClean is returned when the target host already carries an install.
 	ErrHostNotClean = errors.New("this host already has a Miabi install")
-	// ErrKEKMismatch is the one that matters most: the key in the identity
-	// envelope is not the key the recovery point was taken under.
+	// The envelope's key is not the key the recovery point was taken under.
 	ErrKEKMismatch = errors.New("the encryption key in the identity envelope does not match this recovery point")
 )
 
@@ -75,9 +70,7 @@ type Options struct {
 
 	// Domain rehosts the restored platform. Required with Clone.
 	Domain string
-	// Clone mints a NEW install id instead of reusing the recovered one. Restoring keeps the install id, which
-	// keeps the Enterprise license valid — correct when the original host is gone, wrong when it is still
-	// running: two live platforms sharing one id break licensing and race for DNS and ACME orders.
+	// Mints a new install id: two live platforms sharing one break licensing and race for DNS and ACME.
 	Clone bool
 
 	// Image overrides the control-plane image written into the new manifest.
@@ -101,13 +94,9 @@ type Plan struct {
 	Clone         bool     `json:"clone"`
 	// NewInstallID is set during a --clone restore, once the new id is minted.
 	NewInstallID string `json:"new_install_id,omitempty"`
-	// MissingTenantData names tenant artifacts the manifest lists that are no
-	// longer in the bucket. Not fatal — the platform restores without them — but
-	// that data is gone, and the operator should meet the fact here.
+	// Not fatal, but that data is gone and the operator should learn it here.
 	MissingTenantData []string `json:"missing_tenant_data,omitempty"`
-	// Manual lists what the operator must still do afterwards. Naming it up front
-	// is the difference between a recovery and a surprise.
-	Manual []string `json:"manual"`
+	Manual            []string `json:"manual"`
 
 	identity *dr.Identity
 	manifest *dr.Manifest
@@ -141,9 +130,7 @@ func (s *Service) SetImages(pg, vol string) {
 	}
 }
 
-// Preflight resolves and validates a recovery point without touching the host. Everything that can be
-// checked is checked here, because the alternative is discovering a wrong passphrase after the stack is
-// half-built. Nothing below this function creates anything until Preflight has returned cleanly.
+// Preflight checks everything up front so a wrong passphrase is not discovered with the stack half-built.
 func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 	store, err := blob.New(opts.S3)
 	if err != nil {
@@ -171,14 +158,12 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 			"onto a host that has the original MIABI_ENCRYPTION_KEY. To make future recovery points restorable anywhere, set a "+
 			"backup passphrase (MIABI_PLATFORM_BACKUP_PASSPHRASE) — it seals the key into each one", ref)
 	}
-	// Sealed, and nothing to open it with. Said here rather than by the CLI,
-	// because only the recovery point knows whether a passphrase was ever needed.
+	// Said here, not by the CLI: only the recovery point knows whether a passphrase is needed.
 	if strings.TrimSpace(opts.Passphrase) == "" {
 		return nil, fmt.Errorf("recovery point %s is sealed with a backup passphrase: pass --passphrase-file, or set MIABI_BACKUP_PASSPHRASE", ref)
 	}
 
-	// Opening the envelope proves the operator holds the passphrase, and yields the
-	// master key everything in the dump is encrypted under.
+	// Opening the envelope proves passphrase custody and yields the master key the dump is encrypted under.
 	sealed, err := store.GetBytes(ctx, dr.IdentityObject(opts.Path, ref))
 	if err != nil {
 		if errors.Is(err, blob.ErrNotFound) {
@@ -191,9 +176,7 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, err
 	}
 
-	// The envelope must belong to THIS recovery point. An envelope from before
-	// a key rotation opens perfectly and restores a database nobody can read, so
-	// the mismatch is caught here rather than after the platform is up.
+	// A pre-rotation envelope opens fine but restores an unreadable database, so catch the mismatch now.
 	if man.KEKFingerprint != "" {
 		if got := crypto.DeriveTokenFrom(identity.EncryptionKey, models.KEKFingerprintLabel); got != man.KEKFingerprint {
 			return nil, fmt.Errorf("%w: the envelope opened, but its encryption key is not the one %s was taken under — restoring it would leave every secret in the platform undecryptable", ErrKEKMismatch, ref)
@@ -206,15 +189,12 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, err
 	}
 
-	// Never restore into an older binary than the one that produced the dump:
-	// the schema would be ahead of the code, and the failure is silent.
+	// Never restore into an older binary: the schema would be ahead of the code and fail silently.
 	if err := assertVersionForward(man.MiabiVersion); err != nil {
 		return nil, err
 	}
 
-	// The host must be clean. A fresh install onto an existing Postgres volume
-	// can never work — the data directory keeps the password it was created with —
-	// and the stack service already knows how to say so.
+	// An existing Postgres volume keeps its original password, so a fresh install over it can never work.
 	if _, err := stack.Load(manifestPathOf(opts)); err == nil {
 		return nil, fmt.Errorf("%w (%s): restore onto a clean host, or remove the existing install first", ErrHostNotClean, manifestPathOf(opts))
 	}
@@ -229,8 +209,7 @@ func (s *Service) Preflight(ctx context.Context, opts Options) (*Plan, error) {
 		return nil, stack.PortConflictError(conflicts)
 	}
 
-	// Reusing an install id across two live platforms breaks licensing; inheriting
-	// production's hostnames would have the clone fight it for DNS and certificates.
+	// A clone reusing hostnames would fight the original for DNS and certificates.
 	if opts.Clone && strings.TrimSpace(opts.Domain) == "" {
 		return nil, errors.New("--clone requires --domain: a clone must not answer on the hostnames the original still serves")
 	}
@@ -280,9 +259,7 @@ func readManifest(ctx context.Context, store *blob.Store, root, ref string) (*dr
 	return dr.DecodeManifest(body)
 }
 
-// assertArtifactsPresent checks the bucket really holds what the manifest claims, since retention and human
-// error act on it afterwards. Only artifacts THIS restore consumes are fatal — the control-plane dump and
-// platform volumes. A missing tenant artifact costs one workspace's data, not the platform, so it is reported.
+// Only artifacts this restore consumes are fatal; a missing tenant artifact costs one workspace and is reported.
 func (s *Service) assertArtifactsPresent(ctx context.Context, store *blob.Store, man *dr.Manifest) (missingTenant []string, err error) {
 	var missingCritical []string
 	for _, a := range man.Artifacts {
@@ -323,13 +300,10 @@ func tenantLabel(a dr.Artifact) string {
 	}
 }
 
-// artifactKey is an artifact's full object key, computed by the manifest so the
-// restore looks exactly where the backup wrote.
+// Computed by the manifest so the restore looks exactly where the backup wrote.
 func artifactKey(man *dr.Manifest, a dr.Artifact) string { return man.ArtifactKey(a) }
 
-// assertVersionForward refuses to restore a dump produced by a NEWER Miabi than this binary: migrations only
-// run forward, and a schema from the future against older code fails in ways that look like data corruption.
-// Unparseable or dev versions pass with a warning — blocking a recovery over a version string is worse.
+// Migrations only run forward; unparseable or dev versions pass with a warning rather than block recovery.
 func assertVersionForward(backupVersion string) error {
 	have, ok1 := parseVersion(config.Version)
 	want, ok2 := parseVersion(backupVersion)
@@ -349,8 +323,6 @@ func assertVersionForward(backupVersion string) error {
 	return nil
 }
 
-// parseVersion reads a "v1.2.3" / "1.2.3" triple. Anything else is not a version
-// this can reason about.
 func parseVersion(s string) ([3]int, bool) {
 	var out [3]int
 	parts := strings.SplitN(strings.TrimPrefix(strings.TrimSpace(s), "v"), ".", 4)
@@ -372,9 +344,7 @@ func parseVersion(s string) ([3]int, bool) {
 	return out, true
 }
 
-// manualSteps names what a restore cannot do for the operator. Reporting these is
-// part of the feature: a recovery that silently leaves DNS pointing at a dead
-// host has not recovered anything.
+// A recovery that silently leaves DNS pointing at a dead host has not recovered anything.
 func (s *Service) manualSteps(identity *dr.Identity, opts Options, domain string) []string {
 	steps := []string{
 		fmt.Sprintf("point DNS for %s at this host, then let the gateway obtain certificates", domain),
@@ -389,9 +359,7 @@ func (s *Service) manualSteps(identity *dr.Identity, opts Options, domain string
 	return steps
 }
 
-// Restore executes a plan. Order is deliberate and is the heart of this package: data services, dump into an
-// empty database, verify the key, volumes, then the rest of the stack. Bringing the control plane up earlier
-// would have it migrate and seed a database that is about to be overwritten.
+// Order is deliberate: an earlier control plane would migrate and seed a database about to be overwritten.
 func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	m, err := s.buildManifest(plan, opts)
 	if err != nil {
@@ -399,9 +367,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	}
 	path := manifestPathOf(opts)
 
-	// Persist before creating anything: the manifest now holds the recovered encryption key and freshly
-	// generated database passwords, and they exist nowhere else. A converge that dies halfway must leave the
-	// operator able to re-run rather than stranded with an unreadable Postgres.
+	// Persist first: the recovered key and new DB passwords exist nowhere else, so a failed converge can be re-run.
 	if err := stack.Save(path, m); err != nil {
 		return err
 	}
@@ -424,9 +390,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 		}
 	}
 
-	// Quiesce the platform before it can act on the restored state: DNS may still point at the host this was
-	// recovered from, and a control plane that begins reconciling and re-issuing certificates against it makes
-	// the outage worse. Written directly into the restored database — there is no API to call yet.
+	// Quiesce before reconcile: DNS may still point at the old host, and re-issuing certificates would worsen the outage.
 	if err := s.markRestorePending(ctx, m, plan); err != nil {
 		return err
 	}
@@ -441,9 +405,7 @@ func (s *Service) Restore(ctx context.Context, plan *Plan, opts Options) error {
 	return nil
 }
 
-// markRestorePending writes the quiesce marker and the recovery provenance into the restored database,
-// using a one-shot psql against the same Postgres the dump just landed in. It runs before the control
-// plane boots, so the platform comes up already knowing it is a recovery and not a normal start.
+// Runs before the control plane boots so it comes up knowing this is a recovery, not a normal start.
 func (s *Service) markRestorePending(ctx context.Context, m *stack.Manifest, plan *Plan) error {
 	note := fmt.Sprintf("restored from %s on %s", plan.Ref, time.Now().UTC().Format(time.RFC3339))
 	sql := fmt.Sprintf(
@@ -452,9 +414,7 @@ func (s *Service) markRestorePending(ctx context.Context, m *stack.Manifest, pla
 			`ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();`,
 		models.RestorePendingKey, sqlEscape(note))
 
-	// A clone must not inherit the original's install id. The id is what the license is issued against, so two
-	// live platforms sharing one is a licensing conflict, and the clone would report the original's identity to
-	// the portal. Restoring after a real loss keeps the id, which is what keeps the license valid.
+	// A clone must not share the install id the license is issued against; a real recovery keeps it.
 	if plan.Clone {
 		newID := "mbi_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		plan.NewInstallID = newID
@@ -483,14 +443,10 @@ func (s *Service) markRestorePending(ctx context.Context, m *stack.Manifest, pla
 	return nil
 }
 
-// sqlEscape doubles single quotes for the literal above. The value is built from a ref this code generated
-// and a timestamp, so this guards against a surprise rather than against an attacker — but a restore is a
-// bad place to learn that an assumption was wrong.
+// Inputs are self-generated, so this guards against surprise rather than an attacker.
 func sqlEscape(s string) string { return strings.ReplaceAll(s, "'", "''") }
 
-// buildManifest turns a recovered identity into a stack manifest for THIS host. The encryption key and JWT
-// secret are carried over — that is the point. The database and Redis passwords are NOT: they belong to the
-// data directories this restore just created, and reusing the originals would recreate the password trap.
+// Key and JWT secret carry over; DB and Redis passwords are fresh, since originals wouldn't match new data dirs.
 func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, error) {
 	image := strings.TrimSpace(opts.Image)
 	m := stack.Defaults(image)
@@ -498,8 +454,7 @@ func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, erro
 
 	m.Domain = plan.Domain
 	if opts.Domain == "" || opts.Domain == id.Domain {
-		// Same identity: keep the URLs exactly as they were, so issued tokens,
-		// webhooks and node endpoints stay valid.
+		// Same identity keeps URLs unchanged so issued tokens, webhooks and node endpoints stay valid.
 		m.WebURL = id.WebURL
 		m.ControlURL = id.ControlURL
 	}
@@ -510,8 +465,7 @@ func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, erro
 	if id.NetworkSubnet != "" {
 		m.Network.Subnet = id.NetworkSubnet
 	}
-	// Absent on a recovery point taken before the network split, in which case Defaults() has already
-	// supplied the current default — the restored stack simply gains the private network.
+	// Absent on pre-split recovery points; Defaults() already supplied the current default.
 	if id.InternalNetworkName != "" {
 		m.InternalNetwork.Name = id.InternalNetworkName
 	}
@@ -521,8 +475,7 @@ func (s *Service) buildManifest(plan *Plan, opts Options) (*stack.Manifest, erro
 
 	m.Secrets.EncryptionKey = id.EncryptionKey
 	m.Secrets.JWTSecret = id.JWTSecret
-	// GenerateSecrets fills only what is empty, so the two above survive and the
-	// database/Redis/admin credentials are minted fresh for this host.
+	// GenerateSecrets fills only empty fields, so credentials are minted fresh while the recovered ones survive.
 	if err := m.GenerateSecrets(); err != nil {
 		return nil, err
 	}
@@ -570,9 +523,7 @@ func (s *Service) restoreDatabase(ctx context.Context, m *stack.Manifest, plan *
 	return nil
 }
 
-// restoreVolume recreates a platform volume and unpacks its archive into it. Encryption is decided per ARTIFACT,
-// not per recovery point: volume archives are written unencrypted even when the dumps are encrypted, because
-// the volume tool cannot encrypt. Keying off the set-level flag would hand a passphrase to a tool with no use.
+// Encryption is per artifact: the volume tool cannot encrypt, so archives are plain even in encrypted sets.
 func (s *Service) restoreVolume(ctx context.Context, opts Options, volumePrefix string, a dr.Artifact) error {
 	name, file := a.Volume, a.File
 	if _, err := s.dc.CreateVolume(ctx, name, map[string]string{docker.LabelManaged: "true"}, 0); err != nil {
@@ -631,8 +582,7 @@ func sanitize(s string) string {
 	return b.String()
 }
 
-// newestRef lists the bucket's identity envelopes and picks the most recent, so
-// an operator who lost everything can recover without having memorised a ref.
+// Picks the newest so an operator who lost everything need not know a ref.
 func (s *Service) newestRef(ctx context.Context, store *blob.Store, prefix string) (string, error) {
 	objs, err := store.List(ctx, strings.Trim(prefix, "/"))
 	if err != nil {
@@ -657,8 +607,7 @@ func (s *Service) newestRef(ctx context.Context, store *blob.Store, prefix strin
 	return best, nil
 }
 
-// ListRefs reports the recovery points discoverable in the bucket, newest first.
-// An operator who has lost the platform has also lost the UI that listed them.
+// An operator who lost the platform also lost the UI that listed these.
 func (s *Service) ListRefs(ctx context.Context, cfg blob.Config, prefix string) ([]RefSummary, error) {
 	store, err := blob.New(cfg)
 	if err != nil {
@@ -675,8 +624,7 @@ func (s *Service) ListRefs(ctx context.Context, cfg blob.Config, prefix string) 
 			continue
 		}
 		sum := RefSummary{Ref: ref, CreatedAt: o.UpdatedAt}
-		// The manifest is small and non-secret, so read it for the detail that
-		// makes the list useful rather than just a wall of refs.
+		// The manifest is small and non-secret, so read it for list detail.
 		if body, err := store.GetBytes(ctx, o.Key); err == nil {
 			if man, err := dr.DecodeManifest(body); err == nil { //nolint:govet // shadow is intentional
 				sum.InstallID, sum.MiabiVersion = man.InstallID, man.MiabiVersion

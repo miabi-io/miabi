@@ -29,8 +29,7 @@ import (
 
 func topic(id uint) string { return fmt.Sprintf("location-migration:%d", id) }
 
-// publish fans out the migration's current state to the page following it. The row is persisted before
-// every publish that matters, so a subscriber that reconnects reads the same state from REST.
+// The row is persisted before every publish that matters, so a reconnecting subscriber reads the same state via REST.
 func (s *Service) publish(m *models.LocationMigration) {
 	if s.Bus == nil || m == nil {
 		return

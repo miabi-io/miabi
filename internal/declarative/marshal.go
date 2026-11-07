@@ -33,9 +33,7 @@ type outDoc struct {
 	Spec       any    `yaml:"spec,omitempty"`
 }
 
-// Marshal serializes a resource set into a single multi-document YAML bundle
-// that Parse round-trips. Project resources are organizational and omitted —
-// their children are already first-class members of the set.
+// Marshal omits Project resources; their children are already first-class members of the set.
 func Marshal(set *ResourceSet) ([]byte, error) {
 	var buf bytes.Buffer
 	for _, r := range set.All() {

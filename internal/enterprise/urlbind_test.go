@@ -146,9 +146,7 @@ func TestURLAllowed_RequestHost(t *testing.T) {
 }
 
 func TestBinding_UnknownInstanceURLFailsOpen(t *testing.T) {
-	// A URL-only binding with an unknown instance URL can't be checked → fail open
-	// so a legitimate install is never bricked. (An install_id binding, by
-	// contrast, is always enforceable — the Install ID is always known.)
+	// A URL-only binding with no known instance URL fails open; install_id bindings are always enforceable.
 	e := bind("", "mbi_1", activeClaims("", "https://miabi.acme.com"))
 	if e.bindMismatch {
 		t.Error("unknown instance URL should fail open (allow)")

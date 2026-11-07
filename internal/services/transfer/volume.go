@@ -45,8 +45,7 @@ type VolumeEnd struct {
 type SyncOptions struct {
 	// Name makes the helper containers and the sync network unique; one migration item per name.
 	Name string
-	// Final marks the pass run with every writer stopped. Files that vanish or change mid-copy are
-	// expected on a live pass and fatal on the final one, where they would mean a writer is still running.
+	// Files changing mid-copy are expected on a live pass and fatal on the final one.
 	Final bool
 	// BandwidthKBps caps the copy (rsync --bwlimit), so a live pass does not saturate a node's uplink.
 	BandwidthKBps int
@@ -67,8 +66,7 @@ type SyncStats struct {
 
 const rsyncPort = 873
 
-// daemonScript runs rsync as a read-only daemon over /data. The secret stays in the environment and a mode
-// 600 file: rsync refuses a secrets file anyone else can read.
+// rsync refuses a secrets file anyone else can read, hence mode 600.
 const daemonScript = `set -e
 umask 077
 printf 'mb:%s\n' "$SYNC_SECRET" > /tmp/rsyncd.secrets
@@ -76,12 +74,7 @@ printf '%s\n' 'uid = 0' 'gid = 0' 'use chroot = no' 'max connections = 4' 'pid f
   '[data]' 'path = /data' 'read only = yes' 'auth users = mb' 'secrets file = /tmp/rsyncd.secrets' > /tmp/rsyncd.conf
 exec rsync --daemon --no-detach --port=873 --config=/tmp/rsyncd.conf`
 
-// SyncVolume makes dst's volume a copy of src's with one rsync pass. dst must already exist.
-//
-// The daemon runs next to the source on a throwaway internal network, the client next to the target on
-// another, and the control plane joins the two: a relay dialled into the source network on one side, a
-// relay listening on the target network on the other. The internal networks and a per-pass secret keep
-// workspace containers away from the daemon; that is access control, not encryption.
+// Internal networks and a per-pass secret keep workspace containers from the daemon; that's access control, not encryption.
 func (s *Service) SyncVolume(ctx context.Context, src, dst VolumeEnd, opts SyncOptions) (SyncStats, error) {
 	started := time.Now()
 	if src.ServerID == dst.ServerID {
@@ -192,8 +185,7 @@ func (s *Service) SyncVolume(ctx context.Context, src, dst VolumeEnd, opts SyncO
 	return stats, nil
 }
 
-// clientScript pulls the daemon's module into /data. It retries only a refused connection: the listener
-// may not be accepting yet, and nothing has been transferred when that happens.
+// Retries only a refused connection: the listener may not be up yet, and nothing has transferred.
 func clientScript(listener string, bwlimit int) string {
 	args := []string{"rsync", "-aH", "--numeric-ids", "--delete", "--partial", "--info=stats2", "--no-inc-recursive"}
 	if bwlimit > 0 {
@@ -209,8 +201,7 @@ done
 exit 10`, strings.Join(args, " "))
 }
 
-// rsyncOK accepts a clean exit, and on a live pass the two codes a running writer causes: 23 (a file
-// could not be read, often because it changed) and 24 (a file vanished). The final pass must not see them.
+// Codes 23 and 24 come from a running writer, acceptable on a live pass but never on the final one.
 func rsyncOK(code int, final bool) bool {
 	return code == 0 || (!final && (code == 23 || code == 24))
 }

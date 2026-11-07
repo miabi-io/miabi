@@ -48,8 +48,7 @@ type SuspendRequest struct {
 
 var errSuspendLevel = coded(http.StatusBadRequest, "BILLING_INVALID_REQUEST", "level must be soft or hard, and until in the future")
 
-// ServiceUserID returns the billing service user's id without creating it; 0 when it does not
-// exist yet. Restrictions recorded with this id are billing's own.
+// 0 when it does not exist yet; restrictions recorded with this id are billing's own.
 func (s *Service) ServiceUserID() uint {
 	if id := s.userID.Load(); id != 0 {
 		return uint(id)
@@ -66,8 +65,7 @@ func (s *Service) level(a *models.BillingAccount) string {
 	return EffectiveLevel(a, s.now(), s.deps.HardAfter)
 }
 
-// updateLevel recomputes the account's level and queues a billing.restriction.changed event in
-// the same transaction when it moved.
+// The event is queued in the same transaction when the level moved.
 func (s *Service) updateLevel(tx *gorm.DB, a *models.BillingAccount) error {
 	from, to := a.RestrictionLevel, s.level(a)
 	a.RestrictionLevel = to
@@ -111,9 +109,7 @@ func restrictionReason(a *models.BillingAccount, now time.Time) string {
 	return ""
 }
 
-// enforce brings the account's workspaces to its level. Billing changes or lifts only restrictions
-// it set itself: an admin's hold is left in place, and the account's level applies once it is
-// lifted (the sweep comes back to it). Failures are logged; the sweep retries them.
+// Billing only lifts restrictions it set; an admin hold stays and the sweep revisits it.
 func (s *Service) enforce(ctx context.Context, a *models.BillingAccount, only ...uint) {
 	if s.deps.Restrictions == nil {
 		return
@@ -204,8 +200,7 @@ func (s *Service) changeAccount(ctx context.Context, externalID string, edit fun
 	return s.render(acct)
 }
 
-// Sweep recomputes every account's level, which moves with time (grace periods, the hard-after
-// delay, forced holds ending), and re-applies it to the workspaces.
+// Levels move with time (grace, hard-after, forced holds ending), so they are recomputed.
 func (s *Service) Sweep(ctx context.Context) error {
 	var ids []uint
 	if err := s.db.Model(&models.BillingAccount{}).Order("id").Pluck("id", &ids).Error; err != nil {

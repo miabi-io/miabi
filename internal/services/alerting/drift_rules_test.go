@@ -32,8 +32,7 @@ func driftEvent(t models.AppEventType, kind string) *models.AppEvent {
 	}
 }
 
-// A missing container is a warning about availability; a missing data volume is a critical storage
-// condition, and the two must not resolve each other.
+// The two must not resolve each other.
 func TestDriftRulesSeparateWorkloadFromData(t *testing.T) {
 	got := evaluate(driftEvent(models.EventDriftDetected, "container"), "api")
 	if len(got) != 1 || got[0].ruleKey != "workload_missing" || got[0].dedupKey != "drift:app:7" ||
@@ -47,8 +46,7 @@ func TestDriftRulesSeparateWorkloadFromData(t *testing.T) {
 		t.Fatalf("volume drift = %+v; want a critical storage alert keyed datavolume:app:7", got)
 	}
 
-	// The workload being back ends both the drift alert and the one raised when enforcement gave up on it,
-	// but it says nothing about the app's data.
+	// The workload returning says nothing about the app's data.
 	got = evaluate(driftEvent(models.EventDriftResolved, "container"), "api")
 	if len(got) != 2 || got[0].kind != resolve || got[0].dedupKey != "drift:app:7" ||
 		got[1].kind != resolve || got[1].dedupKey != "reconcile:app:7" {

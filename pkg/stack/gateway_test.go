@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// The crux of bind-mounting from inside the installer container: our /etc/miabi is a bind of SOME host
-// directory. Handing the daemon our own view would point it at a host path that may not exist — and
-// Docker's answer to a missing bind source is to silently create a DIRECTORY where goma.yml should be.
+// Docker silently creates a directory at a missing bind source, so the installer must map to the host path.
 func TestHostPathTranslation(t *testing.T) {
 	// Mirrors what InspectContainerConfig returns for the installer container.
 	mounts := []struct{ dest, src string }{
@@ -53,8 +51,7 @@ func TestHostPathTranslation(t *testing.T) {
 		"/etc/miabi/goma.yml":   "/srv/miabi-config/goma.yml",
 		"/etc/miabi/stack.yaml": "/srv/miabi-config/stack.yaml",
 		"/etc/miabi":            "/srv/miabi-config",
-		// Not under any bind: it exists only inside the container, and handing it to the
-		// daemon would have Docker invent an empty directory on the host.
+		// Not under any bind, so Docker would invent an empty directory on the host.
 		"/tmp/elsewhere.yml": "/tmp/elsewhere.yml",
 	} {
 		if got := translate(in); got != want {
@@ -63,8 +60,7 @@ func TestHostPathTranslation(t *testing.T) {
 	}
 }
 
-// Absent → write the default. Unmodified → a newer default replaces it, so installs
-// that never customized still get upstream fixes. Modified → never touched again.
+// Unmodified configs get upstream fixes; modified ones are never touched again.
 func TestGatewayConfigPolicy(t *testing.T) {
 	const shipped, newer = "sha-of-shipped", "sha-of-newer"
 

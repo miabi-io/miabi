@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// BillingIdempotencyKey stores the answer to a Billing API write sent with an Idempotency-Key, so a
-// retry within 24 hours gets the same answer instead of applying the change twice.
+// A retry within 24 hours gets the same answer instead of applying the change twice.
 type BillingIdempotencyKey struct {
 	Key         string    `json:"key" gorm:"primaryKey;size:200"`
 	RequestHash string    `json:"request_hash" gorm:"not null"`
@@ -47,8 +46,7 @@ const (
 	BillingLevelHard    = "hard"
 )
 
-// BillingAccount is a billing platform's customer on this instance: it owns the workspaces billed
-// to it and carries their subscription, which the platform pushes (plans/billing-api-v1.md).
+// See plans/billing-api-v1.md.
 type BillingAccount struct {
 	ID             uint   `json:"id" gorm:"primaryKey"`
 	ExternalID     string `json:"external_id" gorm:"size:200;uniqueIndex;not null"`
@@ -82,8 +80,7 @@ type BillingAccount struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
-// BillingEvent is an event for the billing platform, kept until delivered (an outbox). Its ID is
-// the delivery sequence the platform deduplicates on.
+// An outbox; its ID is the delivery sequence the platform deduplicates on.
 type BillingEvent struct {
 	ID            int64      `json:"sequence" gorm:"primaryKey;autoIncrement"`
 	Type          string     `json:"type" gorm:"size:100;not null"`

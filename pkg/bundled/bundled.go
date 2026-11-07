@@ -16,9 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package bundled names the component versions a Miabi build provisions. Release builds set them
-// from versions.miabi.io with -ldflags -X, so a component bump needs no code change; the fallbacks
-// here are what a development build uses.
+// Package bundled names provisioned component versions, set by release builds via -ldflags -X.
 package bundled
 
 import "strings"
@@ -26,15 +24,10 @@ import "strings"
 // fallbackGatewayVersion is the Goma Gateway a build without -X provisions.
 const fallbackGatewayVersion = "1.1.2"
 
-// gatewayVersion is set at link time:
-//
-//	-X github.com/miabi-io/miabi/pkg/bundled.gatewayVersion=v1.1.2
-//
-// A var, as -X cannot set a constant.
+// A var because -X cannot set a constant.
 var gatewayVersion = fallbackGatewayVersion
 
-// GatewayVersion is the Goma Gateway release this build provisions and was tested with, without a
-// leading "v". An empty -X value falls back rather than producing an image reference with no tag.
+// An empty -X value falls back rather than producing an image reference with no tag.
 func GatewayVersion() string {
 	if v := strings.TrimPrefix(strings.TrimSpace(gatewayVersion), "v"); v != "" {
 		return v

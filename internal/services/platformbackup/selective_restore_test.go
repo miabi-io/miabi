@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// The rule the whole dashboard restore rests on: the control-plane dump is not a checkbox. Restoring it
-// in place overwrites the database the running platform is using — including the rows describing the
-// restore itself — and leaves the process running against data that no longer matches it.
+// Restoring the control-plane dump in place overwrites the live DB, including the rows describing the restore.
 func TestControlPlaneIsNeverRestorableFromTheDashboard(t *testing.T) {
 	ok, reason := restorableFromDashboard(dr.SubjectDatabase, true)
 	if ok {
@@ -42,8 +40,7 @@ func TestControlPlaneIsNeverRestorableFromTheDashboard(t *testing.T) {
 		t.Errorf("the reason should say why, not just refuse: %q", reason)
 	}
 
-	// And the service refuses it even if a request names it directly, so the rule
-	// does not live only in the UI.
+	// The service refuses it too, so the rule does not live only in the UI.
 	s := &Service{}
 	err := s.restoreOne(context.Background(), &models.PlatformBackupSettings{}, nil,
 		&models.PlatformBackup{
@@ -70,8 +67,7 @@ func TestTenantDataIsRestorable(t *testing.T) {
 	}
 }
 
-// An artifact the bucket no longer holds must not be offered — the operator
-// would select it, wait, and get a failure that was knowable up front.
+// Otherwise the operator would select it, wait, and get a failure that was knowable up front.
 func TestMissingArtifactIsNotOffered(t *testing.T) {
 	ok, reason := restorableFromDashboard(dr.SubjectTenantDatabase, false)
 	if ok {
@@ -82,8 +78,6 @@ func TestMissingArtifactIsNotOffered(t *testing.T) {
 	}
 }
 
-// A one-off passphrase — for another install's recovery point — must reach the
-// restore without becoming this platform's stored passphrase.
 func TestSuppliedPassphraseDoesNotTouchStoredSettings(t *testing.T) {
 	crypto.Init("test-master-key")
 	stored := &models.PlatformBackupSettings{BackupPassphraseEnc: ""}
@@ -114,8 +108,7 @@ func TestRestoreSelectedRefusesAnEmptySelection(t *testing.T) {
 	}
 }
 
-// Only running apps are stopped, so a restore does not start something the
-// operator had deliberately stopped.
+// Only running apps are stopped, so a restore never starts one the operator had stopped.
 func TestMountsVolume(t *testing.T) {
 	app := &models.Application{Mounts: []models.AppMount{{DockerName: "mb-vol-1-data"}}}
 	if !mountsVolume(app, "mb-vol-1-data") {

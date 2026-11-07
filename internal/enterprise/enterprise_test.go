@@ -19,8 +19,6 @@ import (
 	"github.com/miabi-io/miabi/internal/enterprise/license"
 )
 
-// withClaims builds an impl with a license valid/grace/degraded relative to now,
-// bypassing the DB (only snapshot()/gate logic is exercised).
 func withClaims(notAfter time.Time, flags ...string) *impl {
 	return &impl{claims: &license.Claims{
 		LicenseID: "lic_t", Edition: EditionEnterprise, Flags: flags,
@@ -76,8 +74,7 @@ func TestGate_Community(t *testing.T) {
 	}
 }
 
-// TestUnknownSigningKey: a stored license signed by a key this build does not trust
-// grants nothing, and says why instead of passing for Community.
+// An untrusted signing key grants nothing and says why instead of passing for Community.
 func TestUnknownSigningKey(t *testing.T) {
 	e := &impl{unknownKID: "miabi-209901"}
 	if e.Has(FlagSSOSAML) {

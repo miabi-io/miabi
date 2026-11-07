@@ -30,14 +30,11 @@ import (
 const (
 	// StatePending is a request awaiting review. Nothing is published.
 	StatePending = "pending"
-	// StateReserved is approved but not yet on the node: an approved host port is
-	// only published on the application's next deploy.
+	// An approved host port is only published on the app's next deploy.
 	StateReserved = "reserved"
 	// StatePublished is approved and live on the node.
 	StatePublished = "published"
-	// StateUnmanaged is a host port held by a container Miabi has no binding for —
-	// an imported container, one started by hand, or the gateway itself. These are
-	// invisible in the binding table and are what makes the next approval fail.
+	// Ports held by containers without a binding are invisible in the table and make the next approval fail.
 	StateUnmanaged = "unmanaged"
 )
 
@@ -60,10 +57,7 @@ type PortEntry struct {
 type NodeOverview struct {
 	ServerID uint   `json:"server_id"`
 	Name     string `json:"name"`
-	// Inspected reports whether the node's live ports could actually be read. When
-	// false the entries come from the binding table alone: nothing can be said
-	// about unmanaged ports, and reserved cannot be told from published. Saying so
-	// beats implying the node is clean because it was unreachable.
+	// When false, entries come from the table alone; don't imply a clean node just because it was unreachable.
 	Inspected bool        `json:"inspected"`
 	Entries   []PortEntry `json:"entries"`
 }
@@ -75,8 +69,7 @@ type Overview struct {
 	Nodes   []NodeOverview `json:"nodes"`
 }
 
-// ServerLister names the nodes a port may be published on. Optional: without it
-// the overview still resolves, using ids as names.
+// Optional: without it the overview uses ids as names.
 type ServerLister interface {
 	List() ([]models.Server, error)
 }
@@ -89,10 +82,7 @@ type AppNamer interface {
 	FindByID(id uint) (*models.Application, error)
 }
 
-// Overview reconciles the binding table against what each node actually has
-// published. The two disagree in both directions, and both disagreements matter:
-// an approved binding is not live until the app redeploys, and a container can
-// hold a host port with no binding at all.
+// Overview reports both disagreements: approved-but-not-redeployed bindings and ports held with no binding.
 func (s *Service) Overview() (*Overview, error) {
 	bindings, err := s.repo.ListActive()
 	if err != nil {
@@ -114,8 +104,7 @@ func (s *Service) Overview() (*Overview, error) {
 			}
 		}
 	}
-	// A node with bindings but no Server row (id 0 = the local node) still needs a
-	// column, or its ports vanish from the page.
+	// A node with no Server row (id 0 = local) still needs a column, or its ports vanish.
 	for id := range byNode {
 		if _, known := names[id]; !known {
 			nodeIDs = append(nodeIDs, id)
@@ -149,8 +138,6 @@ func (s *Service) nodeName(id uint, names map[uint]string) string {
 	return ""
 }
 
-// reconcile turns one node's bindings plus its live published ports into a
-// single sorted list.
 func (s *Service) reconcile(bindings []models.PortBinding, live map[string]string, inspected bool) []PortEntry {
 	entries := make([]PortEntry, 0, len(bindings)+len(live))
 	claimed := map[string]bool{}
@@ -168,8 +155,7 @@ func (s *Service) reconcile(bindings []models.PortBinding, live map[string]strin
 		case b.Status == models.PortBindingPending:
 			e.State = StatePending
 		case !inspected:
-			// Approved, and the node could not be asked. Reporting "published" would
-			// be a guess; reserved is the state that is certainly true.
+			// The node could not be asked, so only reserved is certainly true.
 			e.State = StateReserved
 		case live[key] != "":
 			e.State = StatePublished

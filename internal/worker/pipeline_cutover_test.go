@@ -35,8 +35,6 @@ func TestSubjectUser(t *testing.T) {
 	}
 }
 
-// jobInputs maps a command-only pipeline (no bound app) onto the runner context
-// without touching the app/workspace repos.
 func TestJobInputsNoApp(t *testing.T) {
 	h := &PipelineHandler{registry: "reg.example.com"}
 	run := &models.PipelineRun{ID: 1, WorkspaceID: 42, Number: 3, Commit: "abc123"}

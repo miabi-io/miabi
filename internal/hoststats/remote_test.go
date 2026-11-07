@@ -25,8 +25,7 @@ import (
 	"testing"
 )
 
-// Verbatim output of SampleCommand from busybox:1.36 on a real host, so the parser is tested
-// against what a node actually sends back rather than a hand-written approximation.
+// Real busybox:1.36 output, so the parser is tested against what a node actually sends.
 const busyboxSample = `cpu  3267192 2 1137424 308550682 41345 0 661844 0 0 0
 cpu  3267217 2 1137431 308552158 41345 0 661847 0 0 0
 MemTotal:       12304072 kB
@@ -43,8 +42,7 @@ func TestParseSampleFromRealBusyboxOutput(t *testing.T) {
 	if st.MemTotalBytes != 12304072*1024 {
 		t.Fatalf("mem total = %d, want %d", st.MemTotalBytes, 12304072*1024)
 	}
-	// Used is total minus AVAILABLE, not minus free: page cache is reclaimable and counting it as
-	// used would report almost every Linux host as nearly full.
+	// Total minus available, not free: page cache is reclaimable and would make every host look full.
 	wantUsed := uint64((12304072 - 10006532) * 1024)
 	if st.MemUsedBytes != wantUsed {
 		t.Fatalf("mem used = %d, want %d", st.MemUsedBytes, wantUsed)
@@ -71,8 +69,7 @@ func TestParseSampleFallsBackWithoutMemAvailable(t *testing.T) {
 	}
 }
 
-// A truncated sample must fail loudly: reporting 0% for a node nobody measured would read as an
-// idle node rather than a missing one.
+// Reporting 0% for an unmeasured node would read as idle rather than missing.
 func TestParseSampleRejectsATruncatedSample(t *testing.T) {
 	half := "cpu  3267192 2 1137424 308550682 41345 0 661844 0 0 0\nMemTotal: 12304072 kB"
 	if _, err := ParseSample(half); err == nil {

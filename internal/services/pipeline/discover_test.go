@@ -25,8 +25,7 @@ import (
 	"testing/fstest"
 )
 
-// guestbookPipeline is the document the guestbook example repo carries at
-// .miabi/pipeline.yaml — the shape adoption has to handle end to end.
+// The guestbook example's .miabi/pipeline.yaml, the shape adoption must handle end to end.
 const guestbookPipeline = `apiVersion: miabi.io/v1
 kind: Pipeline
 metadata: { name: guestbook }

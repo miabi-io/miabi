@@ -27,8 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Reencrypt re-encrypts the workspace's S3 secret key and bundle/backup passphrases under the
-// workspace's active DEK (key rotation). Idempotent; returns the number of settings rows rewritten.
+// Reencrypt is idempotent.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {

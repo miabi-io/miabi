@@ -42,8 +42,7 @@ func (r *LocationMigrationRepository) Create(m *models.LocationMigration) error 
 	return r.db.Create(m).Error
 }
 
-// Update saves the run's state. The request flags and the lease are left out: the API and the worker write
-// them independently, and a worker saving progress must not erase a cancel that arrived meanwhile.
+// Request flags and lease are omitted so a progress save can't erase a cancel that arrived meanwhile.
 func (r *LocationMigrationRepository) Update(m *models.LocationMigration) error {
 	return r.db.Omit("cutover_requested", "cancel_requested", "lease_until").Save(m).Error
 }
@@ -68,8 +67,7 @@ var openStatuses = []models.MigrationStatus{
 	models.MigrationRunning, models.MigrationAwaitingCutover, models.MigrationCutOver,
 }
 
-// ActiveForApp returns the app's migration that has not reached a terminal status, if any. A migration
-// that cut over still counts: the source copy it holds is what a rollback needs.
+// A cut-over migration still counts: its source copy is what a rollback needs.
 func (r *LocationMigrationRepository) ActiveForApp(appID uint) (*models.LocationMigration, error) {
 	var m models.LocationMigration
 	err := r.db.Where("application_id = ? AND status IN ?", appID, openStatuses).
@@ -126,8 +124,7 @@ func (r *LocationMigrationRepository) ListDueForFinalize(now time.Time) ([]model
 	return out, err
 }
 
-// AcquireLease claims the run for until, unless another worker holds a lease that has not lapsed. It is
-// the guard against two workers running one migration after a resume races a slow original.
+// Guards against two workers running one migration after a resume races a slow original.
 func (r *LocationMigrationRepository) AcquireLease(id uint, now, until time.Time) (bool, error) {
 	res := r.db.Model(&models.LocationMigration{}).
 		Where("id = ? AND (lease_until IS NULL OR lease_until < ?)", id, now).

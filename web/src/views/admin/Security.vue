@@ -176,8 +176,7 @@ const override = ref<{ scopeType: SecurityScopeType; scopeId: number; mode: Secu
 const addingOverride = ref(false)
 async function addOverride() {
   if (override.value.scopeId <= 0) return
-  // Starting from the platform spec keeps the bind address, bypass and ranges, so the
-  // override tightens the request mode without tripping the "loosens" check on the rest.
+  // Starting from the platform spec keeps the rest unchanged so the override doesn't trip the "loosens" check.
   const base = parseSpec(platformPolicy.value?.spec)
   const spec: PortsSpec = { ...base, mode: override.value.specMode }
   if (spec.mode !== 'auto_approve_in_range') delete spec.allowed_ranges

@@ -36,8 +36,7 @@ func TestCacheRefs(t *testing.T) {
 		t.Errorf("trunk build should import only its own ref, got %v", from)
 	}
 
-	// A branch build reads its own cache first, then the trunk's — but writes only its own, so it
-	// can never seed layers into the cache a trunk build trusts.
+	// A branch build writes only its own cache, so it can never seed layers a trunk build trusts.
 	from, to = CacheRefs(repo, "feat/thing", "main", 3)
 	if to != repo+":cache-feat-thing-g3" {
 		t.Errorf("export ref = %q, want the branch's own", to)
@@ -57,8 +56,7 @@ func TestCacheRefs(t *testing.T) {
 	}
 }
 
-// A branch name is far more permissive than a Docker tag, and an illegal tag fails the build at
-// push time rather than at the point the name was chosen.
+// An illegal tag would fail the build at push time rather than where the name was chosen.
 func TestCacheTagIsAValidDockerTag(t *testing.T) {
 	const legal = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 	for _, branch := range []string{"main", "feat/thing", "release/v1.2", "dependabot/npm_and_yarn/x@1", "", strings.Repeat("x", 200)} {

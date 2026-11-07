@@ -54,8 +54,7 @@ func (r *EmailVerificationRepository) MarkUsed(id uint) error {
 		Where("id = ?", id).Update("used_at", gorm.Expr("NOW()")).Error
 }
 
-// InvalidateForUser spends every outstanding token for a user, so re-sending a
-// verification email retires the previous link rather than leaving several live.
+// Re-sending retires the previous link rather than leaving several live.
 func (r *EmailVerificationRepository) InvalidateForUser(userID uint) error {
 	return r.db.Model(&models.EmailVerificationToken{}).
 		Where("user_id = ? AND used_at IS NULL", userID).

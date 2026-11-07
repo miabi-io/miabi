@@ -37,8 +37,6 @@ func schemaRoot(t *testing.T) map[string]any {
 	return root
 }
 
-// The schema and the parser have to agree about the dialect, or an editor marks a valid install file
-// as wrong — the failure a generated schema exists to prevent.
 func TestSchemaPinsTheDialect(t *testing.T) {
 	props, _ := schemaRoot(t)["properties"].(map[string]any)
 
@@ -54,8 +52,6 @@ func TestSchemaPinsTheDialect(t *testing.T) {
 	}
 }
 
-// Strict decoding is the parser's behaviour; additionalProperties:false is how the editor shows the
-// same refusal before the file is ever applied.
 func TestSchemaRefusesUnknownFields(t *testing.T) {
 	root := schemaRoot(t)
 	if root["additionalProperties"] != false {
@@ -85,8 +81,7 @@ func TestSchemaRequiresWhatTheManifestCannotDoWithout(t *testing.T) {
 	if !strings.Contains(joined, "domain") {
 		t.Errorf("spec.required = %v, want domain — Normalize refuses a manifest without it", names)
 	}
-	// Everything the install can do without stays optional, or a hand-written manifest is rejected
-	// for omitting a section it never needed.
+	// Sections the install can do without stay optional, or hand-written manifests get rejected.
 	for _, optional := range []string{"backup", "license", "registry", "networking"} {
 		if strings.Contains(joined, optional) {
 			t.Errorf("spec.required includes %q, which an install does not need", optional)
@@ -107,8 +102,6 @@ func TestSchemaCarriesTheDocComments(t *testing.T) {
 	}
 }
 
-// A field whose values Normalize restricts must say so, or the editor offers what the installer will
-// refuse.
 func TestSchemaCarriesTheStorageEnum(t *testing.T) {
 	defs, _ := schemaRoot(t)["$defs"].(map[string]any)
 	registry, _ := defs["RegistrySpec"].(map[string]any)

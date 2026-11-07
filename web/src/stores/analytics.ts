@@ -13,9 +13,7 @@ export const ANALYTICS_RANGES = [
   { key: '30d', label: 'Last 30 days' },
 ] as const
 
-// Shared analytics state: range + app filter drive one report used by all four
-// sub-pages (Overview, HTTP Traffic, Performance, Web Analytics), so switching
-// pages doesn't refetch. A key guard skips redundant loads.
+// One report shared by all four sub-pages so switching pages doesn't refetch.
 export const useAnalyticsStore = defineStore('analytics', () => {
   const range = ref<string>('24h')
   const appFilter = ref<number | null>(null)
@@ -29,8 +27,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
   // Each app's handle (its name), which the URL carries instead of the id.
   const appHandles = ref<Record<number, string>>({})
 
-  // Live visitors is a "right now" number, so it polls on its own cadence
-  // instead of riding the report load. null = not loaded yet (the pill hides).
+  // Polls on its own cadence as a "right now" number; null hides the pill.
   const live = ref<number | null>(null)
   const liveWindowSeconds = ref(300)
   let liveTimer: ReturnType<typeof setInterval> | null = null
@@ -63,8 +60,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
   }
 
-  // load fetches the report for the current (workspace, range, app). force
-  // bypasses the key guard (e.g. a manual refresh).
+  // force bypasses the key guard.
   async function load(force = false) {
     const ws = useWorkspaceStore().currentWorkspaceId
     if (!ws) {
@@ -89,8 +85,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
   }
 
-  // LIVE_POLL_MS is the refresh cadence of the live pill. The number is a count
-  // over a multi-minute window, so polling faster only adds requests.
+  // A count over a multi-minute window, so polling faster only adds requests.
   const LIVE_POLL_MS = 10_000
 
   async function loadLive() {
@@ -101,14 +96,11 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       live.value = res.data.data?.visitors ?? 0
       if (res.data.data?.window_seconds) liveWindowSeconds.value = res.data.data.window_seconds
     } catch {
-      // Best-effort: a failed poll leaves the last known value in place rather
-      // than flashing the pill away.
+      // A failed poll keeps the last value rather than flashing the pill away.
     }
   }
 
-  // watchLive starts polling for the first watcher and stops when the last one
-  // leaves, so a backgrounded dashboard isn't polling forever. Returns the
-  // matching stop function. Polling pauses while the tab is hidden.
+  // Ref-counted so polling stops when the last watcher leaves; it also pauses while the tab is hidden.
   function watchLive(): () => void {
     liveWatchers++
     if (liveWatchers === 1) {
@@ -131,8 +123,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
   }
 
-  // Refresh straight away when the tab comes back, so the pill isn't showing a
-  // number from before the user switched away.
   function onVisible() {
     if (!document.hidden) loadLive()
   }

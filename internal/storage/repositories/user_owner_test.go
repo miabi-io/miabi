@@ -28,8 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ownerOrgTable stands in for organizations: the real model's uid column defaults to the
-// Postgres-only gen_random_uuid(), which sqlite cannot parse.
+// Stand-in for organizations: the real uid column defaults to Postgres-only gen_random_uuid().
 type ownerOrgTable struct {
 	ID          uint `gorm:"primaryKey"`
 	Name        string
@@ -61,8 +60,7 @@ func ownerRow(t *testing.T, db *gorm.DB, id uint) uint {
 	return org.OwnerUserID
 }
 
-// An organization left accountable to a deleted account cannot be administered: nothing resolves
-// its owner, and nothing hands it to anyone else. Deleting the owner releases it, and only it.
+// Deleting the owner must release its organizations, or nothing could administer them.
 func TestUserRepositoryDelete_ReleasesOwnedOrganizations(t *testing.T) {
 	db := newUserOwnerDB(t)
 	repo := NewUserRepository(db)

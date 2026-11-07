@@ -1,8 +1,7 @@
 import api, { sseUrl } from './client'
 import type { ApiResponse } from './types'
 
-// Runner is a dedicated build/pipeline machine (workspace-owned or, when
-// workspace_id is null, a platform-shared runner in the admin pool).
+// workspace_id null means a platform-shared runner in the admin pool.
 export interface Runner {
   id: number
   uid: string
@@ -37,16 +36,14 @@ export interface RunnerInput {
   concurrency?: number
 }
 
-// Create returns the runner plus its one-time registration token (shown once)
-// and the server-configured runner image for the enrollment command.
+// The registration token is shown once.
 export interface RunnerCreated {
   runner: Runner
   token: string
   image: string
 }
 
-// RunnerAdapter binds either the workspace or admin API so the RunnersPanel is
-// reused for both the workspace-owned runners and the platform-shared pool.
+// Binds either the workspace or admin API so RunnersPanel serves both owned runners and the shared pool.
 export interface RunnerAdapter {
   list: () => Promise<Runner[]>
   get: (id: number) => Promise<Runner>

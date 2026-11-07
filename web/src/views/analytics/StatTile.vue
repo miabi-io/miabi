@@ -2,8 +2,7 @@
 import { computed } from 'vue'
 import { fmtDelta } from './format'
 
-// A headline metric tile with an optional period-over-period delta. `invert`
-// flips the color meaning (up = bad, e.g. error rate / latency).
+// `invert` flips the color meaning (up = bad, e.g. error rate).
 const props = defineProps<{
   label: string
   value: string

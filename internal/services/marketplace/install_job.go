@@ -31,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
 )
 
-// Install phase keys. Stable identifiers the install-progress UI maps to a
-// stepper; only the phases relevant to a template are present in a job.
+// Stable identifiers the progress UI maps to a stepper; only phases a template uses are present.
 const (
 	PhaseVolumes   = "volumes"
 	PhaseDatabases = "databases"
@@ -71,9 +70,6 @@ type InstallPhase struct {
 	Status PhaseStatus `json:"status"`
 }
 
-// InstallJob is the live snapshot streamed to the install-progress UI: the
-// ordered phases, a transient status line, and — once terminal — the install
-// result (so the UI can navigate to the created app/stack) or an error.
 type InstallJob struct {
 	ID      string         `json:"id"`
 	Status  JobStatus      `json:"status"`
@@ -88,8 +84,7 @@ type InstallJob struct {
 	doneAt      time.Time
 }
 
-// snapshot returns a copy safe to publish/return outside the jobs lock (the
-// Phases slice is cloned; Result is immutable once set).
+// Phases is cloned and Result is immutable once set, so the copy is safe outside the lock.
 func (j *InstallJob) snapshot() InstallJob {
 	cp := *j
 	cp.Phases = append([]InstallPhase(nil), j.Phases...)
@@ -99,12 +94,10 @@ func (j *InstallJob) snapshot() InstallJob {
 
 func installTopic(jobID string) string { return "install-job:" + jobID }
 
-// jobRetention bounds how long a finished job (and its result) is kept for late
-// subscribers / reconnects before being pruned.
+// Kept for late subscribers and reconnects before pruning.
 const jobRetention = 15 * time.Minute
 
-// installDeployTimeout caps how long a job waits for its apps to finish
-// deploying before completing anyway (the UI still lands on the live app).
+// After the timeout the job completes anyway; the UI still lands on the live app.
 const installDeployTimeout = 15 * time.Minute
 
 func newJobID() string {
@@ -113,8 +106,6 @@ func newJobID() string {
 	return hex.EncodeToString(b)
 }
 
-// buildPhases derives the stepper from the manifest, listing only the phases an
-// install will actually perform.
 func buildPhases(m *manifest.Manifest) []InstallPhase {
 	var p []InstallPhase
 	add := func(key, label string) { p = append(p, InstallPhase{Key: key, Label: label, Status: PhasePending}) }
@@ -138,16 +129,13 @@ func buildPhases(m *manifest.Manifest) []InstallPhase {
 	return p
 }
 
-// reporter records install progress onto a job and fans the snapshot out over
-// the event bus. A nil *reporter is a no-op, so the synchronous Install path can
-// share the same install() implementation without a job.
+// A nil reporter is a no-op so the synchronous Install path shares install() without a job.
 type reporter struct {
 	s   *Service
 	job *InstallJob
 }
 
-// phase transitions a named phase and publishes the new snapshot. Unknown keys
-// (a phase the template skips) are ignored.
+// Unknown keys (phases the template skips) are ignored.
 func (r *reporter) phase(key string, st PhaseStatus) {
 	if r == nil {
 		return
@@ -192,9 +180,7 @@ func (s *Service) publishJob(snap InstallJob) {
 	s.bus.Publish(installTopic(snap.ID), eventbus.Event{Type: "job", Data: snap})
 }
 
-// StartInstall validates the request synchronously so bad input fails fast, then runs the install
-// in the background and returns the initial job snapshot. Progress is streamed from StreamInstall;
-// the UI completes when the job reports success or failure.
+// StartInstall validates synchronously so bad input fails fast, then installs in the background.
 func (s *Service) StartInstall(workspaceID uint, in InstallInput) (InstallJob, error) {
 	m, _, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
 	if !ok {
@@ -234,8 +220,7 @@ func (s *Service) runInstall(job *InstallJob, workspaceID uint, in InstallInput)
 		s.finishJob(job, JobFailed, nil, err.Error())
 		return
 	}
-	// Hold the job open until the created apps come online, so the UI lands on a
-	// live application instead of an empty "deploying" shell.
+	// So the UI lands on a live application instead of an empty "deploying" shell.
 	if len(result.Apps) > 0 {
 		s.waitForDeploy(ctx, workspaceID, result.Apps, rep)
 	}
@@ -243,9 +228,7 @@ func (s *Service) runInstall(job *InstallJob, workspaceID uint, in InstallInput)
 	s.finishJob(job, JobSucceeded, result, "")
 }
 
-// waitForDatabases polls newly provisioned instances until each settles, keeping the provisioning
-// phase active with a live status line. Instances come up asynchronously, so without this apps would
-// deploy against a database that isn't ready. Failed instances still resolve, so the install proceeds.
+// Instances come up async, so without this apps would deploy against an unready database; failures still resolve.
 func (s *Service) waitForDatabases(ctx context.Context, workspaceID uint, insts []*models.DatabaseInstance, rep *reporter) {
 	names := make(map[uint]string, len(insts))
 	ids := make([]uint, 0, len(insts))
@@ -286,9 +269,7 @@ func (s *Service) waitForDatabases(ctx context.Context, workspaceID uint, insts 
 	}
 }
 
-// waitForDeploy polls the created apps until each leaves the deploying state, surfacing a live status
-// line as it goes. It never fails the install: a failed deploy still resolves the job so the UI
-// navigates to the app, where the failure is visible.
+// waitForDeploy never fails the install: a failed deploy still resolves the job so the UI opens the app.
 func (s *Service) waitForDeploy(ctx context.Context, workspaceID uint, apps []*models.Application, rep *reporter) {
 	names := make(map[uint]string, len(apps))
 	ids := make([]uint, 0, len(apps))
@@ -354,8 +335,7 @@ func (s *Service) finishJob(job *InstallJob, st JobStatus, result *InstallResult
 	s.publishJob(snap)
 }
 
-// pruneLocked drops finished jobs older than the retention window. Caller holds
-// jobsMu.
+// Caller holds jobsMu.
 func (s *Service) pruneLocked() {
 	cutoff := time.Now().Add(-jobRetention)
 	for id, j := range s.jobs {
@@ -365,8 +345,6 @@ func (s *Service) pruneLocked() {
 	}
 }
 
-// InstallJobSnapshot returns a one-shot snapshot of a job (REST fallback for the
-// SSE stream / reconnects).
 func (s *Service) InstallJobSnapshot(jobID string) (InstallJob, bool) {
 	s.jobsMu.Lock()
 	defer s.jobsMu.Unlock()
@@ -377,9 +355,7 @@ func (s *Service) InstallJobSnapshot(jobID string) (InstallJob, bool) {
 	return job.snapshot(), true
 }
 
-// StreamInstall sends the job's current snapshot, then live updates, until the job is terminal or the
-// client disconnects. The bool reports whether the job exists. Every event carries a full snapshot, so
-// a missed update or a reconnect self-heals.
+// Every event carries a full snapshot, so a missed update or reconnect self-heals.
 func (s *Service) StreamInstall(ctx context.Context, jobID string, send func(eventbus.Event) error) (bool, error) {
 	s.jobsMu.Lock()
 	job := s.jobs[jobID]

@@ -1,18 +1,7 @@
 # syntax=docker/dockerfile:1
-#
-# Rootless variant of the Miabi image. Same two-part build as the default
-# Dockerfile (web UI static export embedded into a static Go binary that serves
-# both the API and the UI), on the same alpine runtime, but running as an
-# unprivileged user with a healthcheck.
-#
-# Alpine is fine here: the binary is CGO_ENABLED=0 (fully static, no libc
-# linkage), and with CGO disabled Go uses its own pure-Go DNS resolver rather
-# than musl's — so the usual musl caveats don't apply. This keeps one base image
-# across both variants.
+# Rootless variant; alpine is fine because the binary is static with CGO disabled (pure-Go DNS).
 
-# Build the UI on a glibc image, not alpine: Vite 8's rolldown bundler needs a
-# native binding, and `npm ci` on musl trips the npm optional-deps bug
-# (npm/cli#4828). Throwaway builder stage; only /web/dist is embedded below.
+# glibc builder: on musl `npm ci` fails to install the rolldown binding (npm/cli#4828); throwaway stage.
 FROM node:26-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
@@ -27,8 +16,6 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Stage the built UI where the embed directive (internal/web) picks it up, so the
-# binary is self-contained.
 COPY --from=web /web/dist ./internal/web/dist
 # The HTTP healthcheck probe copied into app containers (internal/healthprobe).
 RUN for arch in amd64 arm64; do \

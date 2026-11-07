@@ -478,8 +478,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Get a platform event",
 		},
 
-		// Update notice. Reads the cache the daily cron writes; a request never
-		// calls GitHub, so refreshing the dashboard cannot burn the API budget.
+		// Reads the daily cron's cache; a request never calls GitHub, so refreshes cannot burn the API budget.
 		{
 			Method:      http.MethodGet,
 			Path:        "/update",
@@ -914,9 +913,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Delete a platform recovery point and its artifacts",
 		},
 
-		// Post-restore recovery. Not entitlement-gated: a platform recovered onto
-		// fresh hardware must be able to finish recovering even before it has
-		// reached a license server.
+		// Not entitlement-gated: a platform recovered onto fresh hardware must finish before reaching a license server.
 		{
 			Method:      http.MethodGet,
 			Path:        "/recovery",
@@ -1087,8 +1084,7 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Summary:     "Send a synthetic event to a SIEM target",
 		},
 
-		// Organizations. Reading is always allowed — one org always exists — while creating a second
-		// realm, dedicating a cluster to one or changing the default is gated on `organizations`.
+		// Reading is always allowed since one org always exists; multi-org changes are gated on `organizations`.
 		{
 			Method:      http.MethodGet,
 			Path:        "/organizations",

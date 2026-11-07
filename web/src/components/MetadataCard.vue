@@ -5,9 +5,7 @@ const props = withDefaults(
   defineProps<{
     metadata?: Record<string, string> | null
     title?: string
-    // When false, no key is treated as platform-managed: keys render verbatim
-    // with no lock icon or prefix stripping. Used for annotations, which have no
-    // reserved-key concept (a "miabi.io/" annotation is just a user key).
+    // False for annotations, which have no reserved-key concept.
     reserved?: boolean
   }>(),
   { title: '', reserved: true },
@@ -15,8 +13,7 @@ const props = withDefaults(
 
 const RESERVED = 'miabi.io/'
 
-// Owner keys are surfaced separately as a linkable chip (OwnerChip), so they are
-// hidden from the generic metadata list to avoid showing them twice.
+// Owner keys render as OwnerChip, so they are hidden here to avoid showing them twice.
 const HIDDEN = new Set(['miabi.io/owner-kind', 'miabi.io/owner-id', 'miabi.io/owner-name'])
 
 interface Row {

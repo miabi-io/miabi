@@ -36,15 +36,12 @@ import (
 	"github.com/miabi-io/miabi/internal/webhooksig"
 )
 
-// GitOpsDeleteResult is the response to a project delete. Teardown carries the
-// resources removed by a cascade delete (nil when cascade was not requested).
+// Teardown is nil when cascade was not requested.
 type GitOpsDeleteResult struct {
 	Message  string        `json:"message"`
 	Teardown *apply.Result `json:"teardown,omitempty"`
 }
 
-// GitOpsHandler exposes GitSource CRUD, sync, diff, and the inbound push
-// webhook.
 type GitOpsHandler struct {
 	svc   *gitops.Service
 	audit *audit.Logger
@@ -58,8 +55,7 @@ type CreateGitSourceRequest struct {
 	Body struct {
 		Name        string `json:"name" required:"true"` // desired unique slug handle
 		DisplayName string `json:"display_name"`         // free-text label (defaults to name)
-		// RepoURL is optional when git_repository_id is set — the URL is taken
-		// from the selected git repository (which also supplies credentials).
+		// Optional when git_repository_id is set, which supplies the URL and credentials.
 		RepoURL         string `json:"repo_url"`
 		Ref             string `json:"ref"`
 		Path            string `json:"path"`
@@ -155,8 +151,7 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 	if err := h.nestedConflict(wsID, id); err != nil {
 		return c.AbortWithError(http.StatusConflict, err)
 	}
-	// Opt-in cascade: ?cascade=true also tears down the resources this project
-	// created. Default keeps them running.
+	// Default keeps the project's resources running.
 	cascade := c.Query("cascade") == "true"
 	teardown, err := h.svc.Delete(c.Request().Context(), wsID, id, cascade)
 	if err != nil {
@@ -169,13 +164,10 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 		msg = "git source and its resources deleted"
 	}
 	h.record(c, wsID, action, id)
-	// Return the teardown result so the UI can show which resources were removed
-	// (and any that failed). teardown is nil for a non-cascade delete.
 	return ok(c, GitOpsDeleteResult{Message: msg, Teardown: teardown})
 }
 
-// nestedConflict reports why a project another project declares can't be edited or deleted here:
-// the parent's next sync would undo it. Nil when the project is editable, or doesn't exist.
+// The parent project's next sync would undo any edit here.
 func (h *GitOpsHandler) nestedConflict(wsID, id uint) error {
 	src, err := h.svc.Get(wsID, id)
 	if err != nil || src.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
@@ -205,9 +197,6 @@ func (h *GitOpsHandler) Sync(c *okapi.Context) error {
 	return ok(c, src)
 }
 
-// SyncResource reconciles a single resource of the source ("sync this resource"),
-// leaving the rest of the project untouched. The path names the resource by kind
-// and name (e.g. .../resources/Application/guestbook/sync).
 func (h *GitOpsHandler) SyncResource(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -226,9 +215,7 @@ func (h *GitOpsHandler) SyncResource(c *okapi.Context) error {
 	return ok(c, res)
 }
 
-// DeleteResource deletes a single live resource of the source ("delete this
-// resource"). Under auto-sync it is recreated on the next reconcile — the UI warns
-// the user before calling this.
+// Under auto-sync the resource is recreated on the next reconcile.
 func (h *GitOpsHandler) DeleteResource(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -260,8 +247,6 @@ func (h *GitOpsHandler) Diff(c *okapi.Context) error {
 	return ok(c, plan)
 }
 
-// Topology returns the resource graph (nodes + dependency edges) for the source,
-// powering the project-detail topology view.
 func (h *GitOpsHandler) Topology(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -274,8 +259,7 @@ func (h *GitOpsHandler) Topology(c *okapi.Context) error {
 	return ok(c, topo)
 }
 
-// Status returns the live runtime status of the source's managed resources,
-// keyed by topology node key. Cheap (no git clone) — the detail page polls it.
+// Cheap (no git clone): the detail page polls it.
 func (h *GitOpsHandler) Status(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -288,8 +272,7 @@ func (h *GitOpsHandler) Status(c *okapi.Context) error {
 	return ok(c, map[string]any{"statuses": st})
 }
 
-// Webhook handles an inbound provider push. It is unauthenticated; the request
-// is verified against the source's webhook secret.
+// Unauthenticated; the request is verified against the source's webhook secret.
 func (h *GitOpsHandler) Webhook(c *okapi.Context) error {
 	wsID, err := uintParam(c, "workspace")
 	if err != nil {
@@ -314,8 +297,7 @@ func (h *GitOpsHandler) Webhook(c *okapi.Context) error {
 	if !h.svc.VerifyWebhook(src, sig, body) {
 		return c.AbortUnauthorized("invalid webhook signature")
 	}
-	// The sync outlives the response, so it must not inherit the request context:
-	// that is cancelled the moment the handler returns, killing the sync it starts.
+	// The request context is cancelled when the handler returns, which would kill the sync.
 	ctx := context.WithoutCancel(c.Request().Context())
 	go func() { _ = h.svc.SyncByID(ctx, src.ID) }()
 	return message(c, "sync triggered")

@@ -27,9 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// mustEncrypt stores a value the way the DB layer does. With no key configured
-// (the default in tests) crypto.Encrypt/Decrypt round-trip via base64, so the
-// connection helpers can decrypt it back.
+// With no key configured, crypto.Encrypt/Decrypt round-trip via base64.
 func mustEncrypt(t *testing.T, v string) string {
 	t.Helper()
 	enc, err := crypto.Encrypt(v)

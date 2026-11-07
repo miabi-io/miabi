@@ -28,9 +28,6 @@ import (
 	"testing"
 )
 
-// TestNewRemoteOverTransport proves a remote Docker client built on an arbitrary
-// transport (here a TCP dial; in production the agent tunnel) reaches the engine.
-// A stub server emulates the Docker Engine API the SDK calls for Info().
 func TestNewRemoteOverTransport(t *testing.T) {
 	mux := http.NewServeMux()
 	ping := func(w http.ResponseWriter, _ *http.Request) {

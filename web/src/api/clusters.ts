@@ -7,10 +7,7 @@ export interface ClusterUpdate {
   visibility?: Cluster['visibility']
   /** Dedicates the location to one organization; 0 releases it back to shared. */
   organization_id?: number
-  /**
-   * Confirms the caller accepts what a change of organization does to the tenants already here.
-   * The API refuses a change of owner without it (409).
-   */
+  /** Accepts what a change of organization does to existing tenants; the API refuses an owner change without it (409). */
   acknowledge?: boolean
   cordoned?: boolean
   external_base_domain?: string

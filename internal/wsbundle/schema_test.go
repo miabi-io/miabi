@@ -24,11 +24,7 @@ import (
 	"testing"
 )
 
-// The schema is a compatibility gate, and getting it wrong strands bundles.
-// An older document must still restore — refusing one would make every bundle
-// already taken unrestorable — and a newer one must be refused, because
-// accepting it would silently drop whatever that version added (configs, say)
-// and look like it worked.
+// Older schemas must restore, and newer ones must be refused rather than silently dropping new fields.
 func TestStateSchemaCompatibilityWindow(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -55,8 +51,6 @@ func TestStateSchemaCompatibilityWindow(t *testing.T) {
 	}
 }
 
-// Schema 1 documents predate configs. They must still open, with no configs
-// rather than an error.
 func TestOlderDocumentWithoutConfigsIsValid(t *testing.T) {
 	st := &State{Schema: 1, Workspace: Workspace{Name: "acme"}}
 	if err := st.Validate(); err != nil {
@@ -67,8 +61,6 @@ func TestOlderDocumentWithoutConfigsIsValid(t *testing.T) {
 	}
 }
 
-// Configs and their contents survive a seal/open round trip — they are the part
-// of the bundle that only exists sealed.
 func TestConfigsSurviveSealing(t *testing.T) {
 	const pass = "correct-horse-battery-staple-7"
 	st := &State{
@@ -102,8 +94,7 @@ func TestConfigsSurviveSealing(t *testing.T) {
 	if !c.Sensitive || c.Mode != "0644" || len(c.Delimiters) != 2 {
 		t.Errorf("config settings did not survive: %+v", c)
 	}
-	// The mount is what makes the config reachable; carrying one without the other
-	// restores a workspace that looks right and does not run.
+	// Carrying a config without its mount restores a workspace that looks right and does not run.
 	if len(got.Apps) != 1 || len(got.Apps[0].Mounts) != 1 {
 		t.Fatalf("the app's config mount did not survive: %+v", got.Apps)
 	}

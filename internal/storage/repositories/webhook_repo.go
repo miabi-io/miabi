@@ -43,8 +43,7 @@ func (r *WebhookRepository) Delete(id uint) error {
 	})
 }
 
-// FindByID returns a webhook by primary key, regardless of workspace. Used by
-// the delivery worker, which already trusts the enqueued id.
+// FindByID ignores workspace; only the delivery worker uses it, which already trusts the enqueued id.
 func (r *WebhookRepository) FindByID(id uint) (*models.Webhook, error) {
 	var w models.Webhook
 	if err := r.db.First(&w, id).Error; err != nil {
@@ -67,9 +66,7 @@ func (r *WebhookRepository) ListByWorkspace(workspaceID uint) ([]models.Webhook,
 	return ws, err
 }
 
-// ListEnabledForEvent returns enabled webhooks in the workspace that subscribe
-// to the given event. The subscription list is a JSON column, so membership is
-// filtered in Go (workspaces hold few webhooks).
+// The subscription list is a JSON column, so membership is filtered in Go.
 func (r *WebhookRepository) ListEnabledForEvent(workspaceID uint, event string) ([]models.Webhook, error) {
 	var ws []models.Webhook
 	if err := r.db.Where("workspace_id = ? AND enabled = ?", workspaceID, true).Find(&ws).Error; err != nil {
@@ -105,8 +102,7 @@ func (r *WebhookDeliveryRepository) FindInWorkspace(workspaceID, id uint) (*mode
 	return &d, nil
 }
 
-// ListForWebhook returns a webhook's deliveries newest-first, scoped to the
-// workspace so callers cannot read another tenant's history.
+// Scoped to the workspace so callers cannot read another tenant's history.
 func (r *WebhookDeliveryRepository) ListForWebhook(workspaceID, webhookID uint, limit int) ([]models.WebhookDelivery, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50

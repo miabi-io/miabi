@@ -16,8 +16,7 @@ onMounted(async () => {
     router.replace({ name: 'login', query: { error: err } })
     return
   }
-  // The server set the session cookie on the redirect here; hydrate the profile
-  // (the cookie authenticates this request) to confirm sign-in.
+  // The server set the session cookie on the redirect; fetching the profile confirms sign-in.
   try {
     await auth.fetchUser()
     if (!auth.isAuthenticated) throw new Error('no session')

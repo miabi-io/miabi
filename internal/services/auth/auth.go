@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package auth handles user authentication: password hashing, JWT issuance with
-// revocable sessions, and password resets.
+// Package auth handles password hashing, revocable JWT sessions and password resets.
 package auth
 
 import (
@@ -69,8 +68,7 @@ var (
 type Service struct {
 	users  *repositories.UserRepository
 	resets *repositories.PasswordResetRepository
-	// verifications is optional: unset means the platform cannot issue or consume
-	// email-verification links, and the two methods below say so rather than panic.
+	// Optional: unset makes the verification methods return an error rather than panic.
 	verifications *repositories.EmailVerificationRepository
 	recovery      *repositories.TwoFactorRecoveryRepository
 	store         *session.Store
@@ -100,9 +98,7 @@ func NewService(users *repositories.UserRepository, resets *repositories.Passwor
 	return &Service{users: users, resets: resets, recovery: recovery, store: store, jwtKey: []byte(jwtSecret), aud: "miabi"}
 }
 
-// Authenticate verifies credentials and returns the user. The identifier is either an email address or a
-// username handle — an '@' selects the email lookup, otherwise the username — and a miss on the primary
-// lookup falls back to the other, so an unusual-looking username still resolves.
+// A miss on the primary lookup falls back to the other so an unusual username still resolves.
 func (s *Service) Authenticate(identifier, password string) (*models.User, error) {
 	if utf8.RuneCountInString(password) < models.MinLoginPasswordLength {
 		return nil, ErrInvalidCredentials
@@ -137,7 +133,6 @@ func (s *Service) lookupByIdentifier(identifier string) (*models.User, error) {
 	return s.users.FindByEmail(id)
 }
 
-// IssueToken creates a signed JWT carrying a unique jti.
 // Service accounts are refused here, the one place every console session is minted.
 func (s *Service) IssueToken(user *models.User) (token, jti string, err error) {
 	if user.IsService() {
@@ -158,9 +153,7 @@ func (s *Service) IssueToken(user *models.User) (token, jti string, err error) {
 // ClaimPasswordFingerprint is the session claim binding a token to the password it was issued under.
 const ClaimPasswordFingerprint = "pwf"
 
-// SessionFingerprint keys the user's password hash with the JWT secret, so a session carries proof of
-// the password it was issued under without carrying the hash. Any password change, however it is
-// made, changes it and so ends every older session.
+// SessionFingerprint changes on any password change, ending every older session.
 func SessionFingerprint(key []byte, passwordHash string) string {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte("miabi-session:" + passwordHash))
@@ -172,8 +165,7 @@ func (s *Service) Revoke(ctx context.Context, jti string) {
 	s.store.MarkRevoked(ctx, jti, time.Now().Add(TokenTTL))
 }
 
-// CreatePasswordReset issues a reset token for an email. It returns the raw
-// token (to be emailed) and never reveals whether the email exists.
+// CreatePasswordReset never reveals whether the email exists.
 func (s *Service) CreatePasswordReset(email string) (rawToken string, user *models.User, err error) {
 	user, err = s.users.FindByEmail(email)
 	if err != nil || user.IsService() {
@@ -187,13 +179,10 @@ func (s *Service) CreatePasswordReset(email string) (rawToken string, user *mode
 	return raw, user, nil
 }
 
-// EmailVerificationTTL bounds a verification link. Longer than a password reset:
-// the address may sit unread overnight, and the link grants nothing but proof the
-// recipient can read their own mail.
+// Longer than a reset: mail may sit unread overnight, and the link only proves inbox access.
 const EmailVerificationTTL = 48 * time.Hour
 
-// CreateEmailVerification issues a fresh verification link for a user, retiring
-// any outstanding one so a re-send leaves exactly one live link.
+// Retires any outstanding link so a re-send leaves exactly one live.
 func (s *Service) CreateEmailVerification(user *models.User) (rawToken string, err error) {
 	if s.verifications == nil {
 		return "", errors.New("email verification is not available")
@@ -209,8 +198,6 @@ func (s *Service) CreateEmailVerification(user *models.User) (rawToken string, e
 	return raw, nil
 }
 
-// ConfirmEmailVerification consumes a token and marks the address verified.
-// Returns the user so a caller can greet them by name.
 func (s *Service) ConfirmEmailVerification(rawToken string) (*models.User, error) {
 	if s.verifications == nil {
 		return nil, errors.New("email verification is not available")
@@ -223,8 +210,7 @@ func (s *Service) ConfirmEmailVerification(rawToken string) (*models.User, error
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
-	// Spend the token before the update: a token that verified an address must not
-	// stay usable if the write below fails and the caller retries.
+	// Spend the token first so it can't be reused if the update fails and the caller retries.
 	if err := s.verifications.MarkUsed(rec.ID); err != nil {
 		return nil, err
 	}
@@ -263,9 +249,6 @@ func (s *Service) ResetPassword(rawToken, newPassword string) (uint, error) {
 	return user.ID, s.resets.MarkUsed(rec.ID)
 }
 
-// ChangePassword verifies an authenticated user's current password and sets a new one. Distinct from the
-// token-based ResetPassword: this is the self-service path from the security page, gated by the current
-// password rather than an emailed token.
 func (s *Service) ChangePassword(userID uint, currentPassword, newPassword string) error {
 	if err := models.CheckNewPassword(newPassword); err != nil {
 		return err
@@ -286,16 +269,11 @@ func (s *Service) ChangePassword(userID uint, currentPassword, newPassword strin
 	return s.users.Update(user)
 }
 
-// CreateResetSession issues a short-lived, single-use reset-session token in Redis for the
-// forced-password-change flow: a user with an admin-set password gets this instead of a full session at
-// login, and exchanges it for a real session once they set their own.
+// A user with an admin-set password gets this instead of a full session until they set their own.
 func (s *Service) CreateResetSession(ctx context.Context, userID uint) (string, error) {
 	return s.store.CreateResetSession(ctx, userID)
 }
 
-// CompletePasswordReset consumes a reset-session token, sets the user's new
-// password, clears the must-change flag, and returns the user so the caller can
-// issue a full session. Errors when the token is invalid, expired, or already used.
 func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) (*models.User, error) {
 	// Checked before the token is consumed: a rejected password must not burn the single-use session.
 	if err := models.CheckNewPassword(newPassword); err != nil {
@@ -333,9 +311,7 @@ func hashToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// BeginTwoFactorSetup generates a fresh TOTP secret for the user, stores it encrypted but not yet
-// enabled, and returns the secret plus an otpauth:// URL the client renders as a QR code. Calling it
-// again before confirming rotates the pending secret.
+// Calling it again before confirming rotates the pending secret.
 func (s *Service) BeginTwoFactorSetup(user *models.User) (secret, url string, err error) {
 	if user.TwoFactorEnabled {
 		return "", "", ErrTwoFactorAlreadyEnabled
@@ -355,9 +331,6 @@ func (s *Service) BeginTwoFactorSetup(user *models.User) (secret, url string, er
 	return secret, url, nil
 }
 
-// ConfirmTwoFactor validates a code against the pending secret and, on success,
-// activates two-factor authentication and issues a fresh set of single-use
-// recovery codes (returned in plaintext, shown to the user once).
 func (s *Service) ConfirmTwoFactor(user *models.User, code string) (recoveryCodes []string, err error) {
 	if user.TwoFactorEnabled {
 		return nil, ErrTwoFactorAlreadyEnabled
@@ -375,8 +348,6 @@ func (s *Service) ConfirmTwoFactor(user *models.User, code string) (recoveryCode
 	return s.regenerateRecoveryCodes(user.ID)
 }
 
-// DisableTwoFactor turns off two-factor authentication after verifying a code
-// (a TOTP code or a recovery code), clearing the stored secret and any codes.
 func (s *Service) DisableTwoFactor(user *models.User, code string) error {
 	if !user.TwoFactorEnabled {
 		return ErrTwoFactorNotEnabled
@@ -392,8 +363,6 @@ func (s *Service) DisableTwoFactor(user *models.User, code string) error {
 	return s.recovery.DeleteForUser(user.ID)
 }
 
-// RegenerateRecoveryCodes verifies a current TOTP code and replaces the user's
-// recovery codes with a fresh set, returned in plaintext.
 func (s *Service) RegenerateRecoveryCodes(user *models.User, code string) ([]string, error) {
 	if !user.TwoFactorEnabled {
 		return nil, ErrTwoFactorNotEnabled
@@ -413,8 +382,6 @@ func (s *Service) RecoveryCodesRemaining(userID uint) int {
 	return int(n)
 }
 
-// VerifyLoginCode checks a second-factor input at login: it tries the TOTP code
-// first, then falls back to consuming a one-time recovery code.
 func (s *Service) VerifyLoginCode(user *models.User, code string) bool {
 	if s.validateTOTP(user, code) {
 		return true
@@ -433,8 +400,6 @@ func (s *Service) validateTOTP(user *models.User, code string) bool {
 	return twofactor.Validate(secret, code)
 }
 
-// consumeRecoveryCode validates and marks a recovery code as used. It returns
-// true only when an unused matching code was found and consumed.
 func (s *Service) consumeRecoveryCode(user *models.User, code string) bool {
 	norm := normalizeRecoveryCode(code)
 	if norm == "" {
@@ -447,8 +412,6 @@ func (s *Service) consumeRecoveryCode(user *models.User, code string) bool {
 	return s.recovery.MarkUsed(rec.ID) == nil
 }
 
-// regenerateRecoveryCodes creates a fresh set of codes, persists their hashes,
-// and returns the plaintext codes.
 func (s *Service) regenerateRecoveryCodes(userID uint) ([]string, error) {
 	plain := make([]string, 0, recoveryCodeCount)
 	records := make([]*models.TwoFactorRecoveryCode, 0, recoveryCodeCount)
@@ -473,15 +436,11 @@ func generateRecoveryCode() string {
 	return h[:5] + "-" + h[5:]
 }
 
-// normalizeRecoveryCode strips formatting so stored hashes match user input
-// regardless of dashes, spaces, or case.
 func normalizeRecoveryCode(code string) string {
 	r := strings.NewReplacer("-", "", " ", "")
 	return strings.ToLower(strings.TrimSpace(r.Replace(code)))
 }
 
-// VerifySecondFactor checks a TOTP code, or consumes a recovery code, for a user with two-factor
-// enabled. Used by step-up checks such as the admin console unlock.
 func (s *Service) VerifySecondFactor(user *models.User, code string) error {
 	if !user.TwoFactorEnabled {
 		return ErrTwoFactorNotEnabled

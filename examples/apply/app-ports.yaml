@@ -1,18 +1,4 @@
-# Exposing an application's ports declaratively from the Application kind.
-#
-# Two orthogonal per-port knobs:
-#   • externalAccess: true  → a public HTTPS URL on `<externalLabel>.<base-domain>`
-#                             served through the reverse proxy (L7). The platform
-#                             base domain must be configured by an admin.
-#   • publish: true         → bind the container port to a host port on the node
-#     hostPort: <n>           (raw TCP/UDP, like `docker -p`). Omit hostPort (or 0)
-#                             to auto-allocate from the host-port pool; set it to
-#                             request a specific port.
-#
-# `externalLabel` pins the external-access subdomain so the public URL is stable
-# across applies (otherwise Miabi generates a stable-but-random label).
-#
-#   POST /api/v1/workspaces/{ws}/apply  { "manifests": "<this file>" }
+# externalAccess gives a public HTTPS URL via the gateway; publish binds a raw host port (hostPort 0 auto-allocates).
 
 apiVersion: miabi.io/v1
 kind: Application
@@ -23,8 +9,7 @@ metadata:
     env: prod
     region: eu2
     dc: "2"
-  # annotations: descriptive free-form metadata the engine stores but never
-  # queries — links, owners, tooling hints, etc.
+  # Annotations are stored but never queried by the engine.
   annotations:
     miabi.io/owner: platform-team
     miabi.io/description: "Public storefront web tier"

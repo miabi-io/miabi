@@ -29,8 +29,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Ingest limits. MaxBatch bounds one POST; MaxSkew bounds how far a node's clock
-// may be from the manager's before its timestamps are distrusted.
+// MaxSkew bounds how far a node's clock may drift from the manager's before its timestamps are distrusted.
 const (
 	MaxBatch    = 500
 	MaxSkew     = 15 * time.Minute
@@ -38,9 +37,7 @@ const (
 	maxStreamID = 1_000_000
 )
 
-// StreamEventField is the stream entry field Goma writes each event under, and
-// the only one the consumer reads. Anything appended under another name is
-// dropped without a trace, so writers and the reader share this constant.
+// StreamEventField is the only stream field the consumer reads; events under any other name are silently dropped.
 const StreamEventField = "e"
 
 var (
@@ -55,8 +52,7 @@ type Batch struct {
 	Events  []Event `json:"events"`
 }
 
-// IngestResult reports what the manager did with a batch. Rejected events are
-// counted rather than failing the batch: one bad event must not strand the rest.
+// Rejected events are counted rather than failing the batch: one bad event must not strand the rest.
 type IngestResult struct {
 	Accepted  int  `json:"accepted"`
 	Duplicate bool `json:"duplicate"`
@@ -71,8 +67,7 @@ type RouteOwnership interface {
 	RouteNamesForNode(serverID uint) (map[string]bool, error)
 }
 
-// Ingester appends events forwarded by an edge node to the platform stream the
-// AnalyticsConsumer reads, so edge traffic converges with the manager's.
+// Ingester appends edge-node events to the platform stream so edge traffic converges with the manager's.
 type Ingester struct {
 	rdb    *redis.Client
 	owner  RouteOwnership
@@ -85,9 +80,7 @@ func NewIngester(rdb *redis.Client, owner RouteOwnership, stream string) *Ingest
 	return &Ingester{rdb: rdb, owner: owner, stream: stream, maxLen: maxStreamID, now: time.Now}
 }
 
-// acceptBatch claims a batch id and appends its events in one step. Recording the
-// id after the append would double-count a retry that crashed in between, and the
-// aggregator sums counters, so a replay is invisible in the dashboards.
+// Claim and append atomically: recording the id after the append would double-count a crashed retry.
 var acceptBatch = redis.NewScript(`
 local claimed = redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[1])
 if not claimed then return 0 end
@@ -97,8 +90,7 @@ end
 return 1
 `)
 
-// Ingest validates a node's batch and appends the events it is allowed to report.
-// Duplicate batches return the already-accepted result so the forwarder can ACK.
+// Ingest returns the already-accepted result for duplicate batches so the forwarder can ACK.
 func (i *Ingester) Ingest(ctx context.Context, serverID uint, b Batch) (IngestResult, error) {
 	switch {
 	case b.BatchID == "":
@@ -149,8 +141,7 @@ func (i *Ingester) Ingest(ctx context.Context, serverID uint, b Batch) (IngestRe
 	return res, nil
 }
 
-// skewed reports whether an event's timestamp is too far from the manager's clock
-// to file into a minute bucket. Missing timestamps are handled by the aggregator.
+// Missing timestamps are handled by the aggregator.
 func skewed(ts int64, now time.Time) bool {
 	if ts == 0 {
 		return false

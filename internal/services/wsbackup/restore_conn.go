@@ -29,12 +29,9 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// minRewriteLen keeps a short source value (a one-letter user, say) from being replaced inside unrelated
-// text. Platform-minted hosts, users and passwords are all longer.
+// Keeps a short source value from being replaced inside unrelated text; platform-minted values are longer.
 const minRewriteLen = 6
 
-// mapConnections builds the source → target rewrite for every logical database the bundle carries a source
-// connection for, whether this run created it or found it already here.
 func (r *restoreRun) mapConnections() {
 	var pairs []string
 	for _, d := range r.state.Databases {
@@ -69,8 +66,7 @@ func (r *restoreRun) mapConnections() {
 	r.conn = newRewriter(pairs)
 }
 
-// connectionPairs lists old, new for each connection value that differs between the two installs. The port
-// and database name are left out: they are usually equal, and too short to replace safely.
+// Port and database name are left out: usually equal, and too short to replace safely.
 func connectionPairs(src wsbundle.Connection, dst database.ConnectionInfo) []string {
 	var out []string
 	for _, p := range [][2]string{
@@ -85,8 +81,7 @@ func connectionPairs(src wsbundle.Connection, dst database.ConnectionInfo) []str
 	return out
 }
 
-// newRewriter orders the pairs longest source first, so a URI is replaced whole before the host and password
-// inside it are considered. Nil when there is nothing to rewrite.
+// Longest source first, so a URI is replaced whole before the host and password inside it.
 func newRewriter(pairs []string) *strings.Replacer {
 	if len(pairs) == 0 {
 		return nil

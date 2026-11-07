@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// userDefaultWorkspaceStep seeds each existing user's default workspace with the one
-// they have belonged to longest.
 func userDefaultWorkspaceStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasColumn(&userRow{}, "default_workspace_id") {
 		return nil

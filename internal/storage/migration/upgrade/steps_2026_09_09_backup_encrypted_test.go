@@ -51,8 +51,7 @@ func TestBackupEncryptedBackfill(t *testing.T) {
 		{ID: 3, Filename: "app_20260101.archive.gz.gpg"},
 		{ID: 4, Filename: ""},
 		{ID: 5, Filename: "app_20260101.sql.gz.gpg", Encrypted: true},
-		// A backup whose name merely contains ".gpg" is not an encrypted artifact:
-		// only the suffix is the tools' signal.
+		// Only the suffix is the tools' signal.
 		{ID: 6, Filename: "gpg-notes.sql.gz"},
 	}
 	if err := db.Create(&rows).Error; err != nil {
@@ -78,8 +77,7 @@ func TestBackupEncryptedBackfill(t *testing.T) {
 	}
 }
 
-// The step must be safe to run against a schema that predates the column, since
-// upgrade steps run before every deployment regardless of where it is coming from.
+// Upgrade steps run before every deployment, whatever schema it is coming from.
 func TestBackupEncryptedBackfillWithoutTheColumn(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

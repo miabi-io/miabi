@@ -36,8 +36,6 @@ func hasKey(env []string, key string) bool {
 	return false
 }
 
-// An emitted variable PINS the console's field, so a setting the manifest never mentions must emit
-// nothing at all — otherwise a fresh install silently locks the UI to a default nobody chose.
 func TestAnUnstatedSettingEmitsNoVariable(t *testing.T) {
 	m := testManifest()
 	if got := installEnv(m); len(got) != 0 {
@@ -96,8 +94,7 @@ func TestStatedSettingsReachTheControlPlane(t *testing.T) {
 	}
 }
 
-// normalizeEnv derives the refused set from what the spec emits, so this holds with no list to keep
-// in step: state a field in the spec and the raw variable is refused.
+// The refused set is derived from what the spec emits, so there is no list to keep in step.
 func TestASpecFieldIsRefusedInRawEnv(t *testing.T) {
 	m := testManifest()
 	m.Install.HostPorts = HostPortsSpec{Min: 2000, Max: 3000}
@@ -112,8 +109,7 @@ func TestASpecFieldIsRefusedInRawEnv(t *testing.T) {
 	}
 }
 
-// The escape hatch stays open: ~140 variables have no spec field, and a manifest silent about one
-// must still be able to set it through env.
+// ~140 variables have no spec field, so raw env must stay usable while the spec is silent.
 func TestRawEnvStaysAvailableWhileTheSpecIsSilent(t *testing.T) {
 	m := testManifest()
 	m.Env["MIABI_HOST_PORT_MIN"] = "4000"
@@ -123,8 +119,6 @@ func TestRawEnvStaysAvailableWhileTheSpecIsSilent(t *testing.T) {
 	}
 }
 
-// The control plane overrides the stored destination only when all three are present, so a partial
-// block pins nothing and says nothing.
 func TestBackupDestinationIsAllOrNothing(t *testing.T) {
 	m := testManifest()
 	m.Install.Backup = &BackupSpec{Destination: BackupDestination{Bucket: "b"}}
@@ -164,8 +158,7 @@ func TestInstallSettingsAreValidated(t *testing.T) {
 	}
 }
 
-// Changing one of these must recreate the control plane, or the manifest and the running stack
-// disagree until something else happens to trigger a recreate.
+// Otherwise the manifest and the running stack disagree until something else triggers a recreate.
 func TestChangingABackupFieldRecreatesTheControlPlane(t *testing.T) {
 	m := testManifest()
 	before := specHash(controlPlaneSpec(m, ContainerControlPlane, m.Images.Miabi))
@@ -176,8 +169,7 @@ func TestChangingABackupFieldRecreatesTheControlPlane(t *testing.T) {
 	}
 }
 
-// Fresh installs only. On an existing host an imported gateway would never receive the key, and its
-// routes would fail with no obvious cause.
+// On an existing host an imported gateway would never receive the key and its routes would fail.
 func TestTheGatewayKeyIsMintedOnlyWhenAsked(t *testing.T) {
 	m := testManifest()
 	if m.Gateway.Env[gomaConfigEncryptionKey] != "" {

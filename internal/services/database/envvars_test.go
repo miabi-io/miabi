@@ -181,9 +181,7 @@ func newLinkSvc(t *testing.T) (*Service, *gorm.DB) {
 	return &Service{repo: repositories.NewDatabaseRepository(db)}, db
 }
 
-// A Redis instance links to several apps; a SQL instance is refused (its apps
-// go through a logical database), and a second link may not reuse var names an
-// unprefixed SQL database already injects.
+// A SQL instance can't be linked directly, and a second link may not reuse an unprefixed SQL database's var names.
 func TestLinkInstanceAndEnvConflicts(t *testing.T) {
 	s, db := newLinkSvc(t)
 	app := uint(7)

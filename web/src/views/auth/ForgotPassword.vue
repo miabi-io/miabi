@@ -12,8 +12,6 @@ const router = useRouter()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
 
-// Reached from the sign-in page, so it wears the operator's identity like the
-// other front doors. Status is already fetched below; the brand rides along.
 const brand = ref<Brand>({})
 const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
 const brandLogo = computed(() => (theme.isDark && brand.value.logo_dark_url?.trim()) || brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
@@ -25,8 +23,7 @@ const sent = ref(false)
 const emailInput = ref<HTMLInputElement | null>(null)
 
 onMounted(async () => {
-  // Self-service reset is admin-gated; if it's off, there's nothing to do here —
-  // send the user back to the login screen.
+  // Self-service reset is admin-gated; when off, send the user back to login.
   try {
     const { data } = await authApi.status()
     if (!data.data?.password_reset_enabled) {
@@ -47,8 +44,7 @@ async function submit() {
   loading.value = true
   try {
     await authApi.forgotPassword(email.value.trim())
-    // The API always returns 200 (it never reveals whether the address exists),
-    // so we always show the same confirmation.
+    // The API always returns 200 so it never reveals whether the address exists.
     sent.value = true
   } catch (e) {
     error.value = apiErrorMessage(e, 'Could not send the reset email. Please try again.')

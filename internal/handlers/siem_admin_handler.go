@@ -34,9 +34,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SIEMAdminHandler manages external audit-streaming targets (Enterprise; gated
-// siem_stream). Streaming the audit log out is the paid capability; the in-app
-// log is unchanged and open-source.
+// The in-app audit log stays open-source; only external streaming is gated.
 type SIEMAdminHandler struct {
 	repo     *repositories.SIEMConfigRepository
 	streamer *siem.Streamer

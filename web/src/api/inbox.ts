@@ -3,12 +3,10 @@ import type { ApiResponse } from './types'
 
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 
-// How a pinned notice retires for the reader: 'once' closes it for good, 'never'
-// withholds the close control until the notice expires or is retracted.
+// 'never' withholds the close control until the notice expires or is retracted.
 export type AnnouncementDismissal = 'once' | 'never'
 
-// InboxNotification is one per-user bell/inbox item — the delivery of an alert or
-// a platform announcement. workspace_id is 0 for platform-scoped items.
+// workspace_id is 0 for platform-scoped items.
 export interface InboxNotification {
   id: number
   workspace_id: number

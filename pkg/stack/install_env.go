@@ -23,18 +23,7 @@ import (
 	"strconv"
 )
 
-// installEnv renders the settings only the kinded document models into the control plane's
-// environment. Everything here already has a variable and an existing "the environment pins it, the
-// console owns the rest" mechanism, so the manifest needs no reconciler of its own — it compiles.
-//
-// A field the manifest does not state emits NOTHING. An emitted variable pins the console's field
-// (registryserver.Locks, platformbackup's EnvLocked, the cluster's external-access pins), so writing
-// a zero value would lock the UI to a default nobody asked for.
-//
-// Emitting a key here also makes it un-settable through `env:` for free: normalizeEnv derives the
-// refused set by building this spec with Env nil and reading back what it emits. So a manifest that
-// states spec.networking.hostPorts.min refuses a raw MIABI_HOST_PORT_MIN — the two can never
-// disagree — while one that stays silent leaves the raw variable available as the escape hatch.
+// An unstated field emits nothing, since emitted vars pin console fields; stated ones refuse the raw variable.
 func installEnv(m *Manifest) []string {
 	in := m.Install
 	var env []string
@@ -94,8 +83,7 @@ func installEnv(m *Manifest) []string {
 		flag("MIABI_PLATFORM_BACKUP_INCLUDE_TENANT_DATA", b.IncludeTenantData)
 	}
 
-	// Sorted for the same reason the rest of the spec is: Go map and slice order would otherwise
-	// vary, and an unstable specHash recreates the whole stack on every converge.
+	// An unstable order would change specHash and recreate the whole stack on every converge.
 	sort.Strings(env)
 	return env
 }

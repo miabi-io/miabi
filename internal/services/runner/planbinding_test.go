@@ -46,8 +46,7 @@ func equal(a, b []string) bool {
 	return true
 }
 
-// A plan offers a slice of the shared pool; the workspace's own runners are never part of that
-// bargain, so they survive whatever the plan lists.
+// A plan describes the shared pool; the workspace's own runners survive whatever it lists.
 func TestOfferedByPlanKeepsOwnedRunners(t *testing.T) {
 	ws := uint(1)
 	all := []models.Runner{
@@ -67,8 +66,7 @@ func TestOfferedByPlanKeepsOwnedRunners(t *testing.T) {
 		t.Errorf("empty binding = %v, want %v", names(got), want)
 	}
 
-	// A plan naming a runner that no longer exists leaves the workspace its own machines rather
-	// than nothing at all.
+	// A plan naming a deleted runner leaves the workspace its own machines rather than nothing.
 	got = offeredByPlan(all, quota.RunnerBinding{Allowed: []string{"deleted-runner"}})
 	if want := []string{"mine"}; !equal(names(got), want) {
 		t.Errorf("stale binding = %v, want %v", names(got), want)

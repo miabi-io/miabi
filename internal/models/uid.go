@@ -24,16 +24,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// UIDModel is an embeddable mixin giving a resource a stable UUIDv7 alongside its uint primary
-// key: the PK stays the internal handle, the uid is the portable external one (Terraform id,
-// GitOps/backup reference, non-enumerable public handle). Embed it anonymously.
+// UIDModel adds a stable UUIDv7 as the portable, non-enumerable external handle beside the uint PK.
 type UIDModel struct {
 	UID string `json:"uid" gorm:"type:uuid;uniqueIndex;not null;default:gen_random_uuid()"`
 }
 
-// BeforeCreate assigns a UUIDv7 when one was not supplied. A caller may preset
-// UID (e.g. import/restore keeping an incoming identity); only an empty value is
-// generated.
+// A preset UID (import/restore) is kept; only an empty value is generated.
 func (m *UIDModel) BeforeCreate(*gorm.DB) error {
 	if m.UID == "" {
 		v, err := uuid.NewV7()

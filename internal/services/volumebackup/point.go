@@ -34,24 +34,19 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 )
 
-// PointInfoSchema is the descriptor's payload version. A reader refuses a schema it does not
-// know rather than guessing at fields, as backup.SetInfoSchema does.
+// A reader refuses an unknown schema rather than guessing at fields.
 const PointInfoSchema = 1
 
 // PointInfoKind tells a volume descriptor apart from a database set's in a shared bucket.
 const PointInfoKind = "volume"
 
 var (
-	// ErrPassphraseRequired means the archive is sealed and the workspace has no passphrase
-	// left to open it with.
 	ErrPassphraseRequired = errors.New("this recovery point is encrypted and the workspace has no backup passphrase to open it")
 	// ErrNotCompleted refuses to verify a backup that never produced an archive.
 	ErrNotCompleted = errors.New("only a completed backup can be verified")
 )
 
-// PointInfo is the CLEARTEXT descriptor written beside a volume recovery point, so a bucket can
-// be read without the passphrase or the platform that wrote it. It carries the shape of the
-// data and never any of it; the envelope is ciphertext. See backup.SetInfo.
+// PointInfo is cleartext so a bucket is readable without the passphrase; it carries shape, never data.
 type PointInfo struct {
 	Schema int    `json:"schema"`
 	Kind   string `json:"kind"`
@@ -70,8 +65,6 @@ type PointInfo struct {
 	Filename  string `json:"filename"`
 }
 
-// PointPrefix is where a recovery point's objects live: one directory per point, under one
-// per volume, beneath the workspace's volume backup path.
 func PointPrefix(base, volume, ref string) string {
 	return path.Join(strings.Trim(strings.TrimSpace(base), "/"), volume, ref)
 }
@@ -99,10 +92,7 @@ func (s *Service) Sealing(workspaceID uint) bool {
 	return err == nil && pass != ""
 }
 
-// archiveKeyPassphrase returns what the helper needs to decrypt b's archive: the data key from
-// its envelope, the workspace passphrase for a sealed archive with no envelope, or "" for a
-// cleartext one. Keyed off the artifact, so an archive taken before a passphrase existed still
-// restores without one.
+// Keyed off the artifact so an archive taken before a passphrase existed still restores without one.
 func (s *Service) archiveKeyPassphrase(b *models.VolumeBackup) (string, error) {
 	if !backup.IsEncryptedArtifact(b.Filename) {
 		return "", nil
@@ -124,10 +114,7 @@ func (s *Service) archiveKeyPassphrase(b *models.VolumeBackup) (string, error) {
 	return key, nil
 }
 
-// finishPoint runs what makes a completed archive a recovery point: the descriptor, an
-// immediate verification, the owning schedule's retention and the alert resolution.
-// readBack is the outcome of the tool reading the archive back right after the run ("" when
-// not done); a failure there outranks the bucket check, which only sees that the object exists.
+// A read-back failure outranks the bucket check, which only sees that the object exists.
 func (s *Service) finishPoint(ctx context.Context, vol *models.Volume, b *models.VolumeBackup, passphrase, readBack, readBackErr string) {
 	// Best-effort: failing here would discard a point whose archive is already safely stored.
 	if err := s.writeInfo(ctx, b, vol); err != nil {
@@ -196,10 +183,7 @@ func (s *Service) writeInfo(ctx context.Context, b *models.VolumeBackup, vol *mo
 	return store.Put(ctx, path.Join(strings.Trim(b.S3Path, "/"), backup.SetInfoObject), body)
 }
 
-// Verify re-checks a completed backup against the bucket: the archive is still there, still
-// the size it was stored at, and a sealed point's envelope still opens with the workspace
-// passphrase. It does not read the archive back — that costs the size of the backup every
-// time, which is how verification becomes the thing people switch off.
+// Verify doesn't read the archive back: that costs a full download each time and gets verification switched off.
 func (s *Service) Verify(ctx context.Context, b *models.VolumeBackup) (*backup.VerifyResult, error) {
 	if b.Status != models.BackupCompleted || b.Filename == "" {
 		return nil, ErrNotCompleted
@@ -293,8 +277,7 @@ func (s *Service) recordVerification(b *models.VolumeBackup, res *backup.VerifyR
 	}
 }
 
-// SetPinned pins or unpins a recovery point. Only points take part in retention, so pinning a
-// plain archive is refused rather than silently meaning nothing.
+// Only points take part in retention, so pinning a plain archive is refused rather than meaning nothing.
 func (s *Service) SetPinned(b *models.VolumeBackup, pinned bool) error {
 	if !b.IsPoint() {
 		return errors.New("only a recovery point can be pinned")
@@ -303,8 +286,7 @@ func (s *Service) SetPinned(b *models.VolumeBackup, pinned bool) error {
 	return s.repo.Update(b)
 }
 
-// Prune enforces retention over a volume's recovery points: keep at most maxPoints, and drop
-// any older than retentionDays. Returns the number removed. Plain archives are never touched.
+// Plain archives are never touched by retention.
 func (s *Service) Prune(ctx context.Context, volumeID uint, maxPoints, retentionDays int) (int, error) {
 	if maxPoints <= 0 && retentionDays <= 0 {
 		return 0, nil
@@ -327,10 +309,7 @@ func (s *Service) Prune(ctx context.Context, volumeID uint, maxPoints, retention
 	return removed, nil
 }
 
-// prunable picks which points retention removes, given them newest first. The rules match
-// backup.PruneSets: a pinned point is never pruned and does not occupy a slot; the newest
-// completed point always survives, so a mistyped policy cannot leave a volume with nothing;
-// and a run still in flight is left alone.
+// Pinned points take no slot, the newest completed point always survives, and in-flight runs are left alone.
 func prunable(points []models.VolumeBackup, maxPoints, retentionDays int, now time.Time) []int {
 	keep := -1
 	for i := range points {
@@ -363,9 +342,7 @@ func prunable(points []models.VolumeBackup, maxPoints, retentionDays int, now ti
 	return out
 }
 
-// RewrapSets re-seals every sealed volume point in a workspace from one passphrase to the next,
-// and refreshes the descriptors that carry the envelope. Named to satisfy
-// backupsettings.EnvelopeRotator alongside the database sets.
+// Named to satisfy backupsettings.EnvelopeRotator alongside the database sets.
 func (s *Service) RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error) {
 	if oldPassphrase == "" || newPassphrase == "" || oldPassphrase == newPassphrase {
 		return 0, nil
@@ -398,8 +375,7 @@ func (s *Service) RewrapSets(workspaceID uint, oldPassphrase, newPassphrase stri
 	return rewrapped, nil
 }
 
-// SealedSetCount reports how many volume points in a workspace are sealed, so the passphrase
-// that opens them cannot be discarded.
+// Lets the passphrase that opens sealed points be protected from being discarded.
 func (s *Service) SealedSetCount(workspaceID uint) (int, error) {
 	sealed, err := s.repo.ListSealed(workspaceID)
 	return len(sealed), err
@@ -415,8 +391,7 @@ func (s *Service) ListEnabledSchedules() ([]models.VolumeBackupSchedule, error) 
 	return s.repo.ListEnabledSchedules()
 }
 
-// RunSchedule takes one scheduled recovery point. Retention runs when the point lands, in
-// whichever process runs it, because only then is there a completed point to keep.
+// Retention runs when the point lands, because only then is there a completed point to keep.
 func (s *Service) RunSchedule(ctx context.Context, workspaceID, scheduleID uint) error {
 	sched, err := s.repo.FindScheduleInWorkspace(workspaceID, scheduleID)
 	if err != nil {

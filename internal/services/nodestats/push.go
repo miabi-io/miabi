@@ -32,20 +32,17 @@ import (
 const (
 	// pushStaleAfter is three missed 15s pushes: past it the node falls back to a container sample.
 	pushStaleAfter = 90 * time.Second
-	// persistEvery bounds servers writes from pushes to about one per node per minute, so a fleet
-	// pushing every 15s does not quadruple the write rate.
+	// Bounds server writes to about one per node per minute despite 15s pushes.
 	persistEvery = time.Minute
 	// Movement that is written straight away rather than waiting out persistEvery.
 	usageDriftCPUPoints = 10.0
 	usageDriftMemPct    = 5
 )
 
-// ErrInvalidReport is returned for a pushed report whose figures are nonsense. It is rejected rather
-// than clamped so a broken agent shows as unmeasured instead of as an idle node.
+// Rejected rather than clamped so a broken agent shows as unmeasured instead of idle.
 var ErrInvalidReport = errors.New("invalid host stats report")
 
-// SetAgentStats toggles use of agent-pushed readings (MIABI_NODE_STATS_AGENT). Off, pushes are
-// ignored and every remote node is sampled by container as before.
+// SetAgentStats toggles agent-pushed readings (MIABI_NODE_STATS_AGENT); off, remote nodes are sampled by container.
 func (s *Service) SetAgentStats(on bool) {
 	s.mu.Lock()
 	s.agentOn = on
@@ -67,8 +64,7 @@ func ValidateReport(r hoststats.Report) error {
 	return nil
 }
 
-// Ingest records a report pushed by srv's agent, stamped with the control plane's receipt time. The
-// node's usage columns are written at most once per persistEvery, or sooner on real movement.
+// Ingest writes usage columns at most once per persistEvery, or sooner on real movement.
 func (s *Service) Ingest(srv *models.Server, r hoststats.Report) error {
 	if err := ValidateReport(r); err != nil {
 		return err

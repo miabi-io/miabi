@@ -58,14 +58,12 @@ type DatabaseHandler struct {
 // SetPlacer wires location placement for database creates.
 func (h *DatabaseHandler) SetPlacer(p *Placer) { h.placer = p }
 
-// NewDatabaseHandler builds the handler. cluster may be nil (never cluster mode),
-// in which case the co-location guards below always apply.
+// cluster may be nil, in which case the co-location guards always apply.
 func NewDatabaseHandler(svc *database.Service, apps *application.Service, forward *portforward.Service, secrets *secret.Service, users *repositories.UserRepository, auditLog *audit.Logger, cluster ClusterCap) *DatabaseHandler {
 	return &DatabaseHandler{svc: svc, apps: apps, forward: forward, secrets: secrets, users: users, audit: auditLog, cluster: cluster}
 }
 
-// reach refuses attaching an app to a database it cannot address: such an attach deploys fine and
-// only fails at runtime.
+// Such an attach deploys fine and only fails at runtime.
 func (h *DatabaseHandler) reach(app *models.Application, inst *models.DatabaseInstance) error {
 	return h.placer.reach(
 		placement.Site{Kind: "application", Name: app.Name, ClusterID: app.ClusterID, ServerID: app.ServerID},
@@ -84,11 +82,9 @@ type CreateDatabaseRequest struct {
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
 		SizeMB   int  `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
-		// StorageClass is the operator-registered disk the data volume lands on; empty uses the
-		// workspace's default class. Fixed at creation, like a volume's.
+		// Empty uses the workspace's default class; fixed at creation.
 		StorageClass string `json:"storage_class"`
-		// MemoryMB and CPUCores limit the container (0 = unlimited, or the engine's default size when the
-		// plan caps the database budget).
+		// 0 = unlimited, or the engine's default size when the plan caps the database budget.
 		MemoryMB int     `json:"memory_mb" min:"0"`
 		CPUCores float64 `json:"cpu_cores" min:"0"`
 		// Size names a database size (Enterprise) instead of memory and CPU; see GET /database-sizes.
@@ -96,8 +92,7 @@ type CreateDatabaseRequest struct {
 	} `json:"body"`
 }
 
-// ResizeDatabaseRequest sets an instance's container limits, by memory and CPU or by a named size. The instance
-// restarts to apply them.
+// The instance restarts to apply them.
 type ResizeDatabaseRequest struct {
 	Body struct {
 		MemoryMB int     `json:"memory_mb" min:"0"`
@@ -121,8 +116,6 @@ func (h *DatabaseHandler) Sizes(c *okapi.Context) error {
 	return ok(c, offer)
 }
 
-// Create provisions a new database server instance (the container is brought up
-// asynchronously by the worker).
 func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	var sizeBytes int64
@@ -166,8 +159,6 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 	return created(c, inst)
 }
 
-// Engines returns the resolved default image/version per engine (from the
-// deployment-config catalog), so the create form prefills the configured tags.
 func (h *DatabaseHandler) Engines(c *okapi.Context) error {
 	return ok(c, h.svc.EngineDefaults())
 }
@@ -190,9 +181,6 @@ func (h *DatabaseHandler) Get(c *okapi.Context) error {
 	return ok(c, inst)
 }
 
-// Status returns the instance's live status (stored lifecycle status plus the
-// container's real-time state), for the detail page to poll while provisioning,
-// upgrading, or restarting — so the user sees the outcome without a refresh.
 func (h *DatabaseHandler) Status(c *okapi.Context) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -201,9 +189,6 @@ func (h *DatabaseHandler) Status(c *okapi.Context) error {
 	return ok(c, h.svc.LiveStatus(c.Request().Context(), inst))
 }
 
-// Events streams the instance's live status — provisioning progress, upgrade
-// phases, and start/stop transitions — over SSE, so the detail page reflects
-// changes the moment they happen instead of polling.
 func (h *DatabaseHandler) Events(c *okapi.Context) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -214,9 +199,6 @@ func (h *DatabaseHandler) Events(c *okapi.Context) error {
 	})
 }
 
-// WorkspaceEvents streams lifecycle status changes for every database instance in
-// the workspace over SSE, so the Databases list updates rows live (one connection)
-// instead of polling.
 func (h *DatabaseHandler) WorkspaceEvents(c *okapi.Context) error {
 	return h.svc.StreamWorkspaceStatus(c.Request().Context(), middlewares.WorkspaceID(c), func(e eventbus.Event) error {
 		return c.SSESendJSON(e)
@@ -237,9 +219,7 @@ func (h *DatabaseHandler) Credentials(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// OpenForward starts an ephemeral, source-IP-gated TCP forward to the instance
-// so an external DB client can connect without publishing a host port. Returns
-// the connection endpoint and its expiry (admin only).
+// Source-IP-gated so an external client can connect without publishing a host port.
 func (h *DatabaseHandler) OpenForward(c *okapi.Context) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -295,8 +275,6 @@ func (h *DatabaseHandler) CloseForward(c *okapi.Context) error {
 	return message(c, "forward closed")
 }
 
-// SyncSizes refreshes the instance's and its databases' on-disk sizes by
-// querying the engine (instance must be running).
 func (h *DatabaseHandler) SyncSizes(c *okapi.Context) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -376,9 +354,6 @@ func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) e
 	return ok(c, updated)
 }
 
-// UpgradeOptions returns the suggested upgrade targets + affected apps for an
-// instance, or — when ?version= is supplied — the resolved plan for that target
-// (path, major, apps), surfacing downgrade/same-version errors as 400s.
 func (h *DatabaseHandler) UpgradeOptions(c *okapi.Context) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -406,8 +381,6 @@ type UpgradeDatabaseRequest struct {
 	} `json:"body"`
 }
 
-// Upgrade starts a background version upgrade and returns the instance marked
-// "upgrading"; clients poll Get for progress.
 func (h *DatabaseHandler) Upgrade(c *okapi.Context, req *UpgradeDatabaseRequest) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -468,10 +441,8 @@ func (h *DatabaseHandler) Delete(c *okapi.Context) error {
 
 type CreateLogicalDatabaseRequest struct {
 	Body struct {
-		Name string `json:"name" required:"true"`
-		// ApplicationID optionally attaches the database to an app: its
-		// connection is injected as env vars and the app redeploys.
-		ApplicationID *uint `json:"application_id"`
+		Name          string `json:"name" required:"true"`
+		ApplicationID *uint  `json:"application_id"`
 	} `json:"body"`
 }
 
@@ -487,8 +458,6 @@ func (h *DatabaseHandler) ListDatabases(c *okapi.Context) error {
 	return ok(c, dbs)
 }
 
-// CreateDatabase provisions a logical database on the instance and, when an app
-// is given, injects its connection into the app's env and redeploys it.
 func (h *DatabaseHandler) CreateDatabase(c *okapi.Context, req *CreateLogicalDatabaseRequest) error {
 	inst, err := h.load(c)
 	if err != nil {
@@ -546,9 +515,7 @@ func (h *DatabaseHandler) DeleteDatabase(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("database not found")
 	}
-	// Verify the logical database actually belongs to the instance in the URL,
-	// not just to the same workspace — otherwise the {id} instance segment is
-	// unverified and a user could delete a logical DB of a different instance.
+	// Check the instance in the URL too, or a user could delete a logical DB of another instance.
 	db, err := h.svc.GetDatabase(inst.WorkspaceID, h.dbID(c))
 	if err != nil || db.InstanceID != inst.ID {
 		return c.AbortNotFound("logical database not found")
@@ -560,8 +527,7 @@ func (h *DatabaseHandler) DeleteDatabase(c *okapi.Context) error {
 	return message(c, "database deleted")
 }
 
-// EnableReadOnlyUser gives a logical database a read-only user (Postgres): SELECT on every table, now
-// and future. Idempotent: on a database that has one it re-applies the grants.
+// Idempotent: on a database that has one it re-applies the grants.
 func (h *DatabaseHandler) EnableReadOnlyUser(c *okapi.Context) error {
 	return h.setReadOnly(c, true)
 }
@@ -614,8 +580,7 @@ func (h *DatabaseHandler) ListByApp(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// AppDatabaseConnection reveals the connection for one of the app's databases —
-// the app's own scoped credentials, not the instance admin credentials.
+// Uses the app's own scoped credentials, not the instance admin ones.
 func (h *DatabaseHandler) AppDatabaseConnection(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, err := appParamInt(c)
@@ -630,22 +595,16 @@ func (h *DatabaseHandler) AppDatabaseConnection(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// AttachDatabaseRequest links an existing logical database (or, for Redis, an
-// instance) to an app.
 type AttachDatabaseRequest struct {
 	Body struct {
-		// EnvPrefix optionally namespaces the injected connection vars
-		// (e.g. "ANALYTICS" -> ANALYTICS_DB_URL); empty = DB_*.
+		// Empty means DB_*.
 		EnvPrefix string `json:"env_prefix"`
-		// EnvMap renames the var of a connection field (url, database_url, host,
-		// port, name, user, password); an empty name skips the field.
+		// An empty name skips the field.
 		EnvMap map[string]string `json:"env_map"`
 	} `json:"body"`
 }
 
-// AttachToApp links an existing logical database (by dbID) to the app and
-// injects its connection. The database must be on the app's node and not
-// already owned by a different app.
+// The database must be on the app's node and not already owned by a different app.
 func (h *DatabaseHandler) AttachToApp(c *okapi.Context, req *AttachDatabaseRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, err := appParamInt(c)
@@ -687,8 +646,6 @@ func (h *DatabaseHandler) AttachToApp(c *okapi.Context, req *AttachDatabaseReque
 	return ok(c, map[string]any{"database": db, "env_injected": injected, "env_vars": env.Vars})
 }
 
-// DetachFromApp unlinks a logical database from the app and removes the env
-// vars its attachment injected.
 func (h *DatabaseHandler) DetachFromApp(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, err := appParamInt(c)
@@ -715,8 +672,7 @@ func (h *DatabaseHandler) DetachFromApp(c *okapi.Context) error {
 	return message(c, "database detached")
 }
 
-// LinkInstanceToApp links a whole instance (Redis) to the app and injects its
-// connection. Unlike a logical database, one instance can serve many apps.
+// Unlike a logical database, one instance can serve many apps.
 func (h *DatabaseHandler) LinkInstanceToApp(c *okapi.Context, req *AttachDatabaseRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, err := appParamInt(c)
@@ -755,8 +711,6 @@ func (h *DatabaseHandler) LinkInstanceToApp(c *okapi.Context, req *AttachDatabas
 	return ok(c, map[string]any{"link": link, "env_injected": injected, "env_vars": env.Vars})
 }
 
-// UnlinkInstanceFromApp removes the app's link to an instance and the env vars
-// it injected.
 func (h *DatabaseHandler) UnlinkInstanceFromApp(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, err := appParamInt(c)
@@ -795,9 +749,7 @@ func (h *DatabaseHandler) AppInstanceConnection(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// injectIntoApp writes a link's connection onto the app, drops vars a previous
-// link of the same database injected but this one no longer does, and flags
-// the app for redeploy. d is nil for an instance link.
+// d is nil for an instance link.
 func (h *DatabaseHandler) injectIntoApp(app *models.Application, inst *models.DatabaseInstance, d *models.Database, env database.EnvLink, previous []string) bool {
 	vars, err := h.svc.AppEnv(inst, d, env.Prefix, env.Map)
 	if err != nil {
@@ -815,8 +767,6 @@ func (h *DatabaseHandler) injectIntoApp(app *models.Application, inst *models.Da
 	return true
 }
 
-// sanitizeEnvPrefix normalizes a user-supplied prefix to an upper-snake token
-// ([A-Z0-9_], no leading/trailing underscore); invalid input collapses to "".
 func sanitizeEnvPrefix(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToUpper(strings.TrimSpace(s)) {
@@ -830,8 +780,6 @@ func sanitizeEnvPrefix(s string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-// removeFromApp deletes the env vars a link injected and flags the app for
-// redeploy.
 func (h *DatabaseHandler) removeFromApp(workspaceID, appID uint, keys []string) {
 	app, err := h.apps.Get(workspaceID, appID)
 	if err != nil {

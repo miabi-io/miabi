@@ -40,14 +40,11 @@ const (
 // Backup is a single backup run of a managed database.
 type Backup struct {
 	ID uint `json:"id" gorm:"primaryKey"`
-	// Number is the per-database sequential backup number, independent of the global ID.
-	// Assigned in BeforeCreate; the composite unique index keeps it gap-free per database
-	// and prevents duplicates.
+	// Assigned in BeforeCreate; the composite unique index keeps it gap-free per database.
 	Number      int  `json:"number" gorm:"index:idx_backup_db_number,unique;not null;default:0"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index;not null"`
 	DatabaseID  uint `json:"database_id" gorm:"index:idx_backup_db_number,unique;index;not null"`
-	// SetID names the recovery point this backup belongs to, when it was taken as
-	// part of one. Nil for an ordinary single-database backup.
+	// Nil for an ordinary single-database backup.
 	SetID        *uint        `json:"set_id,omitempty" gorm:"index"`
 	Engine       DBEngine     `json:"engine"`
 	ServerID     uint         `json:"server_id" gorm:"index;not null;default:0"` // node the backup ran on
@@ -92,8 +89,6 @@ func (b *Backup) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// BackupSchedule runs backups of a database on a cron schedule. When
-// Destination is "s3", the S3* fields hold the target (secret key encrypted).
 type BackupSchedule struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint   `json:"workspace_id" gorm:"index;not null"`

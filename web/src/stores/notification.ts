@@ -8,14 +8,11 @@ interface Notification {
   id: number
   title: string
   message: string
-  // detail is an optional secondary line shown muted under the message (e.g. the
-  // envelope's raw `error` when it adds detail beyond `message`).
   detail?: string
   type: NotificationType
 }
 
-// NotifyOptions configures a toast beyond its message. Passing a bare string as
-// the options arg is shorthand for { title } (back-compat with the old signature).
+// A bare string as the options arg is shorthand for { title } (back-compat).
 interface NotifyOptions {
   title?: string
   detail?: string
@@ -50,9 +47,6 @@ export const useNotificationStore = defineStore('notification', () => {
   function error(message: string, opts?: string | NotifyOptions) { show(message, 'error', 6000, opts) }
   function info(message: string, opts?: string | NotifyOptions) { show(message, 'info', 4000, opts) }
 
-  // apiError shows an error toast for a rejected request: a status-derived title,
-  // the envelope's human `message`, and — when it adds detail — the raw `error` as
-  // a muted secondary line.
   function apiError(err: unknown, fallback?: string) {
     const { title, message, detail } = decodeApiError(err, fallback)
     error(message, { title, detail })

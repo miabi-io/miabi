@@ -33,21 +33,14 @@ const (
 	ServerStatusUnknown ServerStatus = "unknown"
 )
 
-// ServerAccessMode is how the control plane reaches a node's Docker engine.
-// Distinct from ServerConnectivity (how the proxy reaches apps).
+// ServerAccessMode is how the control plane reaches a node's Docker engine, distinct from ServerConnectivity.
 type ServerAccessMode string
 
 const (
-	// AccessSocket: a local/Unix (or custom) Docker host where the control plane
-	// runs (DockerEndpoint, e.g. unix:///var/run/docker.sock). The control-plane
-	// node uses this.
 	AccessSocket ServerAccessMode = "socket"
-	// AccessAgent: the node's agent dials in over a tunnel (NAT-friendly, no
-	// inbound ports on the node). DockerEndpoint is unused.
+	// NAT-friendly: no inbound ports on the node; DockerEndpoint is unused.
 	AccessAgent ServerAccessMode = "agent"
-	// AccessAPI: the control plane dials the node's Docker API over TCP
-	// (DockerEndpoint = tcp://host:2376), optionally with TLS/mTLS.
-	AccessAPI ServerAccessMode = "api"
+	AccessAPI   ServerAccessMode = "api"
 )
 
 // ValidAccessMode reports whether m is a known access mode.
@@ -63,9 +56,7 @@ func ValidAccessMode(m ServerAccessMode) bool {
 type ServerRole string
 
 const (
-	// RoleManager is the control-plane node that runs Miabi itself (the
-	// platform manager). There is exactly one, and it reaches Docker via its local
-	// socket.
+	// There is exactly one manager, and it reaches Docker via its local socket.
 	RoleManager ServerRole = "manager"
 	// RoleNode is a worker node that only runs workloads.
 	RoleNode ServerRole = "node"
@@ -75,11 +66,8 @@ const (
 type ServerConnectivity string
 
 const (
-	// ConnectivityEdgeGateway: the node runs its own gateway (public ingress, its
-	// own TLS) that pulls its routes from the control plane's HTTP provider.
 	ConnectivityEdgeGateway ServerConnectivity = "edge-gateway"
-	// ConnectivityCluster: the node has no gateway of its own; its cluster's gateway serves its apps, over
-	// the overlay for a swarm member. The control-plane node is one too.
+	// Served over the overlay for a swarm member; the control-plane node is one too.
 	ConnectivityCluster ServerConnectivity = "cluster"
 )
 
@@ -93,42 +81,31 @@ func (s *Server) Label() string {
 	return s.Name
 }
 
-// Server is a Docker host (node). The local node runs alongside the control
-// plane; remote nodes run a `miabi agent` that dials in and exposes their
-// Docker engine over a tunnel.
 type Server struct {
 	UIDModel
-	ID           uint               `json:"id" gorm:"primaryKey"`
-	Name         string             `json:"name" gorm:"uniqueIndex;not null"`
-	DisplayName  string             `json:"display_name"`
-	ClusterID    uint               `json:"cluster_id" gorm:"index;not null;default:0"`
-	Connectivity ServerConnectivity `json:"connectivity" gorm:"not null;default:cluster"`
-	AccessMode   ServerAccessMode   `json:"access_mode" gorm:"not null;default:agent"`
-	// DockerEndpoint is the Docker host for non-agent modes: unix://… (socket) or
-	// tcp://host:2376 (api). Unused for agent.
-	DockerEndpoint string `json:"docker_endpoint"`
-	IsLocal        bool   `json:"is_local" gorm:"not null;default:false"`
-	// Role is the node's cluster role: "manager" for the control-plane node,
-	// "node" for workers.
-	Role       ServerRole   `json:"role" gorm:"not null;default:node"`
-	Status     ServerStatus `json:"status" gorm:"not null;default:unknown"`
-	LastSeenAt *time.Time   `json:"last_seen_at"`
+	ID             uint               `json:"id" gorm:"primaryKey"`
+	Name           string             `json:"name" gorm:"uniqueIndex;not null"`
+	DisplayName    string             `json:"display_name"`
+	ClusterID      uint               `json:"cluster_id" gorm:"index;not null;default:0"`
+	Connectivity   ServerConnectivity `json:"connectivity" gorm:"not null;default:cluster"`
+	AccessMode     ServerAccessMode   `json:"access_mode" gorm:"not null;default:agent"`
+	DockerEndpoint string             `json:"docker_endpoint"`
+	IsLocal        bool               `json:"is_local" gorm:"not null;default:false"`
+	Role           ServerRole         `json:"role" gorm:"not null;default:node"`
+	Status         ServerStatus       `json:"status" gorm:"not null;default:unknown"`
+	LastSeenAt     *time.Time         `json:"last_seen_at"`
 
-	// api (TCP) TLS material — optional (plaintext when empty). PEM-encoded; the
-	// private key is encrypted at rest and never serialized.
+	// Plaintext when empty; the private key is encrypted at rest and never serialized.
 	TLSCACert string `json:"-" gorm:"type:text"`
 	TLSCert   string `json:"-" gorm:"type:text"`
 	TLSKeyEnc string `json:"-" gorm:"column:tls_key_enc;type:text"`
 	// TLSEnabled is a transient flag for responses (whether TLS material is set).
 	TLSEnabled bool `json:"tls_enabled" gorm:"-"`
 
-	// Remote-node fields.
-	// Address is the host/IP the reverse proxy uses to reach this node's
-	// published app ports (e.g. "10.0.0.7").
+	// Host/IP the reverse proxy uses to reach this node's published app ports.
 	Address string `json:"address,omitempty"`
 
-	// TokenHash is the SHA-256 of the agent join token; the plaintext is shown
-	// once at creation and never stored.
+	// The plaintext is shown once at creation and never stored.
 	TokenHash       string `json:"-" gorm:"index"`
 	GatewayTokenEnc string `json:"-"`
 	// GatewayDeployedAt is when the node's gateway was last deployed (display).
@@ -154,27 +131,19 @@ type Server struct {
 	SwarmRole               string                 `json:"swarm_role,omitempty" gorm:"-"`
 	// SwarmAvailability is the scheduling availability: active | pause | drain.
 	SwarmAvailability string `json:"swarm_availability,omitempty" gorm:"-"`
-	// SwarmState is the swarm-reported reachability: ready | down | unknown |
-	// disconnected.
-	SwarmState string `json:"swarm_state,omitempty" gorm:"-"`
+	SwarmState        string `json:"swarm_state,omitempty" gorm:"-"`
 	// InSwarm reports whether this node is currently a member of the swarm.
 	InSwarm bool `json:"in_swarm" gorm:"-"`
 
-	// Capacity as DOCKER reports it, refreshed by the node capacity sweep. Docker's figures are
-	// cgroup-aware, so they describe the node even when it is itself a container or a limited VM —
-	// unlike /proc, which describes the machine underneath.
-	CPUCores    int   `json:"cpu_cores" gorm:"not null;default:0"`
-	MemoryBytes int64 `json:"memory_bytes" gorm:"not null;default:0"`
-	// StorageBytes and StorageFreeBytes size the filesystem holding Docker's data root — the disk
-	// images, containers and unclassed volumes actually consume.
+	// Docker's figures are cgroup-aware, so unlike /proc they describe the node even inside a container or limited VM.
+	CPUCores         int   `json:"cpu_cores" gorm:"not null;default:0"`
+	MemoryBytes      int64 `json:"memory_bytes" gorm:"not null;default:0"`
 	StorageBytes     int64 `json:"storage_bytes" gorm:"not null;default:0"`
 	StorageFreeBytes int64 `json:"storage_free_bytes" gorm:"not null;default:0"`
-	// CapacityMeasuredAt is nil on a node never measured, which is not the same as a node with no
-	// capacity: totals skip it rather than adding zero.
+	// nil means never measured, not zero capacity: totals skip it rather than adding zero.
 	CapacityMeasuredAt *time.Time `json:"capacity_measured_at,omitempty"`
 
-	// Last measured usage. Recorded only when the sample describes THIS node; a node whose /proc
-	// reports its physical host is left unmeasured rather than contributing another machine's load.
+	// A node whose /proc reports its physical host is left unmeasured rather than counting another machine's load.
 	CPUPercent      float64    `json:"cpu_percent" gorm:"not null;default:0"`
 	MemUsedBytes    int64      `json:"mem_used_bytes" gorm:"not null;default:0"`
 	UsageMeasuredAt *time.Time `json:"usage_measured_at,omitempty"`
@@ -183,14 +152,10 @@ type Server struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// GatewayUpdateProgress is the live state of a safe edge-gateway update: the new image runs
-// as a throwaway test container with the same config and volumes, is observed for a grace
-// period, then promoted to replace the live gateway. Mirrors UpgradeProgress.
+// GatewayUpdateProgress: the new image runs as a throwaway test container and is observed before promotion.
 type GatewayUpdateProgress struct {
 	FromImage string `json:"from_image"`
 	ToImage   string `json:"to_image"`
-	// Phase: queued | pulling | testing | observing | promoting | verifying |
-	// done | failed.
-	Phase string `json:"phase"`
-	Error string `json:"error,omitempty"`
+	Phase     string `json:"phase"`
+	Error     string `json:"error,omitempty"`
 }

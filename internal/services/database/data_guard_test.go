@@ -59,8 +59,7 @@ func guardedInstance() *models.DatabaseInstance {
 	}
 }
 
-// Starting an instance whose data volume is gone would create an empty one and initialize a new, empty
-// database over it. Refusing is the only safe answer; the data has to be restored first.
+// A missing data volume would be recreated empty and initialized over; the data must be restored first.
 func TestStartAndRestartRefuseAnInstanceWhoseDataIsGone(t *testing.T) {
 	s := &Service{clients: guardClients{1: guardEngine{volumes: map[string]docker.Volume{}}}}
 	inst := guardedInstance()

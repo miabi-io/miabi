@@ -60,10 +60,7 @@ const kindMeta: Record<SearchKind, { label: string; icon: string; route: (r: Sea
   gitrepository: { label: 'palette.group.gitrepository', icon: 'mdi-git', route: () => '/git-repositories' },
 }
 
-// Both consoles are indexed for an admin, so ⌘K reaches platform administration
-// from inside a workspace without switching first — the menu is the discoverable
-// path, this is the fast one. Admin entries say so, since the destination leaves
-// the console the user is looking at.
+// Admin entries are flagged because the destination leaves the console the user is looking at.
 const navEntries = computed<Entry[]>(() => {
   const out: Entry[] = []
   const sources: { sections: NavSection[]; admin: boolean }[] = [{ sections: navSections, admin: false }]

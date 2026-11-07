@@ -53,8 +53,7 @@ func TestRoutePath(t *testing.T) {
 	}
 }
 
-// register must attach the guard to every definition it is handed — that is the whole mechanism,
-// and a definition that slipped through would be silently unguarded.
+// A definition that slipped through would be silently unguarded.
 func TestRegisterAttachesTheScopeGuard(t *testing.T) {
 	app := okapi.New()
 	r := &Router{app: app, scopeMode: middlewares.ScopeModeEnforce}
@@ -77,9 +76,7 @@ func TestRegisterAttachesTheScopeGuard(t *testing.T) {
 	}
 }
 
-// The guarantee the fix rests on: every route reaches the table through register, which is what
-// makes the scope guard impossible to forget on a route added later. A direct r.app.Register call
-// would register a route with no guard at all and nothing else would notice.
+// A direct r.app.Register call would register an unguarded route and nothing else would notice.
 func TestNoRouteBypassesRegister(t *testing.T) {
 	src, err := os.ReadFile("routes.go")
 	if err != nil {

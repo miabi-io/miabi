@@ -33,15 +33,13 @@ type AuditActor struct {
 	Kind string `json:"kind"`
 }
 
-// AuditEntry is an audit log row with its actor resolved. Actor is nil for a system action or an
-// actor whose account no longer exists.
+// Actor is nil for a system action or an actor whose account no longer exists.
 type AuditEntry struct {
 	models.AuditLog
 	Actor *AuditActor `json:"actor,omitempty"`
 }
 
-// withActors resolves every entry's actor in one query. A lookup failure leaves the actors unset
-// rather than failing the listing: the ids are still there.
+// A lookup failure leaves actors unset rather than failing the listing.
 func withActors(users *repositories.UserRepository, entries []models.AuditLog) []AuditEntry {
 	out := make([]AuditEntry, len(entries))
 	ids := make([]uint, 0, len(entries))

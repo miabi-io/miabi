@@ -124,16 +124,13 @@ func TestRouteServeState(t *testing.T) {
 		t.Errorf("disabled route: serve=%v status=%q reason=%q, want not-served/offline/disabled", serve, status, reason)
 	}
 
-	// A hostless structured route is never served — it would match every request
-	// on its path and swallow all traffic.
+	// A hostless route would match every request on its path and swallow all traffic.
 	serve, status, reason = routeServeState(&models.Route{Enabled: true}, verified, true, false)
 	if serve || status != models.RouteStatusOffline || reason != "route has no hosts" {
 		t.Errorf("hostless route: serve=%v status=%q reason=%q, want not-served/offline/\"route has no hosts\"", serve, status, reason)
 	}
 
-	// An advanced-config route is gated exactly like any other. It used to be exempt, on the theory
-	// that it carried its hosts in the raw YAML — which is precisely how a route could claim a
-	// hostname nobody checked against the workspace's verified domains.
+	// Advanced-config routes are gated too; exempting them let a route claim an unverified hostname.
 	serve, status, reason = routeServeState(&models.Route{Enabled: true, AdvancedConfig: "methods: [GET]"}, verified, true, false)
 	if serve || status != models.RouteStatusOffline || reason != "route has no hosts" {
 		t.Errorf("hostless advanced route: serve=%v status=%q reason=%q, want not-served/offline/\"route has no hosts\"", serve, status, reason)
@@ -145,8 +142,7 @@ func TestRouteServeState(t *testing.T) {
 		t.Errorf("advanced route with hosts: serve=%v status=%q, want served/live", serve, status)
 	}
 
-	// Platform-generated external-access route goes live without a verified domain
-	// (it serves over the platform base domain, not a workspace-registered one).
+	// Generated routes serve over the platform base domain, so they need no verified domain.
 	serve, status, _ = routeServeState(&models.Route{Enabled: true, Generated: true, Hosts: []string{"app.apps.example.com"}}, unverified, true, false)
 	if !serve || status != models.RouteStatusLive {
 		t.Errorf("generated route: serve=%v status=%q, want served/live", serve, status)
@@ -197,8 +193,7 @@ func TestValidateAdvanced(t *testing.T) {
 		{"security without tls", "security:\n  forwardHostHeaders: false", nil},
 		{"health check", "healthCheck:\n  path: /healthz\n  interval: 10s", nil},
 
-		// The hijack: a route that can name its own hosts can name somebody else's, and one that can
-		// set its own path can outrank the console's `/` on the platform domain.
+		// A route naming its own hosts can name another's; its own path can outrank the console's / on the platform domain.
 		{"hosts", "hosts: [victim.example.com]", ErrAdvancedReservedKey},
 		{"path", "path: /api/v1/auth", ErrAdvancedReservedKey},
 		{"priority", "priority: 9999", ErrAdvancedReservedKey},
@@ -210,8 +205,7 @@ func TestValidateAdvanced(t *testing.T) {
 		{"backends", "backends:\n  - endpoint: http://elsewhere", ErrAdvancedReservedKey},
 		{"hosts in mixed case", "Hosts: [victim.example.com]", ErrAdvancedReservedKey},
 
-		// TLS is Miabi's entirely — the renderer replaces the block, so accepting one here would only
-		// be a silent no-op.
+		// The renderer replaces the TLS block, so accepting one here would only be a silent no-op.
 		{"tls provider", "tls:\n  provider: acme", ErrAdvancedTLSCert},
 		{"tls certificate", "tls:\n  certificate:\n    cert: AAAA\n    key: BBBB", ErrAdvancedTLSCert},
 		{"tls certFile", "tls:\n  certFile: /etc/x.pem", ErrAdvancedTLSCert},

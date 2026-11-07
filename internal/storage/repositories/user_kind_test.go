@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Service accounts are not people: they must not decide who is the last admin, receive platform alerts,
-// or make a sign-up look like it is not the first.
+// Service accounts must not decide the last admin, receive platform alerts, or affect first-sign-up detection.
 func TestServiceAccountsAreNotCountedAsPeople(t *testing.T) {
 	r := NewUserRepository(newUserOwnerDB(t))
 	ws := uint(1)

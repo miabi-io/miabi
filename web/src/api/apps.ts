@@ -1,10 +1,6 @@
 import api from './client'
 import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview, ChangeRuntimeResult } from './types'
 
-/**
- * What a deploy returns when the app's repository owns a pipeline: the run that
- * will build and deploy it, rather than a direct Deployment.
- */
 export interface PipelineRunAccepted {
   kind: 'pipeline_run'
   run: PipelineRun
@@ -30,9 +26,7 @@ export interface AppResourceInput {
   // GPU request (gated by the plan's allow_gpu capability).
   gpu_count?: number
   gpu_kind?: string
-  // Account the container runs as ("1000", "1000:1000", "node"), like `docker run
-  // --user`. Empty keeps the image's own user; a workspace under the restricted
-  // security profile must give a non-root numeric uid.
+  // Empty keeps the image's user; the restricted profile requires a non-root numeric uid.
   run_as_user?: string
   /** Extra Linux capabilities and host devices. An empty array revokes. */
   add_capabilities?: string[]
@@ -43,10 +37,7 @@ export interface AppResourceInput {
   drop_capabilities?: string[]
   restart_policy?: RestartPolicy
   image_pull_policy?: ImagePullPolicy
-  /**
-   * How much the control manager may do about this app: inherit the platform mode, leave the app out of
-   * reconciliation, report it without acting, or allow an in-place redeploy. Omitted leaves it unchanged.
-   */
+  /** Omitted leaves it unchanged. */
   reconcile_policy?: ReconcilePolicy
   healthcheck_type?: HealthcheckType
   healthcheck_http_path?: string
@@ -75,11 +66,7 @@ export interface CreateAppInput extends AppRuntimeInput {
   builder?: string
   buildpacks?: string[]
   build_env?: Record<string, string>
-  /**
-   * Adopt the pipeline-as-code the repository carries at .miabi/pipeline.yaml
-   * (git source only), so deploys run through it instead of building directly.
-   * A repository that turns out to carry none still creates the app.
-   */
+  /** A repository that turns out to carry none still creates the app. */
   use_pipeline?: boolean
   registry_id?: number | null
   git_repository_id?: number | null
@@ -133,11 +120,7 @@ export interface ExternalAccess {
   ports: ExternalPort[] // currently exposed
 }
 
-/**
- * SetSourceInput replaces where an app's image comes from. It is a whole-source replacement rather
- * than a patch: switching image <-> git changes which fields mean anything, so the server clears
- * the ones belonging to the source being left.
- */
+/** A whole-source replacement: switching image/git changes which fields mean anything, so the server clears them. */
 export interface SetSourceInput {
   source_type: 'image' | 'git'
   // Image source (required when source_type is "image").
@@ -178,8 +161,7 @@ export interface ResyncPipelineResult {
   adopted: boolean
 }
 
-// CanaryPreviewInput is the hypothetical request the preview is resolved against.
-// Every field is optional; whatever is absent reads as empty at the gateway.
+// Absent fields read as empty at the gateway.
 export interface CanaryPreviewInput {
   headers?: Record<string, string>
   query?: Record<string, string>
@@ -197,8 +179,7 @@ export const appApi = {
   get(ws: number, id: number | string) {
     return api.get<ApiResponse<Application>>(`/workspaces/${ws}/apps/${encodeURIComponent(id)}`)
   },
-  // The response is the YAML bundle itself, not the {success,data} envelope: it is meant to be
-  // saved to a file, and unwrapping a document to do that helps nobody.
+  // Returns the raw YAML bundle, not the envelope, since it is meant to be saved to a file.
   manifest(ws: number, id: number) {
     return api.get<string>(`/workspaces/${ws}/apps/${id}/manifest`, { responseType: 'text' })
   },
@@ -220,30 +201,17 @@ export const appApi = {
   update(ws: number, id: number, input: UpdateAppInput) {
     return api.patch<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}`, input)
   },
-  /**
-   * Replace the app's source, including switching between a prebuilt image and a Git build.
-   * Before this endpoint the only way to change it was to delete the app and recreate it, which
-   * threw away its domains, environment, volumes and history.
-   */
   setSource(ws: number, id: number, input: SetSourceInput) {
     return api.put<ApiResponse<SetSourceResult>>(`/workspaces/${ws}/apps/${id}/source`, input)
   },
-  /**
-   * Reload the repository's pipelines.yaml: adopts one when the app has none (the file was added
-   * after the app was created, or it only just became a git app), and re-syncs the stored spec
-   * when it already has one.
-   */
+  /** Adopts a pipeline when the app has none, else re-syncs the stored spec. */
   resyncPipeline(ws: number, id: number) {
     return api.post<ApiResponse<ResyncPipelineResult>>(`/workspaces/${ws}/apps/${id}/pipeline/resync`)
   },
   remove(ws: number, id: number) {
     return api.delete<ApiResponse<{ message: string }>>(`/workspaces/${ws}/apps/${id}`)
   },
-  /**
-   * Deploy. An app whose repository owns a pipeline deploys by running it, so the
-   * response is either a Deployment (built and deployed directly) or a
-   * PipelineRunAccepted. Use `isPipelineRun` to tell them apart.
-   */
+  /** Returns a Deployment or a PipelineRunAccepted; use `isPipelineRun` to tell them apart. */
   deploy(ws: number, id: number, opts: DeployOptions = {}) {
     return api.post<ApiResponse<Deployment | PipelineRunAccepted>>(`/workspaces/${ws}/apps/${id}/deploy`, {
       registry_id: opts.registry_id ?? null,
@@ -284,13 +252,11 @@ export const appApi = {
   setCanaryRouting(ws: number, id: number, payload: CanaryRoutingPayload) {
     return api.put<ApiResponse<CanaryRoutingResult>>(`/workspaces/${ws}/apps/${id}/canary/routing`, payload)
   },
-  // Side-effect free: resolves a hypothetical request against the saved rules, so
-  // a rule set can be understood before production is pointed at it.
+  // Side-effect free, so a rule set can be understood before production is pointed at it.
   previewCanaryRouting(ws: number, id: number, req: CanaryPreviewInput) {
     return api.post<ApiResponse<CanaryPreview>>(`/workspaces/${ws}/apps/${id}/canary/preview`, req)
   },
-  // start/restart return a Deployment when they apply pending changes (redeploy),
-  // otherwise a message.
+  // Return a Deployment when they apply pending changes, otherwise a message.
   start(ws: number, id: number) {
     return api.post<ApiResponse<Deployment | { message: string }>>(`/workspaces/${ws}/apps/${id}/start`)
   },
@@ -344,9 +310,7 @@ export const appApi = {
   revealEnvVar(ws: number, id: number, key: string) {
     return api.get<ApiResponse<{ key: string; value: string }>>(`/workspaces/${ws}/apps/${id}/env/${encodeURIComponent(key)}/reveal`)
   },
-  // Custom container labels (Traefik &c.). Gated by the AllowCustomLabels plan
-  // capability + global kill-switch; reserved keys (io.miabi.*, com.docker.*)
-  // are rejected. Changes apply on the next deploy.
+  // Reserved keys (io.miabi.*, com.docker.*) are rejected; changes apply on the next deploy.
   labels(ws: number, id: number) {
     return api.get<ApiResponse<Record<string, string>>>(`/workspaces/${ws}/apps/${id}/labels`)
   },

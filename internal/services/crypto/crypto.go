@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package crypto provides AES-GCM encryption for secrets stored at rest. Init must be called once at
-// startup with the configured key. When no key is configured, values are base64-encoded for dev
-// convenience — never use that in production.
+// Package crypto provides AES-GCM at-rest encryption; without a key values are only base64 (dev only).
 package crypto
 
 import (
@@ -37,21 +35,13 @@ import (
 )
 
 const (
-	// encryptedPrefix marks a value encrypted with the master key (KEK) — the
-	// historical/platform-scoped format.
 	encryptedPrefix = "enc:"
-	// wsPrefix marks a value encrypted with a per-workspace DEK:
-	// "e2:w:<workspaceID>:<keyVersion>:<base64(nonce|ct)>". The header is
-	// self-describing so Decrypt resolves the key without a workspace argument.
+	// The header is self-describing so Decrypt resolves the key without a workspace argument.
 	wsPrefix = "e2:w:"
 )
 
-// Keyring resolves per-workspace data-encryption keys, unwrapping them from the master KEK. Injected at
-// startup via SetKeyring; nil means per-workspace encryption is unavailable and EncryptWS falls back to
-// the master key, which is safe during rollout and in dev.
+// nil means EncryptWS falls back to the master key, which is safe during rollout and in dev.
 type Keyring interface {
-	// ActiveDEK returns the workspace's current key version + DEK, creating one on
-	// first use.
 	ActiveDEK(workspaceID uint) (version int, dek []byte, err error)
 	// DEK returns a specific key version's DEK (to decrypt older ciphertext).
 	DEK(workspaceID uint, version int) (dek []byte, err error)
@@ -63,8 +53,7 @@ var (
 	keyMu   sync.RWMutex
 )
 
-// Init derives the AES-256 master key (KEK) from the secret. Empty secret
-// disables encryption (dev). Does not clear an injected keyring.
+// Empty secret disables encryption (dev); does not clear an injected keyring.
 func Init(secret string) {
 	keyMu.Lock()
 	defer keyMu.Unlock()
@@ -83,9 +72,7 @@ func SetKeyring(kr Keyring) {
 	keyring = kr
 }
 
-// CurrentKeyring returns the wired keyring (nil if none). Lets the composition
-// root reuse the live instance (e.g. for crypto-shred / rotation) instead of
-// constructing a second one with a separate cache.
+// Lets the composition root reuse the live keyring instead of building a second cache.
 func CurrentKeyring() Keyring {
 	keyMu.RLock()
 	defer keyMu.RUnlock()
@@ -104,9 +91,7 @@ func IsEncrypted(s string) bool {
 	return strings.HasPrefix(s, encryptedPrefix)
 }
 
-// LooksEncrypted reports whether a stored value carries one of the envelope prefixes this package
-// produces. Bare legacy plaintext returns false, so a caller can Decrypt only what it encrypted —
-// Decrypt would otherwise base64-decode a bare value and corrupt plaintext that happens to be valid.
+// Decrypt would base64-decode a bare value and corrupt plaintext that happens to be valid base64.
 func LooksEncrypted(s string) bool {
 	return strings.HasPrefix(s, encryptedPrefix) || strings.HasPrefix(s, wsPrefix)
 }
@@ -126,14 +111,10 @@ func Encrypt(plaintext string) (string, error) {
 	return encryptedPrefix + base64.StdEncoding.EncodeToString(ct), nil
 }
 
-// devMasterKey is the fallback HMAC key for DeriveToken when no encryption key
-// is configured (dev only). It keeps derived tokens stable within a dev instance
-// — never security-relevant, since dev has no real secrets to protect.
+// Dev only; never security-relevant since dev has no real secrets.
 var devMasterKey = []byte("miabi-dev-insecure-master-key")
 
-// DeriveToken returns a stable, high-entropy token derived from the master key via HMAC-SHA256(key,
-// label), URL-safe base64. It lets the platform mint internal shared secrets deterministically: no
-// separate config or storage, and every process sharing the key derives the identical value.
+// DeriveToken lets every process sharing the master key derive identical internal secrets without storage.
 func DeriveToken(label string) string {
 	keyMu.RLock()
 	k := key
@@ -146,9 +127,7 @@ func DeriveToken(label string) string {
 	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// DeriveTokenFrom is DeriveToken for a master-key secret other than this process's. Disaster recovery
-// needs it: after opening a backup's identity envelope the restore path must check the key inside is the
-// one it was taken under. An empty secret yields "", never the dev fallback.
+// Disaster recovery uses it to check a backup's key; an empty secret yields "", never the dev fallback.
 func DeriveTokenFrom(secret, label string) string {
 	if secret == "" {
 		return ""
@@ -159,9 +138,7 @@ func DeriveTokenFrom(secret, label string) string {
 	return "mrt_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// EncryptWS encrypts plaintext with the workspace's data-encryption key, producing the self-describing
-// "e2:w:<ws>:<ver>:<b64>" form. Falls back to the master key when no keyring is wired or no master key is
-// configured, so callers can adopt it before the keyring exists and dev still works.
+// Falls back to the master key when no keyring or master key is configured.
 func EncryptWS(workspaceID uint, plaintext string) (string, error) {
 	keyMu.RLock()
 	kr := keyring
@@ -181,9 +158,7 @@ func EncryptWS(workspaceID uint, plaintext string) (string, error) {
 	return fmt.Sprintf("%s%d:%d:", wsPrefix, workspaceID, ver) + base64.StdEncoding.EncodeToString(ct), nil
 }
 
-// Reencrypt rewrites a stored value under the workspace's current active DEK if it isn't already, and
-// reports whether it changed. A no-op when there is no keyring, the value is empty, or it is already at
-// the active version — so callers can run it idempotently across a workspace's rows during rotation.
+// Idempotent: a no-op without a keyring, on empty values, or when already at the active version.
 func Reencrypt(workspaceID uint, stored string) (string, bool, error) {
 	keyMu.RLock()
 	kr := keyring
@@ -209,9 +184,7 @@ func Reencrypt(workspaceID uint, stored string) (string, bool, error) {
 	return enc, true, nil
 }
 
-// Decrypt reverses Encrypt / EncryptWS. It is self-describing: a per-workspace
-// ("e2:w:") value resolves its DEK via the keyring; an "enc:" value uses the
-// master key; a bare value is dev passthrough.
+// A bare value is dev passthrough.
 func Decrypt(stored string) (string, error) {
 	if strings.HasPrefix(stored, wsPrefix) {
 		return decryptWS(stored)

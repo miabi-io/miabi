@@ -60,10 +60,7 @@ type jwksCache struct {
 	entries map[string]*jwksEntry
 }
 
-// BackchannelLogout verifies an OpenID Connect Back-Channel Logout token from p and returns the
-// linked user it names, nil when nobody is linked to that subject. When the token carries the
-// provider's groups claim, those groups are applied as at sign-in, so a role the provider took
-// away goes now rather than at the next sign-in. The caller ends the user's sessions.
+// BackchannelLogout reapplies the token's groups claim so a revoked role goes now; the caller ends the sessions.
 func (s *Service) BackchannelLogout(ctx context.Context, p *models.OAuthProvider, raw string) (*models.User, error) {
 	if p.Type != models.OAuthProviderOIDC || strings.TrimSpace(p.Issuer) == "" {
 		return nil, ErrUnsupportedType

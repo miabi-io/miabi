@@ -66,9 +66,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	// NB: models.Workspace embeds a Postgres-only gen_random_uuid() default that
-	// sqlite rejects, and reconciliation only touches workspace_members, so the
-	// workspaces table isn't migrated here — tests use a fixed workspace id.
+	// models.Workspace has a Postgres-only uuid default sqlite rejects, so tests use a fixed workspace id.
 	if err := db.AutoMigrate(&models.User{}, &models.WorkspaceMember{},
 		&models.LDAPConfig{}, &models.LDAPGroupMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -152,8 +150,7 @@ func TestLogin_DisabledAccount(t *testing.T) {
 	if err := users.Create(&models.User{Name: "C", Email: "c@corp.com", Username: "carol", Role: models.SystemRoleUser, Active: true}); err != nil {
 		t.Fatal(err)
 	}
-	// Active has a default:true tag, so a zero-value false is ignored on insert;
-	// force it disabled explicitly.
+	// Active has default:true, so a zero-value false is ignored on insert.
 	db.Model(&models.User{}).Where("username = ?", "carol").Update("active", false)
 	s := newService(t, db, &fakeAuth{ident: enterprise.LDAPIdentity{Email: "c@corp.com", Username: "carol"}})
 	_, err := s.Login(context.Background(), "carol", "pw")
@@ -272,9 +269,7 @@ func TestRoleRank(t *testing.T) {
 	}
 }
 
-// A directory handle is stored through slug.Make in BeforeCreate, but the "have we seen this user?"
-// lookup was a plain lowercase — so a handle that slugifies to something else missed the existing
-// account and then collided with it on insert, and the sign-in failed on the unique index.
+// The lookup must slugify like BeforeCreate, or the handle misses the existing account and collides on insert.
 func TestProvisionHandleNormalisation(t *testing.T) {
 	db := newTestDB(t)
 	users := repositories.NewUserRepository(db)
@@ -305,9 +300,7 @@ func TestProvisionHandleNormalisation(t *testing.T) {
 	}
 }
 
-// A directory handle that is reserved must not be stored verbatim: BeforeCreate
-// trusts a supplied username, so nothing else would stop "admin" from being
-// claimed — the derived path deliberately avoids the reserved set.
+// BeforeCreate trusts a supplied username, so nothing else stops a reserved handle like "admin".
 func TestProvisionReservedHandle(t *testing.T) {
 	db := newTestDB(t)
 	svc := newService(t, db, &fakeAuth{})

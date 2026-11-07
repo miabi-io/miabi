@@ -4,10 +4,7 @@ import { useLicenseStore } from '@/stores/license'
 import RunnersPanel from '@/components/RunnersPanel.vue'
 import { adminRunnerApi, type RunnerAdapter } from '@/api/runners'
 
-// Platform-shared runners. The cap comes from the license view rather than a constant mirrored
-// from the backend: the mirror drifted to -1 while the backend enforced 2, so the register button
-// stayed enabled and the third runner failed at submit. Managing the pool (edit/cordon/token/
-// delete) is always available to admins.
+// The cap comes from the license view; a mirrored constant drifted from the backend and broke registration.
 const license = useLicenseStore()
 onMounted(() => license.load())
 

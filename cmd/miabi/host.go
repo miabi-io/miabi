@@ -37,12 +37,9 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 )
 
-// Shared plumbing for the host-side commands that still ship in the server image. Installing and
-// managing the stack moved to the `miabi` CLI; `restore` did not, because platformrestore needs
-// most of the server (GORM, blob storage, crypto) and could not follow it into a standalone binary.
+// restore stays in the server image because platformrestore needs GORM, blob storage and crypto.
 
-// stackCtx cancels on Ctrl-C, so a half-finished restore can still run its cleanup rather than
-// leaving a container mid-pull.
+// Cancels on Ctrl-C so a half-finished restore still runs its cleanup.
 func stackCtx() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
@@ -69,13 +66,7 @@ func manifestPath(cmd *okapicli.Command) string {
 	return stack.ManifestPath()
 }
 
-// defaultImage is the control-plane image to write into a restored manifest: whatever image this
-// process was started from, read back from Docker so a private registry ref survives verbatim.
-// Deriving it from the version stamp would hardcode Docker Hub. The stamp is the fallback.
-//
-// It returns an error rather than "" because the only thing downstream that rejects an empty image
-// is Manifest.Normalize, and by then the restore has already recreated Postgres, replayed the dump
-// and restored the volumes — it would fail on the last step for a reason knowable before the first.
+// Read back from Docker so a private registry ref survives; errors early rather than failing after the restore ran.
 func defaultImage(ctx context.Context, dc docker.Client) (string, error) {
 	if id := selfcontainer.Detect(); id != "" {
 		if cfg, err := dc.InspectContainerConfig(ctx, id); err == nil && cfg.Image != "" {
@@ -90,9 +81,7 @@ func defaultImage(ctx context.Context, dc docker.Client) (string, error) {
 	return "miabi/miabi:" + strings.TrimPrefix(v, "v"), nil
 }
 
-// printManageHint shows the exact command to drive this install again — using the image that
-// actually installed it, so it is correct on a private registry too. An operator who reached this
-// path did so without a `miabi` binary on the host, so the hint must not assume one.
+// Uses the installing image so the hint is correct on a private registry and assumes no host miabi binary.
 func printManageHint(image, manifest string) {
 	dir := filepath.Dir(manifest)
 	run := fmt.Sprintf("docker run --rm -it \\\n"+

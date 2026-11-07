@@ -79,8 +79,7 @@ func TestGenerateSecretSymbols(t *testing.T) {
 	}
 }
 
-// Asking for a minimum number of symbols implies wanting symbols at all —
-// otherwise the option would be silently unsatisfiable.
+// A minimum symbol count implies symbols, or the option would be silently unsatisfiable.
 func TestGenerateSecretMinSpecialImpliesSymbols(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		got := GenerateSecret(SecretSpec{Length: 24, MinSpecial: 2})
@@ -103,8 +102,6 @@ func TestGenerateSecretMinimums(t *testing.T) {
 	}
 }
 
-// Minimums that exceed the length must be trimmed rather than producing a value
-// longer than asked for, or one that silently ignores the length.
 func TestGenerateSecretMinimumsExceedingLength(t *testing.T) {
 	yes := true
 	got := GenerateSecret(SecretSpec{Length: 6, Symbols: &yes, MinNumbers: 5, MinSpecial: 5})
@@ -117,8 +114,7 @@ func TestGenerateSecretMinimumsExceedingLength(t *testing.T) {
 	}
 }
 
-// Required characters must be spread by the shuffle, not left clustered at the
-// front where a place-and-return implementation would leave them.
+// Required characters must be spread by the shuffle, not clustered at the front.
 func TestGenerateSecretShufflesRequiredCharacters(t *testing.T) {
 	const length, rounds = 16, 4000
 	positions := make([]int, length)
@@ -153,10 +149,7 @@ func TestGenerateSecretIsRandom(t *testing.T) {
 	}
 }
 
-// The round trip the plan asks for: the same policy expressed in the console and
-// in a manifest must draw from the same alphabet. The console's alphabet is read
-// out of its source rather than restated here, so the two cannot drift without
-// this failing.
+// The console alphabet is read from its source so the two cannot drift without this failing.
 func TestSymbolAlphabetMatchesTheConsole(t *testing.T) {
 	src, err := os.ReadFile("../../web/src/composables/useGenerator.ts")
 	if err != nil {

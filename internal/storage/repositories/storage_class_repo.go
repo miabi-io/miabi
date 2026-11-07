@@ -26,8 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// StorageClassRepository stores the admin-registered storage classes. Classes are platform-wide
-// (not workspace-scoped): they describe the operator's disks, and a plan decides who may use them.
+// Storage classes are platform-wide: they describe the operator's disks, and a plan decides who may use them.
 type StorageClassRepository struct {
 	db *gorm.DB
 }
@@ -65,8 +64,7 @@ func (r *StorageClassRepository) List() ([]models.StorageClass, error) {
 	return out, err
 }
 
-// ListByServer returns the classes usable on one node: that node's own, plus every Shared class
-// (an operator assertion that the path exists identically everywhere).
+// A Shared class is an operator assertion that the path exists identically on every node.
 func (r *StorageClassRepository) ListByServer(serverID uint) ([]models.StorageClass, error) {
 	var out []models.StorageClass
 	// The builtin class is the engine's own volume directory, present on every node.
@@ -74,8 +72,7 @@ func (r *StorageClassRepository) ListByServer(serverID uint) ([]models.StorageCl
 	return out, err
 }
 
-// FindDefault returns the node's default class, falling back to a Shared default. A disabled class
-// is never returned: disabling one must stop new volumes landing there even when it is the default.
+// A disabled class is never returned, so disabling a default stops new volumes landing there.
 func (r *StorageClassRepository) FindDefault(serverID uint) (*models.StorageClass, error) {
 	var c models.StorageClass
 	err := r.db.Where("is_default = ? AND enabled = ? AND (server_id = ? OR shared = ?)", true, true, serverID, true).
@@ -86,8 +83,7 @@ func (r *StorageClassRepository) FindDefault(serverID uint) (*models.StorageClas
 	return &c, nil
 }
 
-// ClearDefault drops the default flag from every other class on a node, so promoting one demotes
-// the previous holder in the same transaction as the write that promoted it.
+// ClearDefault demotes the previous default in the same transaction as the promoting write.
 func (r *StorageClassRepository) ClearDefault(serverID, exceptID uint) error {
 	return r.db.Model(&models.StorageClass{}).
 		Where("server_id = ? AND id <> ?", serverID, exceptID).
@@ -100,8 +96,7 @@ func (r *StorageClassRepository) ExistsByName(name string) (bool, error) {
 	return count > 0, err
 }
 
-// Count reports how many classes exist, built-in included: an edition cap bounds the
-// whole catalog, not just the registered part of it.
+// Count includes the built-in class: an edition cap bounds the whole catalog.
 func (r *StorageClassRepository) Count() (int64, error) {
 	var count int64
 	err := r.db.Model(&models.StorageClass{}).Count(&count).Error
@@ -153,8 +148,7 @@ type StorageClassUsage struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
-// Usage lists the volumes and database instances on a class, largest first, from the sizes the
-// usage sweeps last stored; it never measures.
+// Usage reads the sizes the usage sweeps last stored; it never measures.
 func (r *StorageClassRepository) Usage(name string) ([]StorageClassUsage, error) {
 	var out []StorageClassUsage
 	err := r.db.Raw(`SELECT * FROM (
@@ -169,8 +163,6 @@ func (r *StorageClassRepository) Usage(name string) ([]StorageClassUsage, error)
 	return out, err
 }
 
-// Servers lists the nodes with the size of the disk behind each one's Docker data root, which is
-// where the built-in class keeps its volumes.
 func (r *StorageClassRepository) Servers() ([]models.Server, error) {
 	var out []models.Server
 	err := r.db.Order("id").Find(&out).Error

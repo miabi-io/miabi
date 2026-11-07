@@ -63,9 +63,7 @@ func TestRouteRewriteMethodsAndAdvancedConfigParse(t *testing.T) {
 	}
 }
 
-// These fields were silently erased by every apply, because route.Update assigns them
-// unconditionally and the manifest had no way to state them. Diffing them is what makes a change
-// converge instead of vanishing.
+// route.Update assigns these unconditionally, so without diffing them an apply silently erased them.
 func TestRouteFieldChangesConverge(t *testing.T) {
 	mk := func(rewrite string) *d.ResourceSet {
 		set, err := d.Parse([]byte(strings.Replace(routeWithRewrite, "rewrite: /", "rewrite: "+rewrite, 1)))
@@ -82,8 +80,7 @@ func TestRouteFieldChangesConverge(t *testing.T) {
 	}
 }
 
-// The gateway matches methods by membership, so listing them in another order is the same route and
-// must not plan an update on every reconcile.
+// The gateway matches methods by membership, so reordering must not plan an update.
 func TestMethodOrderIsNotDrift(t *testing.T) {
 	mk := func(methods string) *d.ResourceSet {
 		set, err := d.Parse([]byte(strings.Replace(routeWithRewrite, "[GET, POST]", methods, 1)))
@@ -100,8 +97,7 @@ func TestMethodOrderIsNotDrift(t *testing.T) {
 	}
 }
 
-// A typo silently drops every request using the method the author meant — exactly the failure that
-// only shows up in production.
+// A method typo silently drops every request using it, a failure that only shows up in production.
 func TestUnknownMethodIsRejected(t *testing.T) {
 	_, err := d.Parse([]byte(strings.Replace(routeWithRewrite, "[GET, POST]", "[GET, FETCH]", 1)))
 	if err == nil || !strings.Contains(err.Error(), "not an HTTP method") {

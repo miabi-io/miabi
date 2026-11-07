@@ -74,8 +74,7 @@ type PlanSchema struct {
 	Settings     []string `json:"settings"`
 }
 
-// PlanSchema derives the accepted fields from the plan model, so a new limit is offered without
-// touching this code.
+// Derived from the plan model so a new limit is offered without touching this code.
 func (s *Service) PlanSchema() (PlanSchema, error) {
 	p, err := ToPlan(&models.Plan{})
 	if err != nil {
@@ -93,8 +92,7 @@ func (s *Service) PlanSchema() (PlanSchema, error) {
 	return out, nil
 }
 
-// PushPlan creates or updates the plan the console addresses by key, adopting a hand-made plan of
-// the same name. Instance-local fields are never touched. With dryRun nothing is written.
+// Adopts a hand-made plan of the same name; instance-local fields are never touched.
 func (s *Service) PushPlan(key string, in PlanPush, dryRun bool) (*PlanPushResult, *PlanDryRun, error) {
 	key = strings.TrimSpace(key)
 	if !planKeyPattern.MatchString(key) {
@@ -141,8 +139,6 @@ func (s *Service) PushPlan(key string, in PlanPush, dryRun bool) (*PlanPushResul
 	return res, dry, err
 }
 
-// planForKey finds the plan a push applies to: the one holding the key, else an unmanaged plan
-// of the same name (adopted), else a new one.
 func planForKey(tx *gorm.DB, key, name string) (p *models.Plan, created, adopted bool, err error) {
 	var byKey models.Plan
 	switch err := tx.Where("external_key = ?", key).First(&byKey).Error; {
@@ -176,8 +172,7 @@ func planForKey(tx *gorm.DB, key, name string) (p *models.Plan, created, adopted
 	return &models.Plan{IsActive: true}, true, false, nil
 }
 
-// applyPlanPush writes the pushed console fields onto p through its JSON form, returning the
-// fields it did not apply: unknown to this version, of the wrong type, or instance-local.
+// Returns fields not applied: unknown, wrong type, or instance-local.
 func applyPlanPush(p *models.Plan, in PlanPush) ([]string, error) {
 	raw, err := json.Marshal(p)
 	if err != nil {
@@ -250,8 +245,7 @@ func (s *Service) planDryRun(tx *gorm.DB, p *models.Plan, ignored []string) (*Pl
 	return out, nil
 }
 
-// RemovePlan withdraws a console plan: deactivated while workspaces still use it, deleted otherwise.
-// It reports whether the row was deleted.
+// Deactivated while workspaces still use it, deleted otherwise.
 func (s *Service) RemovePlan(key string) (bool, error) {
 	var p models.Plan
 	if err := s.db.Where("external_key = ?", strings.TrimSpace(key)).First(&p).Error; err != nil {

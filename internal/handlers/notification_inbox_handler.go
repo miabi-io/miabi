@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// NotificationInboxHandler serves a user's cross-workspace notification inbox —
-// the dashboard bell and Notifications page. Everything is scoped to the
-// authenticated user; a user never sees another user's (or workspace's) items.
+// A user never sees another user's or workspace's items.
 type NotificationInboxHandler struct {
 	repo          *repositories.NotificationInboxRepository
 	bus           *eventbus.Bus
@@ -51,9 +49,7 @@ type DismissRequest struct {
 	}
 }
 
-// syncAnnouncements catches the caller up on any live announcement they have not
-// received. It runs on the read paths rather than only at broadcast time so a user
-// created after the fact — or newly added to a targeted workspace — still sees it.
+// Runs on read paths so users created later, or newly added to a targeted workspace, still see it.
 func (h *NotificationInboxHandler) syncAnnouncements(userID uint) {
 	if h.announcements != nil {
 		h.announcements.SyncUser(userID)
@@ -67,8 +63,6 @@ type MarkReadRequest struct {
 	}
 }
 
-// List returns the user's notifications (newest first). Query: workspace (0=all),
-// unread (bool), before (id cursor), limit.
 func (h *NotificationInboxHandler) List(c *okapi.Context) error {
 	userID := middlewares.UserID(c)
 	h.syncAnnouncements(userID)
@@ -106,8 +100,6 @@ func (h *NotificationInboxHandler) MarkRead(c *okapi.Context, req *MarkReadReque
 	return ok(c, map[string]string{"message": "ok"})
 }
 
-// MarkAllRead marks every unread notification read, optionally scoped to one
-// workspace (?workspace=).
 func (h *NotificationInboxHandler) MarkAllRead(c *okapi.Context) error {
 	if err := h.repo.MarkAllRead(middlewares.UserID(c), uintQuery(c, "workspace")); err != nil {
 		return c.AbortInternalServerError("failed to mark all read", err)
@@ -115,8 +107,6 @@ func (h *NotificationInboxHandler) MarkAllRead(c *okapi.Context) error {
 	return ok(c, map[string]string{"message": "ok"})
 }
 
-// Banners returns the pinned, live, undismissed items for the caller — the notices
-// the app renders above the page rather than behind the bell.
 func (h *NotificationInboxHandler) Banners(c *okapi.Context) error {
 	userID := middlewares.UserID(c)
 	h.syncAnnouncements(userID)
@@ -135,9 +125,7 @@ func (h *NotificationInboxHandler) Dismiss(c *okapi.Context, req *DismissRequest
 	return ok(c, map[string]string{"message": "ok"})
 }
 
-// Stream pushes a live signal whenever the user's inbox changes (new alert, count
-// bump, auto-resolve). The payload is a nudge to refetch the list + unread count;
-// Postgres stays the source of truth. Same SSE mechanism as the activity feed.
+// The payload is only a nudge to refetch; Postgres stays the source of truth.
 func (h *NotificationInboxHandler) Stream(c *okapi.Context) error {
 	userID := middlewares.UserID(c)
 	ch, unsubscribe := h.bus.Subscribe(alerting.NotificationTopic(userID))

@@ -25,9 +25,7 @@ import "time"
 const (
 	// CertSourceImported is a bring-your-own certificate the user uploaded.
 	CertSourceImported = "imported"
-	// CertSourceACME is a certificate Miabi issued via ACME DNS-01 using a
-	// connected DNS provider (managed; auto-renewable).
-	CertSourceACME = "acme"
+	CertSourceACME     = "acme"
 )
 
 // Managed-certificate (ACME) statuses.
@@ -37,9 +35,7 @@ const (
 	CertStatusFailed  = "failed"  // last issuance/renewal failed (see LastError)
 )
 
-// Certificate is a workspace-scoped TLS certificate; a route with TLSMode=custom references
-// it by CertificateID and the PEM/key are sourced server-side at render time. CertPEM is
-// public; KeyEnc is encrypted at rest and never returned. Metadata is parsed from the leaf.
+// The PEM and key are sourced server-side at render time; KeyEnc is encrypted and never returned.
 type Certificate struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_cert_workspace_name,unique;not null"`

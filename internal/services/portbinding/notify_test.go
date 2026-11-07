@@ -33,8 +33,7 @@ func (c *capturingNotifier) NotifyAdmins(n models.Notification) error {
 	return nil
 }
 
-// A request nobody is told about waits until somebody thinks to look, which is
-// how a one-click approval becomes a week of being blocked.
+// An unannounced request waits until somebody thinks to look.
 func TestPendingRequestNotifiesAdmins(t *testing.T) {
 	notifier := &capturingNotifier{}
 	s := &Service{notify: notifier}
@@ -48,8 +47,7 @@ func TestPendingRequestNotifiesAdmins(t *testing.T) {
 		t.Fatalf("sent %d notices, want 1", len(notifier.sent))
 	}
 	n := notifier.sent[0]
-	// The admin has to be able to act without opening the request first, so the
-	// port and the destination both belong in the notice.
+	// Port and destination belong in the notice so the admin can act without opening the request.
 	for _, want := range []string{"8080", "tcp"} {
 		if !strings.Contains(n.Title, want) {
 			t.Errorf("title %q does not mention %q", n.Title, want)
@@ -63,8 +61,7 @@ func TestPendingRequestNotifiesAdmins(t *testing.T) {
 	}
 }
 
-// A privileged workspace's binding is approved on the spot. Announcing it would
-// train admins to ignore the notice that matters.
+// Announcing auto-approved bindings would train admins to ignore the notice that matters.
 func TestAutoApprovedBindingDoesNotNotify(t *testing.T) {
 	notifier := &capturingNotifier{}
 	s := &Service{notify: notifier}

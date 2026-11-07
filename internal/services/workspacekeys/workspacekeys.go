@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package workspacekeys is the workspace-facing view of a workspace's keys: its data-encryption key and its
-// sealing key. A workspace owner or admin rotates both together, at most once per RotationInterval.
+// Package workspacekeys rotates a workspace's data and sealing keys together, at most once per RotationInterval.
 package workspacekeys
 
 import (
@@ -101,8 +100,7 @@ type Status struct {
 	RotationMonths int          `json:"rotation_months"`
 	SealingKeys    []SealingKey `json:"sealing_keys"`
 	SealedSecrets  int          `json:"sealed_secrets"`
-	// OutdatedSealedSecrets were sealed to a key that is no longer active; they still open, and re-sealing
-	// them moves them to the active key.
+	// They still open; re-sealing moves them to the active key.
 	OutdatedSealedSecrets int `json:"outdated_sealed_secrets"`
 }
 
@@ -166,8 +164,7 @@ func (s *Service) Status(workspaceID uint) (*Status, error) {
 	return st, nil
 }
 
-// Rotate rotates the workspace's data key (re-encrypting what it protects) and its sealing key. It refuses
-// with *TooSoonError inside the interval. Values sealed to the previous sealing key keep opening.
+// Values sealed to the previous sealing key keep opening.
 func (s *Service) Rotate(ctx context.Context, workspaceID uint) (*RotateResult, error) {
 	if s.deks == nil {
 		return nil, ErrUnavailable

@@ -25,8 +25,6 @@ import (
 	"testing"
 )
 
-// prodConfig is a minimal non-dev Config with every guarded field set to a safe,
-// non-default value. Each test mutates one field to assert its guard fires.
 func prodConfig() *Config {
 	return &Config{
 		Env:           "production",
@@ -78,8 +76,7 @@ func TestValidateRejectsInsecureDefaultsInNonDev(t *testing.T) {
 	}
 }
 
-// An unset MIABI_ENV must not skip the secret checks (H2): a manual `docker run` without it would
-// otherwise boot on the public default JWT secret.
+// An unset MIABI_ENV must not skip secret checks, or a bare docker run boots on the public default JWT secret.
 func TestUnsetEnvDefaultsToProduction(t *testing.T) {
 	for _, k := range []string{"MIABI_ENV", "MIABI_JWT_SECRET", "MIABI_ENCRYPTION_KEY", "MIABI_ADMIN_PASSWORD"} {
 		t.Setenv(k, "") // registers the restore; the unset below is what New sees
@@ -112,9 +109,7 @@ func TestHasWildcardOrigin(t *testing.T) {
 	}
 }
 
-// The storage driver is environment-only, so a typo has no UI to correct it:
-// "S3 " or "minio" would silently fall back to a local volume while the operator
-// believes images are going to object storage. Refuse the boot instead.
+// The storage driver is env-only, so a typo must refuse the boot rather than silently fall back to a local volume.
 func TestValidateRegistryStorageDriver(t *testing.T) {
 	cases := []struct {
 		driver string
@@ -144,8 +139,7 @@ func TestValidateRegistryStorageDriver(t *testing.T) {
 	}
 }
 
-// The seeded admin's credentials are not a boot requirement: an install that already has an admin
-// starts without them.
+// An install that already has an admin starts without the seed credentials.
 func TestValidateIgnoresAdminCredentials(t *testing.T) {
 	c := prodConfig()
 	c.AdminEmail, c.AdminPassword = "", ""

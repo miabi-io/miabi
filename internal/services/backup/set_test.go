@@ -42,8 +42,7 @@ func newSetService(t *testing.T) (*Service, *repositories.DatabaseBackupSetRepos
 		t.Fatal(err)
 	}
 	sets := repositories.NewDatabaseBackupSetRepository(db)
-	// clients is nil: every item below is an s3 backup, so Delete never reaches the
-	// Docker branch that removes a local artifact.
+	// Every item is an s3 backup, so Delete never reaches the Docker branch.
 	svc := NewService(repositories.NewBackupRepository(db), nil, nil)
 	svc.SetSetRepository(sets)
 	return svc, sets, db
@@ -121,15 +120,12 @@ func TestPruneSetsNeverRemovesTheLastSuccessfulSet(t *testing.T) {
 	}
 }
 
-// A failed set is not a recovery point, so it does not protect anything: the
-// newest *completed* set is what survives.
+// A failed set is not a recovery point, so the newest completed set is what survives.
 func TestPruneSetsKeepsTheNewestCompletedNotTheNewestSet(t *testing.T) {
 	svc, sets, db := newSetService(t)
 	seedSet(t, db, sets, "good", models.BackupCompleted, 48*time.Hour, false)
 	seedSet(t, db, sets, "failed", models.BackupFailed, 36*time.Hour, false)
 
-	// Both are past the cutoff. The completed one survives as the last good set;
-	// the newer failed one does not, because it was never a recovery point.
 	removed, err := svc.PruneSets(context.Background(), 7, 0, 1)
 	if err != nil {
 		t.Fatalf("PruneSets: %v", err)
@@ -192,8 +188,7 @@ func TestPruneSetsWithNoBoundsDoesNothing(t *testing.T) {
 	}
 }
 
-// A partial recovery point is not a recovery point: one failed item fails the set,
-// and the set says which database stopped it.
+// A partial recovery point is not a recovery point.
 func TestFinishSetFailsOnAnyFailedItem(t *testing.T) {
 	svc, sets, db := newSetService(t)
 	set := seedSet(t, db, sets, "mixed", models.BackupRunning, 0, false)
@@ -246,8 +241,7 @@ func TestFinishSetEncryptedOnlyWhenEveryItemIs(t *testing.T) {
 	}
 }
 
-// A recovery point exists to survive the loss of its host, so it must live in
-// object storage. The local backup volume dies with the node it is on.
+// The local backup volume dies with its node, so a recovery point must live in object storage.
 func TestRunSetRefusesWithoutS3(t *testing.T) {
 	svc, _, _ := newSetService(t)
 	inst := &models.DatabaseInstance{ID: 7, Name: "pg", WorkspaceID: 1, Engine: models.DBEnginePostgres}
@@ -263,8 +257,7 @@ func TestRunSetRefusesWithoutS3(t *testing.T) {
 	}
 }
 
-// Retention counts sets, not the backups inside them: a set of eight databases is
-// one recovery point, so "keep 2" keeps two sets and not two dumps.
+// A set of eight databases is one recovery point, so "keep 2" keeps two sets.
 func TestPruneSetsCountsSetsNotItems(t *testing.T) {
 	svc, sets, db := newSetService(t)
 	for i, ref := range []string{"newest", "middle", "oldest"} {
@@ -292,9 +285,7 @@ func TestPruneSetsCountsSetsNotItems(t *testing.T) {
 	}
 }
 
-// Rotation is the whole reason artifacts are sealed with a per-set data key: the
-// new passphrase must open every existing set, and the key inside must not change,
-// because it is what the stored dumps were actually encrypted with.
+// The data key must not change: it is what the stored dumps were encrypted with.
 func TestRewrapSetsKeepsEveryDataKey(t *testing.T) {
 	svc, sets, db := newSetService(t)
 	const oldPass, newPass = "old-passphrase-1", "new-passphrase-2"
@@ -340,8 +331,6 @@ func TestRewrapSetsKeepsEveryDataKey(t *testing.T) {
 	}
 }
 
-// A wrong old passphrase must stop rather than rewrap the remaining sets under a
-// secret that does not match what they were sealed with.
 func TestRewrapSetsStopsOnAWrongOldPassphrase(t *testing.T) {
 	svc, sets, db := newSetService(t)
 	set := seedSet(t, db, sets, "sealed", models.BackupCompleted, 0, false)

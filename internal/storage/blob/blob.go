@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package blob is a minimal S3/MinIO object client for the few places Miabi must touch an
-// object store directly from Go: a bundle's control objects and bucket listings, and
-// `miabi restore`, which reads a sealed envelope on a bare host before any platform exists.
+// Package blob is a minimal S3 client for bundle control objects and `miabi restore` on a bare host.
 package blob
 
 import (
@@ -41,8 +39,6 @@ import (
 // ErrNotFound is returned when an object (or the bucket) does not exist.
 var ErrNotFound = errors.New("object not found")
 
-// Config describes an S3-compatible target. It mirrors the fields of the backup
-// S3 settings so callers can hand the same values to either path.
 type Config struct {
 	Endpoint       string // empty for AWS S3; host or URL for MinIO and friends
 	Bucket         string
@@ -66,17 +62,14 @@ type Object struct {
 	UpdatedAt time.Time
 }
 
-// New builds a client for cfg. It does not contact the network; the first
-// Get/Put/List reports connectivity or credential problems.
+// It doesn't contact the network; the first Get/Put/List reports problems.
 func New(cfg Config) (*Store, error) {
 	if strings.TrimSpace(cfg.Bucket) == "" {
 		return nil, errors.New("blob: a bucket is required")
 	}
 	region := strings.TrimSpace(cfg.Region)
 	if region == "" {
-		// S3 requires *a* region even when the endpoint is a MinIO that ignores it. Must match the
-		// default the *-bkup helpers get (wsbackup/platformbackup defaultS3Region): a client and a
-		// helper signing for different regions is a harder failure to read than either alone.
+		// S3 requires a region even for MinIO; must match the *-bkup helpers' default or signatures differ.
 		region = "us-east-1"
 	}
 	opts := []func(*s3.Options){
@@ -84,9 +77,7 @@ func New(cfg Config) (*Store, error) {
 			o.Region = region
 			o.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")
 			o.HTTPClient = &http.Client{Timeout: 10 * time.Minute}
-			// MinIO and most self-hosted gateways serve bucket-in-path, not
-			// bucket-as-subdomain — and a virtual-host request against them fails as
-			// a DNS error far from here.
+			// MinIO serves bucket-in-path; a virtual-host request against it fails as a distant DNS error.
 			o.UsePathStyle = cfg.ForcePathStyle
 		},
 	}
@@ -96,9 +87,7 @@ func New(cfg Config) (*Store, error) {
 	return &Store{client: s3.New(s3.Options{}, opts...), bucket: cfg.Bucket}, nil
 }
 
-// normalizeEndpoint turns the bare "host:port" form the backup settings accept into the
-// absolute URL the SDK requires, choosing the scheme from UseSSL. An endpoint that already
-// carries a scheme is left alone, so an operator who typed a full URL gets what they typed.
+// An endpoint that already carries a scheme is left as the operator typed it.
 func normalizeEndpoint(endpoint string, useSSL bool) string {
 	ep := strings.TrimSpace(endpoint)
 	if ep == "" {
@@ -133,8 +122,7 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, int64, erro
 	return out.Body, size, nil
 }
 
-// GetBytes reads a whole object. Intended for small control objects (the identity
-// envelope, manifests) — not for artifacts.
+// For small control objects only, not artifacts.
 func (s *Store) GetBytes(ctx context.Context, key string) ([]byte, error) {
 	body, _, err := s.Get(ctx, key)
 	if err != nil {
@@ -172,8 +160,7 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
 
-// Delete removes an object. Deleting an absent object is not an error, so
-// retention pruning is idempotent.
+// Deleting an absent object is not an error, so retention pruning is idempotent.
 func (s *Store) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -220,9 +207,7 @@ func (s *Store) List(ctx context.Context, prefix string) ([]Object, error) {
 	}
 }
 
-// isNotFound recognizes the several shapes S3 uses to say "no such thing":
-// typed NoSuchKey/NotFound/NoSuchBucket, and the bare 404 MinIO returns from
-// HeadObject (which carries no body to decode an error code from).
+// MinIO's HeadObject returns a bare 404 with no body to decode an error code from.
 func isNotFound(err error) bool {
 	var nsk *types.NoSuchKey
 	if errors.As(err, &nsk) {

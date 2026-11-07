@@ -66,8 +66,7 @@ func TestApplicationURLHonoursTheScheme(t *testing.T) {
 	}
 }
 
-// An app that declares no port has no ":" to append — a trailing colon would be a worse address
-// than a bare hostname.
+// An app with no port must not get a trailing colon.
 func TestApplicationURLWithoutAPort(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{Apps: map[string]d.AppView{"api": {Host: "api"}}})
 	got, _ := r.RenderString("t", "{{ .applications.api }}")
@@ -76,8 +75,7 @@ func TestApplicationURLWithoutAPort(t *testing.T) {
 	}
 }
 
-// Unresolvable references are hard errors everywhere else in the grammar, and must stay so here:
-// a silently empty API_URL is a runtime mystery.
+// Unresolvable references are hard errors: a silently empty API_URL is a runtime mystery.
 func TestUnknownApplicationIsAnError(t *testing.T) {
 	r := d.NewRenderer(d.RenderContext{Apps: apiView()})
 	if _, err := r.RenderString("t", "{{ .applications.nope.host }}"); err == nil {

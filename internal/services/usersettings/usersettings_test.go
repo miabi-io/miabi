@@ -51,8 +51,7 @@ func (f *fakeUsers) FindByID(id uint) (*models.User, error) {
 	return &models.User{ID: id, DefaultWorkspaceID: f.defaultWS[id]}, nil
 }
 
-// fakeSettings copies rows in and out, as the database does: the service resolves
-// a row in place, and a shared pointer would write the resolved value back.
+// The service resolves rows in place, so a shared pointer would write the resolved value back.
 type fakeSettings struct{ rows map[uint]*models.UserSetting }
 
 func (f *fakeSettings) Get(userID uint) (*models.UserSetting, error) {
@@ -98,8 +97,6 @@ func TestSetDefaultWorkspaceRequiresMembership(t *testing.T) {
 	if err := s.SetDefaultWorkspace(1, &mine); err != nil {
 		t.Fatalf("defaulting to a workspace the user belongs to = %v, want nil", err)
 	}
-	// A nil id clears the choice, and must not consult membership at all — there is
-	// no workspace to be a member of.
 	if err := s.SetDefaultWorkspace(1, nil); err != nil {
 		t.Fatalf("clearing the default = %v, want nil", err)
 	}
@@ -207,9 +204,7 @@ func TestDefaultUserSettingIsUsable(t *testing.T) {
 	}
 }
 
-// An account that never picked an accent follows the operator's brand. The stored
-// value stays empty, so changing the brand later still moves that account — which
-// would not happen if the default were written down at account creation.
+// The stored value stays empty, so changing the brand later still moves the account.
 func TestUnsetAccentFollowsTheBrand(t *testing.T) {
 	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
 	s.SetBrandAccent(func() (models.Accent, bool) { return models.AccentBlue, false })
@@ -244,8 +239,6 @@ func TestChosenAccentBeatsTheBrand(t *testing.T) {
 	}
 }
 
-// No brand, or a brand naming an accent this build cannot render, falls back to
-// Miabi's own rather than rendering nothing.
 func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
 	for name, f := range map[string]BrandAccent{
 		"no provider":    nil,
@@ -266,8 +259,7 @@ func TestAccentFallsBackWhenTheBrandIsUnusable(t *testing.T) {
 	}
 }
 
-// An enforced accent replaces a personal pick on read and refuses a new one, but
-// the pick is kept, so lifting the policy gives it back.
+// The personal pick is kept, so lifting the policy gives it back.
 func TestEnforcedAccentOverridesAndKeepsAChoice(t *testing.T) {
 	enforced := false
 	s := NewService(&fakeUsers{}, &fakeSettings{}, fakeMembers{})
@@ -336,8 +328,6 @@ func TestResolveLocale(t *testing.T) {
 	}
 }
 
-// A row saved while Language was free text must reach the console as a shipped
-// language, not as the raw tag.
 func TestGetResolvesALegacyLocale(t *testing.T) {
 	legacy := models.DefaultUserSetting()
 	legacy.UserID, legacy.Locale = 7, "fr-CA"

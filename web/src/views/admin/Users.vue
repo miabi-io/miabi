@@ -93,8 +93,7 @@ async function submitCreate() {
       email: createForm.value.email.trim(),
       role: createForm.value.role,
       notify: createForm.value.notify,
-      // Only sent when one was chosen: the field is entitled, so a Community install creating an
-      // ordinary user must not be refused for a value it never set.
+      // The field is entitled, so Community must not be refused for a value it never set.
       ...(createForm.value.organization_id ? { organization_id: createForm.value.organization_id } : {}),
     })
     notify.success('User created')
@@ -107,10 +106,6 @@ async function submitCreate() {
     creating.value = false
   }
 }
-
-// Per-user actions (edit role/status, verify email, revoke sessions, disable,
-// delete) all live on the detail page now — rows link there. The list is
-// read-only apart from creating a new user.
 
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)

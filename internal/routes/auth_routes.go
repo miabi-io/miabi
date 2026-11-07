@@ -32,8 +32,7 @@ import (
 func (r *Router) authRoutes() []okapi.RouteDefinition {
 	auth := r.v1.Group("/auth").WithTagInfo(okapi.GroupTag{Name: "Auth", Description: "Registration, login, sessions, and password reset."})
 	protected := []okapi.Middleware{r.authenticate}
-	// Changing how an account authenticates — 2FA, its sessions — is a session action. An API key
-	// that could do it could make itself permanent; see middlewares.RequireSession.
+	// An API key that could change 2FA or sessions could make itself permanent; see middlewares.RequireSession.
 	sessionOnly := []okapi.Middleware{r.authenticate, middlewares.RequireSession()}
 	// Throttle unauthenticated, abuse-prone endpoints (per IP + path).
 	limited := []okapi.Middleware{r.authRateLimit}
@@ -58,8 +57,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 			Method: http.MethodPost,
 			Path:   "/register",
 			Group:  auth,
-			// Rate limited like every other unauthenticated endpoint: sign-up is the
-			// one that creates rows, so it is the one worth flooding.
+			// Sign-up is the endpoint that creates rows, so it is the one worth flooding.
 			Middlewares: limited,
 			Handler:     okapi.H(r.h.register.Register),
 			Summary:     "Create an account (when self-service registration is open)",
@@ -380,9 +378,7 @@ func (r *Router) authRoutes() []okapi.RouteDefinition {
 func (r *Router) apiKeyRoutes() []okapi.RouteDefinition {
 	keys := r.v1.Group("/api-keys").WithTagInfo(okapi.GroupTag{Name: "API Keys", Description: "Long-lived programmatic access tokens."})
 	protected := []okapi.Middleware{r.authenticate}
-	// Minting a key is how a stolen credential makes itself permanent and unscoped, so it takes a
-	// signed-in session. Listing and revoking stay open to keys, which is what lets automation clean
-	// up after itself.
+	// Minting needs a session so a stolen key cannot make itself permanent; listing and revoking stay open to keys.
 	sessionOnly := []okapi.Middleware{r.authenticate, middlewares.RequireSession()}
 
 	return []okapi.RouteDefinition{

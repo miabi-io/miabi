@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// License is the single active commercial license row. The signed Token is the source of
-// truth, re-verified against the embedded public key on every load, so the parsed columns are
-// only a display cache. Migrated in every build but empty and unused in Community.
+// License: the signed Token is re-verified on every load, so the parsed columns are only a display cache.
 type License struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	LicenseID   string    `json:"license_id" gorm:"uniqueIndex;not null"`

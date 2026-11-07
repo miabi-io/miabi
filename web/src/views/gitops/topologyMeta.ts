@@ -1,5 +1,3 @@
-// Shared visual metadata for the GitOps topology graph: per-kind icon/label,
-// per-status colour, and the deep-link target for each resource kind.
 import type { NodeStatus, EdgeType, GitSourceStatus } from '@/api/types'
 import type { RouteLocationRaw } from 'vue-router'
 
@@ -41,8 +39,6 @@ export const nodeStatusMeta: Record<NodeStatus, StatusMeta> = {
   orphaned: { label: 'Orphaned', badge: 'badge-danger', icon: 'mdi-trash-can-outline', color: 'var(--danger-600)' },
 }
 
-// Per git-source (project) sync status, used for the root project node and the
-// header badge.
 export const gitSourceStatusMeta: Record<GitSourceStatus, StatusMeta> = {
   synced: { label: 'Synced', badge: 'badge-success', icon: 'mdi-check-circle-outline', color: 'var(--success-600)' },
   out_of_sync: { label: 'Out of sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline', color: 'var(--warning-600)' },
@@ -52,9 +48,7 @@ export const gitSourceStatusMeta: Record<GitSourceStatus, StatusMeta> = {
   unknown: { label: 'Never synced', badge: 'badge-neutral', icon: 'mdi-help-circle-outline', color: 'var(--text-muted)' },
 }
 
-// Runtime health (live status) shown as a dot on stateful nodes (apps,
-// databases). Keyed by the resource's status string; `pulse` animates for
-// in-progress states. Unknown/empty statuses get no dot (see healthOf).
+// Unknown or empty statuses get no dot (see healthOf).
 export interface HealthMeta {
   label: string
   color: string
@@ -77,8 +71,6 @@ const healthMeta: Record<string, HealthMeta> = {
   canceled: { label: 'Canceled', color: 'var(--text-muted)' },
 }
 
-// healthOf returns the display meta for a runtime status, or null when the
-// status is empty/unknown (kinds without runtime state, or not yet live).
 export function healthOf(status?: string): HealthMeta | null {
   if (!status) return null
   return healthMeta[status] ?? { label: status, color: 'var(--text-muted)' }
@@ -97,8 +89,7 @@ export const edgeLabel: Record<EdgeType, string> = {
   run: 'runs in',
 }
 
-// Deep-link target for a live resource of the given kind. Kinds with a detail
-// page take the live id; kinds that only have a list page route there.
+// Kinds with a detail page take the live id; others route to their list page.
 export function resourceRoute(kind: string, liveId?: number): RouteLocationRaw | null {
   switch (kind) {
     case 'Application':

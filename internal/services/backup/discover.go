@@ -31,12 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/dbenvelope"
 )
 
-// DiscoveredSet is a recovery point found in the bucket.
-//
-// The bucket is the authority, not this workspace's database: after losing a
-// workspace — or moving to a new install — the sets Miabi knows about are whatever
-// its own rows contain, while everything ever taken is still in object storage.
-// Discovery makes those reachable again.
+// The bucket is the authority: after losing a workspace, everything ever taken is still in object storage.
 type DiscoveredSet struct {
 	Ref       string `json:"ref"`
 	Instance  string `json:"instance"`
@@ -50,15 +45,11 @@ type DiscoveredSet struct {
 
 	Artifacts []DiscoveredArtifact `json:"artifacts"`
 
-	// Known is true when this workspace already has the set in its own database.
-	// Those need no adopting; they are listed so the view is the whole bucket
-	// rather than only the unfamiliar parts of it.
+	// Known sets are still listed so the view covers the whole bucket.
 	Known bool `json:"known"`
 	SetID uint `json:"set_id,omitempty"`
 
-	// Openable reports that the workspace's current passphrase opens this set's
-	// envelope. False on a set sealed with a different secret — which is worth
-	// knowing before a restore is attempted, not during one.
+	// False when sealed with a different secret, worth knowing before a restore is attempted.
 	Openable bool `json:"openable"`
 	// Reason says why the set cannot be used, when it cannot.
 	Reason string `json:"reason,omitempty"`
@@ -70,19 +61,11 @@ type DiscoveredArtifact struct {
 	Filename  string `json:"filename"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
 	Encrypted bool   `json:"encrypted"`
-	// Present reports whether the object is actually in the bucket. A descriptor
-	// records what happened when the backup ran; retention and lifecycle rules act
-	// on the bucket afterwards.
+	// Retention and lifecycle rules act on the bucket after the descriptor was written.
 	Present bool `json:"present"`
 }
 
-// DiscoverSets lists the recovery points under a workspace's database backup path.
-// It reads only the cleartext descriptors, so no passphrase is needed to see what
-// exists — which is the whole point of keeping them readable.
-//
-// passphrase is optional: supplied, it is used to report whether each set can
-// actually be opened, without which the list says what is there but not what is
-// usable.
+// DiscoverSets reads only cleartext descriptors, so no passphrase is needed to see what exists.
 func (s *Service) DiscoverSets(ctx context.Context, cfg *S3Config, basePath, passphrase string) ([]DiscoveredSet, error) {
 	store, err := blobStoreFor(cfg)
 	if err != nil {
@@ -94,8 +77,7 @@ func (s *Service) DiscoverSets(ctx context.Context, cfg *S3Config, basePath, pas
 		return nil, fmt.Errorf("list %s: %w", cfg.Bucket, err)
 	}
 
-	// Index the objects once: presence is checked per artifact, and re-listing per
-	// set would be one round trip per recovery point.
+	// Index once: re-listing per set would cost a round trip per recovery point.
 	present := make(map[string]int64, len(objects))
 	var infoKeys []string
 	for _, o := range objects {
@@ -128,8 +110,7 @@ func (s *Service) DiscoverSets(ctx context.Context, cfg *S3Config, basePath, pas
 	return out, nil
 }
 
-// fetcher reads an object's bytes. Narrowed from blob.Store so the descriptor
-// logic — which is where the judgements live — is testable without a bucket.
+// Narrowed from blob.Store so the descriptor judgements are testable without a bucket.
 type fetcher func(ctx context.Context, key string) ([]byte, error)
 
 // describeSet reads one descriptor and checks the artifacts it claims.
@@ -188,8 +169,7 @@ func describeSet(ctx context.Context, fetch fetcher, key string, present map[str
 		out.Reason = fmt.Sprintf("%d of %d artifacts are missing from the bucket", missing, len(info.Artifacts))
 	}
 
-	// Whether the current passphrase opens it is the question a restore asks first,
-	// so answer it here rather than at the point of no return.
+	// Answer whether the passphrase opens it here rather than at the point of no return.
 	switch {
 	case !info.Encrypted || info.Envelope == "":
 		out.Openable = out.Reason == ""

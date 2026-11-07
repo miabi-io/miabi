@@ -159,8 +159,6 @@ func TestDecidePortRequest(t *testing.T) {
 	}
 }
 
-// A binding approved before reject_all keeps publishing under keep/report, and stops under revoke
-// or when it was written after the rule.
 func TestDecidePublish(t *testing.T) {
 	policyAt := time.Now()
 	before := models.PortBinding{HostPort: 30001, Protocol: "tcp", UpdatedAt: policyAt.Add(-time.Hour)}

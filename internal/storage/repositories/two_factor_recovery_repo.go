@@ -32,8 +32,6 @@ func NewTwoFactorRecoveryRepository(db *gorm.DB) *TwoFactorRecoveryRepository {
 	return &TwoFactorRecoveryRepository{db: db}
 }
 
-// ReplaceForUser deletes the user's existing recovery codes and inserts the new
-// set in a single transaction.
 func (r *TwoFactorRecoveryRepository) ReplaceForUser(userID uint, codes []*models.TwoFactorRecoveryCode) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ?", userID).Delete(&models.TwoFactorRecoveryCode{}).Error; err != nil {

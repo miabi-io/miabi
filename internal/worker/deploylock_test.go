@@ -83,8 +83,7 @@ func TestDeployLockReleaseLeavesAnotherHoldersLock(t *testing.T) {
 	}
 }
 
-// Regression: the refresher extended the key without checking it was still ours, so a deploy
-// whose lock had expired and been retaken kept renewing the new holder's lease.
+// Regression: the refresher must not renew a lease that expired and was retaken by another holder.
 func TestDeployLockRefreshNeverRenewsAnotherHoldersLock(t *testing.T) {
 	ttl := 150 * time.Millisecond
 	l, mr := newTestLock(t, ttl)

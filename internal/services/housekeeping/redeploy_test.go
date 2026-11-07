@@ -89,8 +89,7 @@ func TestApplyRedeploysAConfirmedMissingApp(t *testing.T) {
 	}
 }
 
-// Re-confirmed against fresh state, exactly like orphan removal: an app running again by the time Apply lands
-// is left alone rather than deployed a second time.
+// An app running again by the time Apply lands must not be deployed a second time.
 func TestApplySkipsAnAppThatIsRunningAgain(t *testing.T) {
 	live := []docker.Container{{ID: "c50", Names: []string{"/api"}, Labels: map[string]string{labelApp: "50"}, State: "running"}}
 	svc, r := missingAppService(t, live)
@@ -106,8 +105,6 @@ func TestApplySkipsAnAppThatIsRunningAgain(t *testing.T) {
 	}
 }
 
-// A deploy the service refuses — an app whose data volume is gone is refused by the deploy path itself — is
-// reported rather than swallowed.
 func TestApplyReportsARefusedRedeploy(t *testing.T) {
 	svc, r := missingAppService(t, nil)
 	r.err = errors.New("a volume holding this workload's data is gone")

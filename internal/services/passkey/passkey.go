@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package passkey runs the WebAuthn ceremonies behind passkey sign-in. Ceremony state lives in Redis for a
-// few minutes and is consumed on first use, so a challenge can never be answered twice.
+// Package passkey runs WebAuthn ceremonies; state in Redis is single-use so a challenge can't be answered twice.
 package passkey
 
 import (
@@ -63,8 +62,7 @@ type Config struct {
 	Origins     []string
 }
 
-// ConfigFromWebURL derives the relying party from the console's public URL. An explicit rpID overrides
-// the URL's host, e.g. to share passkeys with a parent domain.
+// An explicit rpID overrides the URL host, e.g. to share passkeys with a parent domain.
 func ConfigFromWebURL(webURL, rpID, displayName string, extraOrigins []string) (Config, bool) {
 	u, err := url.Parse(strings.TrimSpace(webURL))
 	if err != nil || u.Hostname() == "" {
@@ -176,8 +174,7 @@ func (s *Service) take(ctx context.Context, kind, token string) (*ceremony, erro
 	return &c, nil
 }
 
-// BeginRegistration starts adding a passkey to user's account. The returned options go to
-// navigator.credentials.create; the token comes back with the result.
+// The options go to navigator.credentials.create; the token comes back with the result.
 func (s *Service) BeginRegistration(ctx context.Context, user *models.User) (string, *protocol.CredentialCreation, error) {
 	if s == nil {
 		return "", nil, ErrDisabled

@@ -30,9 +30,7 @@ type baseDomain string
 
 func (b baseDomain) ExternalAccess(uint) (string, string) { return string(b), "" }
 
-// MIABI_REGISTRY_ENABLED pins enablement when it is set, and only then. An absent variable leaves the
-// switch to the stored row — i.e. to the admin UI — so an install that configures nothing in the
-// environment is driven entirely from the console.
+// An unset MIABI_REGISTRY_ENABLED leaves the switch to the admin UI.
 func TestEnablementFollowsEnvOnlyWhenSet(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -73,15 +71,13 @@ func TestHostResolution(t *testing.T) {
 	}{
 		{"env wins", "registry.env.test", "registry.old.test", "example.com", "registry.env.test", "env"},
 		{
-			// An install upgraded from when the host was UI-editable must keep
-			// answering on the name its existing images already reference.
+			// Upgraded installs keep answering on the host their existing images reference.
 			"stored value survives when env is unset",
 			"", "registry.old.test", "example.com", "registry.old.test", "stored",
 		},
 		{"base domain when nothing is set", "", "", "example.com", "registry.example.com", "base_domain"},
 		{"nothing at all", "", "", "", "", "unset"},
-		// A host that matches no image reference must resolve to "" — distribution
-		// then reports itself unavailable instead of running with an inert check.
+		// An invalid host resolves to "" so distribution reports itself unavailable.
 		{"invalid env host is dropped", "https://registry.env.test", "", "example.com", "registry.example.com", "base_domain"},
 		{"invalid stored host is dropped", "", "reg istry", "example.com", "registry.example.com", "base_domain"},
 		{"invalid base domain yields no host", "", "", "not a domain", "", "unset"},
@@ -101,9 +97,7 @@ func TestHostResolution(t *testing.T) {
 	}
 }
 
-// A field the environment pins can never be written from the API: the value the
-// operator declared must survive whatever the row holds, or a compose file would
-// stop describing the install it deploys.
+// Env-pinned fields can never be written from the API, or the compose file would stop describing the install.
 func TestEnvPinnedFieldsBeatStoredValues(t *testing.T) {
 	svc := &Service{
 		cfg:      config.RegistryConfig{Enabled: false, EnabledSet: true, Host: "registry.env.test", StorageType: "filesystem"},

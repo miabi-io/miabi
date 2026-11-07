@@ -38,12 +38,8 @@ func TestSystemPlanEdit(t *testing.T) {
 		makeDefault bool
 		wantRefusal error
 	}{
-		// Renaming would unpin it: pinUnlimitedPlan resolves it by name and fails
-		// soft, so nothing would error — the system workspace would just drop onto
-		// the default plan's limits.
+		// pinUnlimitedPlan resolves it by name and fails soft, so a rename silently drops it to default limits.
 		{"renaming the system plan", system, "Platform", false, errSystemPlanRename},
-		// Making it the default would hand unlimited resources to every workspace
-		// with no plan assigned.
 		{"making it the default", system, "", true, errSystemPlanDefault},
 		{"both at once reports the rename", system, "Platform", true, errSystemPlanRename},
 
@@ -98,8 +94,7 @@ func TestSystemPlanIsUnreachableByATenant(t *testing.T) {
 			t.Errorf("%s has no refusal", route)
 			continue
 		}
-		// "cannot" plus a reason: a refusal that only says no leaves the reader
-		// guessing whether it is a bug or a rule.
+		// A refusal that only says no leaves the reader guessing whether it is a bug or a rule.
 		msg := err.Error()
 		if !strings.Contains(msg, "cannot") || !strings.Contains(msg, ";") {
 			t.Errorf("refusal for %s does not say what is refused and why: %q", route, msg)

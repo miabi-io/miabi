@@ -62,9 +62,7 @@ func TestUnknownStrategyIsRejected(t *testing.T) {
 	}
 }
 
-// The declarative package deliberately does not import the model's strategy constants, so the two
-// lists can drift. This is what stops that: adding a strategy to the model without teaching the
-// manifest about it fails here rather than in a user's bundle.
+// The package doesn't import the model's strategy constants; this catches drift between the lists.
 func TestManifestStrategiesMatchTheModel(t *testing.T) {
 	for _, st := range []models.DeployStrategy{models.DeployRecreate, models.DeployRolling, models.DeployCanary} {
 		if _, err := d.Parse([]byte(appYAML(string(st)))); err != nil {
@@ -73,8 +71,7 @@ func TestManifestStrategiesMatchTheModel(t *testing.T) {
 	}
 }
 
-// A manifest that says nothing about rollout must not diff against an app configured in the console,
-// or every apply would reset it.
+// An omitted strategy must not diff against a console-configured one, or every apply resets it.
 func TestOmittedStrategyIsNotDrift(t *testing.T) {
 	desired, err := d.Parse([]byte(appYAML("")))
 	if err != nil {
@@ -110,8 +107,7 @@ func TestDeclaredStrategyConverges(t *testing.T) {
 	t.Errorf("a strategy change did not plan: %+v", plan.Changes)
 }
 
-// A git-source app must round-trip: an app exported from the console and re-applied has to come back
-// as the same app, not as an image pull of whatever its last build produced.
+// An exported git-source app must re-apply as the same app, not an image pull of its last build.
 func TestSourceBlockParses(t *testing.T) {
 	set, err := d.Parse([]byte(`
 apiVersion: miabi.io/v1
@@ -181,8 +177,6 @@ func TestSourceValidation(t *testing.T) {
 	}
 }
 
-// Repointing an app at another repo or ref is a real change and must converge, not sit as drift the
-// plan cannot see.
 func TestSourceChangesConverge(t *testing.T) {
 	mk := func(ref string) *d.ResourceSet {
 		set, err := d.Parse([]byte(`
@@ -206,8 +200,7 @@ spec:
 	}
 }
 
-// The declarative package does not import the model's build-method constants, so the lists can
-// drift. This is what stops that.
+// The package doesn't import the model's build-method constants; this catches drift between the lists.
 func TestManifestBuildMethodsMatchTheModel(t *testing.T) {
 	for _, m := range []models.AppBuildMethod{models.BuildAuto, models.BuildDockerfile, models.BuildBuildpack} {
 		y := "apiVersion: miabi.io/v1\nkind: Application\nmetadata: { name: web }\nspec:\n  source: { git: https://x/y, buildMethod: " + string(m) + " }\n"

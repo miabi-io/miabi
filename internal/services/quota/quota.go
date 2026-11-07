@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package quota enforces per-workspace plan limits and capabilities. Resource services call CheckCreate
-// before persisting and Require before a gated action, so the same caps apply to every caller. Effective
-// limits resolve as workspace override, then assigned plan, then default plan, then unlimited.
+// Package quota enforces plan limits; effective limits resolve override, plan, default plan, then unlimited.
 package quota
 
 import (
@@ -64,29 +62,21 @@ const (
 	CapDNSProviders         Capability = "dns_providers"
 	CapCustomLabels         Capability = "custom_labels"
 	CapPlatformRunners      Capability = "platform_runners"
-	// CapCustomBuilder gates a per-app custom buildpack builder image. A custom builder runs on the runner with
-	// docker-daemon access, so on shared or multi-tenant runners it is an arbitrary-code vector; when not
-	// granted, the platform default builder is used instead.
+	// A custom builder runs with docker-daemon access, an arbitrary-code vector on shared runners.
 	CapCustomBuilder Capability = "custom_builder"
-	// CapGPU gates whether a workspace may request GPU devices for its apps.
-	// Device passthrough is privileged, so this is a hard gate (and incompatible
-	// with the restricted security profile); off by default like the others.
+	// Device passthrough is privileged, so this is a hard gate, incompatible with the restricted profile.
 	CapGPU Capability = "gpu"
 	// CapServiceRuntime gates running an app as a replicated Swarm service.
 	CapServiceRuntime Capability = "service_runtime"
 )
 
-// ErrQuotaExceeded and ErrCapabilityDenied are the sentinels handlers map to a
-// 403 response. QuotaError carries the structured detail for counted resources.
-// ErrResourceLimitsRequired is a 400: the request is fixable by the caller.
+// ErrResourceLimitsRequired is a 400 because the caller can fix the request; the others map to 403.
 var (
 	ErrQuotaExceeded          = errors.New("plan limit reached")
 	ErrCapabilityDenied       = errors.New("capability not allowed by plan")
 	ErrResourceLimitsRequired = errors.New("the plan requires CPU and memory limits")
 )
 
-// QuotaError is returned when creating one more of a counted resource would
-// exceed the effective limit.
 type QuotaError struct {
 	Resource Resource
 	Used     int
@@ -101,8 +91,6 @@ func (e *QuotaError) Is(target error) bool { return target == ErrQuotaExceeded }
 // Code is the stable machine code surfaced in the API error envelope.
 func (e *QuotaError) Code() string { return "QUOTA_EXCEEDED" }
 
-// codedError wraps a quota/capability failure with a stable code and a sentinel
-// for errors.Is matching.
 type codedError struct {
 	code string
 	msg  string
@@ -117,8 +105,7 @@ func quotaExceeded(format string, a ...any) error {
 	return &codedError{code: "QUOTA_EXCEEDED", msg: fmt.Sprintf(format, a...), base: ErrQuotaExceeded}
 }
 
-// Limits is the fully-resolved effective limit set for a workspace. -1 means
-// unlimited; 0 means none.
+// -1 means unlimited; 0 means none.
 type Limits struct {
 	MaxApps                   int    `json:"max_apps"`
 	MaxDatabaseInstances      int    `json:"max_database_instances"`
@@ -151,8 +138,7 @@ type Limits struct {
 	RequireResourceLimits     bool   `json:"require_resource_limits"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
-	// CPUOvercommit is the multiple of MaxCPUCores and MaxDatabaseCPUCores the summed CPU limits may reach
-	// (server-wide, MIABI_QUOTA_CPU_OVERCOMMIT; 1 = none).
+	// Server-wide via MIABI_QUOTA_CPU_OVERCOMMIT; 1 means none.
 	CPUOvercommit float64 `json:"cpu_overcommit"`
 }
 
@@ -284,15 +270,12 @@ func resourceLimit(l Limits, r Resource) int {
 	}
 }
 
-// EditionGate reports whether a paid entitlement flag is usable at runtime. Satisfied by enterprise.EE;
-// injected so the resolver can clamp the Enterprise-only restricted security profile back to the default in
-// Community, or once a license lapses.
+// EditionGate lets the resolver clamp the Enterprise-only restricted profile in Community or after a license lapse.
 type EditionGate interface {
 	Has(flag string) bool
 }
 
-// flagSecurityProfile is a local copy of enterprise.FlagSecurityProfile so this
-// package needs no enterprise import.
+// A local copy so this package needs no enterprise import.
 const flagSecurityProfile = "security_profile"
 
 // flagPlacementPolicy is a local copy of enterprise.FlagPlacementPolicy.
@@ -310,8 +293,7 @@ type Service struct {
 	dbs       *repositories.DatabaseRepository
 	enforce   bool
 	ee        EditionGate
-	// forceNonRoot is the server-level non-root mandate (MIABI_FORCE_NON_ROOT_USER). It applies
-	// regardless of plan enforcement, so it is held here rather than resolved per workspace.
+	// Applies regardless of plan enforcement, so it is held here rather than resolved per workspace.
 	forceNonRoot bool
 	// restricted refuses creates in a read-only or suspended workspace; nil allows them.
 	restricted func(workspaceID uint) error
@@ -323,17 +305,13 @@ func NewService(plans *repositories.PlanRepository, overrides *repositories.Work
 	return &Service{plans: plans, overrides: overrides, apps: apps, volumes: volumes, dbs: dbs, enforce: enforce}
 }
 
-// SetEdition wires the entitlement gate used to clamp Enterprise-only workload
-// security policies (nil-safe; nil treats every paid flag as unlicensed, i.e.
-// shell access always allowed and the restricted profile never applied).
+// SetEdition is nil-safe; nil treats every paid flag as unlicensed.
 func (s *Service) SetEdition(g EditionGate) { s.ee = g }
 
-// entitled reports whether a paid flag is usable. False when no gate is wired
-// (Community) so the resolver falls back to the permissive default.
+// False without a gate (Community), so the resolver falls back to the permissive default.
 func (s *Service) entitled(flag string) bool { return s.ee != nil && s.ee.Has(flag) }
 
-// SetRestriction wires the workspace-restriction check. It runs whether or not plan enforcement is
-// on, since a restriction is an admin hold, not a plan limit.
+// SetRestriction runs even without plan enforcement, since a restriction is an admin hold, not a plan limit.
 func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
 
 // Enabled reports whether enforcement is active.
@@ -349,9 +327,7 @@ func (s *Service) effectivePlan(workspaceID uint) *models.Plan {
 	return nil
 }
 
-// EffectivePlacement resolves the locations and node pool a workspace's plan binds it to (override -> plan ->
-// default). The bool is false when no policy applies, because plan enforcement is off or placement_policy is
-// not licensed; the workspace may then use any location and any node.
+// EffectivePlacement returns false when enforcement is off or unlicensed; any location and node may then be used.
 func (s *Service) EffectivePlacement(workspaceID uint) (models.PlanPlacement, bool) {
 	if !s.Enabled() || !s.entitled(flagPlacementPolicy) {
 		return models.PlanPlacement{}, false
@@ -373,9 +349,7 @@ func placementFrom(p *models.Plan, o *models.WorkspaceQuota) models.PlanPlacemen
 	return p.Placement
 }
 
-// EffectiveDatabaseSizes resolves the database sizes a workspace's plan offers (override -> plan), the first being
-// the default. The bool is false when no binding applies, because plan enforcement is off or database_sizes is not
-// licensed. An empty list binds nothing: every size is offered.
+// EffectiveDatabaseSizes lists the default first; false when not bound, and an empty list offers every size.
 func (s *Service) EffectiveDatabaseSizes(workspaceID uint) ([]uint, bool) {
 	if !s.Enabled() || !s.entitled(flagDatabaseSizes) {
 		return nil, false
@@ -400,8 +374,7 @@ func databaseSizesFrom(p *models.Plan, o *models.WorkspaceQuota) []uint {
 // DatabaseSizesLicensed reports whether database sizes may be used at all, whether a plan binds them or not.
 func (s *Service) DatabaseSizesLicensed() bool { return s != nil && s.entitled(flagDatabaseSizes) }
 
-// EffectivePlanName returns the name of the workspace's resolved plan, or ""
-// when no plan applies (unlimited).
+// EffectivePlanName returns "" when no plan applies (unlimited).
 func (s *Service) EffectivePlanName(workspaceID uint) string {
 	if s == nil {
 		return ""
@@ -412,8 +385,7 @@ func (s *Service) EffectivePlanName(workspaceID uint) string {
 	return ""
 }
 
-// EffectiveLimits resolves a workspace's limits (override -> plan -> default ->
-// unlimited). Safe on a nil service (returns unlimited).
+// EffectiveLimits is safe on a nil service (returns unlimited).
 func (s *Service) EffectiveLimits(workspaceID uint) Limits {
 	if s == nil {
 		return unlimited()
@@ -424,9 +396,7 @@ func (s *Service) EffectiveLimits(workspaceID uint) Limits {
 			l = applyOverride(l, o)
 		}
 	}
-	// The restricted security profile is Enterprise-only: clamp it back to the
-	// default when not licensed, so a Community install (or a lapsed license)
-	// behaves as if the plan never selected it, without rewriting stored plans.
+	// Clamp unlicensed restricted profiles without rewriting stored plans.
 	if !s.entitled(flagSecurityProfile) {
 		l.SecurityProfile = models.SecurityProfileDefault
 	}
@@ -434,8 +404,7 @@ func (s *Service) EffectiveLimits(workspaceID uint) Limits {
 	return l
 }
 
-// CheckCreate returns a QuotaError when creating one more of r would exceed the
-// effective limit. currentCount is the live count the caller already has.
+// CheckCreate takes the caller's live count of r.
 func (s *Service) CheckCreate(workspaceID uint, r Resource, currentCount int) error {
 	if s != nil && s.restricted != nil {
 		if err := s.restricted(workspaceID); err != nil {
@@ -455,9 +424,7 @@ func (s *Service) CheckCreate(workspaceID uint, r Resource, currentCount int) er
 	return nil
 }
 
-// RestrictedProfile reports whether a workspace's effective security profile is "restricted" (force
-// non-root). Always false when enforcement is disabled (single-tenant mode): the per-plan gate does not apply
-// there, leaving the decision to the server-level default. Nil-safe, returning false.
+// RestrictedProfile is false without enforcement, leaving the decision to the server-level default.
 func (s *Service) RestrictedProfile(workspaceID uint) bool {
 	if !s.Enabled() {
 		return false
@@ -468,15 +435,10 @@ func (s *Service) RestrictedProfile(workspaceID uint) bool {
 // SetCPUOvercommit sets the multiple of a plan's CPU cores that a workspace's summed CPU limits may reach.
 func (s *Service) SetCPUOvercommit(v float64) { s.cpuOvercommit = v }
 
-// SetForceNonRoot wires the server-level non-root mandate, so RequireNonRootUser
-// is the one place that answers "must this workload drop root?".
+// SetForceNonRoot makes RequireNonRootUser the single answer to "must this workload drop root?".
 func (s *Service) SetForceNonRoot(v bool) { s.forceNonRoot = v }
 
-// RequireNonRootUser reports whether a workspace's app/job containers must run as a non-root user:
-// the server-level mandate, or the workspace's restricted profile. An official-template app is exempt
-// when its plan allows it — but never against the server-level mandate. This is the single gate both
-// the deploy path and the write-time validators consult, so a stored run-as user can never outlive
-// the policy that permitted it. Nil-safe, returning false.
+// RequireNonRootUser is the one gate for deploy and write-time checks; official templates are never exempt from the server mandate.
 func (s *Service) RequireNonRootUser(workspaceID uint, officialTemplate bool) bool {
 	if s == nil {
 		return false
@@ -490,9 +452,7 @@ func (s *Service) RequireNonRootUser(workspaceID uint, officialTemplate bool) bo
 	return !(officialTemplate && s.AllowOfficialImageUser(workspaceID))
 }
 
-// AllowOfficialImageUser reports whether the workspace's effective plan lets apps installed from an official
-// marketplace template keep the image's own user under the restricted security profile. Only meaningful
-// alongside a restricted profile; nil-safe, and permissive when enforcement is disabled.
+// AllowOfficialImageUser matters only with a restricted profile; permissive when enforcement is off.
 func (s *Service) AllowOfficialImageUser(workspaceID uint) bool {
 	if !s.Enabled() {
 		return true
@@ -500,8 +460,6 @@ func (s *Service) AllowOfficialImageUser(workspaceID uint) bool {
 	return s.EffectiveLimits(workspaceID).AllowOfficialImageUser
 }
 
-// Require returns ErrCapabilityDenied when the workspace's effective limits do
-// not grant the capability.
 func (s *Service) Require(workspaceID uint, c Capability) error {
 	if !s.Enabled() {
 		return nil
@@ -536,16 +494,12 @@ func (s *Service) Require(workspaceID uint, c Capability) error {
 	return &codedError{code: "CAPABILITY_DENIED", msg: fmt.Sprintf("capability not allowed by plan: %s", c), base: ErrCapabilityDenied}
 }
 
-// CustomBuilderAllowed reports whether a workspace may use a custom buildpack builder image — the plan
-// capability, or true when plan enforcement is off. Used by the deploy worker as defense in depth: a builder
-// set while granted must stop being honored if the capability is later revoked.
+// CustomBuilderAllowed is re-checked at deploy so a later revocation stops a previously set builder.
 func (s *Service) CustomBuilderAllowed(workspaceID uint) bool {
 	return s.Require(workspaceID, CapCustomBuilder) == nil
 }
 
-// ResolveAppResources fills an app's unset CPU (nanoCPUs) and memory (bytes) from the plan defaults, and
-// refuses one the plan requires but has no default for. Each dimension is resolved on its own; a value
-// already set always wins. Unchanged when enforcement is off.
+// ResolveAppResources fills unset CPU/memory from plan defaults per dimension; set values always win.
 func (s *Service) ResolveAppResources(workspaceID uint, memoryBytes, nanoCPUs int64) (int64, int64, error) {
 	if !s.Enabled() {
 		return memoryBytes, nanoCPUs, nil
@@ -577,9 +531,7 @@ func resolveAppResources(l Limits, memoryBytes, nanoCPUs int64) (int64, int64, e
 	return memoryBytes, nanoCPUs, nil
 }
 
-// CheckComputeAdd verifies that adding the requested CPU (nanoCPUs) and memory
-// (bytes) keeps the workspace's aggregate app compute within the plan caps. On
-// an update, excludeAppID drops the app's current contribution from the sum.
+// CheckComputeAdd excludes excludeAppID's current contribution on update.
 func (s *Service) CheckComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int64, excludeAppID uint) error {
 	if !s.Enabled() {
 		return nil
@@ -618,9 +570,7 @@ func checkCPU(l Limits, cores int, nanoCPUs int64, what string) error {
 		strconv.FormatFloat(allowance, 'f', -1, 64), cores)
 }
 
-// CheckGPURequest verifies that granting `requested` GPU units keeps the workspace's aggregate allocation
-// within the MaxGPUs cap. The current allocation sums GPUCount x replicas over *running* apps; excludeAppID
-// drops the app being redeployed so it does not double-count its own held units.
+// CheckGPURequest sums GPUCount x replicas over running apps; excludeAppID avoids double-counting a redeploy.
 func (s *Service) CheckGPURequest(workspaceID uint, requested int, excludeAppID uint) error {
 	if !s.Enabled() || requested <= 0 {
 		return nil
@@ -639,8 +589,7 @@ func (s *Service) CheckGPURequest(workspaceID uint, requested int, excludeAppID 
 	return nil
 }
 
-// CheckInstanceSize verifies a single DB instance's declared data-volume size
-// (bytes) is within the per-instance cap. A 0 size (unspecified) is allowed.
+// A 0 size (unspecified) is allowed.
 func (s *Service) CheckInstanceSize(workspaceID uint, sizeBytes int64) error {
 	if !s.Enabled() || sizeBytes <= 0 {
 		return nil
@@ -656,8 +605,7 @@ func (s *Service) CheckInstanceSize(workspaceID uint, sizeBytes int64) error {
 	return nil
 }
 
-// CheckStorageAdd verifies that adding addBytes of declared storage keeps the
-// workspace's aggregate (volumes + DB instance data volumes) within the cap.
+// Storage counts volumes plus DB instance data volumes.
 func (s *Service) CheckStorageAdd(workspaceID uint, addBytes int64) error {
 	if !s.Enabled() || addBytes <= 0 {
 		return nil
@@ -676,9 +624,7 @@ func (s *Service) CheckStorageAdd(workspaceID uint, addBytes int64) error {
 	return nil
 }
 
-// CheckDatabaseComputeAdd verifies that adding a database instance's CPU and memory limits keeps the workspace's
-// database budget, which is apart from the apps', within its plan. excludeInstanceID drops an instance being
-// resized, so its current limits are not counted twice.
+// The database budget is separate from apps'; excludeInstanceID avoids double-counting a resize.
 func (s *Service) CheckDatabaseComputeAdd(workspaceID uint, addNanoCPUs, addMemBytes int64, excludeInstanceID uint) error {
 	if !s.Enabled() {
 		return nil
@@ -700,8 +646,7 @@ func (s *Service) CheckDatabaseComputeAdd(workspaceID uint, addNanoCPUs, addMemB
 	return nil
 }
 
-// DatabaseComputeCapped reports which dimensions of the database budget the workspace's plan caps, so an
-// instance created without a size gets one instead of escaping the budget.
+// Lets an instance created without a size get one instead of escaping the budget.
 func (s *Service) DatabaseComputeCapped(workspaceID uint) (cpu, memory bool) {
 	if !s.Enabled() {
 		return false, false

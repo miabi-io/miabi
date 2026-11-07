@@ -1,28 +1,4 @@
-# A fuller pipeline: test → build (digest-captured) → scan → deploy, also run
-# nightly on a schedule. In your repo, keep this at .miabi/pipeline.yaml and
-# register it as the pipeline (see README → "Keep the spec in your repo").
-#
-# A step's `run:` is a shell command, executed in a non-login shell inside the
-# step image (like a GitHub Actions `run:` step) — so &&, pipes, and env
-# expansion work. Write the full command, including the tool name.
-#
-# The runner exports run context to every step as env:
-#   $MIABI_IMAGE          image ref the `build` step produced (repo:tag) — set only
-#                         for steps that run AFTER build; also used by `deploy`
-#   $MIABI_IMAGE_DIGEST   the immutable repo@sha256 form of the same image
-#   $MIABI_COMMIT         resolved commit the workspace was checked out at
-#   $MIABI_RUN_NUMBER     monotonic per-pipeline run number
-#   $MIABI_WORKDIR        the shared workspace path inside steps (/workspace)
-#
-# A step can export its own vars to later steps by appending to $MIABI_ENV
-# (like GitHub Actions' $GITHUB_ENV) — later steps see them in their environment:
-#   run: "echo VERSION=$(cat VERSION) >> $MIABI_ENV"
-# MIABI_IMAGE above is published through this same channel by the build step.
-#
-# Your own variables come from `env:`, at pipeline level (every step) or step
-# level. Later wins:  pipeline env  <  $MIABI_ENV exports  <  step env.
-# MIABI_* names are reserved for the context above and are rejected at save time,
-# so a pipeline cannot shadow the credentials the deploy step authenticates with.
+# `run:` is a shell command in the step image; export vars to later steps via $MIABI_ENV; MIABI_* names are reserved.
 apiVersion: miabi.io/v1
 kind: Pipeline
 metadata:
@@ -34,9 +10,7 @@ on:
   schedule: "0 3 * * *"   # nightly at 03:00 (registered in the cron scheduler)
 env:
   NODE_ENV: production
-  # Resolved from the workspace vault at dispatch — the value never enters this
-  # file, the runner never reads the vault, and it is masked in the live logs.
-  # A missing secret fails the run up front instead of after a four-minute build.
+  # Resolved from the vault at dispatch and masked in logs; a missing secret fails the run up front.
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 steps:
   - name: test
@@ -50,9 +24,7 @@ steps:
   - name: scan
     image: aquasec/trivy:latest
     continue-on-error: true   # report vulnerabilities but don't block the deploy
-    # trivy pulls $MIABI_IMAGE from the registry, so pass the per-job credentials
-    # the runner injects (TRIVY_USERNAME/PASSWORD). Add TRIVY_INSECURE=true if the
-    # registry is served over plain HTTP or uses a self-signed certificate.
+    # trivy pulls from the registry, so pass the runner's credentials; add TRIVY_INSECURE=true for plain HTTP/self-signed.
     run: "TRIVY_USERNAME=$MIABI_REGISTRY_USER TRIVY_PASSWORD=$MIABI_REGISTRY_TOKEN trivy image --exit-code 1 --severity HIGH,CRITICAL $MIABI_IMAGE"
   - name: deploy
     uses: deploy

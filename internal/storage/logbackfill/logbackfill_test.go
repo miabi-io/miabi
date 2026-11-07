@@ -37,8 +37,7 @@ func newDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	// Application carries a UIDModel (uuid default) that sqlite can't migrate, so
-	// create a minimal applications table by hand for the deployment→app join.
+	// Application's UIDModel uuid default breaks sqlite migration, so the table is created by hand.
 	if err := db.Exec(`CREATE TABLE applications (id integer primary key, workspace_id integer)`).Error; err != nil {
 		t.Fatalf("create applications: %v", err)
 	}
@@ -67,8 +66,6 @@ func TestBackfillExternalizesLargeRows(t *testing.T) {
 	db := newDB(t)
 	store := newStore(t)
 
-	// One app in workspace 42, a large deployment log, plus a small one that must
-	// be left in the DB tail (empty ref).
 	db.Exec(`INSERT INTO applications (id, workspace_id) VALUES (1, 42)`)
 	db.Create(&models.Deployment{ApplicationID: 1, Number: 1, Logs: bigLog()})
 	db.Create(&models.Deployment{ApplicationID: 1, Number: 2, Logs: "tiny\n"})
@@ -142,8 +139,7 @@ func TestBackfillDisabledStoreIsNoOp(t *testing.T) {
 	db := newDB(t)
 	db.Create(&models.Job{WorkspaceID: 42, ApplicationID: 1, Logs: bigLog()})
 
-	// nil store = disabled: no work, and crucially no marker (so enabling the
-	// store on a later boot still runs the backfill).
+	// Disabled must record no marker, so enabling the store on a later boot still runs the backfill.
 	if err := Run(context.Background(), db, nil, 8, "test"); err != nil {
 		t.Fatalf("Run disabled: %v", err)
 	}

@@ -21,8 +21,7 @@ import { describe, it, expect } from 'vitest'
 
 const sources = import.meta.glob('../**/*.vue', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
-// A template calling t() without useI18n() in its script compiles and type-checks, then
-// throws at runtime when that dialog opens. $t is injected globally and needs nothing.
+// A template calling t() without useI18n() type-checks, then throws when it opens; $t is global.
 describe('translation calls are in scope', () => {
   it('no template uses bare t() without useI18n()', () => {
     const offenders = Object.entries(sources)

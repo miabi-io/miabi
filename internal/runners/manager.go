@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package runners maintains the live tunnels of connected build/pipeline runners. It mirrors the
-// node-agent connection manager but is thinner: a runner uses its OWN Docker/BuildKit daemon, so
-// the tunnel exists only to lease jobs to it and stream logs and status back.
+// Package runners keeps runner tunnels only to lease jobs and stream logs; runners use their own Docker/BuildKit.
 package runners
 
 import (
@@ -33,20 +31,14 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// heartbeatInterval refreshes a connected runner's last-seen, matching the node
-// agent's cadence.
 const heartbeatInterval = 30 * time.Second
 
-// connectionState is what the runner service needs to reflect a live tunnel.
-// Implemented by runner.Service (MarkConnected/MarkDisconnected); an interface
-// keeps this package free of a service import cycle.
+// An interface keeps this package free of a service import cycle.
 type connectionState interface {
 	MarkConnected(id uint, f models.RunnerFacts)
 	MarkDisconnected(id uint)
 }
 
-// Manager accepts runner tunnels and tracks each runner's live session and
-// online/offline status.
 type Manager struct {
 	state connectionState
 
@@ -55,19 +47,14 @@ type Manager struct {
 	statusHooks []func(id uint, online bool)
 }
 
-// NewManager creates a runner connection manager backed by the runner service
-// (for status persistence).
 func NewManager(state connectionState) *Manager {
 	return &Manager{state: state, sessions: map[uint]*yamux.Session{}}
 }
 
-// Handle owns an authenticated runner WebSocket: it builds the tunnel, marks the runner online,
-// and blocks until the tunnel closes so the HTTP handler keeps the connection open. The caller has
-// already validated the registration token.
+// Blocks so the HTTP handler keeps the connection open; the caller has already validated the token.
 func (m *Manager) Handle(r *models.Runner, f models.RunnerFacts, ws *websocket.Conn) {
 	id := r.ID
-	// Control plane OPENS streams to the runner (to dispatch job leases), so the
-	// runner side ACCEPTS them — mirrors the node/agent role split.
+	// The control plane opens streams to dispatch leases, so the runner side accepts them.
 	sess, err := wstunnel.Client(ws)
 	if err != nil {
 		logger.Error("failed to start runner tunnel", "runner", id, "error", err)
@@ -92,8 +79,7 @@ func (m *Manager) serve(r *models.Runner, f models.RunnerFacts, sess *yamux.Sess
 	<-sess.CloseChan() // blocks until the tunnel dies (keepalive timeout or close)
 	close(stop)
 
-	// A tunnel superseded by a reconnect closes after its replacement is live, and must not mark
-	// the runner offline under it.
+	// A tunnel superseded by a reconnect must not mark the runner offline under its replacement.
 	if m.forget(id, sess) {
 		m.state.MarkDisconnected(id)
 		m.notify(id, false)
@@ -101,9 +87,7 @@ func (m *Manager) serve(r *models.Runner, f models.RunnerFacts, sess *yamux.Sess
 	logger.Info("runner disconnected", "runner", id, "name", r.Name)
 }
 
-// AddStatusListener registers a hook fired when a runner's tunnel comes up or goes down, so the
-// console can show a newly enrolled runner without a reload. Hooks run in order on the tunnel's
-// goroutine, keeping a quick drop and reconnect in sequence, so they must not block.
+// Hooks run in order on the tunnel goroutine to keep drop/reconnect sequenced, so they must not block.
 func (m *Manager) AddStatusListener(fn func(id uint, online bool)) {
 	m.mu.Lock()
 	m.statusHooks = append(m.statusHooks, fn)
@@ -127,8 +111,7 @@ func (m *Manager) Connected(id uint) bool {
 	return ok
 }
 
-// Session returns a connected runner's multiplexed session (for the P3 lease
-// dispatcher to open streams). ok is false when the runner is offline.
+// ok is false when the runner is offline.
 func (m *Manager) Session(id uint) (*yamux.Session, bool) {
 	m.mu.Lock()
 	sess, ok := m.sessions[id]
@@ -159,8 +142,6 @@ func (m *Manager) heartbeat(id uint, f models.RunnerFacts, stop <-chan struct{})
 	}
 }
 
-// replace registers the new session, closing any prior one (a reconnect
-// supersedes a stale tunnel).
 func (m *Manager) replace(id uint, sess *yamux.Session) {
 	m.mu.Lock()
 	old := m.sessions[id]

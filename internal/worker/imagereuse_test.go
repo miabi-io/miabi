@@ -29,9 +29,7 @@ func cred(server string) *docker.RegistryAuth {
 	return &docker.RegistryAuth{Server: server, Username: "u", Password: "p"}
 }
 
-// The finding: an image cached on a shared node by one workspace must not run for another just
-// because it is on disk. Without a credential for its registry, the copy is not this workspace's
-// to use.
+// A cached image must not run for another workspace without a credential for its registry.
 func TestMayReuseCachedImageRefusesAForeignPrivateImage(t *testing.T) {
 	for _, ref := range []string{
 		"ghcr.io/acme/private:1.2.3",
@@ -47,16 +45,13 @@ func TestMayReuseCachedImageRefusesAForeignPrivateImage(t *testing.T) {
 	}
 }
 
-// A credential for the same registry means the workspace could pull the image itself, so reusing
-// the local copy grants it nothing it did not already have.
 func TestMayReuseCachedImageAllowsAHostTheWorkspaceCanPullFrom(t *testing.T) {
 	for _, tc := range []struct{ ref, server string }{
 		{"ghcr.io/acme/app:1", "ghcr.io"},
 		{"ghcr.io/acme/app:1", "https://ghcr.io"},
 		{"registry.example.com:5000/t/a:1", "registry.example.com:5000"},
 		{"GHCR.io/acme/app:1", "ghcr.io"},
-		// Every Docker Hub spelling has to reduce to the same host, or a Hub credential
-		// would not match a Hub image.
+		// Every Docker Hub spelling must reduce to the same host, or a Hub credential would not match a Hub image.
 		{"acme/app:1", "docker.io"},
 		{"acme/app:1", "index.docker.io"},
 		{"acme/app:1", "https://index.docker.io/v1/"},
@@ -69,9 +64,7 @@ func TestMayReuseCachedImageAllowsAHostTheWorkspaceCanPullFrom(t *testing.T) {
 	}
 }
 
-// The dangerous direction: a credential for one registry must not wave through a cached image from
-// another. Attaching a throwaway Docker Hub credential would otherwise unlock every private image
-// on the node.
+// A throwaway Docker Hub credential must not unlock every private image on the node.
 func TestMayReuseCachedImageRefusesAMismatchedHost(t *testing.T) {
 	for _, tc := range []struct{ ref, server string }{
 		{"ghcr.io/acme/private:1", "docker.io"},
@@ -86,8 +79,7 @@ func TestMayReuseCachedImageRefusesAMismatchedHost(t *testing.T) {
 	}
 }
 
-// The platform's own registry namespaces every repository per workspace, and ResolveImageRef has
-// already refused a foreign one before the deploy reaches the pull decision.
+// ResolveImageRef has already refused a foreign namespace before the pull decision.
 func TestMayReuseCachedImageAllowsTheInternalRegistry(t *testing.T) {
 	if !mayReuseCachedImage("registry.example.com/ws_7/app:1", true, nil) {
 		t.Error("an internal, namespace-authorized ref was refused")

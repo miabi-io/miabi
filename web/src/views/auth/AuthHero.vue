@@ -1,10 +1,5 @@
 <script setup lang="ts">
-// The marketing panel beside the auth form. Extracted from Login.vue so the
-// sign-up page shows the same thing without a second copy of it — 100 lines of
-// gradients and a watermark are not worth maintaining twice.
-//
-// brandName replaces the wordmark for a white-labelled install; unset keeps the
-// "Miabi.io" lockup with its accented ".io".
+// Shared by login and sign-up; brandName replaces the wordmark on a white-labelled install.
 import MiabiWordmark from '@/components/MiabiWordmark.vue'
 
 defineProps<{ brandName?: string }>()
@@ -13,8 +8,6 @@ defineProps<{ brandName?: string }>()
 <template>
     <aside class="auth-hero">
       <div class="auth-hero-inner">
-        <!-- Brand lockup: the new pinwheel mark + "Miabi.io" wordmark; the
-             trailing ".io" carries the brand accent. -->
         <div class="auth-hero-wordmark">
           <img src="/brand/miabi-mark-white.svg" alt="" class="auth-hero-mark" />
           <span v-if="brandName" class="auth-hero-name">{{ brandName }}</span>

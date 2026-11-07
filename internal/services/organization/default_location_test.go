@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// clusterSet answers from a fixed set of clusters, so a test can move one between organizations
-// the way dedicating it does.
+// A fixed set lets a test move a cluster between organizations, as dedicating it does.
 type clusterSet struct{ clusters []models.Cluster }
 
 func (c *clusterSet) FindByID(id uint) (*models.Cluster, error) {
@@ -108,8 +107,7 @@ func alignService(t *testing.T, def *uint) (*Service, *clusterSet, uint) {
 
 func ptr(n uint) *uint { return &n }
 
-// The reported bug: an organization dedicated a cluster kept a default location on shared hardware
-// it may no longer place in, so every new workspace was seeded with a location placement skips.
+// Bug: an org given a dedicated cluster kept a shared default location that placement now skips.
 func TestAlignDefaultCluster_MovesOffSharedHardware(t *testing.T) {
 	s, set, acme := alignService(t, ptr(11))
 
@@ -122,8 +120,7 @@ func TestAlignDefaultCluster_MovesOffSharedHardware(t *testing.T) {
 	}
 }
 
-// An organization with no default at all gets the cluster it was just given, rather than staying on
-// the platform default it can no longer use.
+// An org with no default gets the cluster it was just given.
 func TestAlignDefaultCluster_FillsAnEmptyDefault(t *testing.T) {
 	s, set, acme := alignService(t, nil)
 
@@ -136,8 +133,7 @@ func TestAlignDefaultCluster_FillsAnEmptyDefault(t *testing.T) {
 	}
 }
 
-// A default that is already one of the organization's own is left alone: dedicating a second
-// cluster must not silently move where its workspaces land.
+// An already-usable default is left alone: dedicating a second cluster must not move where workspaces land.
 func TestAlignDefaultCluster_KeepsAUsableDefault(t *testing.T) {
 	s, set, acme := alignService(t, ptr(10))
 	set.dedicate(10, acme)
@@ -166,8 +162,7 @@ func TestAlignDefaultCluster_FollowsARelease(t *testing.T) {
 	}
 }
 
-// An organization that owns nothing may use shared hardware again, so releasing its last cluster
-// leaves the default where it is rather than clearing a location that is usable once more.
+// An org owning nothing may use shared hardware again, so releasing its last cluster keeps the default.
 func TestAlignDefaultCluster_LastReleaseKeepsTheCluster(t *testing.T) {
 	s, set, acme := alignService(t, ptr(10))
 	set.dedicate(10, acme)
