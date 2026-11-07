@@ -2719,7 +2719,8 @@
       "created": "Secret created",
       "deleted": "Secret deleted",
       "namedCreated": "Secret “{name}” created.",
-      "updated": "Secret updated"
+      "updated": "Secret updated",
+      "valueCopied": "Secret value copied"
     },
     "security": {
       "codesRegenerated": "Recovery codes regenerated",
@@ -3595,7 +3596,11 @@
     "sealedEditText": "Saving a new value here unseals it, and the Git source that owns it puts the sealed value back on its next sync. To change it for good, seal the new value and commit it:",
     "sealedEditDescriptionOnly": "Editing only the description keeps it sealed.",
     "managedTitle": "Managed by a database",
-    "managedDetails": "Created with its database and rotated or removed from there, so it can't be edited here."
+    "managedDetails": "Created with its database and rotated or removed from there, so it can't be edited here.",
+    "copyValue": "Copy value",
+    "hideValue": "Hide value",
+    "adminOnly": "Only workspace admins can reveal or copy the value.",
+    "autoHideHint": "Hidden again after {seconds} seconds."
   },
   "security": {
     "codesRemaining": "No recovery codes remaining. | {n} recovery code remaining. | {n} recovery codes remaining.",
