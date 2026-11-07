@@ -1,38 +1,4 @@
-# Miabi — full-featured single-node stack (example).
-#
-# A copy-and-run reference that turns on the optional pieces most self-hosters
-# want: the reverse-proxy gateway (TLS/ACME), the built-in container registry,
-# one-click public app URLs (wildcard domain), and an externalized log store on
-# a shared volume. It also shows how to scale the background worker out of the
-# panel process.
-#
-# This is the only Compose stack Miabi ships. For a Miabi-managed install (which is
-# what lets `miabi update` replace the control plane), use ../../deploy/install.sh.
-#
-# Quick start:
-#   cp .env.example .env         # then edit: domains + secrets (openssl rand -hex 32)
-#   echo "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)" >> .env
-#   docker compose up -d
-#
-# DNS: point your panel domain AND *.<apps base domain> at this host, so Goma
-# can issue certs and serve one-click app URLs.
-#
-# TWO NETWORKS. `miabi-proxy` is the shared one every routed app joins; `miabi-internal`
-# is private to the platform — PostgreSQL, Redis and the control plane sit only
-# there, and the gateway is the one service on both. Everything on a Docker network
-# can dial everything else on it by name, and the control-plane database holds a
-# single superuser password covering every workspace, so an exposed app being
-# compromised must not put it within reach.
-#
-# UPGRADING an existing stack: add MIABI_INTERNAL_NETWORK=miabi-internal to your
-# .env before `docker compose up -d`. Without it the control plane does not know
-# the private network exists, and the helper containers it runs out of process
-# (platform backups, the built-in registry) stay on `miabi` alone — where the
-# database no longer is, and where the registry serves every workspace's images
-# to any app container that asks.
-#
-# A stack created before the proxy network was renamed keeps `miabi`: see
-# "Created before miabi-proxy" in README.md for the override it needs.
+# Full single-node stack; quick start: cp .env.example .env, edit it, then docker compose up -d.
 
 services:
   miabi-postgres:
@@ -50,9 +16,7 @@ services:
       POSTGRES_DB: ${MIABI_DB_NAME:-miabi}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Private network only. No published ports either: publishing 5432 on a VPS is
-    # how self-hosted databases end up in breach reports, and leaving it on the
-    # network every routed app joins is the same mistake with an extra hop.
+    # Private network only, no published ports: an exposed 5432 is how self-hosted databases get breached.
     networks: [miabi-internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MIABI_DB_USER:-miabi}"]
@@ -71,9 +35,7 @@ services:
     command: ["redis-server", "--requirepass", "${MIABI_REDIS_PASSWORD:?set MIABI_REDIS_PASSWORD}"]
     volumes:
       - redisdata:/data
-    # Private network only. The password below is shared with the gateway, so it is
-    # readable in `docker inspect` of that container — and write access to the asynq
-    # queue Redis holds is code execution in the worker.
+    # Private network only: write access to the asynq queue is code execution in the worker.
     networks: [miabi-internal]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${MIABI_REDIS_PASSWORD}", "ping"]
@@ -81,13 +43,9 @@ services:
       timeout: 3s
       retries: 10
 
-  # Reverse proxy: terminates TLS (ACME/Let's Encrypt), routes the panel domain
-  # to Miabi, and serves the per-app route files Miabi writes into the shared
-  # providers volume. goma.yml here interpolates the domains + Redis password
-  # from this service's environment.
+  # Serves the per-app route files Miabi writes into the shared providers volume.
   gateway:
-    # Pin the version Miabi is tested with: "image" in
-    # https://versions.miabi.io/v1/gateway/latest.json
+    # Pin the version Miabi is tested with: "image" in https://versions.miabi.io/v1/gateway/latest.json
     image: jkaninda/goma-gateway:latest
     labels:
       io.miabi.part-of: miabi
@@ -101,9 +59,7 @@ services:
       MIABI_DOMAIN: ${MIABI_DOMAIN:?set MIABI_DOMAIN}
       MIABI_ACME_EMAIL: ${MIABI_ACME_EMAIL:-admin@example.com}
       MIABI_REDIS_PASSWORD: ${MIABI_REDIS_PASSWORD}
-      # Workspace Analytics: Goma publishes a per-request event stream to Redis
-      # and Miabi rolls it up. Also configurable in goma.yml (`analytics:`);
-      # these win, and keep the toggle next to the rest of the stack's wiring.
+      # These override goma.yml's `analytics:` block.
       GOMA_ANALYTICS_ENABLED: "true"
       GOMA_ANALYTICS_STREAM: ${MIABI_ANALYTICS_STREAM:-goma:analytics}
     ports:
@@ -127,9 +83,7 @@ services:
     # not at a flat Docker bridge.
     networks: [miabi-internal, miabi-proxy]
 
-  # Control plane: single binary serving the API + web UI. The background worker
-  # runs embedded here by default (see the optional `miabi-worker` below to scale
-  # it out). This is also the process that holds runner tunnels and builds.
+  # Also the process that holds runner tunnels and builds.
   miabi:
     image: ${MIABI_IMAGE:-miabi/miabi:latest}
     labels:
@@ -149,22 +103,16 @@ services:
     depends_on:
       miabi-postgres: { condition: service_healthy }
       miabi-redis: { condition: service_healthy }
-    # Every Miabi setting comes from .env — there is no second place to look, and
-    # nothing to edit in this file. See .env.example for what must be filled in.
+    # Every Miabi setting comes from .env; see .env.example for what must be filled in.
     env_file:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - gateway-providers:/etc/goma/providers
-      # Externalized log store (deploy/pipeline/job/backup logs). Keep this on a
-      # volume so logs survive restarts — and share the SAME volume with the
-      # optional worker below so the panel can read the logs the worker writes.
+      # Share this volume with the optional worker so the panel can read the logs it writes.
       - miabi-logs:/var/lib/miabi/logs
       - /proc:/host/proc:ro
-    # Private network only. Nothing dials it on the shared one — the gateway reaches
-    # it as a route backend from `miabi-internal`, and nodes, agents and runners use
-    # its public URL. Reaching :9000 directly would be plaintext HTTP that bypasses
-    # every route middleware you configured, and an SSRF target for any app.
+    # Private network only: :9000 directly would be plaintext, bypass route middlewares and be an SSRF target.
     networks: [miabi-internal]
 
   # OPTIONAL — scale the background worker out of the panel process. It consumes
@@ -203,8 +151,7 @@ networks:
       io.miabi.protected: "true"
     name: ${MIABI_PROXY_NETWORK:-miabi-proxy}
 
-  # Private: the platform talking to itself. The name comes from the same variable
-  # Miabi reads, so the network and the control plane can never disagree about it.
+  # Named from the same variable Miabi reads, so they can never disagree.
   miabi-internal:
     labels:
       io.miabi.part-of: miabi

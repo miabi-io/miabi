@@ -57,9 +57,7 @@ function fileLanguage(key: string): string {
   return ({ yml: 'yaml', yaml: 'yaml', json: 'json', toml: 'toml', ini: 'ini', conf: 'conf' } as Record<string, string>)[ext] ?? 'text'
 }
 
-// --- Create / edit -------------------------------------------------------
-// Files are edited as an ordered array so a key can be renamed without losing
-// its position; it is converted back to the API's map on save.
+// An ordered array so a key can be renamed without losing its position; converted to the API map on save.
 type FileRow = { key: string; content: string }
 
 const showForm = ref(false)

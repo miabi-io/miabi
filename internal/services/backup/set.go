@@ -35,20 +35,13 @@ import (
 var (
 	// ErrSetsUnavailable means the set repository was never wired.
 	ErrSetsUnavailable = errors.New("backup sets are not available")
-	// ErrNoDatabases means the instance has no logical database to back up. Redis
-	// reaches here too: its data rides on the volume, so it has no logical
-	// databases and is covered by a volume backup instead.
+	// Redis has no logical databases; its data is covered by a volume backup.
 	ErrNoDatabases = errors.New("the instance has no database to back up")
-	// ErrS3Required means the workspace has no object-storage target. A recovery
-	// point exists to survive the loss of the host it was taken from, and the local
-	// backup volume dies with that host — so a local set would promise something it
-	// cannot deliver. Rediscovering sets from a bucket depends on this too.
+	// A local set dies with its host, which a recovery point exists to survive; rediscovery also needs S3.
 	ErrS3Required = errors.New("backup sets require the workspace S3 backup target")
 )
 
-// defaultSetConcurrency is deliberately 1. Several dumps at once against one
-// engine container is felt by whatever else is using it, and a backup that slows
-// production is a backup people turn off.
+// Concurrent dumps slow production, and a backup that slows production gets turned off.
 const defaultSetConcurrency = 1
 
 // SetOptions tunes a set run.
@@ -58,17 +51,10 @@ type SetOptions struct {
 	Concurrency int
 }
 
-// SetSetRepository wires recovery-point storage (nil-safe: unset means RunSet and
-// the prune below report ErrSetsUnavailable rather than panicking).
+// Nil-safe: unset makes RunSet and prune report ErrSetsUnavailable.
 func (s *Service) SetSetRepository(r *repositories.DatabaseBackupSetRepository) { s.sets = r }
 
-// RunSet backs up every logical database on an instance as one recovery point.
-// It requires the workspace S3 target and returns ErrS3Required without one.
-//
-// The set is marked failed if any item fails, and the error names the first
-// failure: a recovery point that is missing a database is not one, and reporting
-// it as a success is how people discover the gap during an incident instead of
-// after the run.
+// RunSet fails the set if any item fails: a recovery point missing a database is not one.
 func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opts SetOptions, dest Destination) (*models.DatabaseBackupSet, error) {
 	if s.sets == nil {
 		return nil, ErrSetsUnavailable
@@ -89,14 +75,10 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	}
 
 	var envelope string
-	// dest.GPGPassphrase becomes the data key below, so the passphrase that opens
-	// the envelope has to be kept for the verification that follows the run.
+	// dest.GPGPassphrase becomes the data key below, so keep the envelope passphrase for verification.
 	envelopePassphrase := dest.GPGPassphrase
 
-	// The artifacts are encrypted with a per-set data key rather than the passphrase
-	// itself; the envelope is what ties that key back to the passphrase. Without a
-	// passphrase the set is unencrypted, exactly as a per-database backup would be.
-	// age needs no envelope: its recipients are public keys, and only the identity opens the set.
+	// Artifacts use a per-set data key sealed by the passphrase; age needs no envelope.
 	if dest.GPGPassphrase != "" && dest.AgeRecipients == "" {
 		dataKey, kerr := dbenvelope.NewDataKey()
 		if kerr != nil {
@@ -112,8 +94,7 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 
 	now := time.Now()
 	ref := models.NewDatabaseBackupSetRef(inst.Name, now)
-	// One prefix per set, so discovery can read a recovery point as a unit instead
-	// of parsing filenames out of a prefix every set shares.
+	// One prefix per set so discovery reads a recovery point as a unit.
 	dest.S3.Path = SetPrefix(dest.S3.Path, inst.Name, ref)
 
 	set := &models.DatabaseBackupSet{
@@ -137,9 +118,7 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	items := s.runSetItems(ctx, inst, dbs, set.ID, opts, dest)
 	done := s.finishSet(set, inst, items)
 
-	// The descriptor is what makes the set readable from the bucket alone. Written
-	// last, so it describes what actually landed; best-effort, because failing here
-	// would discard a recovery point whose dumps are already safely stored.
+	// Written last to describe what landed; best-effort, as failing would discard dumps already stored.
 	names := make(map[uint]string, len(dbs))
 	for i := range dbs {
 		names[dbs[i].ID] = dbs[i].Name
@@ -150,8 +129,7 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 			"set", done.Ref, "error", err)
 	}
 
-	// Check it immediately. A backup nobody has read back is a backup nobody knows
-	// works, and the cheapest moment to find a failed upload is right after it.
+	// The cheapest moment to find a failed upload is right after it.
 	if done.Status == models.BackupCompleted {
 		if _, err := s.VerifySet(ctx, dest.S3, done, envelopePassphrase); err != nil {
 			logger.Warn("could not verify the new recovery point", "set", done.Ref, "error", err)
@@ -160,8 +138,6 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	return done, nil
 }
 
-// derefItems collects the non-nil item records, so the descriptor and the returned
-// set carry what the run actually produced.
 func derefItems(items []*models.Backup) []models.Backup {
 	out := make([]models.Backup, 0, len(items))
 	for _, b := range items {
@@ -172,8 +148,6 @@ func derefItems(items []*models.Backup) []models.Backup {
 	return out
 }
 
-// runSetItems dumps each database, at most Concurrency at a time, and returns the
-// items in the order the databases were listed.
 func (s *Service) runSetItems(ctx context.Context, inst *models.DatabaseInstance, dbs []models.Database,
 	setID uint, opts SetOptions, dest Destination) []*models.Backup {
 
@@ -199,9 +173,7 @@ func (s *Service) runSetItems(ctx context.Context, inst *models.DatabaseInstance
 				Trigger: opts.Trigger, Comment: opts.Comment, SetID: &setID,
 			}, dest)
 			if err != nil {
-				// Run returns an error only when it could not start; a dump that ran
-				// and failed comes back as a failed record. Synthesize one so the set
-				// still names the database that stopped it.
+				// Run errors only when it couldn't start, so synthesize a failed record naming the database.
 				logger.Error("backup set item could not start", "set", setID, "database", db.Name, "error", err)
 				items[i] = &models.Backup{DatabaseID: db.ID, Status: models.BackupFailed, Error: err.Error()}
 				return
@@ -236,8 +208,7 @@ func (s *Service) finishSet(set *models.DatabaseBackupSet, inst *models.Database
 			encrypted = false
 		}
 	}
-	// Only a set whose every artifact is sealed can be described as encrypted; a
-	// mixed set would need the passphrase for some items and not others.
+	// A mixed set would need the passphrase for some items and not others.
 	set.Encrypted = encrypted && set.Status == models.BackupCompleted
 
 	if err := s.sets.Update(set); err != nil {
@@ -283,9 +254,7 @@ func (s *Service) GetSet(workspaceID, id uint) (*models.DatabaseBackupSet, error
 	return s.sets.FindInWorkspace(workspaceID, id)
 }
 
-// DeleteSet removes a recovery point and every artifact it carries. The items'
-// rows cascade with the set, but their artifacts are objects in a bucket, which
-// only this service can remove.
+// Item rows cascade with the set, but bucket artifacts can only be removed by this service.
 func (s *Service) DeleteSet(ctx context.Context, set *models.DatabaseBackupSet) error {
 	if s.sets == nil {
 		return ErrSetsUnavailable
@@ -298,18 +267,7 @@ func (s *Service) DeleteSet(ctx context.Context, set *models.DatabaseBackupSet) 
 	return s.sets.Delete(set.ID)
 }
 
-// PruneSets enforces retention over an instance's recovery points: keep at most
-// maxSets most-recent, and delete any older than retentionDays. A zero bound is
-// ignored. Returns the number of sets removed.
-//
-// Three rules the per-database prune does not have:
-//
-//   - Whole sets only. Pruning items out of a set would leave the half recovery
-//     point the set exists to prevent.
-//   - A set with any pinned member is never pruned, and does not occupy a
-//     maxSets slot, mirroring how a pinned backup behaves.
-//   - The newest completed set always survives, whatever the policy says. A
-//     mistyped retention must not be able to leave an instance with nothing.
+// Whole sets only; sets with a pinned member are kept and free; the newest completed set always survives.
 func (s *Service) PruneSets(ctx context.Context, instanceID uint, maxSets, retentionDays int) (int, error) {
 	if s.sets == nil {
 		return 0, ErrSetsUnavailable
@@ -358,14 +316,7 @@ func (s *Service) PruneSets(ctx context.Context, instanceID uint, maxSets, reten
 	return removed, nil
 }
 
-// RewrapSets re-seals every sealed recovery point in a workspace from one
-// passphrase to the next. This is the whole reason the artifacts are encrypted
-// with a per-set data key: rotation rewrites a few hundred bytes per set and never
-// re-reads a dump.
-//
-// It stops at the first envelope that will not open, because that means the old
-// passphrase is wrong and continuing would rewrap the rest under a mismatched
-// secret. Sets already rewrapped stay rewrapped; the operation is resumable.
+// Stops at the first envelope that won't open (wrong old passphrase); resumable.
 func (s *Service) RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error) {
 	if s.sets == nil {
 		return 0, ErrSetsUnavailable
@@ -396,8 +347,7 @@ func (s *Service) RewrapSets(workspaceID uint, oldPassphrase, newPassphrase stri
 	return rewrapped, nil
 }
 
-// SealedSetCount reports how many recovery points in a workspace are sealed, so a
-// caller can refuse to discard the passphrase that opens them.
+// Lets a caller refuse to discard the passphrase that opens them.
 func (s *Service) SealedSetCount(workspaceID uint) (int, error) {
 	if s.sets == nil {
 		return 0, nil
@@ -413,12 +363,7 @@ type SetRestoreResult struct {
 	Failed   []string `json:"failed,omitempty"`
 }
 
-// RestoreSet restores every database in a recovery point, in one operation.
-//
-// Unlike a backup, this does NOT stop at the first failure. A restore is run when
-// something has already gone wrong, and abandoning the remaining databases because
-// one of them failed would turn a partial recovery into a smaller one. Every
-// outcome is reported and the caller decides.
+// RestoreSet does not stop at the first failure: abandoning the rest would shrink a partial recovery.
 func (s *Service) RestoreSet(ctx context.Context, inst *models.DatabaseInstance, set *models.DatabaseBackupSet,
 	dest Destination, force, allowVersionMismatch bool) (*SetRestoreResult, error) {
 

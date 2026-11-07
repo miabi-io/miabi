@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/secret"
 )
 
-// SecretHandler exposes the workspace Vault. Values are write-only over the API:
-// they are accepted on create/update and returned only via the explicit,
-// admin-only, audited reveal endpoint.
+// Values are write-only, returned only via the admin-only, audited reveal endpoint.
 type SecretHandler struct {
 	svc   *secret.Service
 	audit *audit.Logger
@@ -51,16 +49,12 @@ type CreateSecretRequest struct {
 
 type UpdateSecretRequest struct {
 	Body struct {
-		// Value is optional on update: blank keeps the stored value (description-
-		// only edit); a new value rotates the secret.
+		// Blank keeps the stored value; a new value rotates the secret.
 		Value       string `json:"value"`
 		Description string `json:"description"`
 	} `json:"body"`
 }
 
-// List returns a paginated, searchable list of a workspace's secrets (no
-// values). ?managed=true|false narrows to platform-owned or hand-created
-// secrets; omitting it returns both.
 func (h *SecretHandler) List(c *okapi.Context) error {
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
 	secrets, total, err := h.svc.ListPaged(middlewares.WorkspaceID(c), c.Query("search"), queryBool(c, "managed"), size, offset)

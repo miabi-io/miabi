@@ -21,8 +21,7 @@ package worker
 
 import "sync"
 
-// clusterSlots caps concurrent deploys per cluster, so one slow or unreachable cluster cannot hold every
-// worker slot while deploys to other clusters wait.
+// clusterSlots caps deploys per cluster so one slow cluster cannot hold every worker slot.
 type clusterSlots struct {
 	mu    sync.Mutex
 	limit int

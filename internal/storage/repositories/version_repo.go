@@ -134,9 +134,7 @@ func (r *VersionRepository) SaveAllocation(a *models.VersionAllocation) error {
 // ErrAllocationConflict reports that another run took the version first; the caller re-plans.
 var ErrAllocationConflict = errors.New("version allocated concurrently")
 
-// Reserve plans and stores a version under a lock on the policy row, so runs on one policy are
-// serialized. plan sees the policy's live allocations and returns the row to insert, or nil for none.
-// The unique (policy, version) key is the backstop where the lock is unavailable (SQLite).
+// Reserve serializes runs under a policy-row lock; the unique (policy, version) key is the SQLite backstop.
 func (r *VersionRepository) Reserve(policyID uint, plan func(*models.VersionPolicy, []models.VersionAllocation) (*models.VersionAllocation, error)) (*models.VersionAllocation, error) {
 	var out *models.VersionAllocation
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -164,8 +162,7 @@ func (r *VersionRepository) Reserve(policyID uint, plan func(*models.VersionPoli
 	return out, err
 }
 
-// Release frees a failed run's version: deleted when it is still the head of its group so the next run
-// reuses it, otherwise kept as abandoned. isHead decides with the live rows, under the policy lock.
+// Release deletes a failed run's version if still its group's head so the next run reuses it, else marks it abandoned.
 func (r *VersionRepository) Release(a *models.VersionAllocation, isHead func(*models.VersionAllocation, []models.VersionAllocation) bool, note string) (deleted bool, err error) {
 	err = r.db.Transaction(func(tx *gorm.DB) error {
 		var p models.VersionPolicy

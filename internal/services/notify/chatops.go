@@ -34,9 +34,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// webhookChannelSender delivers notifications to an incoming-webhook style
-// endpoint (Slack, Discord). The two differ only in the JSON field carrying the
-// message text. The webhook URL is a secret, stored encrypted.
+// Slack and Discord differ only in the JSON field carrying the text; the webhook URL is a secret, stored encrypted.
 type webhookChannelSender struct {
 	field  string // JSON body field for the message ("text" for Slack, "content" for Discord)
 	label  string // human label for errors

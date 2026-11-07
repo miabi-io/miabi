@@ -28,9 +28,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// wireDeployPortPolicy gives a worker's deploy handler the Security Center's publish-time host-port
-// check. The deploy handler is built in both the standalone and the embedded worker, and a copy that
-// missed this would publish ports the policy forbids.
+// Built in both standalone and embedded workers; a copy that missed this would publish forbidden ports.
 func wireDeployPortPolicy(h *worker.DeployHandler, db *gorm.DB, ee enterprise.EE, cfg *config.Config) {
 	h.SetPortPolicy(secpolicy.NewService(repositories.NewSecurityPolicyRepository(db),
 		repositories.NewWorkspaceRepository(db), ee, cfg.SecurityPolicies))

@@ -26,13 +26,7 @@ import (
 	"testing"
 )
 
-// The console ships its own language list and renders the sign-in picker straight
-// from it. Nothing at build time ties that list to this one, and the failure is
-// quiet in the worst way: the picker offers a language, the browser switches to it,
-// and the save is rejected with "locale must be one of" — so the choice is lost at
-// the next sign-in and the user is never told why.
-//
-// Adding a language means editing both files. This test is what says so.
+// The console's language list must match this one, or saves are silently rejected and the choice lost at next sign-in.
 const consoleLanguages = "../../web/src/i18n/languages.ts"
 
 var languageCode = regexp.MustCompile(`\bcode:\s*'([a-z-]+)'`)
@@ -45,8 +39,7 @@ func consoleLocales(t *testing.T) []string {
 	}
 	found := languageCode.FindAllSubmatch(src, -1)
 	if len(found) == 0 {
-		// The regex depends on how the list is written. A rewrite that breaks it must
-		// fail loudly rather than silently pass with nothing to compare.
+		// A list reshape that breaks the regex must fail loudly rather than pass with nothing to compare.
 		t.Fatalf("no language codes found in %s — has the list been reshaped?", consoleLanguages)
 	}
 	out := make([]string, 0, len(found))
@@ -60,8 +53,6 @@ func TestLocalesMatchConsole(t *testing.T) {
 	console := consoleLocales(t)
 	server := Locales()
 
-	// Order matters as little here as it does in the picker, but a mismatch in either
-	// direction is a bug, so compare as sets and report which side is missing what.
 	inServer := make(map[string]bool, len(server))
 	for _, c := range server {
 		inServer[c] = true

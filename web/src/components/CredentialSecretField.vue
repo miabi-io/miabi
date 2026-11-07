@@ -3,15 +3,7 @@ import { computed, ref, watch } from 'vue'
 import SecretPicker from '@/components/SecretPicker.vue'
 import GenerateButton from '@/components/GenerateButton.vue'
 
-/**
- * The secret half of a stored credential (a registry password, a Git token or
- * SSH key). Either a value typed in here, or a reference to a workspace Secret.
- *
- * v-model is what the API expects in the credential's `secret` field: the literal
- * value, or `${{ secrets.NAME }}` — the server routes the reference form to the
- * vault and resolves it at every use, so rotating that Secret rotates every
- * credential pointing at it.
- */
+/** v-model is the literal or `${{ secrets.NAME }}`; the server resolves references at use, so rotating the Secret rotates all. */
 const props = withDefaults(
   defineProps<{
     /** Optional because the credential form types carry `secret?: string`. */
@@ -30,8 +22,7 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 type Mode = 'value' | 'secret'
-// A credential that already references a secret opens on that tab, so editing it
-// doesn't silently look like a blank literal.
+// Open on the secret tab so an existing reference doesn't look like a blank literal.
 const mode = ref<Mode>(props.currentRef ? 'secret' : 'value')
 const literal = ref('')
 const selected = ref(props.currentRef)
@@ -68,8 +59,7 @@ const required = computed(() => !props.editing)
         :required="required"
         :aria-label="label"
       ></textarea>
-      <!-- Single-line only: an SSH private key is a keypair, not a random
-           string, so offering to generate one here would be wrong. -->
+      <!-- Single-line only: an SSH private key is a keypair, so offering to generate one would be wrong. -->
       <div v-else class="cred-input-row">
         <input
           v-model="literal"

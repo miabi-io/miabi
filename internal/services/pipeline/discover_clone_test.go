@@ -32,9 +32,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// newTestRepo builds a real git repository on disk carrying a Dockerfile and a pipeline document on branch
-// main, plus a v1 tag on the same commit. Discover clones it over go-git's local transport, so this
-// exercises the actual clone path — not just the fs read.
+// Exercises the real clone path over go-git's local transport, not just the fs read.
 func newTestRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -71,9 +69,7 @@ func newTestRepo(t *testing.T) string {
 	if _, err := repo.CreateTag("v1", hash, nil); err != nil {
 		t.Fatalf("tag: %v", err)
 	}
-	// A shallow single-branch clone refuses to serve a repo whose HEAD branch has
-	// no upstream config; nothing to configure for a local clone, but keep the
-	// remote name conventional so the clone resolves refs/heads/main normally.
+	// Keep the remote name conventional so the shallow clone resolves refs/heads/main normally.
 	_, _ = repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{dir}})
 	return dir
 }

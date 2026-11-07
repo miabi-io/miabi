@@ -21,8 +21,7 @@ package docker
 
 import "testing"
 
-// The labels are the test, never the name: an operator names the private network in their own stack
-// manifest, and a renamed one must stay just as closed as the default.
+// Test the labels, never the name: an operator may rename the private network.
 func TestIsPlatformNetwork(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -42,8 +41,7 @@ func TestIsPlatformNetwork(t *testing.T) {
 	}
 }
 
-// A guard that compares the name alone is bypassed by passing the id, which the engine accepts
-// everywhere it accepts a name — that was the hole in the node's RunContainer check.
+// A name-only guard is bypassed by passing the id; that was the hole in the node's RunContainer check.
 func TestNetworkRefMatches(t *testing.T) {
 	n := Network{ID: "9f8e7d6c5b4a3210fedc", Name: "acme_platform_internal"}
 	for _, tc := range []struct {

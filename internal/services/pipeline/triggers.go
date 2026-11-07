@@ -28,22 +28,19 @@ import (
 	"github.com/miabi-io/miabi/internal/webhooksig"
 )
 
-// Scheduler registers and unregisters a pipeline's `on.schedule` cron. A cron
-// adapter implements it at wiring time; nil disables scheduling (e.g. in tests).
+// nil disables scheduling (e.g. in tests).
 type Scheduler interface {
 	Schedule(pipelineID uint, cronExpr string) error
 	Unschedule(pipelineID uint)
 }
 
-// SetScheduler installs the cron adapter and (re)registers every enabled
-// pipeline that declares a schedule. Called once at startup.
+// SetScheduler is called once at startup and registers every enabled scheduled pipeline.
 func (s *Service) SetScheduler(sc Scheduler) {
 	s.scheduler = sc
 	s.RegisterSchedules()
 }
 
-// RegisterSchedules (re)registers the cron entry for every enabled pipeline that
-// declares `on.schedule`. Idempotent — safe to call on boot.
+// RegisterSchedules is idempotent, safe to call on boot.
 func (s *Service) RegisterSchedules() {
 	if s.scheduler == nil {
 		return
@@ -57,8 +54,6 @@ func (s *Service) RegisterSchedules() {
 	}
 }
 
-// applySchedule (un)registers a single pipeline's cron based on its current spec
-// and enabled flag.
 func (s *Service) applySchedule(p *models.PipelineDefinition) {
 	if s.scheduler == nil {
 		return
@@ -74,9 +69,7 @@ func (s *Service) applySchedule(p *models.PipelineDefinition) {
 	_ = s.scheduler.Schedule(p.ID, spec.On.Schedule)
 }
 
-// TriggerScheduled fires a run for a scheduled pipeline (cron callback). It
-// resolves the pipeline across workspaces, since the cron loop has no request
-// scope.
+// TriggerScheduled resolves across workspaces since the cron loop has no request scope.
 func (s *Service) TriggerScheduled(pipelineID uint) (*models.PipelineRun, error) {
 	p, err := s.repo.FindByID(pipelineID)
 	if err != nil {
@@ -95,8 +88,6 @@ func (s *Service) VerifyWebhook(p *models.PipelineDefinition, signature string, 
 	return webhooksig.Verify(p.WebhookSecret, signature, body)
 }
 
-// pushPayload is the subset of a GitHub/GitLab push event we read: the pushed
-// ref and the head commit.
 type pushPayload struct {
 	Ref         string `json:"ref"`          // refs/heads/<branch>
 	After       string `json:"after"`        // GitHub head sha
@@ -124,9 +115,7 @@ func parsePush(body []byte) (branch, commit, message string) {
 	return branch, commit, p.HeadCommit.Message
 }
 
-// TriggerPush verifies a push webhook and fires the pipeline when the pushed
-// branch matches its `on.push.branches`. fired reports whether a run started
-// (false = signature ok but the trigger does not apply to this push).
+// TriggerPush returns fired=false when the signature is valid but the branch filter does not match.
 func (s *Service) TriggerPush(workspaceID, pipelineID uint, signature string, body []byte) (run *models.PipelineRun, fired bool, err error) {
 	p, err := s.Get(workspaceID, pipelineID)
 	if err != nil {

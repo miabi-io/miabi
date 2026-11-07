@@ -35,13 +35,11 @@ func authoritativeLookupTXT(ctx context.Context, host string) ([]string, error) 
 	if txts, err := authoritativeTXT(ctx, host); err == nil {
 		return txts, nil
 	}
-	// Fall back to the recursive/system resolver. Still live DNS — just subject to
-	// caching/propagation lag — so the ownership guarantee holds.
+	// Still live DNS, only subject to caching lag, so the ownership guarantee holds.
 	return net.DefaultResolver.LookupTXT(ctx, host)
 }
 
-// authoritativeTXT finds the nameservers responsible for host and queries them
-// directly for its TXT records, bypassing recursive-resolver caching.
+// Queries authoritative nameservers directly to bypass recursive-resolver caching.
 func authoritativeTXT(ctx context.Context, host string) ([]string, error) {
 	host = strings.TrimSuffix(strings.TrimSpace(host), ".")
 	nameservers, err := authoritativeNS(ctx, host)
@@ -66,8 +64,7 @@ func authoritativeTXT(ctx context.Context, host string) ([]string, error) {
 		out := make([]string, 0, len(resp.Answer))
 		for _, ans := range resp.Answer {
 			if t, ok := ans.(*dns.TXT); ok {
-				// A TXT rdata is a set of character-strings; join them (a single long
-				// value is split at 255 bytes on the wire).
+				// A long TXT value is split at 255 bytes on the wire.
 				out = append(out, strings.Join(t.Txt, ""))
 			}
 		}
@@ -76,9 +73,7 @@ func authoritativeTXT(ctx context.Context, host string) ([]string, error) {
 	return nil, lastErr
 }
 
-// authoritativeNS returns the nameservers responsible for host, looking up NS for
-// host and walking up parent labels until a delegation answers. NS delegation is
-// stable and safe to resolve recursively (unlike the freshly-created TXT).
+// NS delegation is stable and safe to resolve recursively, unlike the freshly-created TXT.
 func authoritativeNS(ctx context.Context, host string) ([]string, error) {
 	labels := strings.Split(host, ".")
 	lastErr := errors.New("no delegation found")

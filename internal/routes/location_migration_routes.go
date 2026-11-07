@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// locationMigrationRoutes registers live location migration. Workspace admins only, reads included: a
-// migration moves and eventually deletes data, and its plan lists every volume and database an app uses.
+// Admins only, reads included: a migration deletes data and its plan lists every volume and database.
 func (r *Router) locationMigrationRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{
 		Name:        "Location Migration",

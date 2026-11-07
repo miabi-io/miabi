@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package acme issues TLS certificates via ACME DNS-01, backed by go-acme/lego. The challenge is
-// solved through caller-supplied Present/CleanUp funcs, so any DNS backend can solve it. Miabi
-// runs this for wildcard/managed certs; Goma still handles default HTTP-01 globally.
+// Package acme issues TLS certificates via ACME DNS-01 using caller-supplied solver funcs.
 package acme
 
 import (
@@ -43,8 +41,7 @@ import (
 	"github.com/go-acme/lego/v4/registration"
 )
 
-// Let's Encrypt directory URLs (the supported CAs). Staging is used for tests so
-// issuance never burns production rate limits.
+// Staging is for tests so issuance never burns production rate limits.
 const (
 	DirectoryProduction = lego.LEDirectoryProduction
 	DirectoryStaging    = lego.LEDirectoryStaging
@@ -63,8 +60,7 @@ func (u *acmeUser) GetEmail() string                        { return u.acc.Email
 func (u *acmeUser) GetRegistration() *registration.Resource { return u.acc.Registration }
 func (u *acmeUser) GetPrivateKey() crypto.PrivateKey        { return u.acc.Key }
 
-// SolverFuncs solve the DNS-01 challenge by writing/removing the _acme-challenge
-// TXT (fqdn = "_acme-challenge.<domain>.", value = the challenge digest).
+// SolverFuncs write and remove the _acme-challenge TXT record (fqdn has a trailing dot).
 type SolverFuncs struct {
 	Present func(ctx context.Context, fqdn, value string) error
 	CleanUp func(ctx context.Context, fqdn, value string) error
@@ -114,8 +110,6 @@ func DecodeRegistration(s string) (*registration.Resource, error) {
 	return &reg, nil
 }
 
-// Register creates and registers a new ACME account with the CA, returning the
-// registration resource to persist alongside the key.
 func Register(caDirURL, email string, key crypto.PrivateKey) (*registration.Resource, error) {
 	client, err := newClient(caDirURL, &Account{Email: email, Key: key})
 	if err != nil {
@@ -124,11 +118,7 @@ func Register(caDirURL, email string, key crypto.PrivateKey) (*registration.Reso
 	return client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 }
 
-// Obtain issues a certificate for the given domains using the account, solving
-// DNS-01 via the supplied solver. Returns the leaf+chain PEM and the private-key
-// PEM. ctx bounds the whole operation (DNS propagation + validation).
-// propagationTimeout raises the ceiling lego waits for the challenge record to appear on the
-// authoritative servers. It polls, so this only bounds a slow host; it never adds a fixed wait.
+// Obtain issues a certificate via DNS-01; propagationTimeout only caps lego's polling, it never adds a fixed wait.
 func Obtain(ctx context.Context, caDirURL string, acc *Account, domains []string, solver SolverFuncs, propagationTimeout time.Duration) (certPEM, keyPEM string, err error) {
 	client, err := newClient(caDirURL, acc)
 	if err != nil {

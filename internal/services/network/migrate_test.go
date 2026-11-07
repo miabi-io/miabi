@@ -33,8 +33,7 @@ type fakeCluster struct{ on bool }
 
 func (f fakeCluster) IsSwarm(uint) bool { return f.on }
 
-// call records one mutation the migration performed on the fake engine, so tests
-// can assert on ordering (connect must precede disconnect) as well as content.
+// Recorded so tests can assert ordering (connect must precede disconnect) as well as content.
 type call struct {
 	op        string // "connect" | "disconnect"
 	network   string
@@ -42,8 +41,6 @@ type call struct {
 	aliases   []string
 }
 
-// fakeDocker stubs the container/network surface the migration touches;
-// embedding the interface satisfies the ~60 methods it never calls.
 type fakeDocker struct {
 	docker.Client
 	containers []docker.Container
@@ -83,9 +80,7 @@ func (f *fakeDocker) RemoveNetwork(_ context.Context, name string) error {
 	return nil
 }
 
-// This pins the two properties the migration must never lose: a container keeps its DNS aliases, which are
-// the only stable way to address it since its IP is ephemeral and its name carries a deployment id; and it
-// is attached to the overlay *before* being detached from the bridge, so it is never without a network.
+// Pins that aliases survive the move and the container is attached to the overlay before leaving the bridge.
 func TestMoveContainersCarriesAliasesAndConnectsFirst(t *testing.T) {
 	const bridge, overlay = "mb-ws1-abc", "mb-ws1-abc-ov"
 	app := docker.Container{ID: "app1", Networks: []docker.ContainerNetwork{
@@ -134,8 +129,7 @@ func TestMoveContainersCarriesAliasesAndConnectsFirst(t *testing.T) {
 	}
 }
 
-// A container that isn't on the workspace bridge (the gateway, another
-// workspace's app, a hand-run container) must be left completely alone.
+// A container not on the workspace bridge must be left completely alone.
 func TestMoveContainersIgnoresUnattached(t *testing.T) {
 	dc := &fakeDocker{
 		containers: []docker.Container{{ID: "other"}},
@@ -152,8 +146,7 @@ func TestMoveContainersIgnoresUnattached(t *testing.T) {
 	}
 }
 
-// A failed connect must abort the workspace rather than pressing on to the
-// disconnect — otherwise the container ends up on no network at all.
+// A failed connect must abort before disconnect, or the container ends up on no network.
 func TestMoveContainersDoesNotDisconnectWhenConnectFails(t *testing.T) {
 	const bridge = "mb-ws1-abc"
 	dc := &fakeDocker{
@@ -175,9 +168,7 @@ func TestMoveContainersDoesNotDisconnectWhenConnectFails(t *testing.T) {
 	}
 }
 
-// The replacement's name must be a pure function of the current one: an interrupted run is simply repeated,
-// and a random name would leak a fresh network on every attempt. It must also round-trip, or Disable could
-// not put a workspace back on the bridge it came from.
+// The peer name must be deterministic so a rerun leaks no networks, and round-trip so Disable can restore the bridge.
 func TestPeerNameIsDeterministicAndRoundTrips(t *testing.T) {
 	const bridge = "mb-ws1-abc"
 	overlay := peerName(bridge, DriverOverlay)
@@ -192,8 +183,7 @@ func TestPeerNameIsDeterministicAndRoundTrips(t *testing.T) {
 		t.Fatalf("does not round-trip: %q -> %q -> %q; disabling cluster mode could not restore the bridge",
 			bridge, overlay, back)
 	}
-	// Idempotent in both directions, so a resumed run converges rather than
-	// appending a second suffix.
+	// Idempotent both ways, so a resumed run converges instead of appending a second suffix.
 	if got := peerName(overlay, DriverOverlay); got != overlay {
 		t.Errorf("converting an overlay to an overlay renamed it: %q -> %q", overlay, got)
 	}
@@ -202,16 +192,14 @@ func TestPeerNameIsDeterministicAndRoundTrips(t *testing.T) {
 	}
 }
 
-// Rollback, like Migrate, needs a live swarm: it has to detach containers from an
-// overlay, which only exists inside one.
+// Rollback needs a live swarm to detach containers from an overlay.
 func TestRollbackRefusesWithoutCluster(t *testing.T) {
 	if _, err := (&Service{}).Rollback(context.Background()); !errors.Is(err, ErrClusterRequired) {
 		t.Fatalf("want ErrClusterRequired, got %v", err)
 	}
 }
 
-// An overlay that is not Attachable cannot be joined by plain containers — which
-// is every app and every database. That flag is the whole feature.
+// A non-Attachable overlay cannot be joined by plain containers, i.e. every app and database.
 func TestNetworkSpecOverlayIsAttachableAndEncrypted(t *testing.T) {
 	spec := networkSpec("mb-ws1-abc-ov", DriverOverlay, false)
 	if !spec.Attachable {
@@ -235,8 +223,7 @@ func TestNetworkSpecOverlayIsAttachableAndEncrypted(t *testing.T) {
 	}
 }
 
-// Single-node installs must never see an overlay: the driver flips to overlay only
-// when cluster mode is on, and an explicit driver from the caller always wins.
+// Single-node installs never get an overlay; an explicit driver from the caller always wins.
 func TestDriverFor(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -274,16 +261,14 @@ func TestDriverFor(t *testing.T) {
 	}
 }
 
-// A nil cluster service (the standalone/single-node path) must never report
-// cluster mode — that is what keeps plain Docker on plain bridges.
+// A nil cluster service must never report cluster mode, keeping plain Docker on plain bridges.
 func TestClusterOffByDefault(t *testing.T) {
 	if (&Service{}).clusterOn() {
 		t.Fatal("cluster mode reported on with no cluster service wired")
 	}
 }
 
-// Migrate must refuse to run outside cluster mode: the overlay driver requires
-// swarm, so it would destroy the bridges and be unable to replace them.
+// Without swarm Migrate would destroy the bridges and be unable to replace them.
 func TestMigrateRefusesWithoutCluster(t *testing.T) {
 	if _, err := (&Service{}).Migrate(context.Background()); !errors.Is(err, ErrClusterRequired) {
 		t.Fatalf("want ErrClusterRequired, got %v", err)

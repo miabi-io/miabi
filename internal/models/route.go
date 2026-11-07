@@ -32,23 +32,16 @@ const (
 	RouteTLSCustom RouteTLSMode = "custom" // user-supplied certificate
 )
 
-// RouteStatus is a route's config-sync status with the gateway — whether Goma is
-// actually serving the route's config. It is NOT upstream health: RouteLive means
-// "Goma is configured to serve this route", not "the backend answers 200".
+// RouteStatus is config-sync state with Goma, not upstream health.
 type RouteStatus string
 
 const (
 	// RouteStatusPending is the initial state before the route has been synced.
 	RouteStatusPending RouteStatus = "pending"
-	// RouteStatusLive means the route was synced and Goma is serving it (enabled,
-	// and every host falls under a verified domain).
-	RouteStatusLive RouteStatus = "live"
-	// RouteStatusOffline means the route is synced but not served — it is disabled,
-	// or one of its hosts is not under a verified domain (rendered enabled:false).
+	RouteStatusLive    RouteStatus = "live"
+	// Disabled, or a host is not under a verified domain (rendered enabled:false).
 	RouteStatusOffline RouteStatus = "offline"
-	// RouteStatusError means the last attempt to push the route's config to the
-	// gateway failed; StatusReason carries the detail.
-	RouteStatusError RouteStatus = "error"
+	RouteStatusError   RouteStatus = "error"
 )
 
 type RouteMaintenance struct {
@@ -57,9 +50,7 @@ type RouteMaintenance struct {
 	Message    string `json:"message,omitempty"`
 }
 
-// Route is a Goma Gateway route owned by a workspace and bound to an
-// application. The container backend is injected by the platform at render
-// time (the app's network alias), so users never set it.
+// Route's container backend is injected at render time from the app's network alias, so users never set it.
 type Route struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -76,31 +67,20 @@ type Route struct {
 	Rewrite       string       `json:"rewrite,omitempty"`                            // path rewrite (Goma route rewrite)
 	TargetPort    int          `json:"target_port"`                                  // 0 = use the app's port
 	TLSMode       RouteTLSMode `json:"tls_mode" gorm:"not null;default:acme"`
-	// TLSProvider names the Goma certManager provider that issues/serves this
-	// route's cert (the multi-provider certManager). Empty = the gateway default.
+	// Empty means the gateway default provider.
 	TLSProvider string `json:"tls_provider,omitempty"`
-	// Generated marks a platform-generated external-access route (managed from the
-	// app's External access card, shown read-only in the Routes UI).
-	Generated bool `json:"generated" gorm:"not null;default:false"`
-	// AdvancedConfig is a raw Goma route YAML the admin authors directly; when
-	// set, it supersedes the structured fields at render time (Miabi still
-	// injects name + backends + tls so the route can't misroute). Empty = simple.
+	Generated   bool   `json:"generated" gorm:"not null;default:false"`
+	// Supersedes structured fields, but Miabi still injects name, backends and tls so the route cannot misroute.
 	AdvancedConfig string `json:"advanced_config,omitempty" gorm:"type:text"`
 	// CertificateID references a stored Certificate when TLSMode=custom.
 	CertificateID *uint `json:"certificate_id,omitempty" gorm:"index"`
-	// Certificate declares the FK so deleting the referenced certificate nulls
-	// this pointer (ON DELETE SET NULL) instead of leaving it dangling. The route
-	// falls back to its default TLS mode. Association is not serialized.
+	// ON DELETE SET NULL so the route falls back to its default TLS mode instead of dangling.
 	Certificate       *Certificate     `json:"-" gorm:"foreignKey:CertificateID;constraint:OnDelete:SET NULL"`
 	Enabled           bool             `json:"enabled" gorm:"not null;default:true"`
 	ExploitProtection bool             `json:"exploit_protection" gorm:"not null;default:false"`
 	Maintenance       RouteMaintenance `json:"maintenance" gorm:"serializer:json"`
-	// Status is the route's config-sync status, set whenever the workspace proxy
-	// config is reconciled.
-	Status RouteStatus `json:"status" gorm:"not null;default:pending"`
-	// StatusReason explains a non-live status (e.g. "domain not verified",
-	// "disabled", or the gateway write error). Empty when live.
-	StatusReason string `json:"status_reason,omitempty"`
+	Status            RouteStatus      `json:"status" gorm:"not null;default:pending"`
+	StatusReason      string           `json:"status_reason,omitempty"`
 	// SyncedAt is when the route was last reconciled into the gateway config.
 	SyncedAt *time.Time `json:"synced_at,omitempty"`
 	// Metadata holds free-form labels; "miabi.io/" keys are platform-managed.
@@ -111,15 +91,11 @@ type Route struct {
 	// HasCustomCert is a transient flag for responses (never persisted).
 	HasCustomCert bool `json:"has_custom_cert" gorm:"-"`
 
-	// DNSTarget / DNSTargetIPv6 / DNSHostname are the public address this route's hosts should point to — the
-	// gateway that terminates the route. DNSTarget is the IPv4 address, or the IPv6 one when there is none.
-	// DNSRecords are the records that do it, the ones Miabi writes for a managed domain. Transient, populated on read.
+	// DNSTarget is the IPv4 address, or IPv6 when there is none; transient, populated on read.
 	DNSTarget     string          `json:"dns_target,omitempty" gorm:"-"`
 	DNSTargetIPv6 string          `json:"dns_target_ipv6,omitempty" gorm:"-"`
 	DNSHostname   string          `json:"dns_hostname,omitempty" gorm:"-"`
 	DNSRecords    []AddressRecord `json:"dns_records,omitempty" gorm:"-"`
 
-	// Backends are the actual upstream endpoints (DNS aliases) the gateway uses for this route.
-	// Transient, populated on read so the UI shows the real backend.
 	Backends []string `json:"backends,omitempty" gorm:"-"`
 }

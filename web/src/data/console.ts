@@ -9,9 +9,7 @@ const RETURN_KEY: Record<Console, string> = {
   admin: 'mb_return_admin',
 }
 
-// rememberConsoleRoute stores where the user was in a console so switching back
-// lands there rather than on its dashboard. Per-device by design: this is "where
-// was I", not a preference worth syncing.
+// Per-device by design: "where was I" is not a preference worth syncing.
 export function rememberConsoleRoute(console: Console, path: string) {
   try {
     localStorage.setItem(RETURN_KEY[console], path)
@@ -28,8 +26,7 @@ function storedRoute(console: Console): string | null {
   }
 }
 
-// workspaceReturnPath is where "back to the workspace console" goes. A stored
-// /admin path would bounce straight back, so it is refused rather than trusted.
+// A stored /admin path would bounce straight back, so it is refused.
 export function workspaceReturnPath(): string {
   const stored = storedRoute('workspace')
   if (stored && stored.startsWith('/') && !stored.startsWith('/admin')) return stored
@@ -43,9 +40,7 @@ export function adminReturnPath(): string {
   return ADMIN_HOME
 }
 
-// isAdminPath reports whether a route belongs to the admin console. The router is
-// the authority on which shell renders; this answers the same question for code
-// that only has a path.
+// The router decides which shell renders; this answers the same for code that only has a path.
 export function isAdminPath(path: string): boolean {
   return path === '/admin' || path.startsWith('/admin/')
 }

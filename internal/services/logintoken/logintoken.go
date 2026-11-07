@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package logintoken issues the short-lived personal API token behind the console's "Copy login command"
-// flow. It is a thin policy layer over the API-key service: a login token is a personal API key with a
-// short expiry and a scope set that never includes admin, plus a single-use Redis hand-off for SSO.
+// Package logintoken mints short-lived, never-admin personal API keys for "Copy login command", with a single-use SSO hand-off.
 package logintoken
 
 import (
@@ -39,17 +37,12 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 )
 
-// ErrAdminScope is returned when a caller requests admin/all scope for a login
-// token. Login tokens are deliberately capped below admin: a leaked CLI token
-// must not be able to do more than the user can undo.
+// Capped below admin so a leaked CLI token can't do more than the user can undo.
 var ErrAdminScope = errors.New("admin scope is not allowed for login tokens")
 
-// ErrInvalidScope wraps an unknown/invalid requested scope so handlers can map it
-// to a 400 without importing the auth package's scope validation.
+// Lets handlers map it to 400 without importing the auth package's scope validation.
 var ErrInvalidScope = errors.New("invalid scope")
 
-// ErrHandoff is returned when a hand-off reference is missing, already claimed,
-// or expired.
 var ErrHandoff = errors.New("login token is no longer available")
 
 const (
@@ -66,15 +59,12 @@ type Service struct {
 	maxTTL    time.Duration // hard ceiling a caller may request
 }
 
-// New builds the service. serverURL is the public API base URL; ttl/maxTTL come
-// from config (hours). A zero maxTTL disables the cap check (still bounded by ttl
-// when no override is requested).
+// A zero maxTTL disables the cap check.
 func New(keys *auth.APIKeyService, rdb *redis.Client, serverURL string, ttl, maxTTL time.Duration) *Service {
 	return &Service{keys: keys, redis: rdb, serverURL: strings.TrimRight(serverURL, "/"), ttl: ttl, maxTTL: maxTTL}
 }
 
-// Token is a freshly minted login token plus everything the display page shows.
-// The plaintext is present only in this value, only once — it is never stored.
+// The plaintext exists only in this value, once; it is never stored.
 type Token struct {
 	Token        string    `json:"token"`
 	SHA256       string    `json:"sha256"` // fingerprint of the plaintext (how it is stored/identified)
@@ -85,8 +75,6 @@ type Token struct {
 	CurlExample  string    `json:"curl_example"`
 }
 
-// resolveScopes applies the login-token scope policy: default to console-
-// equivalent (read/write/deploy) and reject admin or "*".
 func resolveScopes(requested []string) ([]string, error) {
 	if len(requested) == 0 {
 		return []string{models.ScopeRead, models.ScopeWrite, models.ScopeDeploy}, nil
@@ -103,8 +91,6 @@ func resolveScopes(requested []string) ([]string, error) {
 	return norm, nil
 }
 
-// resolveExpiry picks the token lifetime: the requested hours clamped to
-// (0, maxTTL], or the default ttl when none is requested.
 func (s *Service) resolveExpiry(requestedHours *int) time.Time {
 	d := s.ttl
 	if requestedHours != nil && *requestedHours > 0 {
@@ -116,8 +102,6 @@ func (s *Service) resolveExpiry(requestedHours *int) time.Time {
 	return time.Now().Add(d)
 }
 
-// Issue mints a personal, short-lived API key for userID and renders the CLI and
-// curl commands. requestedScopes/requestedHours are optional overrides.
 func (s *Service) Issue(userID uint, requestedScopes []string, requestedHours *int) (*Token, error) {
 	scopes, err := resolveScopes(requestedScopes)
 	if err != nil {
@@ -126,8 +110,7 @@ func (s *Service) Issue(userID uint, requestedScopes []string, requestedHours *i
 	exp := s.resolveExpiry(requestedHours)
 	name := fmt.Sprintf("CLI login token · %s", time.Now().UTC().Format("2006-01-02 15:04"))
 
-	// Personal key (nil workspace): reaches all of the user's workspaces at request
-	// time, like the console, and does not count against any workspace quota.
+	// A personal key reaches all the user's workspaces like the console and counts against no workspace quota.
 	plaintext, _, err := s.keys.Create(userID, nil, name, nil, scopes, &exp)
 	if err != nil {
 		return nil, err
@@ -160,9 +143,7 @@ func (s *Service) curlExample(token string) string {
 	return fmt.Sprintf("curl -H \"Authorization: Bearer %s\" %s/api/v1/me", token, base)
 }
 
-// Stash stores a minted token under a single-use, short-TTL hand-off reference,
-// for the OAuth path to deliver it to the display page out of band (never in a
-// redirect URL). Returns the opaque hand-off id.
+// Stash delivers the token out of band via a single-use reference, never in a redirect URL.
 func (s *Service) Stash(ctx context.Context, tok *Token) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -179,8 +160,7 @@ func (s *Service) Stash(ctx context.Context, tok *Token) (string, error) {
 	return ref, nil
 }
 
-// Claim atomically reads and deletes a hand-off reference, returning the token.
-// Single-use: a second claim of the same reference fails.
+// Claim is single-use: it atomically reads and deletes the reference.
 func (s *Service) Claim(ctx context.Context, ref string) (*Token, error) {
 	if strings.TrimSpace(ref) == "" {
 		return nil, ErrHandoff

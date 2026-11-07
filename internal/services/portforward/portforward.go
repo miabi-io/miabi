@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package portforward gives on-demand external access to a managed database without publishing a host port.
-// Opening a session binds an ephemeral TCP listener on the control plane; each accepted connection is
-// bridged over the node's Docker API tunnel to an in-network socat relay. Sessions expire after a TTL.
+// Package portforward exposes a managed database on demand via an ephemeral listener bridged to an in-network socat relay.
 package portforward
 
 import (
@@ -46,8 +44,6 @@ var (
 	ErrNodeOffline = errors.New("node is offline")
 )
 
-// Resolver resolves the Docker client for a node id (0 = local). Satisfied by
-// the nodes.Clients registry.
 type Resolver interface {
 	For(serverID uint) (docker.Client, error)
 }
@@ -71,8 +67,6 @@ type Target struct {
 	Network     string // Docker network the instance is on (empty = configured default)
 }
 
-// Session is a live forward. The exported fields are returned to the API; the
-// listener/cancel are internal.
 type Session struct {
 	ID          string    `json:"id"`
 	InstanceID  uint      `json:"instance_id"`
@@ -89,8 +83,6 @@ type Session struct {
 	timer   *time.Timer
 }
 
-// Service manages forward sessions.
-// ImageResolver resolves a deployment-config catalog key to an image ref.
 type ImageResolver interface {
 	Ref(key string) string
 }
@@ -117,8 +109,6 @@ func NewService(cfg Config, clients Resolver) *Service {
 // SetImageResolver wires the deployment-config resolver for the relay image.
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 
-// relayImage returns the socat relay image: catalog override when set, else the
-// configured/env default.
 func (s *Service) relayImage() string {
 	if s.images != nil {
 		if r := s.images.Ref(platformimage.KeyRelay); r != "" {
@@ -128,9 +118,7 @@ func (s *Service) relayImage() string {
 	return s.cfg.RelayImage
 }
 
-// Open starts a forward to t and returns the live session. The image is pulled
-// on the target node first (so per-connection relays start fast). allowIP, when
-// the bind address is not loopback, restricts connections to that client IP.
+// The image is pre-pulled so per-connection relays start fast; allowIP restricts non-loopback binds to that client.
 func (s *Service) Open(ctx context.Context, t Target, allowIP string) (*Session, error) {
 	dc, err := s.clients.For(t.ServerID)
 	if err != nil {
@@ -164,8 +152,7 @@ func (s *Service) Open(ctx context.Context, t Target, allowIP string) (*Session,
 		ln:          ln,
 		cancel:      cancel,
 	}
-	// Only gate on source IP when bound to a routable interface; a loopback bind
-	// is only reachable by local processes (whose IP won't match the API caller).
+	// A loopback bind is reachable only locally, where the IP won't match the API caller.
 	if allowIP != "" && !bindIsLoopback(s.cfg.BindAddr) {
 		sess.allowIP = allowIP
 	}
@@ -199,8 +186,7 @@ func (s *Service) accept(ctx context.Context, sess *Session, dc docker.Client) {
 
 func (s *Service) bridge(ctx context.Context, sess *Session, dc docker.Client, client net.Conn) {
 	defer func() { _ = client.Close() }()
-	// Reach the database on its own network (the workspace default); fall back to
-	// the configured network for legacy instances with no network recorded.
+	// Legacy instances with no recorded network fall back to the configured one.
 	netName := sess.target.Network
 	if netName == "" {
 		netName = s.cfg.Network
@@ -234,8 +220,7 @@ func (s *Service) List(workspaceID uint) []*Session {
 	return out
 }
 
-// Close tears down a session (idempotent). The workspace scope guards against
-// closing another workspace's session.
+// The workspace scope guards against closing another workspace's session.
 func (s *Service) Close(workspaceID uint, id string) error {
 	s.mu.Lock()
 	sess, ok := s.sessions[id]

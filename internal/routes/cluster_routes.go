@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// clusterRoutes registers the default cluster's Swarm management under /admin/cluster. Status works on
-// plain Docker too, reporting "not enabled". Every cluster's routes live under /admin/clusters/{clusterID}.
+// Status works on plain Docker too, reporting "not enabled".
 func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/cluster").WithTagInfo(okapi.GroupTag{Name: "Cluster", Description: "The default cluster's Docker Swarm, opt-in and auto-detected."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
@@ -79,8 +78,6 @@ func (r *Router) clusterRoutes() []okapi.RouteDefinition {
 	return append(defs, r.swarmRoutes(g, "", admin)...)
 }
 
-// swarmRoutes are the Swarm operations shared by the default cluster's routes and each cluster's
-// routes under /admin/clusters/{clusterID}; prefix carries the cluster path parameter.
 func (r *Router) swarmRoutes(g *okapi.Group, prefix string, admin []okapi.Middleware) []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{

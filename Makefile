@@ -36,8 +36,7 @@ build-probe: ## Build the static HTTP healthcheck probe embedded for app contain
 build-ui: ## Build the web UI (Vue) and stage it for embedding (internal/web/dist)
 	npm --prefix $(WEB_DIR) ci
 	npm --prefix $(WEB_DIR) run build
-	# Stage the build output where `go build` embeds it (internal/web), keeping the
-	# committed .gitkeep so `go build` still works on a clean tree.
+	# Keep the committed .gitkeep so `go build` still works on a clean tree.
 	rm -rf $(EMBED_WEB_DIR)
 	cp -r $(WEB_DIR)/dist $(EMBED_WEB_DIR)
 	touch $(EMBED_WEB_DIR)/.gitkeep

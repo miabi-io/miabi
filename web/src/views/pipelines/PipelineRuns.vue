@@ -85,8 +85,7 @@ function runStarted(run: PipelineRun) {
 loadPipeline()
 watch([currentWorkspaceId, pipelineId], () => { loadPipeline(); goToPage(0) })
 
-// noCache is the one-off "rebuild everything" run: it overrides the spec's cache
-// setting for this run alone, so nothing in the repository has to change.
+// Overrides the spec's cache setting for this run alone, so nothing in the repository changes.
 async function trigger(noCache = false) {
   const wid = currentWorkspaceId.value
   if (!wid || !pipeline.value) return
@@ -113,8 +112,7 @@ function openRun(r: PipelineRun) {
 // Tick so in-progress run durations count up live.
 const ticker = setInterval(() => { now.value = Date.now() }, 1000)
 
-// Live run transitions: patch the row in place, refetch only when a run appears
-// that this page has never seen.
+// Patch rows in place; refetch only when an unseen run appears.
 let es: EventSource | null = null
 function openStream() {
   es?.close()

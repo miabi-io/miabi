@@ -50,16 +50,12 @@ func (r *MiddlewareRepository) ListByWorkspace(workspaceID uint) ([]models.Middl
 	return mws, err
 }
 
-// ListAll returns every middleware across workspaces. A node's Goma config
-// includes all middlewares (routes reference them by name).
 func (r *MiddlewareRepository) ListAll() ([]models.Middleware, error) {
 	var mws []models.Middleware
 	err := r.db.Order("id ASC").Find(&mws).Error
 	return mws, err
 }
 
-// CountByWorkspace returns how many middlewares a workspace owns. Used to make
-// default-seeding idempotent (skip when the workspace already has policies).
 func (r *MiddlewareRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.Middleware{}).Where("workspace_id = ?", workspaceID).Count(&count).Error

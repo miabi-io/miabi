@@ -10,9 +10,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package ldap implements LDAP / Active Directory authentication on top of go-ldap/ldap/v3,
-// compiled only into the Enterprise build. It holds no core auth code — Authenticate returns a
-// plain identity the core turns into a session, and the core owns provisioning and group mapping.
+// Package ldap implements LDAP/AD auth (Enterprise only); the core owns provisioning and group mapping.
 package ldap
 
 import (
@@ -32,13 +30,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrNoMatch mirrors enterprise.ErrLDAPNoMatch (kept package-local to avoid an
-// import cycle back into the enterprise package). The enterprise wiring maps a
-// returned ErrNoMatch onto enterprise.ErrLDAPNoMatch.
+// Kept package-local to avoid an import cycle; the wiring maps it to enterprise.ErrLDAPNoMatch.
 var ErrNoMatch = errors.New("ldap: no matching configuration")
 
-// ErrAccountDisabled is returned when a directory entry maps to a disabled state
-// (e.g. AD userAccountControl). Currently unused by the bind path but reserved.
+// ErrAccountDisabled is reserved; the bind path does not use it yet.
 var ErrAccountDisabled = errors.New("ldap: account disabled")
 
 // Identity is the resolved directory user (mirrors enterprise.LDAPIdentity).
@@ -50,14 +45,11 @@ type Identity struct {
 	Provider string
 }
 
-// Deps are the core dependencies, passed as plain values/closures so this
-// package imports no core services.
 type Deps struct {
 	DB *gorm.DB
 	// Decrypt reverses the core crypto service to read the bind password.
 	Decrypt func(stored string) (string, error)
-	// Entitled re-checks the sso_ldap license per request so a degrade disables
-	// LDAP without a restart.
+	// Re-checked per request so a degrade disables LDAP without a restart.
 	Entitled func() bool
 }
 
@@ -84,9 +76,7 @@ func New(d Deps) (*Provider, error) {
 	return &Provider{db: d.DB, decrypt: decrypt, entitled: entitled}, nil
 }
 
-// Authenticate tries each enabled config in order and returns the first identity
-// whose credentials bind. An empty password is rejected outright (an empty bind
-// is an anonymous bind that most directories accept — a classic auth bypass).
+// An empty password is rejected outright: an empty bind is an anonymous bind, a classic auth bypass.
 func (p *Provider) Authenticate(ctx context.Context, username, password string) (Identity, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
@@ -106,8 +96,7 @@ func (p *Provider) Authenticate(ctx context.Context, username, password string) 
 	for i := range cfgs {
 		ident, matched, err := p.authOne(ctx, &cfgs[i], username, password)
 		if err != nil {
-			// Bind rejected (bad credentials) or a transient dial error. Remember it
-			// but keep trying other configs; only surface if none match.
+			// Keep trying other configs; only surface the error if none match.
 			lastErr = err
 			logger.Warn("ldap: auth attempt failed", "config", cfgs[i].Name, "error", err)
 			continue
@@ -122,9 +111,7 @@ func (p *Provider) Authenticate(ctx context.Context, username, password string) 
 	return Identity{}, ErrNoMatch
 }
 
-// authOne runs the search+bind against a single config. It returns matched=false
-// when the user isn't found in this directory (so the caller tries the next),
-// and an error when the user is found but the password bind fails.
+// matched=false means not in this directory, so the caller tries the next.
 func (p *Provider) authOne(ctx context.Context, cfg *models.LDAPConfig, username, password string) (Identity, bool, error) {
 	conn, err := p.dial(ctx, cfg)
 	if err != nil {
@@ -151,8 +138,7 @@ func (p *Provider) authOne(ctx context.Context, cfg *models.LDAPConfig, username
 		return Identity{}, false, nil // try the next config
 	}
 
-	// Re-bind as the user to verify the password. A fresh connection avoids reusing
-	// the service-account bind state.
+	// A fresh connection avoids reusing the service-account bind state.
 	userConn, err := p.dial(ctx, cfg)
 	if err != nil {
 		return Identity{}, false, err
@@ -175,8 +161,7 @@ func (p *Provider) authOne(ctx context.Context, cfg *models.LDAPConfig, username
 	return ident, true, nil
 }
 
-// searchUser finds the user entry by the configured filter with the identifier
-// safely escaped (LDAP injection guard).
+// The identifier is escaped to guard against LDAP injection.
 func (p *Provider) searchUser(conn *ldapv3.Conn, cfg *models.LDAPConfig, username string) (*ldapv3.Entry, bool, error) {
 	filterTmpl := strings.TrimSpace(cfg.UserFilter)
 	if filterTmpl == "" {
@@ -200,9 +185,7 @@ func (p *Provider) searchUser(conn *ldapv3.Conn, cfg *models.LDAPConfig, usernam
 	return res.Entries[0], true, nil
 }
 
-// resolveGroups reads the user's group DNs, preferring the memberOf attribute and falling back to
-// a group search by member. AD nested groups expand via LDAP_MATCHING_RULE_IN_CHAIN when
-// configured. Best-effort: a failure yields no groups rather than blocking login.
+// Best-effort: a failure yields no groups rather than blocking login.
 func (p *Provider) resolveGroups(conn *ldapv3.Conn, cfg *models.LDAPConfig, entry *ldapv3.Entry) []string {
 	memberAttr := attrOr(cfg.MemberAttr, "memberOf")
 	if groups := entry.GetAttributeValues(memberAttr); len(groups) > 0 && !cfg.NestedGroups {
@@ -294,17 +277,14 @@ func (p *Provider) tlsConfig(cfg *models.LDAPConfig, host string) *tls.Config {
 	return t
 }
 
-// Result is the outcome of TestConnection (mirrors enterprise.LDAPTestResult; a
-// package-local type so this package never imports the enterprise package).
+// A package-local type so this package never imports the enterprise package.
 type Result struct {
 	OK      bool
 	Message string
 	Error   string
 }
 
-// TestConnection dials + service-binds a config (by id) and reports the result.
-// A failed dial/bind/search is OK=false (not a Go error); a Go error means the
-// config wasn't found. The core admin handler wraps the result in the envelope.
+// A failed dial/bind/search is OK=false; a Go error means the config wasn't found.
 func (p *Provider) TestConnection(ctx context.Context, configID uint) (Result, error) {
 	var cfg models.LDAPConfig
 	if err := p.db.WithContext(ctx).First(&cfg, configID).Error; err != nil {

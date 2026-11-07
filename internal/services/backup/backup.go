@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package backup runs database backups and restores using the ecosystem
-// pg-bkup / mysql-bkup tools as one-shot containers, to a per-workspace backup
-// volume (local) or an S3-compatible bucket.
+// Package backup runs database backups and restores with the *-bkup tools as one-shot containers.
 package backup
 
 import (
@@ -57,8 +55,6 @@ type ImageResolver interface {
 	Ref(key string) string
 }
 
-// bkupImage returns the backup tool image for an engine, taking it from the
-// deployment-config catalog when a resolver is wired (else the built-in default).
 func (s *Service) bkupImage(engine models.DBEngine) (string, bool) {
 	var key, def string
 	switch engine {
@@ -87,14 +83,7 @@ type NodeDocker interface {
 	LocalID() uint
 }
 
-// BackupAlerter receives database-backup outcomes so the alert engine can raise a "backup failed" alert
-// and auto-resolve it on the next success. Kept as a local interface so the backup service stays
-// decoupled from the alerting package; the wiring bridges it to the engine.
-//
-// The set methods are deliberately separate rather than reusing the per-database pair with an
-// instance id in the database slot. That is what the code did for verification failures, and it gave
-// a set and a logical database that happen to share a numeric id the same dedup key — so a retried
-// database silently resolved a still-broken recovery point.
+// Separate set methods: sharing the per-database pair let a set and database with equal ids share a dedup key.
 type BackupAlerter interface {
 	BackupFailed(workspaceID, databaseID uint, dbName, errMsg string)
 	BackupSucceeded(workspaceID, databaseID uint)
@@ -116,14 +105,7 @@ type BackupReport struct {
 	Err       string
 }
 
-// BackupReporter posts a finished SCHEDULED run to the workspace inbox.
-//
-// Scheduled only, and that is the point: a 03:00 run has nobody watching it, which is the whole
-// reason its outcome has to go somewhere. A manual backup reports itself in the row the operator who
-// clicked it is already looking at, so notifying them as well would be noise.
-//
-// Distinct from BackupAlerter because the two carry different things. A failure is a condition that
-// stays open until a later run clears it; a completion is a fact with nothing to clear.
+// Scheduled runs only: nobody watches a 03:00 run, while a manual one reports in the row its operator is viewing.
 type BackupReporter interface {
 	ScheduledBackupFinished(workspaceID uint, rep BackupReport)
 }
@@ -131,9 +113,7 @@ type BackupReporter interface {
 // scheduledTrigger is the Trigger value the cron manager stamps on a run.
 const scheduledTrigger = "scheduled"
 
-// EventRecorder writes backup and restore outcomes to the owning instance's timeline. The
-// subject is the instance, not the logical database, so one timeline covers the whole
-// instance; the logical database name rides along in the metadata.
+// The subject is the instance so one timeline covers it; the logical database rides in metadata.
 type EventRecorder interface {
 	EmitDatabase(workspaceID, databaseID uint, name string, t models.AppEventType, sev models.AppEventSeverity, message string, meta map[string]string, actorID *uint)
 }
@@ -169,9 +149,7 @@ func (s *Service) emit(workspaceID, instanceID uint, instanceName string, t mode
 // SetImageResolver wires the deployment-config resolver for backup tool images.
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 
-// SetLogStore wires the shared execution-log store. When set, a backup run's
-// full output is externalized to the store on terminal state and the DB row
-// keeps only a bounded tail + a reference. nil keeps DB-tail-only.
+// When set, full output goes to the store on terminal state and the row keeps a bounded tail.
 func (s *Service) SetLogStore(store *logstore.Store) { s.logs = store }
 
 // SetAlerter wires backup-outcome alerting (optional; nil = no alerts).
@@ -180,8 +158,7 @@ func (s *Service) SetAlerter(a BackupAlerter) { s.alerter = a }
 // SetReporter wires scheduled-run inbox reporting (optional; nil = no inbox items).
 func (s *Service) SetReporter(r BackupReporter) { s.reporter = r }
 
-// report posts a finished scheduled run to the workspace inbox. Best-effort and trigger-gated in
-// one place, so no call site has to remember which runs are worth reporting.
+// Trigger-gated here so no call site has to remember which runs are worth reporting.
 func (s *Service) report(workspaceID uint, trigger string, rep BackupReport) {
 	if s.reporter == nil || trigger != scheduledTrigger {
 		return
@@ -189,9 +166,7 @@ func (s *Service) report(workspaceID uint, trigger string, rep BackupReport) {
 	s.reporter.ScheduledBackupFinished(workspaceID, rep)
 }
 
-// externalizeLog moves a terminal backup's full output into the shared log store and trims the row to a
-// bounded tail + a reference. No-op when the store is disabled or already externalized; on any error the
-// full log stays in the DB tail.
+// On any error the full log stays in the DB tail.
 func (s *Service) externalizeLog(b *models.Backup) {
 	if !s.logs.Enabled() || b.LogRef != "" {
 		return
@@ -206,8 +181,7 @@ func (s *Service) externalizeLog(b *models.Backup) {
 		logger.Error("log store: record backup log ref failed", "backup", b.ID, "error", err)
 		return
 	}
-	// Keep the in-memory row consistent with what was persisted, so a caller
-	// returning b to the API surfaces the tail + ref, not the full log.
+	// Keep the in-memory row consistent so the API surfaces the tail and ref, not the full log.
 	b.LogRef, b.Logs = res.Ref, res.Tail
 	b.LogBytes, b.LogLines, b.LogTruncated = res.Bytes, res.Lines, res.Truncated
 }
@@ -230,13 +204,9 @@ type S3Config struct {
 type Destination struct {
 	Type string // "local" | "s3"
 	S3   *S3Config
-	// GPGPassphrase encrypts the artifact: the *-bkup tools write "<name>.gpg" when it is set and decrypt
-	// transparently on restore with the same value. Used by portable workspace bundles and by platform
-	// disaster recovery, which protect every artifact they carry with one passphrase.
+	// The *-bkup tools write "<name>.gpg" when set and decrypt transparently on restore.
 	GPGPassphrase string
-	// AgeRecipients, when set, encrypts the artifact with age to these public keys instead of
-	// GPG ("<name>.age"). Only the matching identity can read it back, so the platform can
-	// take backups it cannot open.
+	// Only the matching identity can read it back, so the platform can take backups it cannot open.
 	AgeRecipients string
 	// AgeIdentity decrypts ".age" artifacts on restore and for the post-backup verification.
 	AgeIdentity string
@@ -255,9 +225,7 @@ func boolEnv(b bool) string {
 	return "false"
 }
 
-// S3Env builds the S3 environment for the ecosystem backup tools (pg-bkup, mysql-bkup, volume-bkup),
-// which all read the same variable names. Exported so the volume backup service can target the same
-// bucket without duplicating the var-name contract.
+// S3Env is exported so the volume backup service shares the tools' env var contract.
 func S3Env(c *S3Config) []string { return s3Env(c) }
 
 func s3Env(c *S3Config) []string {
@@ -272,9 +240,7 @@ func s3Env(c *S3Config) []string {
 	}
 }
 
-// ensureDBNetworks makes every network the instance is on exist on the node and returns their names, so a
-// backup or restore helper joins the same full set and can reach it by name. Attaching to only the primary
-// risks a network the instance is not on. Falls back to the gateway network for legacy instances.
+// Attaching only the primary network risks one the instance is not on; legacy instances use the gateway network.
 func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := inst.NetworkNames(node.AppNetwork)
 	for _, n := range names {
@@ -288,19 +254,14 @@ func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.Databa
 	return names, nil
 }
 
-// RunOptions carries the metadata of a backup run: why it was taken, and any note
-// the operator attached. It replaces a bare trigger string so the two adjacent
-// free-text values cannot be passed the wrong way round.
+// A struct so the two adjacent free-text values can't be passed the wrong way round.
 type RunOptions struct {
 	Trigger string // manual | scheduled | upgrade | bundle | platform-dr
 	Comment string
-	// SetID marks this backup as one item of a recovery point. Nil for an ordinary
-	// single-database backup.
+	// Nil for an ordinary single-database backup.
 	SetID *uint
 }
 
-// Run performs a backup of a logical database to the given destination and
-// records the result. inst is the server hosting db.
 func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, opts RunOptions, dest Destination) (*models.Backup, error) {
 	image, ok := s.bkupImage(inst.Engine)
 	if !ok {
@@ -370,9 +331,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	})
 	b.Logs = out
 	if err != nil || exit != 0 {
-		// RunOneShot returns a nil error when the tool itself exits non-zero, so
-		// wrapping err alone reported "%!w(<nil>)" and threw away the only thing
-		// that explains the failure: the tool's own output.
+		// RunOneShot returns nil on a non-zero exit, so the tool's own output must carry the failure.
 		return s.fail(b, oneShotFailure(exit, out, err)), nil
 	}
 	name, encrypted, nameErr := ArtifactName(out, DBArtifactRe)
@@ -412,8 +371,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	if s.alerter != nil {
 		s.alerter.BackupSucceeded(b.WorkspaceID, b.DatabaseID)
 	}
-	// A set member reports nothing: the set posts one item covering every database it took, so
-	// reporting here as well would put N+1 notices in the inbox for one recovery point.
+	// The set posts one item for all its databases; reporting here too would give N+1 notices.
 	if opts.SetID == nil {
 		s.report(b.WorkspaceID, opts.Trigger, BackupReport{
 			Subject: db.Name, Link: fmt.Sprintf("/databases/%d", inst.ID),
@@ -427,10 +385,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	return b, nil
 }
 
-// verifyBackup has the tool read b's artifact back (download, decrypt, decompress,
-// checksum) and records the outcome on b. A verification failure does not undo the
-// backup — the artifact exists — but it is the difference between a backup and one
-// that only looks like one, so it is surfaced as a warning on the instance.
+// A verification failure doesn't undo the backup but is surfaced as a warning on the instance.
 func (s *Service) verifyBackup(ctx context.Context, dc docker.Client, image string, inst *models.DatabaseInstance, b *models.Backup,
 	dest Destination, env, cmd, nets []string, mounts map[string]string) {
 	keys, err := RestoreKeyEnv(b.Filename, dest.GPGPassphrase, dest.AgeIdentity)
@@ -461,8 +416,6 @@ func (s *Service) verifyBackup(ctx context.Context, dc docker.Client, image stri
 	}
 }
 
-// helperImage is the small image used to land an uploaded dump on the volume
-// (deployment-config catalog, else busybox).
 func (s *Service) helperImage() string {
 	if s.images != nil {
 		if r := s.images.Ref(platformimage.KeyHelper); r != "" {
@@ -472,8 +425,7 @@ func (s *Service) helperImage() string {
 	return "busybox:1.36"
 }
 
-// uploadName builds a unique artifact name for an uploaded dump, preserving a
-// recognized extension (the backup tool keys off it).
+// The backup tool keys off the extension, so a recognized one is preserved.
 func uploadName(orig string) string {
 	b := make([]byte, 8)
 	_, _ = crand.Read(b)
@@ -486,15 +438,11 @@ func uploadName(orig string) string {
 	return name + ".sql.gz"
 }
 
-// RestoreUpload streams an uploaded dump onto the workspace backup volume and
-// restores the database from it (force drops & recreates first). The temp
-// artifact is removed afterward (best-effort).
 func (s *Service) RestoreUpload(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, origName string, content io.Reader, size int64, force bool) error {
 	return s.restoreStream(ctx, inst, db, uploadName(origName), content, size, force)
 }
 
-// RestoreFile is RestoreUpload for a dump the platform itself produced, such as one pulled from
-// another install by a migration: its name is kept, so the tool reads its format from the extension.
+// RestoreFile keeps the name so the tool reads the format from its extension.
 func (s *Service) RestoreFile(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, file string, content io.Reader, size int64) error {
 	b := make([]byte, 4)
 	_, _ = crand.Read(b)
@@ -532,18 +480,12 @@ func (s *Service) restoreStream(ctx context.Context, inst *models.DatabaseInstan
 	return s.Restore(ctx, inst, db, RestoreSpec{Filename: name, Destination: "local", VolumeName: volume, Force: force})
 }
 
-// DDLRunner recreates a logical database for a force restore. Implemented by the
-// database service; injected after construction (optional).
 type DDLRunner interface {
 	RecreateDatabase(ctx context.Context, inst *models.DatabaseInstance, db *models.Database) error
 }
 
-// SetDDLRunner wires the database service used to drop+recreate a database on a
-// force restore.
 func (s *Service) SetDDLRunner(r DDLRunner) { s.ddl = r }
 
-// RestoreSpec describes a restore source. Filename is the artifact on the local
-// backup volume or the S3 key; Force drops & recreates the database first.
 type RestoreSpec struct {
 	Filename    string
 	Destination string // "local" | "s3"
@@ -557,17 +499,14 @@ type RestoreSpec struct {
 	AgeIdentity string
 }
 
-// artifactPassphrase resolves what actually decrypts b's artifact. A backup taken
-// as part of a recovery point is sealed with that set's data key, so the workspace
-// passphrase opens the envelope rather than the dump itself.
+// A set member is sealed with the set's data key; the workspace passphrase only opens the envelope.
 func (s *Service) artifactPassphrase(b *models.Backup, workspacePassphrase string) (string, error) {
 	if b.SetID == nil || s.sets == nil || workspacePassphrase == "" {
 		return workspacePassphrase, nil
 	}
 	set, err := s.sets.FindByID(*b.SetID)
 	if err != nil || set.Envelope == "" {
-		// A set from before envelopes existed sealed its artifacts with the
-		// passphrase directly, so that still restores.
+		// Sets from before envelopes existed used the passphrase directly.
 		return workspacePassphrase, nil
 	}
 	dataKey, err := dbenvelope.Open(set.Envelope, workspacePassphrase)
@@ -577,13 +516,10 @@ func (s *Service) artifactPassphrase(b *models.Backup, workspacePassphrase strin
 	return dataKey, nil
 }
 
-// ErrRestoreVersionTooNew refuses to load a dump into an engine older than the one
-// it came from. A PostgreSQL 17 dump does not load into 16, and the failure lands
-// mid-restore over a database that has already been dropped on a force run.
+// A newer dump doesn't load into an older engine, and on a force run the database is already dropped.
 var ErrRestoreVersionTooNew = errors.New("the backup was taken from a newer engine than this instance runs")
 
-// majorVersion returns a version string's leading component. Mirrors the database
-// service's majorOf; kept local so the backup service does not depend on it.
+// Kept local so the backup service does not depend on the database service.
 func majorVersion(v string) (int, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -600,10 +536,7 @@ func majorVersion(v string) (int, bool) {
 	return n, true
 }
 
-// checkRestoreVersion gates a restore on the engine version. Only the backwards
-// direction is refused: an older dump loading into a newer engine is ordinary.
-// Unparseable versions do not block — refusing on a version nobody can read would
-// be worse than attempting the restore.
+// Only backwards is refused; unparseable versions don't block, as refusing would be worse than trying.
 func checkRestoreVersion(instVersion, backupVersion string) error {
 	from, okFrom := majorVersion(backupVersion)
 	to, okTo := majorVersion(instVersion)
@@ -613,9 +546,7 @@ func checkRestoreVersion(instVersion, backupVersion string) error {
 	return fmt.Errorf("%w: %s vs %s", ErrRestoreVersionTooNew, backupVersion, instVersion)
 }
 
-// passphraseFor returns pass only when filename names an encrypted artifact. The
-// ".gpg"/".age" suffix is what the *-bkup tools append when they encrypt, so it
-// is the record of whether this particular backup needs a passphrase to read back.
+// The .gpg/.age suffix the tools append is the record of whether this backup needs a passphrase.
 func passphraseFor(filename, pass string) string {
 	if strings.HasSuffix(filename, ".gpg") {
 		return pass
@@ -623,8 +554,7 @@ func passphraseFor(filename, pass string) string {
 	return ""
 }
 
-// RestoreFromBackup restores a logical database from a stored backup record. For
-// an S3 backup, dest.S3 must supply the bucket credentials again.
+// For an S3 backup, dest.S3 must supply the bucket credentials again.
 func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, b *models.Backup, dest Destination, force, allowVersionMismatch bool) error {
 	if b.Filename == "" {
 		return ErrNoBackupFile
@@ -645,16 +575,13 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 		S3:          dest.S3,
 		S3Path:      b.S3Path,
 		Force:       force,
-		// Keyed off the artifact, not the workspace: a backup taken before a passphrase
-		// was set is still cleartext and must restore without one.
+		// Keyed off the artifact: a backup taken before a passphrase was set is cleartext.
 		GPGPassphrase: passphraseFor(b.Filename, pass),
 		AgeIdentity:   dest.AgeIdentity,
 	})
 }
 
-// Restore restores a logical database from the given source. When spec.Force is
-// set the database is dropped & recreated first (clean slate). It wraps restore so that every
-// one of its early returns still reports an outcome to the instance timeline.
+// Wraps restore so every early return still reports to the instance timeline.
 func (s *Service) Restore(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, spec RestoreSpec) error {
 	err := s.restore(ctx, inst, db, spec)
 	meta := map[string]string{"database": db.Name, "file": spec.Filename, "source": spec.Destination}
@@ -745,10 +672,7 @@ func (s *Service) List(databaseID uint) ([]models.Backup, error) {
 	return s.repo.ListByDatabase(databaseID)
 }
 
-// Annotate updates a backup's note and pin. Both are nil-able so a caller can
-// change one without restating the other. Editing after the fact is the point:
-// scheduled and pre-upgrade backups have no operator present when they run, and
-// what a backup was for is often only clear once the change it guarded went wrong.
+// Editable after the fact because scheduled backups run unattended and their purpose emerges later.
 func (s *Service) Annotate(b *models.Backup, comment *string, pinned *bool) error {
 	if comment != nil {
 		b.Comment = strings.TrimSpace(*comment)
@@ -759,8 +683,7 @@ func (s *Service) Annotate(b *models.Backup, comment *string, pinned *bool) erro
 	return s.repo.Update(b)
 }
 
-// Delete removes a backup record and, for local backups, its artifact file from
-// the workspace backup volume (best-effort). S3 artifacts are left in place.
+// S3 artifacts are left in place.
 func (s *Service) Delete(ctx context.Context, b *models.Backup) error {
 	if b.Destination == "local" && b.VolumeName != "" && b.Filename != "" {
 		dc, derr := s.clients.For(b.ServerID)
@@ -771,9 +694,7 @@ func (s *Service) Delete(ctx context.Context, b *models.Backup) error {
 	return s.repo.Delete(b.ID)
 }
 
-// deleteLocalArtifact removes the artifact with the tool's delete command, which
-// also drops its sidecar and index entry. Images older than the command fall
-// back to removing the file with the image's shell.
+// The delete command also drops the sidecar and index entry; older images fall back to the shell.
 func (s *Service) deleteLocalArtifact(ctx context.Context, dc docker.Client, image string, b *models.Backup) {
 	env := []string{}
 	cmd := []string{"delete", "-f", b.Filename}
@@ -806,12 +727,7 @@ func (s *Service) deleteLocalArtifact(ctx context.Context, dc docker.Client, ima
 	}
 }
 
-// Prune enforces a retention policy on a database's backups: keep at most
-// maxBackups most-recent, and delete any older than retentionDays. A zero bound
-// is ignored. Returns the number of backups removed.
-//
-// Pinned backups are never pruned, and do not occupy a maxBackups slot: pinning a
-// backup must not silently shrink how much rolling history the policy keeps.
+// Pinned backups are never pruned and don't occupy a maxBackups slot.
 func (s *Service) Prune(ctx context.Context, databaseID uint, maxBackups, retentionDays int) (int, error) {
 	if maxBackups <= 0 && retentionDays <= 0 {
 		return 0, nil
@@ -848,8 +764,7 @@ func (s *Service) Prune(ctx context.Context, databaseID uint, maxBackups, retent
 	return removed, nil
 }
 
-// Download streams a local backup artifact. The returned reader must be closed
-// by the caller. S3 backups are not downloadable through Miabi.
+// S3 backups are not downloadable through Miabi.
 func (s *Service) Download(ctx context.Context, b *models.Backup) (io.ReadCloser, int64, string, error) {
 	if b.Destination != "local" {
 		return nil, 0, "", ErrDownloadRemote
@@ -882,9 +797,7 @@ func (s *Service) connEnv(inst *models.DatabaseInstance, db *models.Database) ([
 		return nil, err
 	}
 	if inst.Engine == models.DBEngineLibSQL {
-		// libSQL authenticates with a JWT over HTTP, not a username/password. The
-		// libsql-bkup tool reads DB_URL + LIBSQL_AUTH_TOKEN (DB_HOST/DB_PORT/DB_NAME
-		// kept for parity with the other tools); `pass` is the client token.
+		// libSQL authenticates with a JWT, not a password; pass is the client token.
 		return []string{
 			"DB_HOST=" + inst.Host,
 			fmt.Sprintf("DB_PORT=%d", inst.Port),
@@ -902,9 +815,7 @@ func (s *Service) connEnv(inst *models.DatabaseInstance, db *models.Database) ([
 	}, nil
 }
 
-// ArtifactName extracts the artifact the helper actually uploaded from its output and reports whether it
-// is encrypted. It takes the LAST match, not the first: with encryption on the tools narrate the plain
-// dump before the encrypted one they upload, so the first match names a file that was never written.
+// Takes the last match: with encryption on, the tools narrate the plain dump before the uploaded encrypted one.
 func ArtifactName(out string, re *regexp.Regexp) (name string, encrypted bool, err error) {
 	matches := re.FindAllString(out, -1)
 	if len(matches) == 0 {
@@ -940,8 +851,7 @@ func (s *Service) fail(b *models.Backup, cause error) *models.Backup {
 		name       string
 		instanceID uint
 	)
-	// FindDatabaseByID, not FindByID: b.DatabaseID is a logical database id, and FindByID
-	// resolves instance ids — it would name an unrelated instance that shares the number.
+	// FindByID resolves instance ids and would name an unrelated instance sharing the number.
 	if db, err := s.dbs.FindDatabaseByID(b.DatabaseID); err == nil && db != nil {
 		name, instanceID = db.Name, db.InstanceID
 	}

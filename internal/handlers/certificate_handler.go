@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/managedcert"
 )
 
-// CertificateHandler exposes workspace-scoped imported TLS certificates. The
-// private key is write-only over the API (accepted on import/replace, never
-// returned); only parsed metadata is read back.
+// The private key is write-only: accepted on import/replace, never returned.
 type CertificateHandler struct {
 	svc     *certificate.Service
 	managed *managedcert.Service
@@ -43,12 +41,8 @@ func NewCertificateHandler(svc *certificate.Service, auditLog *audit.Logger) *Ce
 	return &CertificateHandler{svc: svc, audit: auditLog}
 }
 
-// SetManaged wires the ACME issuance service (nil-safe; nil disables the issue
-// endpoint, which then returns 501).
 func (h *CertificateHandler) SetManaged(m *managedcert.Service) { h.managed = m }
 
-// IssueCertificateRequest requests a managed (ACME DNS-01) certificate for a
-// verified, provider-connected domain.
 type IssueCertificateRequest struct {
 	Body struct {
 		DomainID        uint   `json:"domain_id" required:"true"`
@@ -101,8 +95,6 @@ type ReplaceCertificateRequest struct {
 	} `json:"body"`
 }
 
-// List returns the workspace's certificates, or — when ?host= is given — only
-// those whose SANs cover that host (for the route form's auto-select).
 func (h *CertificateHandler) List(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	if host := c.Query("host"); host != "" {

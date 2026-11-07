@@ -124,8 +124,6 @@ func TestCronJobSuspendOptionalWhenUnset(t *testing.T) {
 	}
 }
 
-// A Job's run template is compared only through its fingerprint, so the same
-// spec never plans a run twice, and the plan marks the change as one "spec" field.
 func TestJobDiffByFingerprint(t *testing.T) {
 	doc := "kind: Job\nmetadata: {name: migrate}\nspec: {app: api, command: [./api, migrate]}"
 	desired := parseOne(t, doc)

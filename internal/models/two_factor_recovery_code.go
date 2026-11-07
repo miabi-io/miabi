@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// TwoFactorRecoveryCode is a single-use backup code for two-factor
-// authentication. Only the sha256 hash of the code is stored; the plaintext is
-// shown to the user once at generation time.
+// Only the sha256 hash is stored; the plaintext is shown once.
 type TwoFactorRecoveryCode struct {
 	ID        uint       `json:"id" gorm:"primaryKey"`
 	UserID    uint       `json:"user_id" gorm:"index;not null"`

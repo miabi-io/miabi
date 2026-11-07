@@ -1,7 +1,5 @@
 <script setup lang="ts">
-// Self-contained world choropleth: renders the world-atlas topojson via d3-geo
-// (no tiles, no network) and shades each country by request volume. Goma emits
-// ISO alpha-2 codes; ALPHA2_TO_NUMERIC maps them onto the topojson's numeric ids.
+// No tiles or network; ALPHA2_TO_NUMERIC maps Goma's alpha-2 codes onto the topojson's numeric ids.
 import { computed, ref } from 'vue'
 import { geoNaturalEarth1, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'

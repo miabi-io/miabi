@@ -29,8 +29,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Config object labels. Ownership is recorded on the object itself so GC and a
-// re-import can identify what a config belongs to without consulting the DB.
+// Ownership is on the object itself so GC and re-import need not consult the DB.
 const (
 	ConfigWorkspaceLabel = "io.miabi.workspace"
 	ConfigNameLabel      = "io.miabi.config"
@@ -38,8 +37,7 @@ const (
 	ConfigDigestLabel    = "io.miabi.digest"
 )
 
-// maxConfigNameLen bounds a docker object name. The digest suffix is what makes
-// the name unique, so truncation eats the middle and never the digest.
+// The digest suffix makes the name unique, so truncation eats the middle, never the digest.
 const maxConfigNameLen = 64
 
 // ConfigInfo is a published config object, as GC sees it.
@@ -60,9 +58,7 @@ type ConfigObject struct {
 	Content   string
 }
 
-// ObjectName is the docker object name: content-addressed, so a content change
-// yields a new object and the service update swaps it rather than mutating one
-// in place (docker configs are immutable by design).
+// Content-addressed because docker configs are immutable; a change yields a new object.
 func (c ConfigObject) ObjectName() string {
 	slug := strings.NewReplacer("/", "-", ".", "-", "_", "-").Replace(c.Key)
 	base := fmt.Sprintf("miabi-cfg-%s-%s-%s", c.Workspace, c.Config, slug)
@@ -77,9 +73,7 @@ func (c ConfigObject) ObjectName() string {
 	return base + suffix
 }
 
-// EnsureConfig creates the config object if it does not exist and returns its id.
-// Idempotent: the name embeds the digest, so an existing object with that name
-// already holds exactly this content.
+// Idempotent: the name embeds the digest, so an existing object already holds this content.
 func (e *engineClient) EnsureConfig(ctx context.Context, obj ConfigObject) (string, error) {
 	name := obj.ObjectName()
 	existing, err := e.cli.ConfigList(ctx, client.ConfigListOptions{
@@ -135,8 +129,7 @@ func (e *engineClient) ListManagedConfigs(ctx context.Context) ([]ConfigInfo, er
 	return out, nil
 }
 
-// RemoveConfig deletes a config object. Docker refuses while a service still
-// references it, which is the safety net that keeps GC from breaking a task.
+// Docker refuses while a service references it, which keeps GC from breaking a task.
 func (e *engineClient) RemoveConfig(ctx context.Context, id string) error {
 	_, err := e.cli.ConfigRemove(ctx, id, client.ConfigRemoveOptions{})
 	return wrapNotFound(err)

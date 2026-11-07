@@ -38,9 +38,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ClusterHandler exposes platform-admin cluster management: the cluster inventory and each cluster's
-// Docker Swarm. Swarm routes under /admin/clusters/{clusterID} target that cluster; the legacy
-// /admin/cluster routes target the default one. On plain Docker they report "not enabled".
+// Legacy /admin/cluster routes target the default cluster.
 type ClusterHandler struct {
 	cluster           *cluster.Service
 	nodes             *node.Service
@@ -52,8 +50,6 @@ type ClusterHandler struct {
 	systemCerts       SystemCertificates
 }
 
-// SystemCertificates lists the system workspace's certificates, the ones a cluster may serve its generated
-// URLs from. Satisfied by certificate.Service.
 type SystemCertificates interface {
 	ListSystem() ([]models.Certificate, error)
 }
@@ -61,8 +57,6 @@ type SystemCertificates interface {
 // SetSystemCertificates wires the certificate picker for generated URLs (nil-safe: the list is empty).
 func (h *ClusterHandler) SetSystemCertificates(c SystemCertificates) { h.systemCerts = c }
 
-// SetOrganizations wires organization-dedicated clusters and the entitlement that gates them
-// (nil-safe; without it a cluster cannot be assigned to an organization).
 func (h *ClusterHandler) SetOrganizations(svc *organization.Service, ee enterprise.EE) {
 	h.orgs, h.ee = svc, ee
 }
@@ -107,8 +101,6 @@ func (h *ClusterHandler) Status(c *okapi.Context) error {
 	return ok(c, h.clusterStatus(c, id))
 }
 
-// clusterStatus adds what needs a live manager call to the cached status: whether the global agent
-// service is deployed, which decides whether swarm members are managed.
 func (h *ClusterHandler) clusterStatus(c *okapi.Context, id uint) cluster.Status {
 	st := h.cluster.Status(id)
 	if st.Enabled {
@@ -123,8 +115,7 @@ func (h *ClusterHandler) clusterStatus(c *okapi.Context, id uint) cluster.Status
 // EnableClusterRequest enables (or adopts) Swarm on a cluster.
 type EnableClusterRequest struct {
 	Body struct {
-		// AdvertiseAddr is the address swarm peers reach the manager on (its private address, host or
-		// host:port). Required when initializing a new swarm; ignored when adopting one.
+		// Required when initializing a new swarm; ignored when adopting one.
 		AdvertiseAddr string `json:"advertise_addr"`
 		// Name labels the default cluster. Optional; ignored for other clusters, which are renamed with PATCH.
 		Name string `json:"name"`
@@ -163,8 +154,7 @@ func (h *ClusterHandler) Disable(c *okapi.Context) error {
 	return message(c, "cluster mode disabled")
 }
 
-// ApplyNetworking converts the default cluster's workspace networks still on node-local bridges into
-// swarm overlays, for an install already clustered when it upgraded.
+// For an install already clustered when it upgraded.
 func (h *ClusterHandler) ApplyNetworking(c *okapi.Context) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -194,8 +184,6 @@ func (h *ClusterHandler) Rename(c *okapi.Context, req *RenameClusterRequest) err
 	return ok(c, h.clusterStatus(c, models.DefaultClusterID))
 }
 
-// Preflight reports what the cluster's manager engine can and cannot do before Swarm is turned on, and
-// the ports that must be open between nodes. Read-only.
 func (h *ClusterHandler) Preflight(c *okapi.Context) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -208,8 +196,6 @@ func (h *ClusterHandler) Preflight(c *okapi.Context) error {
 	return ok(c, p)
 }
 
-// NetCheck probes the cluster's overlay data plane between every pair of its nodes, separating a name
-// that will not resolve, a connection that never completes, and a payload that dies at the MTU.
 func (h *ClusterHandler) NetCheck(c *okapi.Context) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -226,14 +212,12 @@ func (h *ClusterHandler) NetCheck(c *okapi.Context) error {
 // SetAvailabilityRequest changes a swarm node's scheduling availability.
 type SetAvailabilityRequest struct {
 	Body struct {
-		// Availability is active | pause | drain. Drain reschedules the node's tasks
-		// away, which is what makes it safe to reboot.
+		// Drain reschedules the node's tasks away, which is what makes it safe to reboot.
 		Availability string `json:"availability"`
 	} `json:"body"`
 }
 
-// SetAvailability changes a swarm node's scheduling availability. Keyed by swarm node id, so an
-// unmanaged member (no Miabi agent) can be drained too.
+// Keyed by swarm node id, so an unmanaged member (no Miabi agent) can be drained too.
 func (h *ClusterHandler) SetAvailability(c *okapi.Context, req *SetAvailabilityRequest) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -250,8 +234,6 @@ func (h *ClusterHandler) SetAvailability(c *okapi.Context, req *SetAvailabilityR
 	return message(c, "node availability set to "+req.Body.Availability)
 }
 
-// NodeTasks lists the service tasks the scheduler placed on a swarm node, the only way to see an
-// unmanaged member's workload.
 func (h *ClusterHandler) NodeTasks(c *okapi.Context) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -267,8 +249,7 @@ func (h *ClusterHandler) NodeTasks(c *okapi.Context) error {
 // DeployAgentsRequest configures the global agent service.
 type DeployAgentsRequest struct {
 	Body struct {
-		// InsecureSkipVerify makes the agents skip verification of the control plane's TLS certificate. A real
-		// downgrade: an interceptor could impersonate a control plane that drives Docker on every node.
+		// A real downgrade: an interceptor could impersonate a control plane that drives Docker on every node.
 		InsecureSkipVerify bool `json:"insecure_skip_verify"`
 		// CACert trusts a specific authority instead: the agents still verify, anchored on this CA.
 		CACert string `json:"ca_cert"`
@@ -277,8 +258,7 @@ type DeployAgentsRequest struct {
 	} `json:"body"`
 }
 
-// DeployAgents installs the Miabi agent on every node of the cluster's swarm as a global service. It is
-// explicit because it grants Miabi the Docker socket on every machine in this swarm.
+// Explicit because it grants Miabi the Docker socket on every node in the swarm.
 func (h *ClusterHandler) DeployAgents(c *okapi.Context, req *DeployAgentsRequest) error {
 	id, err := h.clusterID(c)
 	if err != nil {
@@ -309,8 +289,6 @@ func (h *ClusterHandler) RemoveAgents(c *okapi.Context) error {
 	return message(c, "cluster agents removed")
 }
 
-// ControlPlaneCert returns the certificate the control plane currently serves, so the agents can
-// be pinned to it instead of skipping verification.
 func (h *ClusterHandler) ControlPlaneCert(c *okapi.Context) error {
 	cert, err := h.cluster.FetchControlPlaneCert(c.Request().Context())
 	switch {

@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// AnnouncementRepository persists platform announcements and resolves their
-// audiences. Deliveries live in NotificationInboxRepository.
 type AnnouncementRepository struct {
 	db *gorm.DB
 }
@@ -77,8 +75,6 @@ func (r *AnnouncementRepository) DueForPublish(now time.Time) ([]models.Announce
 	return rows, err
 }
 
-// Live returns published, unexpired announcements — the set a user who has not
-// received them yet should still be caught up on.
 func (r *AnnouncementRepository) Live(now time.Time) ([]models.Announcement, error) {
 	var rows []models.Announcement
 	err := r.db.Where("published_at IS NOT NULL AND published_at <= ?", now).
@@ -87,9 +83,7 @@ func (r *AnnouncementRepository) Live(now time.Time) ([]models.Announcement, err
 	return rows, err
 }
 
-// UndeliveredLive returns the live announcements the user has no delivery for.
-// It is the backfill query: a user created (or invited into a targeted workspace)
-// after a broadcast still gets the notice, which a one-shot fan-out cannot do.
+// Backfill catches users created or invited after a broadcast, which a one-shot fan-out cannot.
 func (r *AnnouncementRepository) UndeliveredLive(userID uint, now time.Time) ([]models.Announcement, error) {
 	var rows []models.Announcement
 	err := r.db.Where("published_at IS NOT NULL AND published_at <= ?", now).
@@ -99,8 +93,7 @@ func (r *AnnouncementRepository) UndeliveredLive(userID uint, now time.Time) ([]
 	return rows, err
 }
 
-// RecipientIDs resolves an announcement's audience to user ids. Suspended accounts and service
-// accounts are excluded everywhere: a notice nobody can sign in to read is not a delivery.
+// Suspended and service accounts are excluded: a notice nobody can sign in to read is not a delivery.
 func (r *AnnouncementRepository) RecipientIDs(a *models.Announcement) ([]uint, error) {
 	q := r.db.Model(&models.User{}).Where("active = ? AND kind <> ?", true, models.UserKindService)
 	switch a.Audience {
@@ -122,8 +115,6 @@ func (r *AnnouncementRepository) RecipientIDs(a *models.Announcement) ([]uint, e
 	return ids, err
 }
 
-// Matches reports whether one user falls inside an announcement's audience. The
-// backfill asks per user, where re-resolving the whole audience would be wasteful.
 func (r *AnnouncementRepository) Matches(a *models.Announcement, userID uint) (bool, error) {
 	q := r.db.Model(&models.User{}).Where("id = ? AND active = ? AND kind <> ?", userID, true, models.UserKindService)
 	switch a.Audience {

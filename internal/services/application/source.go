@@ -31,9 +31,7 @@ import (
 // ErrSourceTypeInvalid is returned for a source that is neither image nor git.
 var ErrSourceTypeInvalid = errors.New("source_type must be \"image\" or \"git\"")
 
-// SourceInput is a complete replacement of an application's source. It is deliberately not a patch:
-// switching image <-> git changes which fields are even meaningful, so a partial payload would
-// leave the app describing two sources at once.
+// SourceInput is a full replacement, not a patch: a partial payload could describe two sources at once.
 type SourceInput struct {
 	SourceType models.AppSourceType
 
@@ -52,8 +50,6 @@ type SourceInput struct {
 	BuildEnv        map[string]string
 }
 
-// SourceChange reports what SetSource did, so the caller can tell the operator what else moved —
-// none of it is guessable from the app record afterwards.
 type SourceChange struct {
 	From models.AppSourceType `json:"from"`
 	To   models.AppSourceType `json:"to"`
@@ -65,13 +61,7 @@ type SourceChange struct {
 	RedeployRequired bool `json:"redeploy_required"`
 }
 
-// SetSource replaces where an application's image comes from, including switching between a
-// prebuilt image and a Git build. Before this existed the only way to change it was to delete the
-// app and recreate it, which threw away its domains, env, volumes and history.
-//
-// The fields of the source being left are CLEARED rather than kept. An app that still carried a
-// git_repo after moving to an image would deploy correctly and read as though it built from that
-// repo — and the stale value would come back to life the moment anyone switched it back.
+// SetSource clears the old source's fields so a stale git_repo or image can't resurface on a switch back.
 func (s *Service) SetSource(app *models.Application, in SourceInput) (*SourceChange, error) {
 	if in.SourceType != models.AppSourceImage && in.SourceType != models.AppSourceGit {
 		return nil, ErrSourceTypeInvalid
@@ -83,19 +73,14 @@ func (s *Service) SetSource(app *models.Application, in SourceInput) (*SourceCha
 		return nil, err
 	}
 
-	// Update re-runs every source-sensitive validation (git URL present, build config legal for the
-	// source, builder allowed by plan) and persists.
 	if err := s.Update(app); err != nil {
 		return nil, err
 	}
 
-	// Leaving git orphans any pipeline adopted from the old repository: it is bound to this app and
-	// would keep cloning a repo the app no longer builds from. Dropping it is the only coherent
-	// outcome, and it happens after the save so a validation failure cannot destroy it for nothing.
+	// A pipeline from the old repo would keep cloning it; deleted after the save so validation can't lose it for nothing.
 	if ch.Switched && from == models.AppSourceGit && s.pipelines != nil {
 		if err := s.pipelines.DeleteForApp(app.WorkspaceID, app.ID); err != nil {
-			// Not fatal: the source really did change, and refusing now would leave the app
-			// describing a source its pipeline contradicts. Report it and move on.
+			// Not fatal: the source really did change, and refusing now would contradict it.
 			logger.Warn("could not remove the repository pipeline after a source change",
 				"app", app.Name, "workspace", app.WorkspaceID, "error", err)
 		} else {
@@ -112,10 +97,7 @@ func (s *Service) SetSource(app *models.Application, in SourceInput) (*SourceCha
 	return ch, nil
 }
 
-// applySourceInput writes the new source onto the app and clears the fields belonging to the source
-// it is leaving. Split out from SetSource because this is the part with teeth: leaving a stale
-// git_repo or image behind produces an app that deploys correctly while describing a source it does
-// not use, and the stale value silently comes back the moment anyone switches it back.
+// Stale fields would describe a source the app does not use and silently return on a switch back.
 func applySourceInput(app *models.Application, in SourceInput) error {
 	switch in.SourceType {
 	case models.AppSourceImage:
@@ -139,8 +121,7 @@ func applySourceInput(app *models.Application, in SourceInput) error {
 		app.Builder = in.Builder
 		app.Buildpacks = in.Buildpacks
 		app.BuildEnv = in.BuildEnv
-		// A git app's image is produced by the build and pushed to the internal registry, so the
-		// image-source fields would only ever be a stale pull target.
+		// A git app's image comes from the build, so image fields would only be a stale pull target.
 		app.Image, app.Tag, app.RegistryID = "", "", nil
 
 	default:
@@ -163,11 +144,7 @@ func sourceChangeMessage(ch *SourceChange, app *models.Application) string {
 	return "Source switched from git to image (" + app.Image + ")"
 }
 
-// ResyncPipeline re-reads the repository's pipeline-as-code and brings the app's pipeline in line
-// with it: adopting one when the app has none (the file was added after the app was created, or the
-// app only just became a git app), and re-syncing the stored spec when it already has one.
-//
-// It reports the pipeline it ended up with, and whether the stored spec actually changed.
+// ResyncPipeline adopts a pipeline if the app has none, else re-syncs the stored spec.
 func (s *Service) ResyncPipeline(ctx context.Context, app *models.Application, userID *uint) (*models.PipelineDefinition, bool, error) {
 	if s.pipelines == nil {
 		return nil, false, ErrPipelinesUnavailable

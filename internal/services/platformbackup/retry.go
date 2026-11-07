@@ -31,22 +31,17 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Retry policy for the helper containers. Most failures here are transient — an object store briefly refusing
-// connections, a DNS hiccup, a node under load — and losing a nightly recovery point to one is a poor trade
-// when the work is idempotent: every run writes a new timestamped artifact, so a retry cannot corrupt anything.
+// Most failures are transient, and retries are safe because every run writes a new timestamped artifact.
 const (
 	maxAttempts  = 3
 	retryBackoff = 5 * time.Second
 )
 
-// runHelper executes a one-shot helper container, retrying transient failures. Returns the output of the
-// LAST attempt, so the recorded log describes the state that was finally recorded rather than a failure
-// that was recovered from.
+// runHelper returns the last attempt's output so the log matches the recorded outcome.
 func (s *Service) runHelper(ctx context.Context, dc docker.Client, action string, spec docker.RunSpec) (out string, err error) {
 	baseName := spec.Name
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		// Docker refuses a duplicate container name, and a previous attempt's
-		// container may still be going away.
+		// Docker refuses duplicate names, and a previous attempt's container may still be going away.
 		if attempt > 1 {
 			spec.Name = fmt.Sprintf("%s-r%d", baseName, attempt)
 		}
@@ -73,9 +68,7 @@ func (s *Service) runHelper(ctx context.Context, dc docker.Client, action string
 	return out, err
 }
 
-// permanentFailures are messages that will say exactly the same thing on the
-// third attempt as on the first. Retrying them wastes a minute and buries the
-// real cause under repeated identical output.
+// These fail identically every attempt; retrying only buries the cause under repeated output.
 var permanentFailures = []string{
 	"access denied",
 	"invalid access key",
@@ -90,9 +83,7 @@ var permanentFailures = []string{
 	"no such file or directory",
 }
 
-// worthRetrying reports whether a failure looks transient. It defaults to YES. The classification is a
-// heuristic over log text, and the asymmetry is deliberate: retrying a permanent failure costs a few
-// seconds, while refusing to retry a transient one costs the recovery point.
+// Defaults to yes: retrying a permanent failure costs seconds, skipping a transient one costs the recovery point.
 func worthRetrying(out string, err error) bool {
 	if err != nil {
 		return true // a Docker-level failure (image pull, daemon blip) is usually transient
@@ -106,12 +97,9 @@ func worthRetrying(out string, err error) bool {
 	return true
 }
 
-// RetrySet re-runs the failed artifacts of a recovery point in place rather than taking a fresh one: the
-// artifacts that DID succeed are often the expensive ones, and re-capturing them to recover from one
-// failed item wastes bandwidth and storage. Successful items keep their recorded artifacts.
+// RetrySet re-runs only failed items in place; successful, often expensive artifacts are kept.
 func (s *Service) RetrySet(ctx context.Context, set *models.PlatformBackupSet) (*models.PlatformBackupSet, error) {
-	// As in CreateSet: the retried artifacts must not be cancelled by the request
-	// that triggered them.
+	// As in CreateSet: retried artifacts must not be cancelled by the triggering request.
 	ctx = context.WithoutCancel(ctx)
 
 	st, err := s.getSettings()
@@ -132,8 +120,7 @@ func (s *Service) RetrySet(ctx context.Context, set *models.PlatformBackupSet) (
 		return nil, ErrNothingToRetry
 	}
 
-	// Reopen the set first: finalizeSet refuses to touch a terminal one, so a
-	// retry against a still-failed set would run the items and never close it.
+	// Reopen first: finalizeSet ignores terminal sets, so a retry would otherwise never close it.
 	set.Status = models.BackupRunning
 	set.Error = ""
 	set.FinishedAt = nil
@@ -151,8 +138,7 @@ func (s *Service) RetrySet(ctx context.Context, set *models.PlatformBackupSet) (
 			return nil, err
 		}
 
-		// The identity envelope is sealed in-process; the rest go through the
-		// worker exactly as they did the first time.
+		// The identity envelope is sealed in-process; the rest go through the worker.
 		if item.Subject == models.PlatformBackupIdentity {
 			if err := s.runIdentityBackup(ctx, item, st); err != nil {
 				return nil, err

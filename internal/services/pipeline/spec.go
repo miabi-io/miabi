@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package pipeline implements Miabi's CI/CD: pipeline-as-code versioned with the app, PipelineRun lifecycle,
-// and the internal runner that executes steps in isolated containers. It is the imperative, push-based half
-// of the GitOps and CI/CD model — a pipeline turns a commit into an image and a Release.
+// Package pipeline implements Miabi's CI/CD: pipeline-as-code, run lifecycle, and the internal container runner.
 package pipeline
 
 import (
@@ -38,12 +36,8 @@ import (
 const (
 	apiVersion   = "miabi.io/v1"
 	kindPipeline = "Pipeline"
-	// UsesBuild is the built-in step that builds the shared workspace into an
-	// image, captures its digest, and records an Image row. It is what turns a
-	// commit into a deployable artifact.
-	UsesBuild = "build"
-	// UsesDeploy is the built-in terminal step that deploys an app by the image
-	// the pipeline built (deploy-by-digest, no rebuild).
+	UsesBuild    = "build"
+	// Deploys by the digest the pipeline built, with no rebuild.
 	UsesDeploy = "deploy"
 )
 
@@ -53,12 +47,10 @@ type Spec struct {
 	Kind       string   `yaml:"kind"`
 	Metadata   SpecMeta `yaml:"metadata"`
 	On         Triggers `yaml:"on"`
-	// Env applies to every step; a step's own env wins on a key collision. Values
-	// may reference workspace secrets as ${{ secrets.NAME }}.
+	// A step's own env wins on collision; values may reference ${{ secrets.NAME }}.
 	Env   map[string]string `yaml:"env,omitempty"`
 	Steps []Step            `yaml:"steps"`
-	// Versioning sets the image repository's version policy from the file. Miabi still holds the counter:
-	// a repository cannot carry state, only the rules.
+	// Miabi still holds the counter: a repository carries only the rules, not state.
 	Versioning *versioning.Settings `yaml:"versioning,omitempty"`
 }
 
@@ -97,27 +89,19 @@ type Step struct {
 	Run   string `yaml:"run,omitempty"`
 	// Uses selects a built-in step ("build" | "deploy") instead of a container.
 	Uses string `yaml:"uses,omitempty"`
-	// Dockerfile names the Dockerfile for a `uses: build` step, relative to the
-	// checked-out source root. Empty defaults to "Dockerfile".
+	// Relative to the source root; empty defaults to "Dockerfile".
 	Dockerfile string `yaml:"dockerfile,omitempty"`
-	// Context is the build context directory for a `uses: build` step, relative to the checked-out source root;
-	// empty means the root itself. Independent of Dockerfile, matching `docker build -f <dockerfile> <context>`:
-	// a monorepo commonly keeps `docker/Dockerfile` while building from the root.
+	// Independent of Dockerfile, like `docker build -f <dockerfile> <context>`; empty is the source root.
 	Context string `yaml:"context,omitempty"`
-	// BuildArgs are Dockerfile ARG values for a `uses: build` step. NOT for secrets: a build arg is baked into
-	// the image's history, so anyone who can pull the image can read it back. Use the step's env for
-	// credentials.
+	// Not for secrets: build args are baked into image history; use the step's env for credentials.
 	BuildArgs map[string]string `yaml:"build-args,omitempty"`
 	Cache     *bool             `yaml:"cache,omitempty"`
-	// Platforms are the OS/architecture pairs a `uses: build` step builds for, e.g. linux/amd64 and
-	// linux/arm64; they push as one image, and each node pulls its own. Empty builds for the runner's platform.
+	// Pushed as one multi-arch image; empty builds for the runner's platform.
 	Platforms []string `yaml:"platforms,omitempty"`
 	// App overrides the deploy target for a `uses: deploy` step.
 	App string            `yaml:"app,omitempty"`
 	Env map[string]string `yaml:"env,omitempty"`
-	// ContinueOnError keeps the run going when this step fails (the step is still
-	// marked failed, the run can still succeed) — like GitHub Actions'
-	// `continue-on-error: true`.
+	// The step is still marked failed but the run can succeed, like GitHub Actions' continue-on-error.
 	ContinueOnError bool `yaml:"continue-on-error,omitempty"`
 }
 
@@ -137,8 +121,7 @@ func (t Triggers) FiresOnBranch(branch string) bool {
 	return false
 }
 
-// ParseSpec decodes and validates a kind: Pipeline document. Unknown fields are
-// rejected so typos surface.
+// ParseSpec rejects unknown fields so typos surface.
 func ParseSpec(data []byte) (*Spec, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -170,8 +153,7 @@ func ParseSpec(data []byte) (*Spec, error) {
 		if err := validEnv(fmt.Sprintf("step %q env", st.Name), st.Env); err != nil {
 			return nil, err
 		}
-		// A built-in step runs no container of its own, so a step-level env would
-		// be accepted and dropped — the pipeline-level env is what reaches it.
+		// Built-in steps run no container, so a step env would be silently dropped.
 		if len(st.Env) > 0 && st.Uses != "" {
 			return nil, fmt.Errorf("step %q: 'env' applies to container steps; move it to the pipeline-level env for a %q step", st.Name, st.Uses)
 		}
@@ -232,8 +214,7 @@ var buildPlatforms = map[string]bool{
 	"linux/386": true, "linux/ppc64le": true, "linux/s390x": true, "linux/riscv64": true,
 }
 
-// normalizePlatforms validates a build step's platforms and drops duplicates, keeping their order. A typo
-// is refused here rather than failing the build minutes in, on a runner, with the builder's own wording.
+// Refused here rather than failing minutes into the build with the builder's own wording.
 func normalizePlatforms(in []string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
@@ -253,9 +234,7 @@ func normalizePlatforms(in []string) ([]string, error) {
 	return out, nil
 }
 
-// validArgName reports whether k is usable as a Dockerfile ARG name. Docker accepts a good deal more and then
-// does nothing useful with it — a name carrying "=" or a space silently produces an arg the Dockerfile can
-// never reference — so the pipeline is stricter than the tool, and says so while the operator is still there.
+// Stricter than Docker: names with "=" or spaces silently produce args the Dockerfile can never reference.
 func validArgName(k string) bool {
 	if k == "" {
 		return false
@@ -274,9 +253,7 @@ func validArgName(k string) bool {
 	return true
 }
 
-// validBuildPath keeps a build path inside the checked-out source. Both values are joined against the runner's
-// workdir, so an absolute path or a `..` segment would reach the runner's own filesystem — and a pipeline is
-// attacker-supplied (anyone who can push to a branch can edit it) on a runner shared across a workspace.
+// Pipelines are attacker-supplied on a shared runner; absolute or `..` paths would reach its filesystem.
 func validBuildPath(field, p string) error {
 	if p == "" {
 		return nil
@@ -295,8 +272,7 @@ func validBuildPath(field, p string) error {
 // envKeyRe is the POSIX-ish shell variable name a step can actually read back.
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// reservedEnvPrefix is the platform's own build context. A pipeline that could
-// redefine it would shadow the job token the deploy step authenticates with.
+// Redefining it would shadow the job token the deploy step authenticates with.
 const reservedEnvPrefix = "MIABI_"
 
 func validEnv(what string, env map[string]string) error {

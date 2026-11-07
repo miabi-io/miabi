@@ -18,12 +18,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// The inline affordance beside a field that already collects a secret. A page is
-// a tool you go to; this is the tool already being where the value is needed,
-// which is the common case.
-//
-// It opens the same GeneratorPanel the page and the modal use, so options and
-// behaviour cannot drift between the three.
+// Opens the same GeneratorPanel as the page and the modal, so behaviour cannot drift between them.
 import { ref } from 'vue'
 import GeneratorModal from '@/components/GeneratorModal.vue'
 

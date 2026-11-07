@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package image manages the built-image catalog: provenance written by the
-// pipeline build step, read APIs for the UI, and a retention GC that never
-// collects a digest a live deployment or pinned release references.
+// Package image manages the built-image catalog; its GC never collects a digest a live or pinned release uses.
 package image
 
 import (
@@ -38,9 +36,7 @@ var (
 	ErrNoWorkspc = errors.New("workspace is required")
 )
 
-// Remover deletes a built image from the node it lives on. The service stays
-// node-agnostic; callers supply the local engine client (docker.Client
-// satisfies this). A nil Remover skips physical removal (DB-only).
+// A nil Remover skips physical removal (DB-only).
 type Remover interface {
 	RemoveImage(ctx context.Context, ref string, force bool) error
 }
@@ -69,9 +65,7 @@ type RecordInput struct {
 	Runner        string // "internal" | "<runner-name>"
 }
 
-// Record stores or updates the catalog entry for a freshly built image. The (workspace, digest) pair is
-// unique, so re-recording the same digest updates provenance rather than duplicating — building the same
-// content twice yields one row.
+// (workspace, digest) is unique, so re-recording the same digest updates provenance instead of duplicating.
 func (s *Service) Record(in RecordInput) (*models.Image, error) {
 	if in.WorkspaceID == 0 {
 		return nil, ErrNoWorkspc
@@ -112,8 +106,6 @@ func (s *Service) Record(in RecordInput) (*models.Image, error) {
 	return img, nil
 }
 
-// List returns the workspace's catalog, optionally narrowed to one application.
-// SetTag relabels a recorded image, e.g. with the version its pipeline run published.
 func (s *Service) SetTag(imageID uint, tag string) error { return s.images.SetTag(imageID, tag) }
 
 func (s *Service) List(workspaceID uint, appID *uint) ([]models.Image, error) {
@@ -132,8 +124,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.Image, error) {
 	return img, nil
 }
 
-// Delete removes a catalog image (and its physical layer via remover) unless it
-// is protected by a live or pinned release.
+// Delete refuses images protected by a live or pinned release.
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint, remover Remover) error {
 	img, err := s.images.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -152,9 +143,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, remover Remo
 	return s.images.Delete(workspaceID, id)
 }
 
-// RetentionPolicy bounds the catalog: keep at least the newest KeepPerApp images
-// per application, and only ever collect images older than MinAge. Protected
-// images (live/pinned releases) are exempt regardless.
+// Protected images (live or pinned releases) are exempt regardless.
 type RetentionPolicy struct {
 	KeepPerApp int
 	MinAge     time.Duration
@@ -177,9 +166,7 @@ type GCReport struct {
 	FreedBy   int64 `json:"freed_bytes"`
 }
 
-// GC applies retention across all workspaces. It keeps the newest KeepPerApp
-// images per app, never deletes an image referenced by a live or pinned release,
-// and only collects images older than MinAge. remover may be nil (DB-only).
+// GC never deletes an image a live or pinned release references; remover may be nil (DB-only).
 func (s *Service) GC(ctx context.Context, policy RetentionPolicy, remover Remover) (GCReport, error) {
 	policy = policy.withDefaults()
 	all, err := s.images.ListAll()
@@ -192,8 +179,7 @@ func (s *Service) GC(ctx context.Context, policy RetentionPolicy, remover Remove
 	}
 	cutoff := time.Now().Add(-policy.MinAge)
 
-	// ListAll is ordered application_id ASC, created_at DESC — so per app the
-	// newest images come first. Track how many we have kept per app key.
+	// ListAll is ordered application_id ASC, created_at DESC, so per app the newest come first.
 	var report GCReport
 	keptPerApp := map[uint]int{}
 	for i := range all {
@@ -246,9 +232,7 @@ func (p protectedRefs) holds(img *models.Image) bool {
 	return false
 }
 
-// ProtectedDigests returns the content digests held by a live deployment or a pinned release — the images
-// that must not be deleted. It is the same set GC exempts, exposed so other delete paths such as the
-// registry's tag delete can refuse to remove an image something is still running.
+// ProtectedDigests exposes GC's exemption set so other delete paths can refuse removing a running image.
 func (s *Service) ProtectedDigests() (map[string]bool, error) {
 	p, err := s.protectedSet()
 	if err != nil {
@@ -257,9 +241,7 @@ func (s *Service) ProtectedDigests() (map[string]bool, error) {
 	return p.digests, nil
 }
 
-// ByDigests indexes the catalog rows for the given digests, so a page of registry tags can be enriched
-// with build provenance in one query. Digests with no catalog row — images pushed by hand rather than
-// built by a pipeline — are simply absent.
+// Hand-pushed images have no catalog row and are simply absent.
 func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error) {
 	rows, err := s.images.ListByDigests(workspaceID, digests)
 	if err != nil {
@@ -272,8 +254,6 @@ func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]mode
 	return out, nil
 }
 
-// protectedSet derives the GC exemption set from the active release of every app
-// and any pinned release: their catalog ImageID, image Digest, and image Ref.
 func (s *Service) protectedSet() (protectedRefs, error) {
 	p := protectedRefs{ids: map[uint]bool{}, digests: map[string]bool{}, refs: map[string]bool{}}
 	rels, err := s.releases.ListProtected()

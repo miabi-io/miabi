@@ -40,8 +40,6 @@ func TestAppResourceEmitsRegistryName(t *testing.T) {
 	if res.Application.Registry != "" {
 		t.Errorf("an app with no credential should emit an empty registry, got %q", res.Application.Registry)
 	}
-	// ...and neither does one whose credential vanished from under it, rather
-	// than inventing a name the manifest could never match.
 	res = appResource(app, map[int]bool{}, map[int]bool{}, nil, map[uint]string{}, nil)
 	if res.Application.Registry != "" {
 		t.Errorf("an unresolved credential id should read as anonymous, got %q", res.Application.Registry)

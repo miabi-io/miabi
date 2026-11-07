@@ -87,28 +87,18 @@ export interface AnalyticsReport {
   web: AnalyticsWeb
   // Totals of the immediately preceding equal-length window (period-over-period).
   compare?: AnalyticsTotals
-  // Effective retention cap in days (-1 = unlimited) and whether CSV export is
-  // entitled — both edition-derived, used to bound the range picker and gate the
-  // export button behind Enterprise.
+  // retention_days caps the range picker (-1 = unlimited); exportable gates CSV export (Enterprise).
   retention_days: number
   exportable: boolean
 }
 
-// AnalyticsSummary is the dashboard's slice of a report: headline totals, the
-// status split, the request series and the top countries, without the remaining
-// categorical breakdowns, per-route stats or upstream percentiles the analytics
-// pages need.
 export interface AnalyticsSummary {
   range: { since: string; until: string }
   granularity: 'minute' | 'hour' | 'day'
   totals: AnalyticsTotals
   series: AnalyticsSeriesPoint[]
   status: AnalyticsStatus
-  /**
-   * The eight busiest origins. Empty when the gateway has no GeoIP database —
-   * indistinguishable from "no traffic", so the dashboard hides the panel rather
-   * than explaining; /analytics/web is where that hint lives.
-   */
+  /** Empty without a GeoIP database, indistinguishable from no traffic, so the dashboard hides the panel. */
   top_countries: Category[]
   compare?: AnalyticsTotals
 }
@@ -131,18 +121,13 @@ function localMidnight(date: string, addDays = 0): Date {
   return new Date(y, m - 1, d + addDays)
 }
 
-// toApiRange sends a custom span as absolute instants so the server cuts days at
-// the viewer's midnight, not UTC's; the end date is inclusive.
+// Absolute instants so the server cuts days at the viewer's midnight, not UTC's; the end date is inclusive.
 function toApiRange(range: string): string {
   const m = CUSTOM_RANGE.exec(range)
   if (!m) return range
   return `${localMidnight(m[1]).toISOString()}..${localMidnight(m[2], 1).toISOString()}`
 }
 
-// Workspace Analytics: HTTP traffic, performance and web analytics rolled up
-// from the gateway's request stream. `range` is a window ending now
-// (15m, 1h, 24h, 7d, 30d) or a custom span (isCustomRange); `app`
-// filters to a single application.
 export const analyticsApi = {
   report: (ws: number, range: string, app?: number) =>
     api.get<ApiResponse<AnalyticsReport>>(`${w(ws)}/analytics`, {
@@ -152,20 +137,16 @@ export const analyticsApi = {
     api.get<ApiResponse<{ application_ids: number[] }>>(`${w(ws)}/analytics/apps`, {
       params: { range: toApiRange(range) },
     }),
-  // The dashboard's traffic card. Same numbers as `report` for the fields it
-  // shares, but the server neither computes nor reads the breakdowns.
+  // The server skips computing the breakdowns for this card.
   summary: (ws: number, range: string, app?: number) =>
     api.get<ApiResponse<AnalyticsSummary>>(`${w(ws)}/analytics/summary`, {
       params: { range: toApiRange(range), ...(app ? { app } : {}) },
     }),
-  // Visitors active in the last few minutes. Independent of `range` — it's a
-  // "right now" number, polled while the dashboard is open.
+  // Independent of `range`: a right-now number polled while the dashboard is open.
   live: (ws: number, app?: number) =>
     api.get<ApiResponse<LiveVisitors>>(`${w(ws)}/analytics/live`, {
       params: { ...(app ? { app } : {}) },
     }),
-  // CSV export (Enterprise-gated server-side). Returns the relative API path so
-  // the caller can open it as a download.
   exportPath: (ws: number, range: string, app?: number) => {
     const p = new URLSearchParams({ range: toApiRange(range) })
     if (app) p.set('app', String(app))

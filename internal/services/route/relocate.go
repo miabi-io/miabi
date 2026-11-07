@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// GatewayServer returns the edge node whose gateway serves an app, or false when the control-plane gateway
-// does. A move records it first, so the gateway the app leaves can be told to drop it.
+// GatewayServer returns the edge node serving an app, or false for the control-plane gateway.
 func (s *Service) GatewayServer(app *models.Application) (uint, bool) { return s.gatewayServer(app) }
 
 // ReloadGateway tells an edge gateway to pull its config now instead of on its next poll. Best-effort.
@@ -40,8 +39,7 @@ func (s *Service) ReloadGateway(ctx context.Context, serverID uint) {
 // DNSTarget is the public address an app's hosts should resolve to, for the report a move writes.
 func (s *Service) DNSTarget(app *models.Application) models.PublicAddress { return s.dnsTarget(app) }
 
-// RehostApp moves an app's generated URLs onto its current cluster's external domain, or removes them when
-// that cluster has none. It is RehostCluster for one app, run after the app changes cluster.
+// RehostApp is RehostCluster for one app, run after the app changes cluster.
 func (s *Service) RehostApp(ctx context.Context, app *models.Application) ([]string, error) {
 	routes, err := s.routes.ListByApp(app.ID)
 	if err != nil {

@@ -42,8 +42,7 @@ func (r *NotificationChannelRepository) Delete(id uint) error {
 	return r.db.Delete(&models.NotificationChannel{}, id).Error
 }
 
-// FindByID returns a channel by primary key, regardless of workspace. Used by
-// the channel-send worker, which already trusts the enqueued id.
+// Unscoped: the channel-send worker already trusts the enqueued id.
 func (r *NotificationChannelRepository) FindByID(id uint) (*models.NotificationChannel, error) {
 	var ch models.NotificationChannel
 	if err := r.db.First(&ch, id).Error; err != nil {
@@ -66,8 +65,7 @@ func (r *NotificationChannelRepository) ListByWorkspace(workspaceID uint) ([]mod
 	return chs, err
 }
 
-// ListEnabledForEvent returns enabled channels in the workspace that subscribe
-// to the given event (membership filtered in Go; see WebhookRepository).
+// Event membership is filtered in Go; see WebhookRepository.
 func (r *NotificationChannelRepository) ListEnabledForEvent(workspaceID uint, event string) ([]models.NotificationChannel, error) {
 	var chs []models.NotificationChannel
 	if err := r.db.Where("workspace_id = ? AND enabled = ?", workspaceID, true).Find(&chs).Error; err != nil {

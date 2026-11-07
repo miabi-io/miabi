@@ -6,8 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { versioningApi } from '@/api/versioning'
 import type { VersionPlan, VersionSettings } from '@/api/types'
 
-// Edits a version policy's settings and previews the tags they produce. Shared by the
-// create-pipeline modal and the policy page, so both explain the rules the same way.
+// Shared by the create-pipeline modal and the policy page so both explain the rules the same way.
 const props = defineProps<{
   modelValue: VersionSettings
   readonly?: boolean
@@ -28,8 +27,7 @@ function patchBranches(p: Partial<VersionSettings['branches']>) {
   patch({ branches: { ...props.modelValue.branches, ...p } })
 }
 
-// A first version off the new series would be refused, so it is cleared and the server derives it
-// (2.x.x opens at 2.0.0).
+// A first version off the new series would be refused, so it is cleared for the server to derive.
 function onSeries(series: string) {
   const fixed = series.trim().replace(/^v/, '').split('.')
   const start = (props.modelValue.start ?? '').split('.')

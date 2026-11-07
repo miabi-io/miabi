@@ -36,19 +36,16 @@ func NewUpdateHandler(svc *updatecheck.Service) *UpdateHandler { return &UpdateH
 
 // UpdateInfo is what the dashboard renders.
 type UpdateInfo struct {
-	CurrentVersion string     `json:"current_version"`
-	LatestVersion  string     `json:"latest_version,omitempty"`
-	ReleaseURL     string     `json:"release_url,omitempty"`
-	PublishedAt    *time.Time `json:"published_at,omitempty"`
-	// UpdateAvailable is false when up to date, when checks are disabled, and
-	// when the admin dismissed this exact version.
-	UpdateAvailable bool `json:"update_available"`
+	CurrentVersion  string     `json:"current_version"`
+	LatestVersion   string     `json:"latest_version,omitempty"`
+	ReleaseURL      string     `json:"release_url,omitempty"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
+	UpdateAvailable bool       `json:"update_available"`
 	// Security marks a release published to fix a vulnerability; the notice is shown prominently.
 	Security  bool       `json:"security"`
 	Enabled   bool       `json:"enabled"`
 	CheckedAt *time.Time `json:"checked_at,omitempty"`
-	// LastError surfaces a silently failing checker; an admin should never mistake
-	// "we could not reach versions.miabi.io for a month" for "you are up to date".
+	// A failing checker must never read as "you are up to date".
 	LastError string `json:"last_error,omitempty"`
 }
 
@@ -66,9 +63,7 @@ func (h *UpdateHandler) Get(c *okapi.Context) error {
 		return c.AbortInternalServerError("failed to read update status", err)
 	}
 	info.CheckedAt, info.LastError = st.CheckedAt, st.LastError
-	// Gate on a fresh comparison, not on the cached row alone. The row is written by a daily cron and
-	// describes the build running when it last ran, so an install that upgraded an hour ago still
-	// carries the previous build's verdict — which is how the notice could offer an older version.
+	// The cached row is from a daily cron and may describe the previous build, offering an older version.
 	if st.LatestVersion != "" && updatecheck.IsNewer(config.Version, st.LatestVersion) {
 		info.LatestVersion = st.LatestVersion
 		info.ReleaseURL = st.ReleaseURL

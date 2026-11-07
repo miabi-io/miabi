@@ -24,8 +24,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// LDAPRepository accesses LDAP/AD connections and their group mappings
-// (Enterprise; empty in CE).
 type LDAPRepository struct{ db *gorm.DB }
 
 func NewLDAPRepository(db *gorm.DB) *LDAPRepository { return &LDAPRepository{db: db} }
@@ -51,8 +49,7 @@ func (r *LDAPRepository) FindAll() ([]models.LDAPConfig, error) {
 	return cfgs, err
 }
 
-// FindEnabled returns the enabled configs (mappings preloaded), oldest-first, so
-// the authenticator tries them in a stable order (first match wins).
+// Oldest-first so the authenticator tries configs in a stable order (first match wins).
 func (r *LDAPRepository) FindEnabled() ([]models.LDAPConfig, error) {
 	var cfgs []models.LDAPConfig
 	err := r.db.Preload("Mappings").Where("enabled = ?", true).Order("id ASC").Find(&cfgs).Error
@@ -68,8 +65,6 @@ func (r *LDAPRepository) FindByID(id uint) (*models.LDAPConfig, error) {
 	return &cfg, nil
 }
 
-// FindByName returns the config with the given name (mappings preloaded), for
-// group reconciliation keyed on the identity's provider slug.
 func (r *LDAPRepository) FindByName(name string) (*models.LDAPConfig, error) {
 	var cfg models.LDAPConfig
 	if err := r.db.Preload("Mappings").Where("name = ?", name).First(&cfg).Error; err != nil {

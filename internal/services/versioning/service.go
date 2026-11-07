@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package versioning decides the version, and so the image tag, each pipeline run builds. A run
-// reserves its version before it is dispatched, and settles it when it ends: published and tagged in
-// the registry on success, released for the next run (or skipped) otherwise. Deploys stay by digest;
-// the version is a readable, immutable label on the same artifact.
+// Package versioning reserves each pipeline run's version (image tag); deploys stay by digest.
 package versioning
 
 import (
@@ -76,8 +73,7 @@ func NewService(repo *repositories.VersionRepository, apps *repositories.Applica
 	return &Service{repo: repo, apps: apps, pipelines: pipelines}
 }
 
-// SetRegistry wires the registry used to tag published versions. Without it, versions are still
-// reserved and recorded but no registry tag is written.
+// Without a registry, versions are still reserved and recorded but no tag is written.
 func (s *Service) SetRegistry(r Registry) { s.registry = r }
 
 // SetImages wires the image catalog so a published image carries its version as its tag.
@@ -101,9 +97,7 @@ func (s *Service) ForPipeline(def *models.PipelineDefinition) (*models.VersionPo
 	return p, nil
 }
 
-// EnsureForPipeline gives a pipeline's repository a policy when it has none: settings when given,
-// else the defaults. With managed, settings come from the pipeline's `versioning:` block and replace
-// whatever the policy held, and the pipeline is recorded as their owner.
+// With managed, the pipeline's versioning block replaces the policy settings and owns them.
 func (s *Service) EnsureForPipeline(def *models.PipelineDefinition, settings *Settings, managed bool) (*models.VersionPolicy, error) {
 	appID, pipelineID := owner(def)
 	if existing, err := s.repo.FindPolicyFor(appID, pipelineID); err == nil {
@@ -177,9 +171,7 @@ func (s *Service) PipelineDeleted(def *models.PipelineDefinition) {
 	s.Unmanage(def)
 }
 
-// Reserve hands a run its version. It is a no-op when the repository has no policy or the policy gives
-// this run none, leaving the image on its run-<number> tag. On success run.Version and run.ImageTag are
-// set; the caller persists the run.
+// A no-op without a policy, leaving the run-<number> tag; the caller persists the run.
 func (s *Service) Reserve(run *models.PipelineRun, def *models.PipelineDefinition, req Request) error {
 	policy, err := s.repo.FindPolicyFor(owner(def))
 	if err != nil {
@@ -225,9 +217,7 @@ func (s *Service) reserve(policyID, runID uint, req Request) (*models.VersionAll
 	}
 }
 
-// VerifyTagFree checks, before a run is dispatched, that its version's tag is not already in the
-// registry, as after a database restore or a push made outside Miabi. A taken version is skipped and the
-// run moves to the next free one; only a hand-set version fails the run.
+// A tag taken outside Miabi (e.g. after a DB restore) is skipped; only a hand-set version fails the run.
 func (s *Service) VerifyTagFree(ctx context.Context, run *models.PipelineRun, repository string, log func(string)) error {
 	if s.registry == nil || repository == "" {
 		return nil
@@ -280,9 +270,7 @@ func shortDigest(d string) string {
 	return d
 }
 
-// Settle finishes a run's version once the run is terminal. A succeeded build is tagged with its version
-// (and any floating tags) and published; anything else gives the version back. Best-effort: settling
-// never changes the run's outcome.
+// Settling is best-effort and never changes the run's outcome.
 func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, repository string, log func(string)) {
 	a, err := s.repo.FindAllocationByRun(run.ID)
 	if err != nil || a.Status != models.AllocationReserved {
@@ -332,8 +320,7 @@ func (s *Service) Settle(ctx context.Context, run *models.PipelineRun, digest, r
 	}
 }
 
-// moveFloating points each floating tag at this version when it is the newest version the tag covers,
-// so a 1.x hotfix never drags `latest` back from 2.0.
+// Moves a floating tag only to the newest version it covers, so a 1.x hotfix never drags latest back from 2.0.
 func (s *Service) moveFloating(ctx context.Context, p *models.VersionPolicy, a *models.VersionAllocation, repository string, log func(string)) {
 	if s.registry == nil || repository == "" || len(p.FloatingTags) == 0 {
 		return
@@ -477,8 +464,7 @@ func (s *Service) Update(workspaceID uint, ref string, settings Settings) (*mode
 	return p, nil
 }
 
-// SwitchSeries moves a semver policy to another version line. Moving back to an older line continues
-// from the highest version it ever handed out, so a maintenance line never repeats a version.
+// Moving back to an older line continues past its highest version, so a maintenance line never repeats.
 func (s *Service) SwitchSeries(workspaceID uint, ref, series string) (*models.VersionPolicy, error) {
 	p, err := s.Get(workspaceID, ref)
 	if err != nil {
@@ -554,8 +540,6 @@ func (s *Service) Preview(workspaceID uint, ref, branch string, count int) ([]Pl
 	return Preview(p, existing, branch, count, time.Now())
 }
 
-// PreviewSettings lists the versions unsaved settings would produce on top of a policy's history, so a
-// form can show the effect of an edit before it is saved. A nil policy previews a new one.
 func (s *Service) PreviewSettings(p *models.VersionPolicy, settings Settings, branch string, count int) ([]Plan, error) {
 	n, err := settings.Normalize()
 	if err != nil {

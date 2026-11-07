@@ -30,8 +30,7 @@ import (
 
 const overlayDriver = "overlay"
 
-// SetAllocator wires the subnet pool a remote swarm's workspace overlays are carved from (nil-safe; nil
-// leaves the addressing to Swarm).
+// nil leaves the addressing to Swarm.
 func (s *Service) SetAllocator(a *netalloc.Service) { s.alloc = a }
 
 // ClusterOfServer returns the cluster a node belongs to; 0 is the local node, always in the default cluster.
@@ -56,8 +55,7 @@ func (s *Service) LocationLabel(clusterID uint) string {
 	return fmt.Sprintf("location %d", clusterID)
 }
 
-// WorkspaceOverlay reports whether a workspace network is an overlay in a cluster. In the default cluster its
-// record decides; a remote swarm only takes empty nodes, so its workspace networks are overlays from the start.
+// A remote swarm only takes empty nodes, so its workspace networks are overlays from the start.
 func (s *Service) WorkspaceOverlay(clusterID uint, n models.Network) bool {
 	if n.Driver == overlayDriver {
 		return true
@@ -65,9 +63,7 @@ func (s *Service) WorkspaceOverlay(clusterID uint, n models.Network) bool {
 	return !s.isDefault(clusterID) && s.IsSwarm(clusterID)
 }
 
-// EnsureWorkspaceOverlay creates a workspace network as an overlay in a remote swarm, on the network's pool
-// subnet, so a container or database placed there can attach. The default cluster's overlays are created by
-// the network service.
+// The default cluster's overlays are created by the network service.
 func (s *Service) EnsureWorkspaceOverlay(ctx context.Context, clusterID uint, n models.Network) error {
 	if s.isDefault(clusterID) || !s.IsSwarm(clusterID) {
 		return nil

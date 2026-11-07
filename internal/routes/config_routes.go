@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// configRoutes registers workspace configuration files. Viewer lists keys and
-// digests; Developer mutates; Admin reveals content, mirroring the Vault.
+// Viewer lists keys and digests; Developer mutates; Admin reveals content, mirroring the Vault.
 func (r *Router) configRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Configs", Description: "Workspace configuration files, mounted into applications as read-only files."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

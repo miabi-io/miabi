@@ -36,8 +36,6 @@ type netCall struct {
 	aliases []string
 }
 
-// netFake records network attach calls. It embeds docker.Client so only the methods used here need
-// implementing.
 type netFake struct {
 	docker.Client
 	calls []netCall
@@ -65,8 +63,7 @@ func (clusterStub) ServiceEndpointMode(uint) models.ServiceEndpointMode {
 	return models.ServiceEndpointVIP
 }
 
-// In cluster mode the gateway dials routed apps over the ingress overlay, so a route change must attach a
-// running container to it as well — a container started before cluster mode was enabled is not on it.
+// A container started before cluster mode is not on the ingress overlay, so a route change must attach it.
 func TestApplyAttachmentFollowsClusterMode(t *testing.T) {
 	targets := []attachTarget{{id: "c1", alias: "mb-app-tok-7"}}
 	aliases := []string{"mb-app-tok-7"}

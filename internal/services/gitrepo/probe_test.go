@@ -37,8 +37,7 @@ func statusOf(t *testing.T, svc *Service, id uint) *models.GitRepository {
 	return g
 }
 
-// Adding a repository probes it, so the list can say whether the credential
-// actually works without every page load re-probing every remote.
+// Probing on create lets the list show credential health without re-probing every remote per page load.
 func TestCreateRecordsConnectionStatus(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	svc.SetDialer(func(context.Context, *models.GitRepository) error { return nil })
@@ -59,9 +58,7 @@ func TestCreateRecordsConnectionStatus(t *testing.T) {
 	}
 }
 
-// A failed probe must not fail the create. The credential is already stored, and
-// refusing to save would leave the user with nothing — and no record of what they
-// typed. The status carries the bad news instead.
+// A failed probe must not fail the create; the status carries the bad news instead.
 func TestCreateSucceedsWhenTheProbeFails(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	svc.SetDialer(func(context.Context, *models.GitRepository) error {
@@ -81,8 +78,7 @@ func TestCreateSucceedsWhenTheProbeFails(t *testing.T) {
 	}
 }
 
-// A relabel must not cost a round trip to the provider, nor disturb a status
-// that is still accurate.
+// A relabel must not cost a provider round trip nor disturb a still-accurate status.
 func TestUpdateDoesNotProbeOnARelabel(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	probes := 0
@@ -105,8 +101,6 @@ func TestUpdateDoesNotProbeOnARelabel(t *testing.T) {
 	}
 }
 
-// Changing the URL or the credential invalidates what the last check proved, so
-// it must be re-checked.
 func TestUpdateProbesWhenTheTargetChanges(t *testing.T) {
 	cases := []struct {
 		name string
@@ -139,8 +133,6 @@ func TestUpdateProbesWhenTheTargetChanges(t *testing.T) {
 	}
 }
 
-// An explicit test records its result too, so the icon in the list reflects the
-// most recent check whoever ran it.
 func TestTestConnectionPersistsTheResult(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	svc.SetDialer(func(context.Context, *models.GitRepository) error { return nil })

@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ClusterCap reports whether any cluster runs a swarm — surfaced as a workspace capability so any
-// member, not just a platform admin, can tell whether the "service" runtime is offerable when
-// creating an app. Injected after construction (nil = cluster mode off).
+// Exposed as a workspace capability so any member can tell whether "service" runtime is offerable.
 type ClusterCap interface {
 	AnySwarm() bool
 	IsSwarm(clusterID uint) bool
@@ -83,8 +81,7 @@ type WorkspaceUsage struct {
 	PlanName string        `json:"plan_name"`
 	Limits   quota.Limits  `json:"limits"`
 	Apps     ResourceUsage `json:"apps"`
-	// AppsWithoutLimits counts apps missing a CPU or memory limit: they run unbounded and the CPU and
-	// memory totals don't see them.
+	// They run unbounded and the CPU and memory totals don't see them.
 	AppsWithoutLimits int64         `json:"apps_without_limits"`
 	DatabaseInstances ResourceUsage `json:"database_instances"`
 	CronJobs          ResourceUsage `json:"cron_jobs"`
@@ -106,16 +103,10 @@ type WorkspaceUsage struct {
 		CustomLabels         bool `json:"custom_labels"`
 		CustomBuilder        bool `json:"custom_builder"`
 		OfficialImageUser    bool `json:"official_image_user"`
-		// RequireNonRoot reports that this workspace's containers must drop root —
-		// the restricted profile or the server-level mandate. The UI uses it to
-		// constrain the per-app / per-job run-as user to a non-root numeric uid.
+		// The UI constrains the run-as user to a non-root numeric uid when set.
 		RequireNonRoot bool `json:"require_non_root"`
-		// ClusterEnabled reports whether cluster (Swarm) mode is on, so the UI can
-		// offer the replicated "service" runtime when creating an app. Not a plan
-		// capability — a platform-level flag exposed here for any workspace member.
+		// A platform-level flag, not a plan capability.
 		ClusterEnabled bool `json:"cluster_enabled"`
-		// ServiceRuntime reports whether this workspace may run an app as a replicated service: the
-		// cluster is on and the plan allows it.
 		ServiceRuntime bool `json:"service_runtime"`
 	} `json:"capabilities"`
 
@@ -201,8 +192,7 @@ func (h *UsageHandler) Measure(wsID uint) map[string]float64 {
 	}
 }
 
-// swarmAvailable reports whether a location this workspace may use runs a swarm. A swarm elsewhere, such as
-// another organization's dedicated cluster, is none of its business and offers it nothing.
+// A swarm elsewhere, such as another organization's dedicated cluster, offers this workspace nothing.
 func (h *UsageHandler) swarmAvailable(c *okapi.Context, wsID uint) bool {
 	if h.cluster == nil {
 		return false

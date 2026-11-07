@@ -194,8 +194,7 @@ func TestTwoFactorChallengeIsDroppedAfterTooManyWrongCodes(t *testing.T) {
 	}
 }
 
-// Only a flow that needs a fresh IdP login asks for one: a landing path rides in the intent but
-// must not make someone already signed in at the IdP sign in again.
+// A landing path alone must not force someone already signed in at the IdP to sign in again.
 func TestAuthCodeURLPrompt(t *testing.T) {
 	ctx := context.Background()
 	s := twoFactorService(t)

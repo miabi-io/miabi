@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// LDAPAdminHandler manages LDAP / Active Directory connections and their group mappings. Every
-// method is gated on the sso_ldap entitlement; Community gets 402. The bind logic lives behind
-// the enterprise seam (ee.LDAP()); this handler is DB-only CRUD plus a test proxy.
+// Every method is gated on sso_ldap; the bind logic lives behind ee.LDAP().
 type LDAPAdminHandler struct {
 	ldap  *repositories.LDAPRepository
 	ee    enterprise.EE
@@ -56,8 +54,7 @@ type LDAPConfigRequest struct {
 		InsecureSkipTLS *bool  `json:"insecure_skip_tls"`
 		TimeoutSeconds  int    `json:"timeout_seconds"`
 		BindDN          string `json:"bind_dn"`
-		// BindPassword is the plaintext service-account password. Blank on update
-		// preserves the stored secret.
+		// Blank on update preserves the stored secret.
 		BindPassword string `json:"bind_password"`
 		UserBaseDN   string `json:"user_base_dn"`
 		UserFilter   string `json:"user_filter"`

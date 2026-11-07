@@ -45,8 +45,7 @@ func catalogOf(t *testing.T, enabled bool) CapabilityCatalog {
 	return body.Data
 }
 
-// With the switch off the catalogue is empty: a console that renders a picker
-// from it must not offer a capability no request could obtain.
+// A console picker must not offer a capability no request could obtain.
 func TestCatalogIsEmptyWhenGrantsAreDisabled(t *testing.T) {
 	got := catalogOf(t, false)
 
@@ -59,8 +58,7 @@ func TestCatalogIsEmptyWhenGrantsAreDisabled(t *testing.T) {
 	if len(got.Devices) != 0 {
 		t.Errorf("offered %d devices with the switch off", len(got.Devices))
 	}
-	// Empty arrays rather than nulls, so the console tells "nothing on offer" from
-	// "the field is missing" without a special case.
+	// Empty arrays, not nulls, so the console tells "nothing on offer" from a missing field.
 	raw := rawCatalog(t, false)
 	for _, field := range []string{`"capabilities":[]`, `"devices":[]`} {
 		if !strings.Contains(raw, field) {

@@ -31,8 +31,7 @@ function isLanguage(code: string): code is LanguageCode {
   return LANGUAGES.some((l) => l.code === code)
 }
 
-// resolveLanguage maps a stored or browser tag onto a shipped language: the code, then
-// its primary subtag ("fr-CA" is French), then English. Mirrors models.ResolveLocale.
+// Falls back from code to primary subtag ("fr-CA" is French) to English; mirrors models.ResolveLocale.
 export function resolveLanguage(tag: string | null | undefined): LanguageCode {
   const t = (tag ?? '').trim().toLowerCase()
   if (isLanguage(t)) return t

@@ -1,6 +1,4 @@
-// Live workspace resource usage: the current aggregated sample plus rolling
-// CPU/memory series, seeded from stored history so the sparklines have a shape
-// before the first live sample arrives.
+// Seeded from stored history so the sparklines have a shape before the first live sample.
 import { onUnmounted, ref } from 'vue'
 import { usageApi } from '@/api/resources'
 import type { WorkspaceLiveSample } from '@/api/types'
@@ -55,8 +53,7 @@ export function useLiveUsage() {
     }
   }
 
-  // watch(immediate) fires before mount, so binding the teardown here keeps the
-  // stream from outliving the page however it was started.
+  // watch(immediate) fires before mount, so binding teardown here keeps the stream from outliving the page.
   onUnmounted(close)
 
   function start(id: number | null) {

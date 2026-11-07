@@ -54,9 +54,7 @@ type CreateGitRepoRequest struct {
 
 type UpdateGitRepoRequest struct {
 	Body struct {
-		// Name is immutable. Still accepted so a client that PATCHes the whole
-		// object back unchanged keeps working; a different one is refused with 409
-		// rather than ignored, so a rename never looks like it succeeded.
+		// Accepted so whole-object PATCHes keep working; a different name is refused with 409, not ignored.
 		Name        string `json:"name"`
 		DisplayName string `json:"display_name"`
 		URL         string `json:"url"`
@@ -146,12 +144,9 @@ func (h *GitRepositoryHandler) Test(c *okapi.Context) error {
 		if errors.Is(err, gitrepo.ErrNotFound) {
 			return c.AbortNotFound("git repository not found")
 		}
-		// The check ran; the answer was no. The outcome is persisted either way, so
-		// the client can refresh the row and see the recorded reason.
+		// The outcome is persisted either way, so the client can refresh the row and see the reason.
 		return c.AbortWithError(400, err)
 	}
-	// Returns the repository so the caller can update the row it just tested
-	// without re-listing.
 	g, err := h.svc.Get(wsID, id)
 	if err != nil {
 		return message(c, "connection succeeded")
@@ -159,8 +154,7 @@ func (h *GitRepositoryHandler) Test(c *okapi.Context) error {
 	return ok(c, g)
 }
 
-// gitopsConflict reports why a credential a GitOps project declares can't be edited or deleted
-// here: the project's next sync would undo it. Nil when it is editable, or doesn't exist.
+// The GitOps project's next sync would undo any edit here.
 func (h *GitRepositoryHandler) gitopsConflict(wsID, id uint) error {
 	g, err := h.svc.Get(wsID, id)
 	if err != nil || g.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {

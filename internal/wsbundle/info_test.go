@@ -75,8 +75,6 @@ func TestInfoRoundTrip(t *testing.T) {
 	}
 }
 
-// The info file is what an operator finds in a bucket, so it must say what it is
-// and must not need this repository to be understood.
 func TestInfoIsSelfDescribing(t *testing.T) {
 	body, err := EncodeInfo(testInfo())
 	if err != nil {
@@ -91,8 +89,7 @@ func TestInfoIsSelfDescribing(t *testing.T) {
 	}
 }
 
-// A bundle with no state file restores nothing; refusing early is the difference
-// between an error and a half-created workspace.
+// Refusing early avoids a half-created workspace.
 func TestInfoWithoutStateIsRejected(t *testing.T) {
 	in := testInfo()
 	in.Artifacts = in.Artifacts[1:] // drop the state file
@@ -105,9 +102,7 @@ func TestInfoWithoutStateIsRejected(t *testing.T) {
 	}
 }
 
-// An artifact whose capture failed is listed with its reason, and never counted
-// as present: a bundle that quietly omits a database looks complete until the
-// day it is needed.
+// A failed capture is never counted as present, or a bundle missing a database would look complete.
 func TestFailedArtifactIsNotRestorable(t *testing.T) {
 	in := testInfo()
 	in.Artifacts = append(in.Artifacts, Artifact{
@@ -155,16 +150,13 @@ func TestRefRoundTripsThroughItsObjectName(t *testing.T) {
 	if got := RefFromInfoObject(key); got != ref {
 		t.Fatalf("RefFromInfoObject(%q) = %q, want %q", key, got, ref)
 	}
-	// An artifact is not an index: listing a prefix must not mistake one for the
-	// other, or a restore would try to parse a dump as XML.
+	// Mistaking an artifact for an index would make a restore parse a dump as XML.
 	if got := RefFromInfoObject(DatabasePath("bundles", ref) + "/orders.sql.gz"); got != "" {
 		t.Fatalf("an artifact key was read as an index: %q", got)
 	}
 }
 
-// The index sits at the top of the prefix while everything else lives in the
-// bundle's own branch: that is what makes listing a bucket show bundles rather
-// than their contents.
+// Index at the top, artifacts in the bundle's branch, so listing a bucket shows bundles rather than contents.
 func TestLayoutSeparatesIndexFromArtifacts(t *testing.T) {
 	ref := NewRef("shop", time.Unix(1_760_000_000, 0).UTC())
 	info := InfoObject("bundles", ref)

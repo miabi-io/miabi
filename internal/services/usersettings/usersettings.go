@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package usersettings owns per-user preferences: the console's look and locale,
-// and which workspace a client lands on when it has none in mind. It is deliberately
-// separate from the account package, which handles account lifecycle rather than taste.
+// Package usersettings owns per-user preferences, separate from account lifecycle.
 package usersettings
 
 import (
@@ -67,9 +65,7 @@ func NewService(users Users, settings Settings, members Members) *Service {
 	return &Service{users: users, settings: settings, members: members}
 }
 
-// BrandAccent supplies the operator's accent and whether it is enforced on every
-// account. A function rather than the branding service itself, so preferences do
-// not depend on branding — the arrow points one way.
+// A function rather than the branding service, so preferences don't depend on branding.
 type BrandAccent func() (accent models.Accent, enforced bool)
 
 // SetBrandAccent wires the operator default (nil-safe: unset means Miabi's own).
@@ -96,10 +92,7 @@ func (s *Service) brand() (models.Accent, bool) {
 	return a, enforced
 }
 
-// resolve fills in what the user has not chosen. The stored value stays empty, so
-// an operator changing their brand accent still moves everyone who never picked —
-// which is the point, and would not happen if the default were written down at
-// account creation.
+// The default is not stored, so a brand accent change still moves everyone who never picked.
 func (s *Service) resolve(cur *models.UserSetting) {
 	if cur == nil {
 		return
@@ -215,8 +208,7 @@ func (s *Service) AdoptFirstWorkspace(userID, workspaceID uint) {
 	_ = s.users.SetDefaultWorkspace(userID, &workspaceID)
 }
 
-// ValidTimezone reports whether tz is an IANA time zone name the server's tz database knows. "Local" is
-// refused: it names the server's zone, not the user's.
+// "Local" is refused: it names the server's zone, not the user's.
 func ValidTimezone(tz string) bool {
 	if tz == "" || tz == "Local" {
 		return false

@@ -30,8 +30,7 @@ import (
 var (
 	// ErrRuntimeChangeBlocked is returned when a preflight found a blocker; RuntimeChangeError lists them.
 	ErrRuntimeChangeBlocked = errors.New("the runtime change is blocked")
-	// ErrRuntimeChangeViaSettings refuses a runtime change through the generic settings update, which
-	// would not redeploy or hand over between runtimes.
+	// The generic settings update would neither redeploy nor hand over between runtimes.
 	ErrRuntimeChangeViaSettings = errors.New("change the runtime with POST /apps/{id}/runtime, which redeploys and hands over between runtimes")
 )
 
@@ -175,9 +174,7 @@ func (s *Service) localVolumeNode(app *models.Application) (*uint, error) {
 	return nil, nil
 }
 
-// ChangeRuntime moves app to another runtime: it saves the change and, for a deployed app, starts the
-// deploy that hands over from the old runtime's workload to the new one. The deployment is nil when
-// the app was never deployed.
+// ChangeRuntime returns a nil deployment when the app was never deployed.
 func (s *Service) ChangeRuntime(app *models.Application, ch RuntimeChange, triggeredBy *uint) (*models.Deployment, error) {
 	p, next := s.planRuntime(app, ch)
 	if len(p.Blockers) > 0 {

@@ -33,8 +33,7 @@ const themeModes = computed<{ value: ThemeMode; label: string; icon: string }[]>
   { value: 'dark', label: t('preferences.theme.dark'), icon: 'mdi-weather-night' },
 ])
 
-// Each entry names a nav destination, so it reuses that label rather than keeping a
-// second copy to translate.
+// Reuses the nav labels rather than keeping a second copy to translate.
 const landingViews = computed(() => [
   { value: 'dashboard', label: t('nav.overview.dashboard') },
   { value: 'apps', label: t('nav.deploy.applications') },
@@ -47,8 +46,6 @@ const landingViews = computed(() => [
   { value: 'monitoring', label: t('preferences.landing.monitoring') },
 ])
 
-// The browser's own zone, offered as the obvious choice rather than making people
-// recall an IANA name.
 const detectedTimezone = computed(() => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || '' } catch { return '' }
 })
@@ -89,8 +86,7 @@ async function saveDisplay() {
       landing_view: landingView.value,
     })).data.data
     if (auth.user) auth.setUser({ ...auth.user, preferences: prefs })
-    // The save already persisted it, so this only switches the catalogue in place —
-    // adopt() would push it back up a second time.
+    // The save already persisted it; adopt() only switches the catalogue in place.
     await language.adopt(prefs.locale)
     notify.success(t('preferences.saved'))
   } catch (e) {

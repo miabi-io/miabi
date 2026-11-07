@@ -28,16 +28,12 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AppLifecycle is the slice of the application service needed to quiesce a
-// volume: stop the containers using it, and start them again afterwards.
 type AppLifecycle interface {
 	Stop(ctx context.Context, app *models.Application) error
 	Start(ctx context.Context, app *models.Application) (*models.Deployment, error)
 }
 
-// MountAppStopper finds the applications mounting a volume and stops them around a restore. Mounts are a
-// JSON column rather than a join table, so this scans applications instead of querying by volume — fine
-// at the scale involved, and a restore is not a hot path.
+// Mounts are a JSON column, so this scans applications; fine since a restore is not a hot path.
 type MountAppStopper struct {
 	apps      *repositories.ApplicationRepository
 	lifecycle AppLifecycle
@@ -48,9 +44,7 @@ func NewMountAppStopper(apps *repositories.ApplicationRepository, lifecycle AppL
 	return &MountAppStopper{apps: apps, lifecycle: lifecycle}
 }
 
-// StopUsers stops every running application mounting the volume and returns their ids. Only RUNNING apps
-// are returned, so starting them again restores the state that was there before — an app the operator
-// had deliberately stopped must not come back up because a volume it mounts was restored.
+// StopUsers returns only running apps, so a deliberately stopped app is not started again after the restore.
 func (s *MountAppStopper) StopUsers(ctx context.Context, volumeName string) ([]uint, error) {
 	if volumeName == "" {
 		return nil, nil
@@ -66,8 +60,7 @@ func (s *MountAppStopper) StopUsers(ctx context.Context, volumeName string) ([]u
 			continue
 		}
 		if err := s.lifecycle.Stop(ctx, app); err != nil {
-			// Undo what was already stopped: a half-quiesced workspace is worse than
-			// a restore that did not start.
+			// Undo partial stops: a half-quiesced workspace is worse than a restore that did not start.
 			s.startAll(ctx, stopped)
 			return nil, fmt.Errorf("stop %s: %w", app.Name, err)
 		}
@@ -82,8 +75,7 @@ func (s *MountAppStopper) StartApps(ctx context.Context, appIDs []uint) error {
 	return nil
 }
 
-// startAll starts each app, reporting failures rather than stopping at the
-// first: every remaining app still needs to come back.
+// Keep going on failure: every remaining app still needs to come back.
 func (s *MountAppStopper) startAll(ctx context.Context, appIDs []uint) {
 	for _, id := range appIDs {
 		app, err := s.apps.FindByID(id)

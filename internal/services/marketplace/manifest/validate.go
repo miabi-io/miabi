@@ -31,15 +31,12 @@ var (
 	validEngines = map[string]bool{"postgres": true, "mysql": true, "mariadb": true, "redis": true, "mongodb": true, "libsql": true}
 )
 
-// engineSupportsLogical reports whether an engine can host per-app logical
-// databases (mirrors models.DatabaseInstance.SupportsLogicalDatabases). Redis
-// cannot, so a Redis dependency is always satisfied by a dedicated instance.
+// Redis cannot, so a Redis dependency always gets a dedicated instance.
 func engineSupportsLogical(engine string) bool {
 	return engine == "postgres" || engine == "mysql" || engine == "mariadb" || engine == "mongodb"
 }
 
-// Validate enforces the schema's semantic rules. It is intentionally strict:
-// templates are untrusted input.
+// Validate is intentionally strict: templates are untrusted input.
 func (m *Manifest) Validate() error {
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("apiVersion must be %q, got %q", APIVersion, m.APIVersion)
@@ -137,8 +134,7 @@ func (m *Manifest) Validate() error {
 		volNames[v.Name] = true
 	}
 
-	// Configs: unique names, and the same key/size/mode rules the declarative
-	// layer applies, so a template cannot pass catalog lint and fail at install.
+	// Same rules as the declarative layer, so a template can't pass catalog lint and fail at install.
 	cfgNames := map[string]bool{}
 	for _, c := range m.Configs {
 		if !slugRe.MatchString(c.Name) {
@@ -162,8 +158,6 @@ func (m *Manifest) Validate() error {
 		return err
 	}
 
-	// Stack: a stack groups applications, so a database-only template cannot
-	// declare one; secretEnv keys must be present in the shared stack env.
 	if m.Stack != nil {
 		if len(m.Applications) == 0 {
 			return fmt.Errorf("stack: a template with no applications cannot declare a stack")
@@ -258,8 +252,7 @@ func (m *Manifest) validateApplications(volNames, cfgNames map[string]bool) erro
 	return nil
 }
 
-// MemoryBytes parses the memory cap (e.g. "512Mi", "1Gi", "0" or "") into bytes.
-// Empty or "0" means unlimited (0).
+// Empty or "0" means unlimited.
 func (r *Resources) MemoryBytes() (int64, error) {
 	s := strings.TrimSpace(r.Memory)
 	if s == "" || s == "0" {
@@ -281,8 +274,7 @@ func (r *Resources) MemoryBytes() (int64, error) {
 	return int64(n * float64(mult)), nil
 }
 
-// NanoCPUs parses the CPU cap (a core fraction, e.g. "0.5", "2") into nano-CPUs
-// (1 core = 1e9). Empty or "0" means unlimited (0).
+// Empty or "0" means unlimited.
 func (r *Resources) NanoCPUs() (int64, error) {
 	s := strings.TrimSpace(r.CPU)
 	if s == "" || s == "0" {
@@ -295,8 +287,7 @@ func (r *Resources) NanoCPUs() (int64, error) {
 	return int64(n * 1e9), nil
 }
 
-// Config limits mirror internal/declarative. The per-file cap is what matters
-// against Docker's 500 KB config-object limit, since projection is per file.
+// Mirrors internal/declarative; the per-file cap matters against Docker's 500 KB config-object limit.
 const (
 	MaxConfigFileBytes  = 256 * 1024
 	MaxConfigTotalBytes = 512 * 1024

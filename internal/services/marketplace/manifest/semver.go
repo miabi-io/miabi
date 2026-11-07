@@ -24,9 +24,7 @@ import (
 	"strings"
 )
 
-// CompareVersions orders two template versions by semantic version, returning -1, 0 or 1. Comparison is
-// on the numeric major.minor.patch triple: a leading "v" is ignored and any pre-release or build suffix
-// is dropped, with the raw strings breaking ties so distinct values stay ordered.
+// CompareVersions ignores a leading "v" and pre-release/build suffixes; raw strings break ties.
 func CompareVersions(a, b string) int {
 	pa, pb := parseVersion(a), parseVersion(b)
 	for i := 0; i < 3; i++ {

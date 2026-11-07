@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package certificate manages workspace-scoped imported TLS certificates; ACME is handled by Goma. A
-// certificate is parsed and validated on import (the key must match the leaf), its SANs recorded for
-// host auto-matching, and its private key encrypted at rest. Routes reference one by id.
+// Package certificate manages imported TLS certificates; ACME is handled by Goma.
 package certificate
 
 import (
@@ -45,17 +43,11 @@ var (
 	ErrPEMRequired  = errors.New("a certificate and private key are required")
 	ErrInvalidPEM   = errors.New("invalid certificate or key (the key must match the certificate)")
 	ErrInUse        = errors.New("certificate is referenced by one or more routes; detach them first")
-	// ErrNoDomains blocks importing a certificate before any domain is registered:
-	// a custom cert is meaningless without a domain to serve it on, and the import
-	// must be tied to a domain the workspace controls.
+	// A custom cert must be tied to a domain the workspace controls.
 	ErrNoDomains = errors.New("add a domain to this workspace before importing a certificate")
-	// ErrDomainMismatch blocks a certificate whose CN/SANs are not all covered by
-	// the workspace's registered domains — preventing importing a cert for hosts
-	// the workspace does not control.
+	// Prevents importing a cert for hosts the workspace does not control.
 	ErrDomainMismatch = errors.New("certificate name is not covered by a registered domain")
-	// ErrDomainUnverified refuses a certificate for a domain the workspace has registered but not
-	// proven it controls. Registering a name proves nothing, and a certificate for a name someone
-	// else serves takes that hostname's TLS.
+	// Registering proves nothing, and a cert for someone else's name takes that hostname's TLS.
 	ErrDomainUnverified = errors.New("certificate name needs a verified domain")
 	// ErrDomainBanned refuses a certificate under a domain an admin has banned.
 	ErrDomainBanned = errors.New("certificate name is under a banned domain")
@@ -68,15 +60,11 @@ type SystemWorkspace interface {
 	FindSystem() (*models.Workspace, error)
 }
 
-// RouteRefs reports the routes referencing a certificate (delete-guard + usage).
-// Implemented by the route service; injected after construction.
 type RouteRefs interface {
 	RoutesUsingCertificate(workspaceID, certID uint) ([]models.Route, error)
 }
 
-// DomainLister lists a workspace's registered domains, used to gate certificate
-// imports to hosts the workspace controls. Injected after construction; nil
-// disables the domain checks (back-compat / tests).
+// nil disables the domain checks.
 type DomainLister interface {
 	ListByWorkspace(workspaceID uint) ([]models.Domain, error)
 }
@@ -87,14 +75,12 @@ type WorkspacePrivilege interface {
 }
 
 type Service struct {
-	repo       *repositories.CertificateRepository
-	routes     RouteRefs
-	domains    DomainLister
-	workspaces WorkspacePrivilege
-	quota      *quota.Service
-	system     SystemWorkspace
-	// clusterRefs names the clusters serving generated URLs from a certificate; onChange is told when a
-	// certificate's material is replaced or renewed.
+	repo        *repositories.CertificateRepository
+	routes      RouteRefs
+	domains     DomainLister
+	workspaces  WorkspacePrivilege
+	quota       *quota.Service
+	system      SystemWorkspace
 	clusterRefs func(certID uint) ([]string, error)
 	onChange    func(*models.Certificate)
 }
@@ -180,9 +166,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.Certificate, error) {
 	return c, nil
 }
 
-// Import parses and validates a certificate and key, encrypts the key, and stores it with its parsed
-// metadata. name is the desired unique slug handle, normalized to canonical form; displayName is the
-// free-text label, falling back to the raw name when blank.
+// displayName falls back to the raw name when blank.
 func (s *Service) Import(workspaceID uint, name, displayName, certPEM, keyPEM string) (*models.Certificate, error) {
 	if err := s.quota.Require(workspaceID, quota.CapCustomTLS); err != nil {
 		return nil, err
@@ -224,8 +208,7 @@ func (s *Service) Import(workspaceID uint, name, displayName, certPEM, keyPEM st
 	return cert, nil
 }
 
-// Replace swaps the cert/key of an existing certificate (renewal), re-parsing
-// metadata. A blank name keeps the current name.
+// A blank name keeps the current name.
 func (s *Service) Replace(workspaceID, id uint, name, certPEM, keyPEM string) (*models.Certificate, error) {
 	cert, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -255,9 +238,7 @@ func (s *Service) Replace(workspaceID, id uint, name, certPEM, keyPEM string) (*
 	return cert, nil
 }
 
-// BeginManaged creates (or resets) a managed ACME certificate row in the
-// "issuing" state, ready for the issuer to fill in. Reuses an existing ACME row
-// of the same name (re-issue / renew); refuses to overwrite an imported cert.
+// Refuses to overwrite an imported cert.
 func (s *Service) BeginManaged(workspaceID uint, name string, dnsProviderID uint, autoRenew bool) (*models.Certificate, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -362,8 +343,6 @@ func (s *Service) Usage(workspaceID, id uint) ([]models.Route, error) {
 	return s.routes.RoutesUsingCertificate(workspaceID, id)
 }
 
-// MatchHost returns the certificates whose SANs cover the given host (exact or
-// wildcard), most-recently-expiring last — for route-form auto-select.
 func (s *Service) MatchHost(workspaceID uint, host string) ([]models.Certificate, error) {
 	all, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -381,9 +360,6 @@ func (s *Service) MatchHost(workspaceID uint, host string) ([]models.Certificate
 
 const expiryHorizon = 30 * 24 * time.Hour
 
-// CheckExpiry scans all certificates expiring within the horizon and logs a
-// warning for each (with days remaining). Run on a daily schedule by the cron
-// manager; returns the number flagged.
 func (s *Service) CheckExpiry() (int, error) {
 	now := time.Now()
 	certs, err := s.repo.ListExpiringBefore(now.Add(expiryHorizon))
@@ -430,8 +406,6 @@ func (m *certMeta) apply(c *models.Certificate) {
 	c.SerialHex = m.serialHex
 }
 
-// parse validates that the key matches the leaf certificate and extracts the
-// metadata Miabi tracks (CN, SANs, issuer, validity window, serial).
 func parse(certPEM, keyPEM string) (*certMeta, error) {
 	if strings.TrimSpace(certPEM) == "" || strings.TrimSpace(keyPEM) == "" {
 		return nil, ErrPEMRequired
@@ -458,9 +432,7 @@ func parse(certPEM, keyPEM string) (*certMeta, error) {
 	}, nil
 }
 
-// validateAgainstDomains enforces that a certificate is importable only when the workspace has at least one
-// registered domain, and every name the cert asserts (Common Name and SANs) falls under one of them. This
-// ties an imported cert to hosts the workspace actually controls. A nil domain lister skips the checks.
+// A nil domain lister skips the checks.
 func (s *Service) validateAgainstDomains(workspaceID uint, meta *certMeta) error {
 	if s.domains == nil {
 		return nil
@@ -499,8 +471,7 @@ func (s *Service) validateAgainstDomains(workspaceID uint, meta *certMeta) error
 	return nil
 }
 
-// privileged reports whether the workspace may act on an unverified domain, matching the route
-// serve gate. Unwired or unreadable means not privileged.
+// Unwired or unreadable means not privileged.
 func (s *Service) privileged(workspaceID uint) bool {
 	if s.workspaces == nil {
 		return false
@@ -509,9 +480,7 @@ func (s *Service) privileged(workspaceID uint) bool {
 	return err == nil && ws.Privileged
 }
 
-// coveringDomain returns the registered domain a certificate name (a host or a "*.x" wildcard) falls
-// under — equal to it, a subdomain of it, or the domain's own wildcard — or nil when none does. The
-// caller needs the domain itself, not just a yes/no, to check that it is verified and unbanned.
+// Returns the domain itself so the caller can check it is verified and unbanned.
 func coveringDomain(name string, domains []models.Domain) *models.Domain {
 	for i := range domains {
 		d := strings.ToLower(strings.TrimSpace(domains[i].Name))
@@ -526,8 +495,7 @@ func coveringDomain(name string, domains []models.Domain) *models.Domain {
 	return nil
 }
 
-// hostMatches reports whether any SAN covers host, supporting a single-label
-// wildcard (*.example.com matches app.example.com, not example.com or a.b.x).
+// Single-label wildcard only: *.example.com matches app.example.com, not example.com or a.b.example.com.
 func hostMatches(sans []string, host string) bool {
 	if host == "" {
 		return false

@@ -39,8 +39,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AdminWorkspaceOpsHandler lets a platform admin (or an operator API key) create workspaces for
-// users, restrict them, stop and start their workloads, and delete them.
 type AdminWorkspaceOpsHandler struct {
 	workspaces   *repositories.WorkspaceRepository
 	users        *repositories.UserRepository
@@ -66,8 +64,6 @@ type codedError struct {
 func (e *codedError) Error() string { return e.msg }
 func (e *codedError) Code() string  { return e.code }
 
-// unusablePasswordHash is a bcrypt hash of random bytes nobody knows, for an account that signs in
-// by SSO or sets its password through the reset flow.
 func unusablePasswordHash() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
@@ -116,8 +112,7 @@ type AdminCreateWorkspaceResponse struct {
 	OwnerCreated bool              `json:"owner_created"`
 }
 
-// Create makes a workspace owned by owner_email. A missing owner account is created without a
-// password: the person signs in with SSO (linked by verified e-mail) or sets one with "forgot password".
+// A missing owner is created without a password: they sign in by SSO or use "forgot password".
 func (h *AdminWorkspaceOpsHandler) Create(c *okapi.Context, req *AdminCreateWorkspaceRequest) error {
 	if h.wsService.ConsoleOnly() {
 		return c.AbortWithError(http.StatusForbidden, &workspace.CreationDeniedError{Mode: models.WorkspaceCreationConsole})
@@ -229,8 +224,7 @@ func (h *AdminWorkspaceOpsHandler) Stop(c *okapi.Context) error {
 	return ok(c, res)
 }
 
-// Start starts every stopped app and database instance of a workspace. A suspended workspace stays
-// down: lift the suspension instead.
+// A suspended workspace stays down: lift the suspension instead.
 func (h *AdminWorkspaceOpsHandler) Start(c *okapi.Context) error {
 	ws, err := adminWorkspaceRef(h.workspaces, c.Param("id"))
 	if err != nil {

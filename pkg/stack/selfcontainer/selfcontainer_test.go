@@ -53,8 +53,7 @@ func TestDetectEnvOverride(t *testing.T) {
 	}
 }
 
-// The container ID is the one right after /containers/, not the first 64-hex run on the line: under Docker
-// in Docker the data root sits inside a volume whose name comes first.
+// Under Docker in Docker the data root's volume name precedes the container ID.
 func TestIDOnMountinfo(t *testing.T) {
 	const self = "85a39ae487e95d0846318bc10d15f7979a16fcca1320391650450cef28f8e807"
 	const vol = "9a5abee34f0e1e80c26e7ac76ee2571892550ca01e7e840aa3d7c93041b78481"

@@ -33,14 +33,10 @@ import (
 )
 
 const (
-	// sweepConcurrency bounds how many nodes are measured at once, so the sweep takes about as long
-	// on a large fleet as on a small one without opening a connection per node.
 	sweepConcurrency = 8
-	// dataRootMount is where a node's Docker data root is bound in the sizing helper. Read-only: the
-	// helper only needs to stat the filesystem.
+	// Read-only: the helper only stats the filesystem.
 	dataRootMount = "/mnt/dataroot"
-	// capacityDriftPct is how far memory or storage may move before it counts as a real change. A
-	// filesystem gains and loses a few blocks constantly; a resized VM does not.
+	// A filesystem gains and loses a few blocks constantly; a resized VM does not.
 	capacityDriftPct = 2
 )
 
@@ -54,12 +50,7 @@ type Servers interface {
 // SetServers wires the node store the sweep persists into (nil disables the sweep).
 func (s *Service) SetServers(store Servers) { s.servers = store }
 
-// Sweep measures every reachable node and records what changed. Capacity comes from Docker, which
-// is cgroup-aware and so describes the node itself; usage comes from a sample on the node and is
-// stored only when it describes that node rather than the machine under it.
-//
-// It is best-effort by design: an unreachable node keeps its last known figures, because a node
-// Miabi cannot currently reach has not lost its CPUs.
+// Sweep is best-effort: an unreachable node keeps its last figures; usage is stored only if it describes the node itself.
 func (s *Service) Sweep(ctx context.Context) error {
 	if s.servers == nil {
 		return nil
@@ -102,8 +93,7 @@ func (s *Service) measureNode(ctx context.Context, srv models.Server) {
 	}
 
 	storage, free := s.measureDataRoot(ctx, dc, info.DataRoot)
-	// A failed disk reading must not erase the last good one: keep the stored figure rather than
-	// writing a zero that would read as "this node has no disk".
+	// Keep the stored figure: a zero would read as "this node has no disk".
 	if storage == 0 {
 		storage, free = srv.StorageBytes, srv.StorageFreeBytes
 	}
@@ -115,8 +105,7 @@ func (s *Service) measureNode(ctx context.Context, srv models.Server) {
 		}
 	}
 
-	// Usage from a pushing agent is already written by Ingest; sampling here would only start a
-	// container for a figure we have.
+	// Ingest already wrote a pushing agent's usage; sampling would only start a needless container.
 	if s.HasFreshPush(srv.ID) {
 		return
 	}
@@ -133,8 +122,7 @@ func (s *Service) measureNode(ctx context.Context, srv models.Server) {
 	}
 }
 
-// measureDataRoot sizes the filesystem holding the daemon's data root. Returns zeros when it cannot
-// be read, which the caller treats as "keep what we had".
+// Zeros mean unreadable, which the caller treats as "keep what we had".
 func (s *Service) measureDataRoot(ctx context.Context, dc docker.Client, dataRoot string) (total, free int64) {
 	dataRoot = strings.TrimSpace(dataRoot)
 	if dataRoot == "" {
@@ -153,8 +141,7 @@ func (s *Service) measureDataRoot(ctx context.Context, dc docker.Client, dataRoo
 		Image:      image,
 		Entrypoint: []string{"/bin/sh", "-c"},
 		Cmd:        []string{"df -Pk " + dataRootMount},
-		// The source is read from the daemon's own info, never from client input, and mounted
-		// read-only: this only ever stats a filesystem.
+		// The source comes from daemon info, never client input, and is mounted read-only.
 		Binds: []docker.BindMount{{Source: dataRoot, Target: dataRootMount, ReadOnly: true, NoCreate: true}},
 	})
 	if err != nil || exit != 0 {
@@ -183,8 +170,7 @@ func parseDF(out string) (total, free int64) {
 	return totalKB * 1024, freeKB * 1024
 }
 
-// capacityChanged reports whether anything moved enough to be worth a write. Core count is exact —
-// a CPU appearing or disappearing is always news — while memory and disk allow a little drift.
+// Core count is exact; memory and disk allow a little drift.
 func capacityChanged(srv models.Server, info docker.Info, storage, free int64) bool {
 	if srv.CapacityMeasuredAt == nil {
 		return true
@@ -211,8 +197,7 @@ func driftedPct(old, now int64) bool {
 	return delta*100/old >= capacityDriftPct
 }
 
-// logCapacityChange says so out loud when a node gains or loses CPU or memory: that is a machine
-// somebody resized, and it changes what will fit on it.
+// A CPU or memory change means someone resized the machine, which changes what fits on it.
 func logCapacityChange(srv models.Server, info docker.Info, storage int64) {
 	if srv.CapacityMeasuredAt == nil {
 		return // first measurement, not a change

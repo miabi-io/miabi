@@ -141,8 +141,6 @@ func TestPartitionGeneratedOrphans(t *testing.T) {
 }
 
 func TestPartitionGeneratedOrphansNoPorts(t *testing.T) {
-	// An app with no exposed ports: every generated route is an orphan; user
-	// routes still survive.
 	app := &models.Application{}
 	routes := []models.Route{
 		{ID: 1, TargetPort: 8080, Generated: true},
@@ -193,8 +191,7 @@ func (f fakeCluster) IngressAddress(id uint) models.PublicAddress {
 	return models.PublicAddress{IPv4: f.ingress[id]}
 }
 
-// Regression: the old host-port upstream could only name one container, so a canary received 0% of traffic
-// while the UI reported its weight. The alias upstream must carry the split.
+// Regression: the old host-port upstream named one container, so a canary got 0% of traffic.
 func TestCanaryWeightSplitsTheAliasUpstream(t *testing.T) {
 	rel := uint(9)
 	app := &models.Application{Alias: "mb-app-tok-7", CanaryReleaseID: &rel, CanaryWeight: 20}

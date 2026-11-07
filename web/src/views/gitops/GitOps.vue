@@ -18,10 +18,7 @@ const router = useRouter()
 const route = useRoute()
 const { currentWorkspaceId } = storeToRefs(ws)
 
-// Display disposition (list/grid), persisted across sessions. Grid is the default: a project's
-// sync state, last commit and error are what you come here to see, and the cards show them without
-// a row-to-column scan. The test is for 'list' rather than 'grid' so that anyone who previously
-// chose list keeps it — only an unset preference moves.
+// Grid is the default; testing for 'list' keeps an earlier explicit list choice.
 type ViewMode = 'list' | 'grid'
 const VIEW_KEY = 'mb_gitops_view'
 const view = ref<ViewMode>(localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid')
@@ -164,12 +161,9 @@ async function openDiff(s: GitSource) {
 const toDelete = ref<GitSource | null>(null)
 const deleteResources = ref(false)
 const deleting = ref(false)
-// Reset the opt-in each time the dialog opens so a destructive cascade is never
-// pre-checked from a previous deletion.
+// Reset each time so a destructive cascade is never pre-checked from a previous deletion.
 watch(toDelete, (v) => { if (v) deleteResources.value = false })
 
-// Teardown follow-up: after a cascade delete, show which resources were removed
-// (and any that failed). Each delete change is paired with its failure (if any).
 const teardown = ref<{ name: string; result: ApplyResult } | null>(null)
 const teardownItems = computed(() => {
   const t = teardown.value?.result
@@ -219,8 +213,7 @@ const actionBadge: Record<PlanAction, string> = {
 
 const planChanges = computed(() => (diffPlan.value?.changes ?? []).filter((c) => c.action !== 'noop'))
 function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
-// The column shows the commit that last CHANGED something, which is often behind HEAD. The tooltip is
-// where that gets explained, along with the message — the detail page has room to show it inline.
+// The column shows the last commit that changed something, often behind HEAD, which the tooltip explains.
 function syncedTitle(s: GitSource) {
   if (!s.last_synced_commit) return 'Nothing has been applied from this repository yet'
   const parts = [`Last applied commit: ${s.last_synced_commit}`]

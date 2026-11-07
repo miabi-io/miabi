@@ -1,11 +1,4 @@
-// copyText copies text to the clipboard, resolving to whether it succeeded.
-//
-// It prefers the async Clipboard API (secure contexts) and falls back to a
-// hidden-textarea execCommand copy for insecure origins — plain-HTTP LAN and
-// homelab deployments where `navigator.clipboard` is undefined. It never throws,
-// so callers can branch on the boolean to show success/failure feedback instead
-// of leaking an unhandled promise rejection (the old `clipboard?.writeText(...)
-// .then(...)` pattern threw a TypeError whenever the API was unavailable).
+// copyText never throws and falls back to execCommand where navigator.clipboard is undefined (plain-HTTP origins).
 export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -13,8 +6,7 @@ export async function copyText(text: string): Promise<boolean> {
       return true
     }
   } catch {
-    // Secure-context write can still be rejected (denied permission, focus
-    // loss); fall through to the legacy path before giving up.
+    // A secure-context write can still be rejected (permission, focus loss).
   }
   return legacyCopy(text)
 }

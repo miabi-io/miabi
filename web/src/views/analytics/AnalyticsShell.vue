@@ -3,8 +3,6 @@ import { storeToRefs } from 'pinia'
 import { useAnalyticsStore } from '@/stores/analytics'
 import AnalyticsHeader from './AnalyticsHeader.vue'
 
-// Wraps every analytics page: renders the shared header and the loading/empty/
-// error states, exposing the loaded report to the page via the default slot.
 const store = useAnalyticsStore()
 const { report, loading, error } = storeToRefs(store)
 </script>
@@ -31,8 +29,6 @@ const { report, loading, error } = storeToRefs(store)
       </div>
     </div>
 
-    <!-- A refetch (range or app change) keeps the previous render in place, just
-         dimmed — no skeleton, no layout jump. -->
     <div v-else-if="report" :class="{ 'a-refreshing': loading }">
       <slot :report="report" />
     </div>

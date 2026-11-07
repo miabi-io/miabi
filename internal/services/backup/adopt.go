@@ -32,12 +32,8 @@ import (
 )
 
 var (
-	// ErrSetNotInBucket means no descriptor under the workspace's backup path names
-	// the requested recovery point.
 	ErrSetNotInBucket = errors.New("no recovery point with that ref is in the bucket")
-	// ErrEngineMismatch refuses to adopt a set onto an instance running a different
-	// engine. A PostgreSQL dump is not a MySQL one, and finding that out at restore
-	// time is finding it out too late.
+	// A PostgreSQL dump is not a MySQL one; finding out at restore time is too late.
 	ErrEngineMismatch = errors.New("the recovery point was taken from a different engine than this instance runs")
 )
 
@@ -47,11 +43,9 @@ type AdoptResult struct {
 	SetID uint   `json:"set_id"`
 	// Adopted is the number of artifacts now restorable from the console.
 	Adopted int `json:"adopted"`
-	// AlreadyKnown means this workspace already had the set; adopting is a no-op
-	// rather than a duplicate, so re-running it after a partial failure is safe.
+	// Re-adopting is a no-op, so retrying after a partial failure is safe.
 	AlreadyKnown bool `json:"already_known"`
-	// Skipped names the artifacts that could not be attached, and why. They stay in
-	// the bucket untouched — recreate the database and adopt again to pick them up.
+	// Skipped artifacts stay in the bucket; recreate the database and adopt again to pick them up.
 	Skipped []AdoptSkip `json:"skipped,omitempty"`
 }
 
@@ -62,17 +56,7 @@ type AdoptSkip struct {
 	Reason   string `json:"reason"`
 }
 
-// AdoptSet writes a recovery point found in the bucket into this workspace's
-// history, so the console can list and restore it.
-//
-// It writes rows and touches no data: adopting is how a fresh workspace pointed at
-// an old bucket gets its backup history back, and it must be safe to run while the
-// instance it names is serving traffic.
-//
-// Artifacts are matched to the instance's logical databases BY NAME. An artifact
-// whose database no longer exists is reported rather than invented: creating an
-// empty database to hang a backup off would produce a row that looks restorable
-// and restores into something nobody asked for.
+// AdoptSet writes rows only, matching artifacts by database name; missing databases are reported, never invented.
 func (s *Service) AdoptSet(ctx context.Context, cfg *S3Config, basePath string, inst *models.DatabaseInstance, ref string) (*AdoptResult, error) {
 	if s.sets == nil {
 		return nil, ErrSetsUnavailable
@@ -91,8 +75,7 @@ func (s *Service) AdoptSet(ctx context.Context, cfg *S3Config, basePath string, 
 	return s.adoptInfo(inst, info, prefix, cfg.Bucket, res)
 }
 
-// adoptInfo is the half of adoption that touches only this platform's own rows,
-// split out from the bucket read so the matching rules are testable without one.
+// Split from the bucket read so the matching rules are testable without one.
 func (s *Service) adoptInfo(inst *models.DatabaseInstance, info SetInfo, prefix, bucket string, res *AdoptResult) (*AdoptResult, error) {
 	if info.Engine != "" && !strings.EqualFold(info.Engine, string(inst.Engine)) {
 		return nil, fmt.Errorf("%w: %s vs %s", ErrEngineMismatch, info.Engine, inst.Engine)

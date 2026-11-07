@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// TestOptionalUintRef covers the tri-state a partial update relies on so a
-// spec-only PATCH leaves a pipeline's app binding untouched (absent), while an
-// explicit null still unbinds and a number rebinds.
+// A spec-only PATCH must leave a pipeline's app binding untouched; null unbinds, a number rebinds.
 func TestOptionalUintRef(t *testing.T) {
 	cases := []struct {
 		name        string

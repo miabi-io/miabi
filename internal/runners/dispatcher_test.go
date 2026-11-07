@@ -131,15 +131,12 @@ func TestProcessFramesSuccess(t *testing.T) {
 	if !sawLog || !sawStep || !sawStatus {
 		t.Errorf("missing published events: log=%v step=%v status=%v", sawLog, sawStep, sawStatus)
 	}
-	// On terminal, the step's log is persisted (a tail here, since no store is
-	// wired) so it survives past the live stream — not just published.
+	// Persisted so the log survives past the live stream, not just published.
 	if !strings.Contains(store.stepLogs[0], "building image") {
 		t.Errorf("step 0 log not persisted, got %q", store.stepLogs[0])
 	}
 }
 
-// A succeeded run that built a digest and has a deploy step triggers a
-// deploy-by-digest of repo@digest.
 func TestProcessFramesDeploysByDigest(t *testing.T) {
 	d := NewDispatcher(nil, nil, nil, newFakeStore(), &fakeImages{}, &fakeBus{}, 0)
 	dep := &fakeDeployer{}
@@ -207,8 +204,7 @@ func TestProcessFramesError(t *testing.T) {
 	}
 }
 
-// A stream that ends before a terminal frame is a dead runner → an error, so the
-// caller requeues rather than leaving the run hung.
+// The caller must requeue rather than leave the run hung.
 func TestProcessFramesTruncatedStreamErrors(t *testing.T) {
 	d := NewDispatcher(nil, nil, nil, newFakeStore(), &fakeImages{}, &fakeBus{}, 0)
 	run := &models.PipelineRun{ID: 9}

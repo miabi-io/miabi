@@ -54,8 +54,7 @@ type ElevationState struct {
 	LockedUntil   *time.Time `json:"locked_until,omitempty"`
 	TTLSeconds    int        `json:"ttl_seconds"`
 	IdleSeconds   int        `json:"idle_seconds"`
-	// Token is returned only to a caller that authenticated with a bearer header (the CLI), which
-	// sends it back in X-Miabi-Admin-Elevation. A browser gets the HttpOnly cookie instead.
+	// A browser gets the HttpOnly cookie instead.
 	Token string `json:"token,omitempty"`
 }
 

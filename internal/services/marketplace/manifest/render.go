@@ -28,8 +28,6 @@ import (
 	"text/template"
 )
 
-// ConnView is the connection detail of a resolved database, exposed to the
-// renderer as {{ .databases.<name>.* }}.
 type ConnView struct {
 	Host     string `json:"host"`
 	Port     string `json:"port"`
@@ -70,8 +68,6 @@ func NewRenderer(ctx Context) *Renderer {
 	return &Renderer{ctx: ctx}
 }
 
-// data shapes the context as nested maps so template paths like
-// .databases.db.password resolve.
 func (r *Renderer) data() map[string]any {
 	dbs := map[string]map[string]string{}
 	for name, c := range r.ctx.Databases {
@@ -106,8 +102,7 @@ var funcMap = template.FuncMap{
 	"upper": strings.ToUpper,
 }
 
-// RenderString interpolates a single value. A reference to a missing key is a
-// hard error (no silent empty env).
+// A missing key is a hard error: no silent empty env.
 func (r *Renderer) RenderString(name, s string) (string, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil // fast path: no interpolation
@@ -123,9 +118,7 @@ func (r *Renderer) RenderString(name, s string) (string, error) {
 	return b.String(), nil
 }
 
-// RenderFiles interpolates a config's files. Delimiters, when set, replaces the
-// interpolation markers for this config only, so a file whose own syntax uses
-// {{ }} — Prometheus alerting, Grafana provisioning — is not mangled.
+// Custom delimiters keep files whose own syntax uses {{ }} (Prometheus, Grafana) from being mangled.
 func (r *Renderer) RenderFiles(config string, files map[string]string, delimiters []string) (map[string]string, error) {
 	left, right := "{{", "}}"
 	if len(delimiters) == 2 && delimiters[0] != "" && delimiters[1] != "" {
@@ -166,8 +159,6 @@ func (r *Renderer) RenderEnv(app string, env map[string]string) (map[string]stri
 
 const alphanum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-// RandAlphaNum returns a cryptographically-random alphanumeric string of length
-// n (used to satisfy inputs with generate: true).
 func RandAlphaNum(n int) string {
 	if n <= 0 {
 		n = 16
@@ -177,8 +168,7 @@ func RandAlphaNum(n int) string {
 	for i := range b {
 		idx, err := rand.Int(rand.Reader, max)
 		if err != nil {
-			// crypto/rand should never fail; fall back deterministically rather
-			// than panic inside a render.
+			// crypto/rand should never fail; fall back deterministically rather than panic inside a render.
 			b[i] = alphanum[i%len(alphanum)]
 			continue
 		}

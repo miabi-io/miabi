@@ -39,8 +39,7 @@ type RouteCreator interface {
 // SetRoutes wires route creation. Left nil, a template's routes are reported as skipped.
 func (s *Service) SetRoutes(r RouteCreator) { s.routes = r }
 
-// createRoutes creates the template's routes through the route service, so the same domain ownership
-// checks apply as in the console. A route that cannot be created is a warning, never an install failure.
+// Goes through the route service for the same domain ownership checks; a failure is only a warning.
 func (s *Service) createRoutes(ctx context.Context, workspaceID uint, m *manifest.Manifest, apps []*models.Application,
 	r *manifest.Renderer, displayName string, report *reporter) (created []*models.Route, warnings []string) {
 	warn := func(msg string) {

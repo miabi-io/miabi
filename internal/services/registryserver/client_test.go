@@ -51,8 +51,7 @@ func fakeRegistry(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/v2/ws_7/api/tags/list", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"ws_7/api","tags":["v2"]}`))
 	})
-	// Manifests carry the digest header (for delete) and a body with sizes (for
-	// usage). Layer "A" is shared across web tags to exercise dedup.
+	// Layer "A" is shared across web tags to exercise dedup.
 	mux.HandleFunc("/v2/ws_7/web/manifests/latest", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Docker-Content-Digest", "sha256:wlatest")
 		_, _ = w.Write([]byte(`{"config":{"digest":"sha256:cfgW","size":100},"layers":[{"digest":"sha256:A","size":1000},{"digest":"sha256:B","size":2000}]}`))
@@ -115,8 +114,7 @@ func TestNamespaceUsageBytesDedupes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Unique blobs across ws_7: cfgA50 + D500 + cfgW100 + A1000 + B2000 +
-	// cfgW2100 + C3000 (layer A shared between web tags, counted once).
+	// Layer A is shared between web tags and counted once.
 	const want = 50 + 500 + 100 + 1000 + 2000 + 100 + 3000
 	if got != want {
 		t.Errorf("usage = %d, want %d", got, want)

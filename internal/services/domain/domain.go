@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package domain manages workspace-owned domains: registration, DNS-verified
-// ownership, and the default TLS policy routes inherit. It is the first-class
-// owned-hostname resource (distinct from the declarative Route kind).
+// Package domain manages workspace-owned domains: registration, DNS-verified ownership, and default TLS policy.
 package domain
 
 import (
@@ -40,83 +38,60 @@ var (
 	ErrNameTaken    = errors.New("this domain is already registered in the workspace")
 	ErrNameRequired = errors.New("domain name is required")
 	ErrInvalidName  = errors.New("invalid domain name")
-	// ErrNameImmutable means a caller tried to rename an existing domain. The name
-	// is fixed at creation; delete and re-create to change it.
+	// ErrNameImmutable: a domain's name is fixed at creation; delete and re-create to change it.
 	ErrNameImmutable = errors.New("the domain name cannot be changed; delete the domain and add it again")
 	// ErrVerificationFailed means the expected TXT record was not found.
 	ErrVerificationFailed = errors.New("DNS verification record not found")
-	// ErrProviderNotFound means the linked DNS provider does not exist in the
-	// workspace (or no automator is wired).
-	ErrProviderNotFound = errors.New("DNS provider not found in this workspace")
+	ErrProviderNotFound   = errors.New("DNS provider not found in this workspace")
 	// ErrChallengeOnlyProvider rejects a DNS-01-only host (acme-dns) for record automation.
 	ErrChallengeOnlyProvider = errors.New("this DNS provider only solves certificate challenges; it cannot manage a domain's records")
-	// ErrDomainBanned means the domain has been banned by a platform admin and
-	// cannot be verified or served.
-	ErrDomainBanned = errors.New("this domain has been banned by a platform administrator")
-	// ErrDomainClaimed means the hostname is already verified by another workspace, or overlaps a verified
-	// wildcard elsewhere. At most one workspace may own a verified domain platform-wide, so its routes can't
-	// collide with another tenant's. Registration stays open; only verification is exclusive.
+	ErrDomainBanned          = errors.New("this domain has been banned by a platform administrator")
+	// ErrDomainClaimed: only one workspace may verify a domain platform-wide; registration stays open.
 	ErrDomainClaimed = errors.New("another workspace has already verified this domain or a wildcard that covers it. " +
 		"Ask your platform administrator if this workspace needs to serve it")
 )
 
-// ClaimedError is ErrDomainClaimed with the verified domain that blocks the claim. Its message stays
-// generic because workspace users see it; only platform-admin handlers read Holder.
+// The message stays generic because workspace users see it; only platform-admin handlers read Holder.
 type ClaimedError struct{ Holder models.Domain }
 
 func (e *ClaimedError) Error() string { return ErrDomainClaimed.Error() }
 func (e *ClaimedError) Unwrap() error { return ErrDomainClaimed }
 
-// hostnameRe is a permissive domain-name check (labels, at least one dot, a
-// 2+ letter TLD). A leading "*." is stripped before matching for wildcards.
+// A leading "*." is stripped before matching for wildcards.
 var hostnameRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
 // resolver is overridable in tests; defaults to the system resolver.
 type lookupTXT func(ctx context.Context, host string) ([]string, error)
 
-// DNSAutomator drives the records Miabi manages for a provider-connected domain.
-// Injected (nil = manual only): the verification TXT is created automatically and
-// the ledger is cleaned up on delete. Implemented by the dnsprovider service.
+// DNSAutomator drives Miabi-managed records for provider-connected domains; nil means manual only.
 type DNSAutomator interface {
 	// ProviderExists reports whether a provider id belongs to the workspace.
 	ProviderExists(workspaceID, providerID uint) bool
 	// RecordsSupported reports whether the provider can own ordinary records.
 	RecordsSupported(workspaceID, providerID uint) bool
-	// EnsureVerificationRecord creates the ownership TXT for a provider-connected
-	// domain (no-op when the domain has no provider).
 	EnsureVerificationRecord(ctx context.Context, d *models.Domain) error
 	// CleanupDomain removes the managed records for a deleted domain.
 	CleanupDomain(ctx context.Context, d *models.Domain) error
 }
 
-// verifyRetries bounds how long Verify waits for an auto-created TXT to become
-// visible to the resolver, keeping the request responsive.
+// Bounded so Verify stays responsive while waiting for an auto-created TXT to propagate.
 const (
 	verifyRetries = 3
 	verifyDelay   = 2 * time.Second
-	// verifyMissThreshold is how many consecutive failed re-checks the drift cron
-	// tolerates before un-verifying a previously verified domain, absorbing
-	// transient DNS resolution failures.
+	// Consecutive misses tolerated before un-verifying, to absorb transient DNS failures.
 	verifyMissThreshold = 3
 )
 
-// WorkspacePolicy reports whether a workspace is privileged. A privileged workspace's routes serve on a
-// registered-but-unverified domain (the route service's verified-host gate exempts them), so the domain
-// service reads the same signal to report that state instead of showing "pending" on a domain that is
-// plainly serving. Implemented by the workspace repository; injected after construction and nil-safe.
+// Privileged workspaces serve unverified domains, so the domain service reports that instead of "pending".
 type WorkspacePolicy interface {
 	IsPrivileged(workspaceID uint) (bool, error)
 }
 
-// ProxyResyncer re-renders a workspace's gateway config. The domain service calls it when ownership
-// changes, so the workspace's routes go live or offline without further action. Implemented by the route
-// service; injected after construction and nil-safe.
+// ProxyResyncer re-renders a workspace's gateway so routes go live or offline when ownership changes.
 type ProxyResyncer interface {
 	SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error
 }
 
-// ConsoleDNS names the console-managed DNS provider whose zones cover a domain, if any. Implemented by
-// the dnsprovider service; injected after construction and nil-safe.
 type ConsoleDNS interface {
 	ConsoleProviderFor(workspaceID uint, name string) *uint
 }
@@ -131,32 +106,19 @@ type Service struct {
 	consoleDNS ConsoleDNS
 }
 
-// NewService wires the domain service. The default TXT lookup queries the
-// domain's authoritative nameservers directly (falling back to the system
-// resolver)
 func NewService(repo *repositories.DomainRepository) *Service {
 	return &Service{repo: repo, lookup: authoritativeLookupTXT}
 }
 
-// SetDNSAutomator wires DNS automation for provider-connected domains (nil-safe;
-// nil leaves the manual copy-paste flow as the only path).
 func (s *Service) SetDNSAutomator(a DNSAutomator) { s.automator = a }
 
-// SetConsoleDNS wires the console-managed provider lookup, so a new domain under a console zone is
-// connected and verified without a manual step (nil-safe).
 func (s *Service) SetConsoleDNS(c ConsoleDNS) { s.consoleDNS = c }
 
-// SetProxyResyncer wires the gateway re-sync triggered on a verification change
-// (nil-safe; nil disables the automatic route go-live/offline).
 func (s *Service) SetProxyResyncer(r ProxyResyncer) { s.resyncer = r }
 
-// SetWorkspacePolicy wires the privileged-workspace lookup used to report which
-// unverified domains are being served anyway (nil-safe).
 func (s *Service) SetWorkspacePolicy(p WorkspacePolicy) { s.wsPolicy = p }
 
-// privileged reports whether a workspace bypasses the domain-verification gate.
-// A missing policy or a lookup error reads as not privileged, matching the route
-// service's fail-closed gate.
+// A missing policy or lookup error reads as not privileged, matching the route service's fail-closed gate.
 func (s *Service) privileged(workspaceID uint) bool {
 	if s.wsPolicy == nil {
 		return false
@@ -169,9 +131,7 @@ func (s *Service) privileged(workspaceID uint) bool {
 	return p
 }
 
-// annotateServing fills the transient ServingUnverified flag on domains the gateway
-// serves without an ownership proof. Privilege is a serving exemption, never a claim,
-// so this only ever describes state — it must not verify anything.
+// Privilege is a serving exemption, never a claim, so this must not verify anything.
 func (s *Service) annotateServing(workspaceID uint, domains []models.Domain) {
 	if len(domains) == 0 || !s.privileged(workspaceID) {
 		return
@@ -182,9 +142,7 @@ func (s *Service) annotateServing(workspaceID uint, domains []models.Domain) {
 	}
 }
 
-// resync re-renders the workspace's gateway config after an ownership change, so
-// its routes flip live/offline. Best-effort: a failure is logged, not returned —
-// the periodic resync and the next route edit both recover.
+// Best-effort: the periodic resync and the next route edit both recover from a failure.
 func (s *Service) resync(ctx context.Context, workspaceID uint) {
 	if s.resyncer == nil {
 		return
@@ -239,8 +197,6 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.Domain, error) {
 	return d, nil
 }
 
-// ConnectToProvider connects every domain of the workspace that has no provider and falls under the
-// provider's zones, and verifies the unverified ones in the background. It returns how many it connected.
 func (s *Service) ConnectToProvider(workspaceID uint, p *models.DNSProvider) (int, error) {
 	domains, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -266,8 +222,7 @@ func (s *Service) ConnectToProvider(workspaceID uint, p *models.DNSProvider) (in
 	return connected, nil
 }
 
-// verifyInBackground verifies domains whose TXT Miabi can now publish itself, off the request path:
-// each one waits for propagation.
+// Off the request path because each one waits for propagation.
 func (s *Service) verifyInBackground(workspaceID uint, ids []uint) {
 	if len(ids) == 0 {
 		return
@@ -293,9 +248,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Domain, error)
 		return nil, err
 	}
 	in.normalize()
-	// The domain name is immutable once created: the ownership proof, issued certificates and any routes bound
-	// under it are all keyed to it, so renaming would silently invalidate them. The user deletes and re-creates
-	// instead. An unchanged or empty name is fine, so updating only TLS mode or wildcard still works.
+	// The ownership proof, certificates and routes are keyed to the name, so renaming would silently invalidate them.
 	if in.Name != "" && in.Name != d.Name {
 		return nil, ErrNameImmutable
 	}
@@ -331,17 +284,14 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	if err != nil {
 		return err
 	}
-	// Remove any managed DNS records (the verification TXT) before the domain row,
-	// so a provider-created record never outlives its domain. Best-effort.
+	// Before the domain row, so a provider-created record never outlives its domain.
 	if s.automator != nil {
 		_ = s.automator.CleanupDomain(ctx, d)
 	}
 	return s.repo.Delete(workspaceID, id)
 }
 
-// SetDNSProvider links (or, with nil, unlinks) a connected DNS provider to a
-// domain so ownership verification (and later app records) is automated. A nil
-// providerID reverts the domain to the manual copy-paste flow.
+// A nil providerID reverts the domain to the manual copy-paste flow.
 func (s *Service) SetDNSProvider(workspaceID, id uint, providerID *uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -362,9 +312,7 @@ func (s *Service) SetDNSProvider(workspaceID, id uint, providerID *uint) (*model
 	return d, nil
 }
 
-// Verify checks the domain's ownership TXT record and, on success, marks it verified. For a
-// provider-connected domain it first creates the TXT itself and retries the lookup briefly to absorb
-// propagation, so no manual DNS step is needed. The lookup reads live DNS, so re-verification is idempotent.
+// Verify creates the TXT itself for provider-connected domains and retries briefly to absorb propagation.
 func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -417,8 +365,7 @@ func (s *Service) Verify(ctx context.Context, workspaceID, id uint) (*models.Dom
 		d.VerificationCheckedAt = &now
 		d.VerificationError = ""
 		d.VerificationMisses = 0
-		// A real proof supersedes any prior admin waiver, so an override stops being
-		// load-bearing the moment the domain can prove itself.
+		// A real proof supersedes any prior admin waiver.
 		d.VerifiedVia = models.VerifiedViaDNS
 		if automated {
 			d.VerifiedVia = models.VerifiedViaDNSProvider
@@ -462,8 +409,6 @@ func claimHolder(d *models.Domain, others []models.Domain) *models.Domain {
 	return nil
 }
 
-// domainsOverlap reports whether a and b would serve the same hostname: an exact
-// name match, or one being a wildcard that covers the other as a subdomain.
 // Names are stored normalized (lowercase, no "*." prefix, no trailing dot).
 func domainsOverlap(a, b *models.Domain) bool {
 	na, nb := strings.ToLower(a.Name), strings.ToLower(b.Name)
@@ -479,9 +424,7 @@ func domainsOverlap(a, b *models.Domain) bool {
 	return false
 }
 
-// ForceVerify marks a domain verified without a DNS check — a platform-admin override for private-DNS or
-// otherwise unreachable zones. It clears prior failure state and re-syncs the workspace so the domain's
-// routes go live. Use sparingly: it bypasses the ownership proof Verify enforces.
+// ForceVerify is a platform-admin override that bypasses the ownership proof, for private or unreachable zones.
 func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -503,8 +446,7 @@ func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*model
 	d.VerificationCheckedAt = &now
 	d.VerificationError = ""
 	d.VerificationMisses = 0
-	// A waiver, not a proof: this is what stops the drift cron from un-verifying the
-	// domain a few runs later and taking its routes offline with it.
+	// A waiver, not a proof: stops the drift cron from un-verifying the domain and taking its routes offline.
 	d.VerifiedVia = models.VerifiedViaAdmin
 	if err := s.repo.Update(d); err != nil {
 		return nil, err
@@ -515,9 +457,7 @@ func (s *Service) ForceVerify(ctx context.Context, workspaceID, id uint) (*model
 	return d, nil
 }
 
-// Ban blocks a domain platform-wide, a platform-admin action for abuse. A banned domain is never served —
-// its routes are forced offline on the next re-sync, triggered here — and it can no longer be verified.
-// Verification state is left intact, so an unban restores the prior status.
+// Ban leaves verification state intact, so an unban restores the prior status.
 func (s *Service) Ban(ctx context.Context, workspaceID, id uint, reason string) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -537,8 +477,6 @@ func (s *Service) Ban(ctx context.Context, workspaceID, id uint, reason string) 
 	return d, nil
 }
 
-// Unban lifts a domain ban and re-syncs the workspace so its routes can serve
-// again (subject to the normal verification/privilege gate).
 func (s *Service) Unban(ctx context.Context, workspaceID, id uint) (*models.Domain, error) {
 	d, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -557,14 +495,7 @@ func (s *Service) Unban(ctx context.Context, workspaceID, id uint) (*models.Doma
 	return d, nil
 }
 
-// Reverify re-checks ownership for every verified, manually-managed domain and un-verifies any whose TXT
-// record has been missing for verifyMissThreshold consecutive runs, so transient DNS failures are
-// absorbed. Provider-automated domains are skipped — the DNS reconcile cron reasserts their records.
-//
-// Admin waivers are re-checked but never un-verified: a ForceVerify exists precisely because no TXT
-// record can be published, so revoking it would take the routes offline an hour after an override that
-// looked like it worked. They are still probed, because an absent proof is worth reporting and a proof
-// that appears promotes the waiver away (see reverifyOne).
+// Admin waivers are probed but never un-verified; provider-automated domains are left to the DNS reconcile cron.
 func (s *Service) Reverify(ctx context.Context) error {
 	domains, err := s.repo.ListVerifiedManual()
 	if err != nil {
@@ -590,9 +521,7 @@ type reverifyOutcome struct {
 	Write    bool // anything worth persisting
 }
 
-// reverifyDecision is the pure state transition of one drift re-check, split out from the
-// I/O so the waiver rules are testable without a database. The rule it encodes: a proof
-// can go stale, a waiver cannot, and a waiver that starts resolving becomes a proof.
+// A proof can go stale, a waiver cannot, and a waiver that starts resolving becomes a proof.
 func reverifyDecision(via models.VerifiedVia, misses int, hadError, matched bool) reverifyOutcome {
 	waiver := via.IsWaiver()
 	if matched {
@@ -607,8 +536,6 @@ func reverifyDecision(via models.VerifiedVia, misses int, hadError, matched bool
 	}
 }
 
-// reverifyOne re-checks a single verified domain's TXT record and persists the outcome. A proven domain
-// is un-verified once misses cross the threshold; a waiver only ever records what the check saw.
 func (s *Service) reverifyOne(ctx context.Context, d *models.Domain) {
 	now := time.Now()
 	d.VerificationCheckedAt = &now
@@ -641,8 +568,6 @@ func (s *Service) reverifyOne(ctx context.Context, d *models.Domain) {
 	}
 }
 
-// txtMatches reports whether the domain's ownership TXT record is currently
-// present in DNS.
 func (s *Service) txtMatches(ctx context.Context, d *models.Domain) bool {
 	records, err := s.lookup(ctx, d.ChallengeHost())
 	if err != nil {

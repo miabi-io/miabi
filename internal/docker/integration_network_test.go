@@ -94,9 +94,7 @@ func TestNetworkCRUD(t *testing.T) {
 	}
 }
 
-// TestNetworkAliasResolves asserts that a container's DNS alias resolves from
-// another container on the same network — the exact thing that, if dropped,
-// breaks app->database addressing silently.
+// A dropped alias silently breaks app->database addressing.
 func TestNetworkAliasResolves(t *testing.T) {
 	cli := newClient(t)
 	net := uniqueName("net")
@@ -126,20 +124,12 @@ func TestNetworkAliasResolves(t *testing.T) {
 	}
 }
 
-// pingReached reports whether a busybox `ping` reached its target — i.e. the
-// name resolved (via Docker's embedded DNS) and a reply came back. This is used
-// instead of `nslookup` because busybox nslookup expands a bare single-label
-// name against the host's DNS search domain (e.g. "db" -> "db.example.com") and
-// reports NXDOMAIN; musl's resolver (used by ping) also tries the bare name, so
-// the check is robust on hosts that set a search domain. A failure to resolve
-// prints "bad address"; a resolved-but-unreachable host prints no reply line.
+// busybox nslookup expands single-label names against the host search domain; musl's ping also tries the bare name.
 func pingReached(out string) bool {
 	return strings.Contains(out, "bytes from")
 }
 
-// TestNetworkIsolation asserts two workspaces' networks cannot reach each other:
-// a container on network B cannot even resolve an alias registered on network A.
-// This is a security property (tenant isolation), not a feature.
+// Tenant isolation is a security property: B cannot even resolve an alias on A.
 func TestNetworkIsolation(t *testing.T) {
 	cli := newClient(t)
 	netA := uniqueName("neta")
@@ -168,8 +158,7 @@ func TestNetworkIsolation(t *testing.T) {
 		t.Errorf("cross-network isolation breached: 'secret-db' reachable from another network:\n%s", out)
 	}
 
-	// After NetworkConnect, the same intruder CAN reach it — proving the prior
-	// failure was isolation, not a broken alias.
+	// Proves the prior failure was isolation, not a broken alias.
 	ctx := bg(t, 20*time.Second)
 	if err := cli.NetworkConnect(ctx, netA, intruder, []string{"intruder"}); err != nil {
 		t.Fatalf("NetworkConnect: %v", err)
@@ -183,9 +172,6 @@ func TestNetworkIsolation(t *testing.T) {
 	}
 }
 
-// TestVolumeBackupRoundTrip covers volume create/inspect/list/remove and the
-// backup path that matters: land bytes in a volume (CopyToVolume) and read the
-// exact same bytes back (CopyFileFromVolume).
 func TestVolumeBackupRoundTrip(t *testing.T) {
 	cli := newClient(t)
 	ensureImage(t, cli, imgAlpine)
@@ -232,11 +218,7 @@ func TestVolumeBackupRoundTrip(t *testing.T) {
 	}
 }
 
-// TestDialNetworkSpeaksPostgres opens a relay into a network and speaks the
-// Postgres SSLRequest handshake through it to a real postgres container, then
-// asserts the relay container is gone after Close. DialNetwork is a hijacked
-// attach stream used as a net.Conn — nothing else in Miabi looks like this, and
-// nothing else would catch it breaking.
+// DialNetwork is a hijacked attach stream used as a net.Conn; nothing else in Miabi would catch it breaking.
 func TestDialNetworkSpeaksPostgres(t *testing.T) {
 	cli := newClient(t)
 	ensureImage(t, cli, imgSocat)
@@ -253,9 +235,7 @@ func TestDialNetworkSpeaksPostgres(t *testing.T) {
 		Labels:         map[string]string{LabelApp: "it"},
 	})
 
-	// Postgres SSLRequest: int32 length=8, int32 code=80877103. The server
-	// replies with a single byte 'S' (SSL ok) or 'N' (no SSL) once it is
-	// accepting connections. Retry through the relay until the DB is up.
+	// SSLRequest is length=8, code=80877103; the server replies 'S' or 'N' once it accepts connections.
 	sslRequest := make([]byte, 8)
 	binary.BigEndian.PutUint32(sslRequest[0:4], 8)
 	binary.BigEndian.PutUint32(sslRequest[4:8], 80877103)
@@ -293,13 +273,10 @@ func TestDialNetworkSpeaksPostgres(t *testing.T) {
 		t.Fatalf("no Postgres SSLRequest reply through the relay (last error: %v)", lastErr)
 	}
 
-	// The relay containers must not linger. They are named mb-fwd-* and carry the
-	// managed label; assert none remain running.
 	assertNoRelayContainers(t, cli)
 }
 
-// assertNoRelayContainers fails if any DialNetwork relay (mb-fwd-*) is still
-// present — a leaked relay is a leaked container per outbound dial.
+// A leaked relay is a leaked container per outbound dial.
 func assertNoRelayContainers(t *testing.T, cli Client) {
 	t.Helper()
 	ctx := bg(t, 20*time.Second)

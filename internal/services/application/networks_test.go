@@ -39,9 +39,7 @@ func (f *fakeEnsurer) EnsureDefault(context.Context, uint) (*models.Network, err
 	return f.net, f.err
 }
 
-// selectNetworks is the pure decision inside SetNetworks: which of the workspace's
-// networks the app ends up on. It is extracted here so the choice can be tested without
-// a database — the persistence is GORM's problem, the selection is ours.
+// Extracted so the selection can be tested without a database.
 func selectNetworks(all []models.Network, want []uint) []models.Network {
 	set := map[uint]bool{}
 	for _, id := range want {
@@ -56,9 +54,7 @@ func selectNetworks(all []models.Network, want []uint) []models.Network {
 	return out
 }
 
-// The default network is not optional garnish: it is what the app shares with its databases, and in
-// cluster mode it is the workspace's Swarm overlay — the thing that lets it reach a database on
-// another node. A caller that names no networks at all (GitOps does exactly this) must still get it.
+// The default network is how the app reaches its databases; callers naming none (GitOps) must still get it.
 func TestDefaultNetworkIsAlwaysSelected(t *testing.T) {
 	all := []models.Network{
 		{ID: 1, Name: "default", IsDefault: true, Driver: "overlay"},
@@ -94,9 +90,7 @@ func TestHasDefaultNetwork(t *testing.T) {
 	}
 }
 
-// A workspace with no default network is a real state — one that predates default networks, or whose
-// network was removed out of band. Without repair the app is created with NO networks: it deploys, and
-// then cannot resolve its own database. The ensurer exists for this and was never called.
+// Without repair the app gets no networks: it deploys, then cannot resolve its own database.
 func TestMissingDefaultIsRepaired(t *testing.T) {
 	ens := &fakeEnsurer{net: &models.Network{ID: 9, Name: "default", IsDefault: true, Driver: "overlay"}}
 	s := &Service{netEnsurer: ens}
@@ -123,8 +117,7 @@ func TestMissingDefaultIsRepaired(t *testing.T) {
 	}
 }
 
-// If the repair itself fails there is nothing more to do — but it must degrade to "no
-// default", not to a panic or a hard failure of the whole create.
+// A failed repair must degrade to "no default", not a panic or a failed create.
 func TestFailedRepairDoesNotBreakSelection(t *testing.T) {
 	ens := &fakeEnsurer{err: errors.New("docker unreachable")}
 	s := &Service{netEnsurer: ens}

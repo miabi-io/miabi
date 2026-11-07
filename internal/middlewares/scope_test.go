@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// call drives one request through RequireScope with the context an authenticated API-key request
-// would carry, and reports the status, whether the handler ran, and any violation reported.
 func call(t *testing.T, mode ScopeMode, required, authMethod, scopes string) (int, bool, http.Header, []ScopeViolation) {
 	t.Helper()
 	var seen []ScopeViolation
@@ -56,8 +54,6 @@ func call(t *testing.T, mode ScopeMode, required, authMethod, scopes string) (in
 	return rec.Code, reached, rec.Header(), seen
 }
 
-// Enforce is the mode that actually closes the hole: a key without the scope is refused before the
-// handler runs.
 func TestRequireScope_EnforceRefuses(t *testing.T) {
 	code, reached, _, seen := call(t, ScopeModeEnforce, models.ScopeWrite, "api_key", "read")
 	if code != http.StatusForbidden {
@@ -71,8 +67,7 @@ func TestRequireScope_EnforceRefuses(t *testing.T) {
 	}
 }
 
-// Warn is the rollout mode: the request succeeds, but it leaves evidence in both the audit sink and
-// the client's own response, so nobody is surprised when enforce is switched on.
+// Warn leaves evidence in the audit sink and the response, so enforce surprises nobody.
 func TestRequireScope_WarnPassesButReports(t *testing.T) {
 	code, reached, hdr, seen := call(t, ScopeModeWarn, models.ScopeWrite, "api_key", "read")
 	if code != http.StatusOK || !reached {
@@ -89,8 +84,7 @@ func TestRequireScope_WarnPassesButReports(t *testing.T) {
 	}
 }
 
-// Off is the earlier behaviour, kept so an operator can get out of the way of a bad classification
-// without downgrading.
+// Off lets an operator escape a bad classification without downgrading.
 func TestRequireScope_OffIsSilent(t *testing.T) {
 	code, reached, hdr, seen := call(t, ScopeModeOff, models.ScopeAdmin, "api_key", "read")
 	if code != http.StatusOK || !reached {
@@ -120,8 +114,7 @@ func TestRequireScope_LadderSatisfies(t *testing.T) {
 	}
 }
 
-// Session and JWT callers are governed by workspace RBAC, not by scopes — the console must not
-// start failing because it holds no API key.
+// The console holds no API key and must not start failing.
 func TestRequireScope_IgnoresSessionCallers(t *testing.T) {
 	code, reached, _, seen := call(t, ScopeModeEnforce, models.ScopeAdmin, "jwt", "")
 	if code != http.StatusOK || !reached || len(seen) != 0 {
@@ -133,8 +126,7 @@ func TestRequireScope_IgnoresSessionCallers(t *testing.T) {
 	}
 }
 
-// An empty scope set means read-only, so it must be refused on a write — this is the CLI's
-// read-only MCP default, which had no server backing at all before.
+// An empty scope set is read-only: the CLI's read-only MCP default relies on it.
 func TestRequireScope_EmptyScopeSetIsReadOnly(t *testing.T) {
 	code, _, _, _ := call(t, ScopeModeEnforce, models.ScopeWrite, "api_key", "")
 	if code != http.StatusForbidden {

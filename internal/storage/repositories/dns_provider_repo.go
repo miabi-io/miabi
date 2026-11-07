@@ -44,8 +44,7 @@ func (r *DNSProviderRepository) FindInWorkspace(workspaceID, id uint) (*models.D
 	return &p, nil
 }
 
-// FindByID looks up a provider by id alone (used by the reconcile sweep to update
-// status; it works from the record ledger and has no workspace in hand).
+// Unscoped: the reconcile sweep works from the record ledger with no workspace in hand.
 func (r *DNSProviderRepository) FindByID(id uint) (*models.DNSProvider, error) {
 	var p models.DNSProvider
 	if err := r.db.First(&p, id).Error; err != nil {

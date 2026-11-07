@@ -148,8 +148,7 @@ func (r *Router) gitRepositoryRoutes() []okapi.RouteDefinition {
 			Summary:     "Delete a git repository credential",
 		},
 		{
-			// Not credential CRUD, but the same domain: what a repository holds,
-			// asked before an app exists to hang the question off.
+			// Asked before an app exists to hang the question off.
 			Method:      http.MethodPost,
 			Path:        "/{workspace}/git/inspect",
 			Group:       g,

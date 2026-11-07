@@ -33,14 +33,9 @@ import (
 
 // Errors a rejected shared-storage option set returns.
 var (
-	// ErrDriverOptKey is returned for a driver option outside type/o/device. The local driver takes
-	// only those three; anything else is either ignored or a way to reach a mount feature Miabi has
-	// not reviewed.
+	// The local driver takes only type/o/device; anything else is ignored or reaches unreviewed mount features.
 	ErrDriverOptKey = errors.New("shared volumes accept only the 'device' and 'o' driver options")
-	// ErrDriverMountFlag is returned when the `o` list carries a mount FLAG rather than a data
-	// option. This is the one that matters: the kernel ignores the filesystem type when MS_BIND is
-	// set, so `o=bind` with `device=/` bind-mounts the host's root filesystem into the volume
-	// whatever `type` says. Verified against a live daemon, 2026-09-18.
+	// The kernel ignores fs type under MS_BIND, so o=bind,device=/ mounts the host root (verified 2026-09-18).
 	ErrDriverMountFlag = errors.New("shared volumes may not set mount flags such as bind, remount or a propagation mode")
 	// ErrDriverOptValue is returned for an unknown or malformed entry in the `o` list.
 	ErrDriverOptValue = errors.New("unsupported mount option for this share type")
@@ -48,10 +43,7 @@ var (
 	ErrDriverDeviceForm = errors.New("device must be an NFS export (host:/export) or a CIFS share (//host/share), never a local path")
 )
 
-// mountFlags are the `o` entries that change HOW the kernel mounts rather than what the filesystem
-// does with the data. Every one of them is refused: bind and its variants are the escape itself, and
-// the rest (remount, move, propagation) are levers on the host's mount table that a tenant has no
-// business pulling.
+// Bind variants are the escape itself; remount/move/propagation are levers on the host mount table.
 var mountFlags = map[string]bool{
 	"bind": true, "rbind": true, "remount": true, "move": true,
 	"shared": true, "rshared": true, "slave": true, "rslave": true,
@@ -59,8 +51,7 @@ var mountFlags = map[string]bool{
 	"loop": true, "dirsync": true, "mand": true, "silent": true,
 }
 
-// nfsOptions are the NFS mount options a tenant may set. Anything absent is refused rather than
-// passed through: the list is short on purpose, and grows only by review.
+// The list is short on purpose and grows only by review.
 var nfsOptions = map[string]bool{
 	"addr": true, "nfsvers": true, "vers": true, "proto": true, "port": true, "mountport": true,
 	"rsize": true, "wsize": true, "timeo": true, "retrans": true, "actimeo": true,
@@ -122,9 +113,7 @@ func validateSharedDriverOpts(driver string, in map[string]string) (map[string]s
 	return out, nil
 }
 
-// validateShareDevice requires a remote export or share. A local absolute path is the payload of the
-// escape, so it is refused by shape rather than by blocklist — there is no local path that belongs
-// here even without the bind flag.
+// A local absolute path is the escape payload, so it's refused by shape rather than by blocklist.
 func validateShareDevice(driver, device string) error {
 	switch driver {
 	case "nfs":
@@ -144,8 +133,6 @@ func validateShareDevice(driver, device string) error {
 	return nil
 }
 
-// validateMountOptions parses the comma-separated `o` list, refusing mount flags and any data option
-// outside the driver's allow-list.
 func validateMountOptions(driver, o string) (string, error) {
 	allowed := nfsOptions
 	if driver == "cifs" {
@@ -174,9 +161,7 @@ func validateMountOptions(driver, o string) (string, error) {
 	return strings.Join(kept, ","), nil
 }
 
-// SharedDriverOptsValid re-checks a stored option set, for the deploy path and the boot audit. A
-// volume created before the allow-list existed must not be able to mount just because its row
-// survived.
+// A volume created before the allow-list existed must not mount just because its row survived.
 func SharedDriverOptsValid(opts map[string]string) error {
 	driver := strings.ToLower(strings.TrimSpace(opts["type"]))
 	if driver != "nfs" && driver != "cifs" {
@@ -186,10 +171,7 @@ func SharedDriverOptsValid(opts map[string]string) error {
 	return err
 }
 
-// AuditSharedVolumes re-checks every stored shared volume against the allow-list and reports the
-// ones that would be refused. Volumes created before the allow-list existed keep their options
-// encrypted on the row; the deploy path already refuses to mount them, but an operator should learn
-// which ones need recreating from a log line at boot, not from a deploy that quietly lost its data.
+// Operators should learn which pre-allow-list volumes need recreating from a boot log, not a failed deploy.
 func (s *Service) AuditSharedVolumes() {
 	vols, err := s.repo.ListAll()
 	if err != nil {

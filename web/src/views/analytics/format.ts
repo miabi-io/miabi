@@ -26,9 +26,7 @@ export function fmtPct(frac: number): string {
   return (frac * 100).toFixed(frac >= 0.1 || frac === 0 ? 1 : 2) + '%'
 }
 
-// niceAxisMax rounds a series peak up to a round axis top. The candidates are
-// all even multiples so the halfway gridline is a round number too — a 2.5k axis
-// would label its midpoint "1.3k", which reads as a rounding bug.
+// Even multiples only, so the midpoint gridline is round too (a 2.5k axis would label "1.3k").
 export function niceAxisMax(peak: number): number {
   if (peak <= 0) return 1
   if (peak < 10) return Math.max(2, Math.ceil(peak / 2) * 2)
@@ -39,8 +37,7 @@ export function niceAxisMax(peak: number): number {
   return 10 * mag
 }
 
-// delta returns the signed relative change from prev to cur (e.g. 0.12 = +12%),
-// or null when there's no comparable baseline.
+// null when there's no comparable baseline.
 export function delta(cur: number, prev: number | undefined): number | null {
   if (prev === undefined || prev === 0) return null
   return (cur - prev) / prev
@@ -57,8 +54,6 @@ export function routeLabel(name: string): string {
   return name.replace(/^mb-ws\d+-/, '')
 }
 
-// countryName resolves an ISO alpha-2 code to a display name via the platform
-// Intl data (no lookup table), falling back to the code itself.
 let regionNames: Intl.DisplayNames | null = null
 try {
   regionNames = new Intl.DisplayNames(['en'], { type: 'region' })

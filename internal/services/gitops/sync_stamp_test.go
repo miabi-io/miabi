@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The bug this pins: an auto-sync source polls on a timer, and every sweep used to stamp
-// LastSyncedAt. A workspace whose last real change shipped a month ago reported "synced 1m ago",
-// then "2m ago" — there was no way to see from the panel that nothing had actually been applied.
+// A no-op poll must not stamp LastSyncedAt, or the panel hides that nothing has been applied.
 func TestANoOpReconcileIsNotASync(t *testing.T) {
 	shipped := time.Date(2026, 7, 20, 9, 0, 0, 0, time.UTC)
 	src := &models.GitSource{
@@ -77,8 +75,7 @@ func TestSyncStampIsAllOrNothing(t *testing.T) {
 	}
 }
 
-// Last check is the counterpart: it moves on every reconcile, which is what tells an operator the
-// source is still running while Last sync deliberately stands still.
+// Last check moves on every reconcile, showing the source still runs while Last sync stands still.
 func TestEveryReconcileIsACheck(t *testing.T) {
 	src := &models.GitSource{}
 	markChecked(src, "abc123")

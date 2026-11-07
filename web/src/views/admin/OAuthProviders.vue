@@ -14,8 +14,7 @@ import AppModal from '@/components/AppModal.vue'
 const notify = useNotificationStore()
 const licenseStore = useLicenseStore()
 
-// Entitlement gates: Community allows one provider and never hides providers;
-// multi_sso lifts the count cap, sso_hidden_provider unlocks the Hidden toggle.
+// Community allows one provider and no hiding; multi_sso lifts the cap, sso_hidden_provider unlocks Hidden.
 const multiSso = useEntitlement('multi_sso')
 const hiddenCap = useEntitlement('sso_hidden_provider')
 const groupMap = useEntitlement('sso_group_mapping')
@@ -65,9 +64,7 @@ interface ProviderForm {
   email_claim: string
   name_claim: string
   username_claim: string
-  // v-model on <input type="number"> replaces the string with a number as soon
-  // as the field is non-empty — Vue casts by the element's type, not by the
-  // declared one — so this is a string only while it is blank.
+  // Vue casts v-model by input type, so this is a string only while the field is blank.
   default_workspace_id: number | string
   default_role: string
   // The realm the provider registers accounts into. Chosen once, when the provider is created.
@@ -231,15 +228,13 @@ async function save() {
   const domains = f.allowed_domains.trim()
   payload.allowed_domains = domains
 
-  // Auto-join (both provider types). Send 0 to clear on edit, the id to set.
-  // String() first: the field is a number once typed into (see AdminForm).
+  // Send 0 to clear on edit; String() first because the field becomes a number once typed into.
   const rawWs = String(f.default_workspace_id ?? '').trim()
   const wsId = rawWs ? parseInt(rawWs, 10) : NaN
   payload.default_workspace_id = Number.isFinite(wsId) && wsId > 0 ? wsId : 0
   payload.default_role = f.default_role.trim()
 
-  // Create only: the API refuses to move a provider between organizations, because the accounts it
-  // already registered stay where they are.
+  // Create only: the API refuses moving a provider between organizations since its accounts stay put.
   if (!editing.value && f.organization_id > 0) payload.organization_id = f.organization_id
 
   if (f.type === 'oidc') {
@@ -580,8 +575,7 @@ onMounted(() => {
             </div>
 
             <div class="form-group">
-              <!-- Disabled rather than hidden while editing: which realm a provider registers into
-                   is worth seeing, and the API refuses to change it. -->
+              <!-- Disabled, not hidden: the realm is worth seeing, and the API refuses to change it. -->
               <OrganizationPicker
                 v-model="form.organization_id"
                 label="Organization"

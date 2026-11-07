@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// EmailVerificationToken is a single-use, expiring proof that someone can read
-// the address they registered. Modelled on PasswordResetToken: same shape, same
-// single-use semantics, separate table so revoking one never affects the other.
+// EmailVerificationToken is single-use; a separate table from PasswordResetToken so revoking one never affects the other.
 type EmailVerificationToken struct {
 	ID        uint       `json:"id" gorm:"primaryKey"`
 	UserID    uint       `json:"user_id" gorm:"index;not null"`

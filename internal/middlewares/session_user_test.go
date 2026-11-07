@@ -132,8 +132,7 @@ func TestSessionEndsWhenUserDeleted(t *testing.T) {
 	}
 }
 
-// A token minted before this change carries no fingerprint. It stays valid until it expires, but a
-// disabled account still ends it.
+// Fingerprint-less tokens stay valid until expiry, but a disabled account still ends them.
 func TestLegacyTokenWithoutFingerprint(t *testing.T) {
 	h := newSessionHarness(t)
 	u := h.user(t, "ada@example.com", "hash-1")

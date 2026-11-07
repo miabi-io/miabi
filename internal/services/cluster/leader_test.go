@@ -31,8 +31,7 @@ type fakeLeader bool
 
 func (l fakeLeader) Leading() bool { return bool(l) }
 
-// A standalone worker refreshes swarm state for its own deploys, but used to write what it saw as
-// well, making it a second writer beside the control plane.
+// Regression: a standalone worker wrote what it saw, becoming a second writer beside the control plane.
 func TestRefreshWritesOnlyWhileLeading(t *testing.T) {
 	fd := &fakeDocker{
 		info: docker.SwarmInfo{LocalNodeState: "active", ControlAvailable: true, NodeID: "mgr1"},

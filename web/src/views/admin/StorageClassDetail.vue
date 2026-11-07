@@ -38,8 +38,7 @@ function pct(capacity?: number, available?: number): number | null {
   return Math.min(100, Math.max(0, Math.round(((capacity - (available ?? 0)) / capacity) * 100)))
 }
 const usedPct = computed(() => pct(detail.value?.capacity_bytes, detail.value?.available_bytes))
-// Data on the class as the usage sweeps measured it; the rest of the used space belongs to other
-// things on the same disk (images, containers, other classes or files).
+// The rest of the used space belongs to other things on the same disk.
 const ownPct = computed(() => {
   const d = detail.value
   if (!d?.capacity_bytes) return 0

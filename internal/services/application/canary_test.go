@@ -27,8 +27,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// liveApp is an app with a canary running at the given weight, so validation is
-// judged against a real rollout rather than a projected one.
 func liveApp(weight int) *models.Application {
 	relID := uint(9)
 	return &models.Application{ID: 1, CanaryReleaseID: &relID, CanaryWeight: weight, CanaryInitialWeight: 10}
@@ -38,8 +36,7 @@ func rule(source, name, op, value string) models.CanaryMatchRule {
 	return models.CanaryMatchRule{Source: source, Name: name, Operator: op, Value: value}
 }
 
-// check runs the same normalize-then-validate path SetCanaryRouting takes, so a
-// payload is judged exactly as the API judges it.
+// Runs the same normalize-then-validate path as SetCanaryRouting.
 func check(app *models.Application, in CanaryRouting) error {
 	norm, err := normalizeCanaryRouting(in)
 	if err != nil {
@@ -67,8 +64,7 @@ func TestCanaryRoutingRefusals(t *testing.T) {
 			ErrCanaryExclusiveNoMatch,
 		},
 		{
-			// Rules that look active while routing nothing: matching requests join
-			// a pool where the canary has no share.
+			// Matching requests join a pool where the canary has no share.
 			"pooled rules at zero weight",
 			liveApp(0), manual(false, rule("header", "X-Canary", "equals", "true")),
 			ErrCanaryPooledZeroWeight,
@@ -131,8 +127,7 @@ func TestCanaryRoutingTooManyRules(t *testing.T) {
 	}
 }
 
-// A pattern that does not compile fails closed at the gateway — invisibly. It is
-// refused at save, naming the pattern.
+// A non-compiling pattern fails closed at the gateway invisibly, so it is refused at save.
 func TestCanaryRoutingRejectsUncompilableRegex(t *testing.T) {
 	err := check(liveApp(20), manual(false, rule("header", "X-Canary", "regex", "beta-[")))
 	var re *ErrCanaryMatchRegex
@@ -161,8 +156,6 @@ func TestCanaryRoutingAcceptsValidRules(t *testing.T) {
 	}
 }
 
-// A rule set saved before any canary exists is judged against the weight the
-// next rollout will actually start at, not against 0.
 func TestCanaryRoutingValidatesAgainstProjectedWeight(t *testing.T) {
 	idle := &models.Application{ID: 1, CanaryInitialWeight: 10}
 	if err := check(idle, manual(false, rule("header", "X-Canary", "equals", "true"))); err != nil {
@@ -170,8 +163,6 @@ func TestCanaryRoutingValidatesAgainstProjectedWeight(t *testing.T) {
 	}
 }
 
-// Automatic mode is the same model with the rule set empty: exclusive and
-// priority are dropped rather than silently retained.
 func TestNormalizeCanaryRoutingClearsAdvancedFieldsInAutoMode(t *testing.T) {
 	out, err := normalizeCanaryRouting(CanaryRouting{Mode: models.CanaryModeAuto, Exclusive: true, Priority: 9})
 	if err != nil {
@@ -193,8 +184,6 @@ func TestNormalizeCanaryRoutingTrimsAndLowercases(t *testing.T) {
 	}
 }
 
-// An ip rule is only as trustworthy as the gateway's trusted-proxy config, so
-// saving one must say so and point at the documentation.
 func TestCanaryRoutingWarnsOnIPRules(t *testing.T) {
 	w := canaryRoutingWarnings(CanaryRouting{Mode: models.CanaryModeManual, Exclusive: true, Match: []models.CanaryMatchRule{rule("ip", "", "equals", "203.0.113.7")}})
 	if len(w) != 1 {

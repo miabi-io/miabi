@@ -49,8 +49,6 @@ func (r *SettingRepository) Get(key string) (*models.Setting, error) {
 	return &s, nil
 }
 
-// BulkUpsert inserts or updates the given settings by key in a single
-// transaction. Value and Type are overwritten; CreatedAt is preserved.
 func (r *SettingRepository) BulkUpsert(settings []models.Setting) error {
 	if len(settings) == 0 {
 		return nil
@@ -61,14 +59,12 @@ func (r *SettingRepository) BulkUpsert(settings []models.Setting) error {
 	}).Create(&settings).Error
 }
 
-// CreateIfMissing inserts a setting only when its key does not yet exist. Used
-// to seed defaults on first boot without clobbering admin changes.
+// CreateIfMissing seeds defaults on first boot without clobbering admin changes.
 func (r *SettingRepository) CreateIfMissing(s models.Setting) error {
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error
 }
 
-// Delete removes a setting by key. Absent keys are not an error, so callers
-// clearing a marker (for example the post-restore quiesce flag) are idempotent.
+// Absent keys are not an error, so clearing a marker is idempotent.
 func (r *SettingRepository) Delete(key string) error {
 	return r.db.Where("key = ?", key).Delete(&models.Setting{}).Error
 }

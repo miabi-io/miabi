@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package placement decides where a new resource lands: a location (cluster) the workspace may use, then a
-// node inside it. It runs once, at create; nothing is rescheduled afterwards.
+// Package placement picks a location then a node for a new resource, once at create; nothing is rescheduled.
 package placement
 
 import (
@@ -59,41 +58,25 @@ func NewService(clusters *repositories.ClusterRepository, servers *repositories.
 	return &Service{clusters: clusters, servers: servers, online: online}
 }
 
-// Policy resolves the locations and node pool a workspace's plan binds it to; false means no policy applies.
-// Satisfied by the quota service.
 type Policy interface {
 	EffectivePlacement(workspaceID uint) (models.PlanPlacement, bool)
 }
 
-// Orgs resolves the organization a workspace belongs to (0 when unknown) and whether that
-// organization owns clusters of its own. Satisfied by the organization wiring in routes.
 type Orgs interface {
 	OrganizationOfWorkspace(workspaceID uint) uint
 	OwnsClusters(orgID uint) bool
-	// OrganizationLabel names the organization for the explanation shown in place of a picker the
-	// workspace no longer controls. Empty when it cannot be read.
+	// Empty when it cannot be read.
 	OrganizationLabel(orgID uint) string
 }
 
-// access is which clusters a create may land in. Two different things decide it:
-//
-//   - Visibility is about the CALLER. A restricted cluster is for platform admins, and an admin
-//     pinning a node is exercising their own privilege.
-//   - Organization ownership is about the WORKSPACE. The resource belongs to the workspace, so a
-//     dedicated tenant's workloads stay on their own hardware no matter who clicked deploy — an
-//     admin included. Nothing else would be worth calling dedicated.
-//
-// An organization that owns clusters is therefore CONFINED to them, and that confinement binds
-// every caller.
+// Visibility follows the caller, ownership the workspace: an org owning clusters is confined to them for every caller.
 type access struct {
 	admin    bool
 	orgID    uint
 	confined bool
 }
 
-// hidden reports that the caller should not learn the cluster exists at all: it belongs to a DIFFERENT
-// organization, or it is restricted to platform admins. A platform admin is excepted: they can already
-// list every cluster.
+// Admins are excepted because they can already list every cluster.
 func (a access) hidden(c *models.Cluster) bool {
 	if a.admin {
 		return false
@@ -106,8 +89,7 @@ func (a access) hidden(c *models.Cluster) bool {
 
 // allows reports whether a create for this workspace may land in the cluster.
 func (a access) allows(c *models.Cluster) bool {
-	// Ownership is checked before the admin bypass on purpose: it binds the workspace, not the
-	// caller. An admin who needs a workspace somewhere else moves the cluster or the organization.
+	// Ownership is checked before the admin bypass on purpose: it binds the workspace, not the caller.
 	if c.OrganizationID != nil {
 		return a.orgID != 0 && *c.OrganizationID == a.orgID
 	}
@@ -120,8 +102,7 @@ func (a access) allows(c *models.Cluster) bool {
 	return c.Visibility != models.ClusterVisibilityRestricted
 }
 
-// accessFor resolves the access for a create in workspaceID. The organization is resolved even for
-// an admin, because confinement follows the workspace.
+// Resolved even for an admin, because confinement follows the workspace.
 func (s *Service) accessFor(workspaceID uint, admin bool) access {
 	if s.orgs == nil {
 		return access{admin: admin}
@@ -146,13 +127,7 @@ func (s *Service) planPlacement(workspaceID uint) (models.PlanPlacement, bool) {
 	return s.policy.EffectivePlacement(workspaceID)
 }
 
-// permits reports whether the plan's location policy allows this cluster.
-//
-// A confined organization is exempt. The plan's location list is a commercial statement about which
-// SHARED locations a tier may use; a tenant running on its own hardware has left that question
-// behind, and applying both would intersect to nothing — a plan pinned to location A and an
-// organization owning location B leaves no cluster at all, and every create fails with a message
-// naming neither. The plan's pool still applies: that is about node class, not geography.
+// Confined orgs are exempt: a plan's location list covers shared locations, and intersecting would leave nothing.
 func permits(p models.PlanPlacement, enforced bool, clusterID uint, confined bool) bool {
 	return confined || !enforced || len(p.Locations) == 0 || slices.Contains(p.Locations, clusterID)
 }
@@ -183,8 +158,7 @@ func (s *Service) Place(req Request) (Result, error) {
 		return Result{}, ErrNodePinAdminOnly
 	}
 	if (req.ServerID != 0 || req.Colocate != 0) && strings.TrimSpace(req.Location) != "" {
-		// The named location is checked before the node, or a mismatch would confirm that a hidden
-		// location exists.
+		// Check the location before the node, or a mismatch would confirm a hidden location exists.
 		if c, err := s.clusters.FindByName(strings.TrimSpace(req.Location)); err == nil && s.accessFor(req.WorkspaceID, req.Admin).hidden(c) {
 			return Result{}, ErrLocationNotFound
 		}
@@ -194,8 +168,7 @@ func (s *Service) Place(req Request) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
-		// An admin may pin a node, but not into another organization's cluster: the resource would
-		// belong to a workspace that cannot otherwise reach it.
+		// An admin pin must not land in another org's cluster the workspace could not otherwise reach.
 		if err := s.sameOrg(req, res.ClusterID); err != nil {
 			return Result{}, err
 		}
@@ -206,10 +179,7 @@ func (s *Service) Place(req Request) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
-		// Colocation follows a resource that is already placed, and deliberately reaches restricted
-		// clusters the tenant could not pick itself. It must still not cross into another
-		// organization's dedicated cluster, which a workspace reassigned after its first resource
-		// landed would otherwise do.
+		// Colocation may reach restricted clusters but must not cross into another org's dedicated cluster.
 		if err := s.sameOrg(req, res.ClusterID); err != nil {
 			return Result{}, err
 		}
@@ -227,8 +197,7 @@ func (s *Service) Place(req Request) (Result, error) {
 	return Result{ClusterID: c.ID, ServerID: serverID}, nil
 }
 
-// sameOrg refuses a placement that would put a workspace's resource in another organization's
-// dedicated cluster. It applies to admins too — see the access doc comment.
+// Applies to admins too; see the access doc comment.
 func (s *Service) sameOrg(req Request, clusterID uint) error {
 	c, err := s.clusters.FindByID(s.resolveID(clusterID))
 	if err != nil {
@@ -247,8 +216,7 @@ func (s *Service) sameOrg(req Request, clusterID uint) error {
 	return nil
 }
 
-// onNode places on a given node. A pin is a new choice and refuses a cordoned node, as pickNode does;
-// colocation follows a resource already there, so it does not.
+// A pin refuses a cordoned node; colocation follows an existing resource, so it does not.
 func (s *Service) onNode(serverID uint, location string, pin bool) (Result, error) {
 	srv, err := s.servers.FindByID(serverID)
 	if err != nil {
@@ -270,14 +238,11 @@ func (s *Service) onNode(serverID uint, location string, pin bool) (Result, erro
 	return Result{ClusterID: s.resolveID(srv.ClusterID), ServerID: serverID}, nil
 }
 
-// ResolveLocation is the cluster a create naming location lands in: that location, else the workspace
-// default, else the first location the workspace may use.
 func (s *Service) ResolveLocation(workspaceID uint, location string, admin bool) (*models.Cluster, error) {
 	return s.resolveCluster(workspaceID, location, admin)
 }
 
-// resolveCluster picks the named location, else the workspace's default, else the first location the
-// workspace may use (the default cluster comes first).
+// The default cluster comes first among usable locations.
 func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) (*models.Cluster, error) {
 	policy, enforced := s.planPlacement(workspaceID)
 	acc := s.accessFor(workspaceID, admin)
@@ -289,10 +254,7 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		if err != nil {
 			return nil, ErrLocationNotFound
 		}
-		// A location dedicated to another organization, or restricted to admins, is not refused but hidden:
-		// answering "forbidden" tells a stranger the name is real, which is how a tenant list gets enumerated.
-		// Being confined to one's OWN locations is different — that is the caller's own arrangement,
-		// and saying so is help rather than disclosure.
+		// Hidden rather than forbidden so a stranger cannot enumerate tenant locations by name.
 		if acc.hidden(c) {
 			return nil, ErrLocationNotFound
 		}
@@ -324,9 +286,7 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 		}
 	}
 	if acc.confined {
-		// "no location is available" is true but unhelpful here: the tenant HAS locations and every
-		// one of them is cordoned or empty. Name the organization so the operator looks at its
-		// clusters rather than at the workspace's plan.
+		// Name the org so the operator checks its clusters rather than the workspace's plan.
 		who := "this workspace's organization"
 		if s.orgs != nil {
 			if label := s.orgs.OrganizationLabel(acc.orgID); label != "" {
@@ -338,10 +298,7 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 	return nil, ErrNoLocation
 }
 
-// pickNode chooses the node inside a cluster: its only node when standalone, the manager for a service,
-// and otherwise the online, uncordoned node with the least container memory already placed on it. A
-// cordoned node is refused wherever it would host the workload. With a pooled plan only nodes in the
-// plan's pool count, and a cluster with none of them refuses the create.
+// pickNode prefers the least container memory placed; cordoned nodes are refused, and pooled plans count only pool nodes.
 func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled bool) (uint, error) {
 	if pooled && (c.Mode != models.ClusterModeSwarm || service) {
 		servers, err := s.servers.List()
@@ -404,9 +361,7 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 	return best, nil
 }
 
-// cordoned reports whether a node is positively known to be cordoned. A node that cannot be read is
-// not treated as cordoned: refusing on a lookup error would turn a transient database fault into a
-// failed create.
+// An unreadable node is not cordoned: a transient DB fault must not fail the create.
 func (s *Service) cordoned(serverID uint) bool {
 	srv, err := s.servers.FindByID(serverID)
 	return err == nil && srv.Cordoned
@@ -419,8 +374,7 @@ func poolUnavailable(pool string) error {
 	return fmt.Errorf("%w: none is in the %q pool this workspace's plan requires", ErrNoSchedulableNode, pool)
 }
 
-// PoolConstraints are the Swarm constraints that keep a workspace's services in its plan's pool: that pool's
-// label, or for a plan without a pool, every pool present in the cluster excluded. Nil when no policy applies.
+// PoolConstraints pin to the plan's pool label or, with no pool, exclude every pool; nil when no policy applies.
 func (s *Service) PoolConstraints(workspaceID, clusterID uint) []string {
 	policy, enforced := s.planPlacement(workspaceID)
 	if !enforced {
@@ -453,14 +407,11 @@ type Node struct {
 	IsLocal  bool   `json:"is_local"`
 	Online   bool   `json:"online"`
 	Cordoned bool   `json:"cordoned"`
-	// SwarmNodeID is what a service pin names: Swarm schedules a service, so pinning one is a
-	// `node.id==` constraint rather than a server id.
+	// Swarm schedules services, so a pin is a node.id== constraint rather than a server id.
 	SwarmNodeID string `json:"swarm_node_id,omitempty"`
 }
 
-// Nodes lists the nodes of the location a create naming location would land in, resolved exactly as
-// Place resolves it, so a location the workspace cannot use is refused the same way. With a pooled plan
-// only the plan's pool is listed.
+// Nodes resolves the location exactly as Place does, so an unusable location is refused the same way.
 func (s *Service) Nodes(workspaceID uint, location string, admin bool) ([]Node, error) {
 	c, err := s.resolveCluster(workspaceID, location, admin)
 	if err != nil {
@@ -489,8 +440,7 @@ func (s *Service) Nodes(workspaceID uint, location string, admin bool) ([]Node, 
 	return out, nil
 }
 
-// NodeConstraint is the Swarm constraint pinning a service to a node, or "" when the node is not a swarm
-// member. Server id 0 is the control-plane node.
+// NodeConstraint returns "" for non-swarm nodes; server id 0 is the control plane.
 func (s *Service) NodeConstraint(serverID uint) string {
 	var srv *models.Server
 	var err error
@@ -547,9 +497,7 @@ func (s *Service) Locations(workspaceID uint, admin bool) ([]Location, error) {
 // LocationSet is the locations a workspace may use, and whether the choice is still its own.
 type LocationSet struct {
 	Locations []Location `json:"locations"`
-	// Pinned reports that the workspace's organization runs its own clusters, so the set is fixed
-	// and the default is not the workspace's to choose. The UI shows the reason rather than a
-	// picker that would refuse every value but one.
+	// The UI shows the reason instead of a picker that would refuse every value but one.
 	Pinned bool `json:"pinned"`
 	// PinnedTo is the organization's label, named in that explanation.
 	PinnedTo string `json:"pinned_to,omitempty"`
@@ -571,11 +519,9 @@ func (s *Service) LocationsFor(workspaceID uint, admin bool) (LocationSet, error
 	return set, nil
 }
 
-// ErrLocationPinned is returned when a workspace's organization runs its own clusters: the default
-// location follows the organization, so there is nothing for the workspace to set.
+// The default location follows the organization, so there is nothing for the workspace to set.
 var ErrLocationPinned = errors.New("this workspace's organization runs its own locations; the default follows the organization")
 
-// SetDefaultLocation sets the location a workspace's new resources land in when a create names none.
 // An empty name clears it.
 func (s *Service) SetDefaultLocation(workspaceID uint, location string, admin bool) error {
 	if s.accessFor(workspaceID, admin).confined {

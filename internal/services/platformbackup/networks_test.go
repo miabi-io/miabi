@@ -44,9 +44,7 @@ func (n *netDocker) EnsureNetwork(_ context.Context, name string) (string, error
 	return name, nil
 }
 
-// The helper needs BOTH: the control-plane database is only on the private network once the stack is
-// split, and an S3 endpoint that is really a self-hosted MinIO app is only on the proxy one. Attaching
-// to either alone fails a real backup — on connect, or on upload after the archive is already made.
+// The DB is only on the private network and a self-hosted MinIO only on the proxy one, so both are needed.
 func TestBackupHelperJoinsBothNetworks(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi-internal"}
 	dc := &netDocker{}
@@ -60,15 +58,13 @@ func TestBackupHelperJoinsBothNetworks(t *testing.T) {
 			t.Errorf("helper networks = %v, missing %s", nets, want)
 		}
 	}
-	// The proxy network first: Docker picks the helper's default route from its attachments, and the
-	// archive still has to reach S3 on a stack whose private network has no egress.
+	// Docker picks the default route from attachment order, and S3 egress is only on the proxy network.
 	if len(nets) > 0 && nets[0] != "miabi" {
 		t.Errorf("helper networks = %v, want the egress-carrying network first", nets)
 	}
 }
 
-// A Compose install has no private network. Unset must mean "exactly what it did before the split",
-// or every Compose stack's platform backup changes behaviour for a feature it does not have.
+// Compose has no private network; unset must behave exactly as before the split.
 func TestBackupHelperOnComposeIsUnchanged(t *testing.T) {
 	s := &Service{network: "miabi"}
 	nets, err := s.backupNetworks(context.Background(), &netDocker{})
@@ -80,8 +76,7 @@ func TestBackupHelperOnComposeIsUnchanged(t *testing.T) {
 	}
 }
 
-// A hand-edited manifest can point both settings at one network. Docker refuses a duplicate
-// attachment, so the helper would fail to start at all.
+// Docker refuses duplicate attachments, so the helper would not start.
 func TestBackupHelperDoesNotAttachTheSameNetworkTwice(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi"}
 	nets, err := s.backupNetworks(context.Background(), &netDocker{})
@@ -93,8 +88,7 @@ func TestBackupHelperDoesNotAttachTheSameNetworkTwice(t *testing.T) {
 	}
 }
 
-// The error has to name the network that could not be created — with two of them, "attach the backup
-// container to network" and nothing else sends the operator looking at the wrong one.
+// With two networks, the error must say which one failed.
 func TestBackupHelperNetworkFailureNamesTheNetwork(t *testing.T) {
 	s := &Service{network: "miabi", internalNetwork: "miabi-internal"}
 	_, err := s.backupNetworks(context.Background(), &netDocker{fail: "miabi-internal"})
@@ -106,9 +100,7 @@ func TestBackupHelperNetworkFailureNamesTheNetwork(t *testing.T) {
 	}
 }
 
-// The advice for an unreachable database must point at the network Postgres is actually on. Naming the
-// proxy network it deliberately left would send an operator to verify a connection that is supposed to
-// be impossible.
+// Naming the proxy network Postgres deliberately left would send the operator down the wrong path.
 func TestUnreachableDBAdviceNamesThePrivateNetwork(t *testing.T) {
 	s := &Service{db: DBConn{Host: "localhost"}, network: "miabi", internalNetwork: "miabi-internal"}
 	err := s.assertDBReachable()

@@ -42,8 +42,6 @@ func TestResolveExportURL(t *testing.T) {
 	}
 }
 
-// TestFetchStaticJSON verifies the client fetches a static export.json URL
-// directly (no /v1/export appended) and still honors ETag/304.
 func TestFetchStaticJSON(t *testing.T) {
 	const etag = `"static-v1"`
 	var hitPath string

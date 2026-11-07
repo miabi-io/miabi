@@ -53,9 +53,7 @@ func (r *WorkspaceRepository) Update(ws *models.Workspace) error {
 	return r.db.Save(ws).Error
 }
 
-// Delete hard-deletes a workspace and every resource belonging to it in one transaction, scoped
-// by workspace_id directly or via a parent, so nothing is left orphaned leaking encrypted
-// secrets. Order matters: rows holding a foreign key go before the rows they reference.
+// Order matters: rows holding a foreign key are deleted before the rows they reference.
 func (r *WorkspaceRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		// Fresh subquery builders for children scoped by a parent in the workspace.
@@ -85,8 +83,7 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			}
 		}
 
-		// Ordered deletes: each entry is (model, where-clause, args). Children first,
-		// then the tables they reference, ending at the workspace row.
+		// Children first, then the tables they reference, ending at the workspace row.
 		type del struct {
 			model any
 			where string
@@ -121,8 +118,7 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.TemplateInstall{}, "workspace_id = ?", []any{id}},
 			// Routes reference certificates, so they go before them.
 			{&models.Route{}, "workspace_id = ?", []any{id}},
-			// Top-level workspace-scoped resources. Applications go before the
-			// registries/git-repos/stacks they reference; domains before providers.
+			// Applications go before the registries/git-repos/stacks they reference; domains before providers.
 			{&models.Application{}, "workspace_id = ?", []any{id}},
 			{&models.DatabaseInstance{}, "workspace_id = ?", []any{id}},
 			{&models.Volume{}, "workspace_id = ?", []any{id}},
@@ -140,8 +136,7 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.Webhook{}, "workspace_id = ?", []any{id}},
 			{&models.NotificationChannel{}, "workspace_id = ?", []any{id}},
 			{&models.PipelineDefinition{}, "workspace_id = ?", []any{id}},
-			// Templates are scoped to a source (no workspace_id column). Delete this
-			// workspace's custom-source templates first, then the sources themselves.
+			// Templates have no workspace_id: delete custom-source templates before the sources themselves.
 			{&models.Template{}, "source_id IN (?)", []any{srcIDs()}},
 			{&models.TemplateSource{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceKey{}, "workspace_id = ?", []any{id}},
@@ -150,8 +145,7 @@ func (r *WorkspaceRepository) Delete(id uint) error {
 			{&models.WorkspaceMember{}, "workspace_id = ?", []any{id}},
 			{&models.WorkspaceInvitation{}, "workspace_id = ?", []any{id}},
 		}
-		// Unscoped forces a hard DELETE even for soft-delete models (e.g. templates):
-		// a workspace teardown must remove the rows, not just set deleted_at.
+		// Unscoped forces a hard DELETE: a workspace teardown must remove soft-delete rows, not just set deleted_at.
 		for _, s := range steps {
 			if err := tx.Unscoped().Where(s.where, s.args...).Delete(s.model).Error; err != nil {
 				return err
@@ -169,8 +163,6 @@ func (r *WorkspaceRepository) FindByID(id uint) (*models.Workspace, error) {
 	return &ws, nil
 }
 
-// FindSystem returns the built-in platform system workspace, if it exists.
-// ListByOrganization returns the workspaces an organization holds, for its detail page.
 func (r *WorkspaceRepository) ListByOrganization(orgID uint) ([]models.Workspace, error) {
 	var out []models.Workspace
 	err := r.db.Where("organization_id = ?", orgID).Order("name ASC").Find(&out).Error
@@ -208,8 +200,6 @@ func (r *WorkspaceRepository) ListAll() ([]models.Workspace, error) {
 	return workspaces, err
 }
 
-// ListPaged returns workspaces with offset pagination and the total count,
-// optionally filtered by a handle/display-name search term. Newest first.
 func (r *WorkspaceRepository) ListPaged(search string, limit, offset int) ([]models.Workspace, int64, error) {
 	var (
 		workspaces []models.Workspace
@@ -232,10 +222,6 @@ func (r *WorkspaceRepository) SetPrivileged(id uint, v bool) error {
 	return r.db.Model(&models.Workspace{}).Where("id = ?", id).Update("privileged", v).Error
 }
 
-// IsPrivileged reports whether a workspace is privileged, reading only the flag.
-// A privileged workspace may expose routes under registered-but-unverified
-// domains (the route service's verification gate waives them).
-// SetRestriction writes a workspace's restriction fields as one update.
 func (r *WorkspaceRepository) SetRestriction(id uint, fields map[string]any) error {
 	return r.db.Model(&models.Workspace{}).Where("id = ?", id).Updates(fields).Error
 }
@@ -269,9 +255,7 @@ func (r *WorkspaceRepository) ListOwnedBy(userID uint) ([]models.Workspace, erro
 	return workspaces, err
 }
 
-// CountOwnedBy returns how many non-system workspaces a user is an owner of
-// (by owner-role membership, so promoted co-owners count too). This is the value
-// the per-user workspace-count limit is enforced against.
+// Counts owner-role memberships, so promoted co-owners count toward the per-user workspace limit.
 func (r *WorkspaceRepository) CountOwnedBy(userID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.WorkspaceMember{}).
@@ -289,9 +273,7 @@ func (r *WorkspaceRepository) CountMemberships(userID uint) (int64, error) {
 	return count, err
 }
 
-// CountJoinedBy returns how many workspaces a user has JOINED as a non-owner
-// member — excluding workspaces they own (counted by CountOwnedBy) and the
-// system workspace. This is the count the per-user membership limit caps.
+// CountJoinedBy excludes owned workspaces and the system workspace; it is what the membership limit caps.
 func (r *WorkspaceRepository) CountJoinedBy(userID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.WorkspaceMember{}).
@@ -309,8 +291,6 @@ func (r *WorkspaceRepository) CountMembers(workspaceID uint) (int64, error) {
 	return count, err
 }
 
-// ListForUser returns workspaces the user is a member of, each annotated with
-// the user's role in that workspace.
 func (r *WorkspaceRepository) ListForUser(userID uint) ([]models.WorkspaceWithRole, error) {
 	var rows []models.WorkspaceWithRole
 	err := r.db.
@@ -349,8 +329,6 @@ func (r *WorkspaceRepository) UpdateMemberRole(workspaceID, userID uint, role mo
 		Updates(map[string]any{"role": role, "custom_role_id": nil}).Error
 }
 
-// SetMemberCustomRole assigns a custom role to a member, recording its base role
-// for rank checks.
 func (r *WorkspaceRepository) SetMemberCustomRole(workspaceID, userID, customRoleID uint, baseRole models.WorkspaceRole) error {
 	return r.db.Model(&models.WorkspaceMember{}).
 		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
@@ -392,8 +370,6 @@ func (r *WorkspaceRepository) CreateInvitation(inv *models.WorkspaceInvitation) 
 	return r.db.Create(inv).Error
 }
 
-// PendingInvitationExists reports whether a pending, unexpired invitation for the
-// email already exists in the workspace — used to reject duplicate invites.
 func (r *WorkspaceRepository) PendingInvitationExists(workspaceID uint, email string) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.WorkspaceInvitation{}).
@@ -422,8 +398,6 @@ func (r *WorkspaceRepository) ListInvitations(workspaceID uint) ([]models.Worksp
 	return invs, err
 }
 
-// ListInvitationsByEmail returns the pending, unexpired invitations addressed to
-// an email — used to surface invitations to the recipient when they log in.
 func (r *WorkspaceRepository) ListInvitationsByEmail(email string) ([]models.WorkspaceInvitation, error) {
 	var invs []models.WorkspaceInvitation
 	err := r.db.Where("email = ? AND status = ? AND expires_at > ?",
@@ -448,8 +422,7 @@ func (r *WorkspaceRepository) IDByUID(uid string) (uint, error) {
 // ErrInvitationClaimed means an invitation stopped being pending between read and claim.
 var ErrInvitationClaimed = errors.New("invitation is no longer pending")
 
-// CreateUserFromInvitation creates user, adds them to the invitation's workspace with its role and
-// marks the invitation accepted, all or nothing, so a failed join never leaves an account behind.
+// All or nothing, so a failed join never leaves an account behind.
 func (r *WorkspaceRepository) CreateUserFromInvitation(user *models.User, inv *models.WorkspaceInvitation) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&models.WorkspaceInvitation{}).

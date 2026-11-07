@@ -29,16 +29,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// DBBackupRunner is the slice of services/backup platform DR needs: dump and
-// restore a managed database against a destination it chooses.
 type DBBackupRunner interface {
 	Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, opts backup.RunOptions, dest backup.Destination) (*models.Backup, error)
 	Restore(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, spec backup.RestoreSpec) error
 }
 
-// RepoTenantSource is the production TenantSource: it walks the workspace, database and volume
-// repositories and delegates the actual dump to the existing backup service. It lives here so the
-// traversal — which workspaces, databases and volumes count as tenant data — is stated once.
+// States once which workspaces, databases and volumes count as tenant data; dumps delegate to the backup service.
 type RepoTenantSource struct {
 	workspaces *repositories.WorkspaceRepository
 	databases  *repositories.DatabaseRepository
@@ -46,9 +42,7 @@ type RepoTenantSource struct {
 	runner     DBBackupRunner
 }
 
-// EnableTenantCapture wires tenant capture from a database handle: one call instead of four constructor
-// arguments, because it must be done identically in every composition root. A root that forgets it does
-// not fail at startup — it fails at backup time, with "no tenant source is wired".
+// One call so every composition root wires it identically; forgetting it fails only at backup time.
 func (s *Service) EnableTenantCapture(db *gorm.DB, runner DBBackupRunner) {
 	s.SetTenantSource(NewRepoTenantSource(
 		repositories.NewWorkspaceRepository(db),
@@ -68,9 +62,7 @@ func NewRepoTenantSource(
 	return &RepoTenantSource{workspaces: workspaces, databases: databases, volumes: volumes, runner: runner}
 }
 
-// ListTenantDatabases returns every logical database on every managed instance. Redis is skipped: it is a
-// cache in every Miabi topology, the backup tooling has no dump for it, and pretending to capture it would
-// put a reassuring line in a recovery point that restores nothing.
+// Redis is skipped: always a cache here, with no dump tooling, so capturing it would restore nothing.
 func (s *RepoTenantSource) ListTenantDatabases() ([]TenantDatabase, error) {
 	workspaces, err := s.workspaces.ListAll()
 	if err != nil {
@@ -144,9 +136,7 @@ func (s *RepoTenantSource) BackupTenantDatabase(ctx context.Context, td TenantDa
 	return s.runner.Run(ctx, td.Instance, td.Database, backup.RunOptions{Trigger: "platform-dr"}, dest)
 }
 
-// RestoreTenantDatabase loads a dump back into a live database instance. Force is set, so the database is
-// dropped and recreated first: a DR restore lands in a database the platform just provisioned, and layering
-// a dump over what a fresh instance seeded gives constraint violations that look like a corrupt backup.
+// Force drops and recreates first: layering a dump over a freshly seeded DB gives constraint violations.
 func (s *RepoTenantSource) RestoreTenantDatabase(ctx context.Context, td TenantDatabase, dest backup.Destination, filename string) error {
 	if s.runner == nil {
 		return fmt.Errorf("no database backup runner is wired")

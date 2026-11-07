@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// A tiny inline SVG sparkline: a filled area under a stroked line, scaled to the
-// series' own min/max. Purely presentational — feed it a plain number[].
 import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{

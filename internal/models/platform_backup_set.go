@@ -21,15 +21,11 @@ package models
 
 import "time"
 
-// PlatformBackupSet groups one run's artifacts into a single recovery point: identity
-// envelope, control-plane dump, and each volume archive. DR consumes a set, never a loose
-// artifact. Provenance is read by the restore preflight before the target host is touched.
+// PlatformBackupSet is one recovery point; DR consumes a set, never a loose artifact.
 type PlatformBackupSet struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
-	// Ref is the stable, human-quotable name of this recovery point:
-	// "mbdr_<install-id>_<UTC stamp>". It is what an operator passes to
-	// `miabi restore --ref`, so it is unique and never reused.
+	// Passed to `miabi restore --ref`, so unique and never reused.
 	Ref     string       `json:"ref" gorm:"uniqueIndex;not null"`
 	Trigger string       `json:"trigger"` // manual | scheduled
 	Status  BackupStatus `json:"status" gorm:"not null;default:pending"`
@@ -38,9 +34,7 @@ type PlatformBackupSet struct {
 	InstallID     string `json:"install_id"`
 	MiabiVersion  string `json:"miabi_version"`
 	SchemaVersion string `json:"schema_version"` // last applied upgrade step
-	// KEKFingerprint proves two installs share a master encryption key without revealing it:
-	// HMAC-SHA256(KEK, KEKFingerprintLabel) via crypto.DeriveToken. Restore recomputes it after
-	// loading the identity envelope and refuses to continue on a mismatch.
+	// HMAC of the KEK proving two installs share it without revealing it; restore refuses on mismatch.
 	KEKFingerprint string `json:"kek_fingerprint"`
 	Encrypted      bool   `json:"encrypted"`       // artifacts are GPG-encrypted
 	IdentitySealed bool   `json:"identity_sealed"` // an identity envelope is present
@@ -50,33 +44,24 @@ type PlatformBackupSet struct {
 	S3Path      string `json:"s3_path,omitempty"`
 	SizeBytes   int64  `json:"size_bytes"`
 
-	// Error carries why a set failed to complete (an item failing marks the set
-	// failed: a partial recovery point is not a recovery point).
+	// An item failing fails the set: a partial recovery point is not a recovery point.
 	Error string `json:"error,omitempty" gorm:"type:text"`
 
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 
-	// Items are the artifacts of this recovery point. CASCADE because they have no
-	// meaning without it: an artifact whose set is gone cannot be restored, and
-	// leaving it behind would show a half a recovery point in the history.
+	// CASCADE: items cannot be restored without their set, and leftovers would show half a recovery point.
 	Items []PlatformBackup `json:"items,omitempty" gorm:"foreignKey:SetID;constraint:OnDelete:CASCADE"`
 }
 
-// KEKFingerprintLabel is the fixed crypto.DeriveToken label for the master-key
-// fingerprint recorded on a set. It is a constant because changing it would make
-// every existing recovery point unverifiable.
+// Changing this label would make every existing recovery point unverifiable.
 const KEKFingerprintLabel = "dr:kek-fingerprint"
 
-// RestorePendingKey is the setting `miabi restore` writes before the restored control plane's
-// first boot. While true the platform runs quiesced — no schedules, no auto-deploys — so it
-// cannot race to reconcile against DNS still pointing at the host it was recovered from.
+// While true the platform runs quiesced so it cannot reconcile against DNS still pointing at the old host.
 const RestorePendingKey = "dr.restore_pending"
 
-// Complete reports whether the set is a usable recovery point: finished and carrying a
-// control-plane dump. Volumes and the identity envelope are recorded separately — a set
-// without an envelope can still be restored onto the original host.
+// A set without an identity envelope can still be restored onto the original host.
 func (s *PlatformBackupSet) Complete() bool {
 	if s.Status != BackupCompleted {
 		return false

@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A service account promoted before promotion was refused still holds role=admin in the database; its
-// keys must not reach the platform admin API on the strength of that column.
+// A service account promoted before promotion was refused must not reach the admin API via its role column.
 func TestRequireSystemAdminRefusesAServiceAccount(t *testing.T) {
 	h := newSessionHarness(t)
 	ws := uint(3)

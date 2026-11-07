@@ -15,8 +15,7 @@ app.use(pinia)
 app.use(i18n)
 app.use(router)
 
-// Applied before the first paint, so /me being in flight does not flash the wrong
-// language. The account's stored value wins later, via the shell's adopt().
+// Applied before first paint so an in-flight /me doesn't flash the wrong language.
 void useLanguageStore(pinia)
   .init()
   .finally(() => app.mount('#app'))

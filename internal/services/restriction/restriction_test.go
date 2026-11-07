@@ -254,8 +254,7 @@ func TestBillingRestriction(t *testing.T) {
 	}
 }
 
-// A migration freeze stops only the apps (the databases still have to be exported), refuses everything,
-// and an admin restriction cannot be laid over it, which would lose the record of what it stopped.
+// An admin restriction can't be laid over a freeze, which would lose the record of what it stopped.
 func TestFreezeStopsAppsOnlyAndUnfreezeRestarts(t *testing.T) {
 	s, repo, wl := newTest()
 	ctx := context.Background()

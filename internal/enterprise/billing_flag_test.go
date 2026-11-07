@@ -15,8 +15,7 @@ import (
 	"testing"
 )
 
-// The Billing API is an add-on: the flag must be grantable, yet no tier preset includes it, Enterprise
-// included; a license carries it only when it was sold.
+// Billing is an add-on: no tier preset includes it, Enterprise included.
 func TestBillingEntitlement(t *testing.T) {
 	if !IsKnownFlag(FlagBilling) {
 		t.Fatalf("%s is missing from AllFlags, so no license can grant it", FlagBilling)

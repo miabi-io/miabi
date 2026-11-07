@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package storageclass manages the admin-registered directories where Miabi creates volumes. A
-// class inverts the host-path trust model: the tenant names a class, the platform derives the path,
-// so an unprivileged workspace can use operator storage without ever supplying a host path.
+// Package storageclass manages admin-registered volume directories, so tenants name a class, never a host path.
 package storageclass
 
 import (
@@ -40,10 +38,7 @@ import (
 
 // Errors the handlers map to 4xx responses.
 var (
-	// ErrImmutable is returned when an update tries to change a class's name or path. Both are
-	// dereferenced rather than displayed — volumes and GitOps manifests point at the name, and
-	// volumes already exist under the path — so a rewrite would break references, or silently
-	// point live volumes at a directory their data is not in.
+	// Volumes and manifests reference the name and data lives under the path, so a rewrite breaks or misdirects them.
 	ErrImmutable = errors.New("a storage class name and path cannot be changed after registration; register a new class instead")
 	// ErrBuiltin is returned when an admin tries to delete or re-path the seeded default class.
 	ErrBuiltin = errors.New("the built-in default storage class cannot be modified or deleted")
@@ -65,8 +60,7 @@ var (
 )
 
 const (
-	// helperTarget is where a class's path is bound inside the helper container. The helper only
-	// ever touches paths under it, so a bug cannot reach the rest of the node.
+	// The helper only touches paths under this, so a bug cannot reach the rest of the node.
 	helperTarget     = "/mnt/class"
 	defaultHelperImg = "busybox:1.36"
 	helperTimeout    = 2 * time.Minute
@@ -89,8 +83,6 @@ type ServerInfo interface {
 	Get(id uint) (*models.Server, error)
 }
 
-// PlatformUser is a platform component that keeps data on a class outside the volumes table, such
-// as the built-in registry. StorageClassUser names it when it uses the class, or returns "".
 type PlatformUser interface {
 	StorageClassUser(name string) string
 }
@@ -144,9 +136,7 @@ func (s *Service) annotate(c *models.StorageClass) {
 	}
 }
 
-// EnsureBuiltin seeds the "default" class: volumes created the way Docker creates them, in the
-// engine's own data root. Every install has it, every pre-existing volume backfills to it, and it
-// is what makes this feature a no-op for an install that registers no classes of its own.
+// EnsureBuiltin seeds the "default" engine-data-root class so installs without classes behave as before.
 func (s *Service) EnsureBuiltin() error {
 	_, err := s.repo.FindByName(models.DefaultStorageClassName)
 	if err == nil {
@@ -166,8 +156,7 @@ func (s *Service) EnsureBuiltin() error {
 	})
 }
 
-// Input is the editable surface of a storage class. Name, Path and ServerID are read on create only;
-// Update refuses a change to Name or Path.
+// Name, Path and ServerID are read on create only.
 type Input struct {
 	Name          string
 	DisplayName   string
@@ -181,9 +170,7 @@ type Input struct {
 	ReclaimPolicy models.ReclaimPolicy
 }
 
-// Create registers a class after validating its path and probing the node for it. The probe is the
-// point of the design: a class whose disk is not mounted fails here, naming the node, instead of at
-// some tenant's first deploy.
+// The probe means a class whose disk is not mounted fails here, naming the node, not at a tenant's deploy.
 func (s *Service) Create(ctx context.Context, in Input) (*models.StorageClass, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -233,8 +220,6 @@ func (s *Service) Create(ctx context.Context, in Input) (*models.StorageClass, e
 	return c, nil
 }
 
-// Update changes the editable fields. A name or path change is refused, not applied — see
-// ErrImmutable.
 func (s *Service) Update(id uint, in Input) (*models.StorageClass, error) {
 	c, err := s.repo.FindByID(id)
 	if err != nil {
@@ -279,8 +264,7 @@ func (s *Service) Update(id uint, in Input) (*models.StorageClass, error) {
 	return c, nil
 }
 
-// Delete removes a class. The built-in one is permanent, and a class still referenced by volumes or
-// database instances is refused: disabling it is how an admin stops new volumes landing there without touching old ones.
+// Referenced classes are refused; disabling is how an admin stops new volumes landing there.
 func (s *Service) Delete(id uint) error {
 	c, err := s.repo.FindByID(id)
 	if err != nil {
@@ -349,9 +333,7 @@ func (s *Service) Get(id uint) (*models.StorageClass, error) {
 	return c, nil
 }
 
-// Resolve returns the class a volume should be created on. An empty key takes the node's default
-// class and falls back to the built-in one, so an install that registers nothing behaves exactly as
-// it did before storage classes existed.
+// An empty name takes the node's default, then the built-in class, preserving pre-class behaviour.
 func (s *Service) Resolve(serverID uint, name string) (*models.StorageClass, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -381,10 +363,7 @@ func (s *Service) Resolve(serverID uint, name string) (*models.StorageClass, err
 	return c, nil
 }
 
-// Probe verifies the class path exists on its node by binding it into a helper container with
-// NoCreate set: the daemon refuses a missing source rather than creating an empty directory, which
-// is what stops an unmounted disk from silently becoming a directory on the root filesystem. It
-// records the filesystem's capacity while it is there.
+// NoCreate makes the daemon refuse a missing source, so an unmounted disk can't become a root-fs directory.
 func (s *Service) Probe(ctx context.Context, c *models.StorageClass) error {
 	if !c.Managed() {
 		return nil
@@ -398,9 +377,7 @@ func (s *Service) Probe(ctx context.Context, c *models.StorageClass) error {
 	return nil
 }
 
-// EnsureDir creates the per-volume directory under the class path on the node. Docker accepts a
-// bind-backed volume whose device is absent and only fails when a container mounts it, so this runs
-// before the volume is created.
+// Docker accepts a bind-backed volume with an absent device and only fails on mount, so this runs first.
 func (s *Service) EnsureDir(ctx context.Context, c *models.StorageClass, dockerName string) error {
 	if !c.Managed() {
 		return nil
@@ -414,9 +391,7 @@ func (s *Service) EnsureDir(ctx context.Context, c *models.StorageClass, dockerN
 	return err
 }
 
-// RemoveDir deletes the volume's directory under the class path. `docker volume rm` leaves a
-// bind-backed volume's data on the disk, so without this a deleted volume would orphan every byte
-// it held on the operator's storage. A retain-policy class keeps it for an admin to reclaim.
+// docker volume rm leaves bind-backed data behind; a retain-policy class keeps it for an admin.
 func (s *Service) RemoveDir(ctx context.Context, c *models.StorageClass, dockerName string) error {
 	if !c.Managed() || c.ReclaimPolicy == models.ReclaimRetain {
 		return nil
@@ -429,9 +404,7 @@ func (s *Service) RemoveDir(ctx context.Context, c *models.StorageClass, dockerN
 	return err
 }
 
-// DiskUsageAll measures every volume directory under a class in one helper run, keyed by Docker
-// volume name. `docker system df` sizes a bind-backed volume's mountpoint stub rather than the data
-// behind the bind, so a managed class is measured here instead.
+// docker system df sizes a bind-backed volume's stub rather than its data, so classes are measured here.
 func (s *Service) DiskUsageAll(ctx context.Context, c *models.StorageClass) (map[string]int64, error) {
 	if !c.Managed() {
 		return nil, nil
@@ -471,8 +444,7 @@ func (s *Service) ListManaged() ([]models.StorageClass, error) {
 	return out, nil
 }
 
-// MeasureCapacity refreshes every managed class's filesystem capacity. Best-effort: an unreachable
-// node keeps its previous measurement, and the sweep always returns nil so cron does not retry.
+// Best-effort: an unreachable node keeps its previous measurement, and nil stops cron retrying.
 func (s *Service) MeasureCapacity(ctx context.Context) error {
 	classes, err := s.repo.List()
 	if err != nil {
@@ -521,9 +493,7 @@ func (s *Service) measure(ctx context.Context, c *models.StorageClass) (total, a
 	return totalKB * 1024, availKB * 1024, nil
 }
 
-// runHelper runs one short-lived busybox on the class's node with the class path bound NoCreate.
-// The control plane has only the Docker API on a remote node, so every filesystem action a class
-// needs — probe, mkdir, reclaim, du — goes through here.
+// The control plane has only the Docker API on a remote node, so every class filesystem action runs here.
 func (s *Service) runHelper(ctx context.Context, c *models.StorageClass, cmd []string) (string, error) {
 	dc, err := s.clients.For(c.ServerID)
 	if err != nil {
@@ -532,8 +502,7 @@ func (s *Service) runHelper(ctx context.Context, c *models.StorageClass, cmd []s
 	image := s.helperImage()
 	runCtx, cancel := context.WithTimeout(ctx, helperTimeout)
 	defer cancel()
-	// Only pull when the node does not already have it: PullImage reaches the registry every time,
-	// and the capacity sweep runs this per class on a schedule.
+	// PullImage reaches the registry every time, and the capacity sweep runs this per class on a schedule.
 	if present, perr := dc.ImageExists(runCtx, image); perr != nil || !present {
 		if err := dc.PullImage(runCtx, image, nil); err != nil {
 			return "", fmt.Errorf("pull helper image: %w", err)
@@ -559,9 +528,7 @@ func (s *Service) runHelper(ctx context.Context, c *models.StorageClass, cmd []s
 	return out, nil
 }
 
-// safeSubdir guards the one input that reaches a filesystem command. DockerName is platform-
-// generated, so anything with a separator or a dot in it is a bug, not a user mistake — and a
-// reclaim that followed one would delete the wrong tree.
+// DockerName is platform-generated, so a separator or dot is a bug, and a reclaim following it deletes the wrong tree.
 func safeSubdir(dockerName string) (string, error) {
 	sub := strings.TrimSpace(dockerName)
 	if sub == "" || strings.ContainsAny(sub, "/.\\ \t\n$`\"'") {

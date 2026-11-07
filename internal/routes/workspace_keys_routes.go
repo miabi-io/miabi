@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// workspaceKeysRoutes registers a workspace's encryption and sealing keys. Rotation is owner/admin only and
-// session only: an API key must not be able to rotate the keys that protect the workspace.
+// Session-only: an API key must not be able to rotate the keys that protect the workspace.
 func (r *Router) workspaceKeysRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Workspace Keys", Description: "Per-workspace encryption and sealing keys."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

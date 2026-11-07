@@ -41,8 +41,7 @@ func TestDeriveIPv6(t *testing.T) {
 	}
 }
 
-// Every subnet of the default pool must map to a distinct /64, or two networks would be handed the
-// same v6 range and the second create would fail.
+// Each default-pool subnet must map to a distinct /64, or the second network create would fail.
 func TestDeriveIPv6IsUniqueAcrossTheDefaultPool(t *testing.T) {
 	const ula = "fd42:6d69:6162::/48"
 	seen := map[string]string{}

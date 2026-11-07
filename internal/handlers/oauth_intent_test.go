@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// The intent value survives a round trip through the IdP in Redis, so its older shapes have to
-// keep parsing: an intent stored before scopes were carried must still complete after an upgrade,
-// rather than dropping the user's sign-in on the callback.
+// Intents stored before an upgrade must keep parsing, or the user's sign-in is dropped on callback.
 func TestParseIntent(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

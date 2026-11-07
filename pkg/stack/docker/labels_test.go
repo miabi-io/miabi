@@ -93,9 +93,7 @@ func TestIsPlatformInfra(t *testing.T) {
 	}
 }
 
-// A component must never end up half-labeled: discoverable but not protected, or
-// protected but not discoverable. PlatformLabels is the single constructor, so
-// this pins all four keys at once.
+// PlatformLabels is the single constructor, so a component can't be half-labeled.
 func TestPlatformLabelsSetsTheWholeContract(t *testing.T) {
 	l := PlatformLabels(RolePlatformDB, ManagedByCompose, nil)
 
@@ -119,9 +117,7 @@ func TestPlatformLabelsSetsTheWholeContract(t *testing.T) {
 	}
 }
 
-// extra may add component-specific keys but must never silently override the
-// contract — a caller passing io.miabi.protected=false would otherwise disarm the
-// destructive-op guard from the outside.
+// A caller passing io.miabi.protected=false would otherwise disarm the destructive-op guard.
 func TestPlatformLabelsExtraCannotOverrideTheContract(t *testing.T) {
 	l := PlatformLabels(RoleNodeGateway, ManagedByMiabi, map[string]string{
 		LabelNode:      "node-1",
@@ -149,8 +145,7 @@ func TestIsPlatformStackAndIsProtected(t *testing.T) {
 		{"user app", map[string]string{LabelApp: "1", LabelWorkspace: "2"}, false, false},
 		{"raw container", map[string]string{}, false, false},
 		{"nil labels", nil, false, false},
-		// The registry GC collector is platform infra but transient: it must stay
-		// removable, so it deliberately does not go through PlatformLabels.
+		// The transient registry GC collector must stay removable, so it skips PlatformLabels.
 		{"registry gc stays removable", map[string]string{LabelRole: RoleRegistryGC}, false, false},
 		{"protected only counts when true", map[string]string{LabelProtected: "false"}, false, false},
 	}
@@ -166,9 +161,7 @@ func TestIsPlatformStackAndIsProtected(t *testing.T) {
 	}
 }
 
-// A user must not be able to hand-write these on their own container: a spoofed
-// io.miabi.protected=true would make their app undeletable, and a spoofed
-// part-of=miabi would hide it from housekeeping.
+// A spoofed protected=true would make an app undeletable, and part-of=miabi would hide it from housekeeping.
 func TestPlatformStackLabelsAreReservedFromUsers(t *testing.T) {
 	for _, k := range []string{LabelPartOf, LabelManagedBy, LabelProtected} {
 		if !IsReservedLabelKey(k) {

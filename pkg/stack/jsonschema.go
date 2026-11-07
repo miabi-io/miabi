@@ -30,24 +30,17 @@ import (
 	"strings"
 )
 
-// documentSource is this file's neighbour, embedded so the generator can read the doc comments
-// reflection cannot see. Editors render them as hovers, which is what makes generating the schema
-// worth more than writing one.
+// Embedded so the generator can read doc comments reflection cannot see; editors render them as hovers.
 //
 //go:embed document.go
 var documentSource string
 
-// SchemaID is where the generated schema is published. Editors resolve $ref against it, so it has to
-// be the URL the file is actually served from.
+// Editors resolve $ref against it, so it must be the URL the file is served from.
 const SchemaID = "https://docs.miabi.io/schema/install.miabi.io-v1.schema.json"
 
-// SchemaFileName is the published file name, kept here so the generator, the docs site and the
-// editor extension cannot disagree about it.
 const SchemaFileName = "install.miabi.io-v1.schema.json"
 
-// JSONSchema renders the install document's JSON Schema from the types the parser binds to. A field
-// the parser accepts and the schema does not is a false error in an editor; the reverse is a file
-// that passes in the editor and fails at install. Generating it is what keeps the two identical.
+// Generated from the parser's types so editor validation and install validation stay identical.
 func JSONSchema() ([]byte, error) {
 	g := &schemaGen{defs: map[string]any{}, docs: documentDocs()}
 
@@ -107,8 +100,6 @@ func (g *schemaGen) object(t reflect.Type) map[string]any {
 			continue
 		}
 		props[name] = g.field(t, f)
-		// A field the author is expected to set carries no omitempty — the same signal the parser
-		// and the documentation already agree on.
 		if !opts.omitempty {
 			required = append(required, name)
 		}
@@ -161,16 +152,14 @@ func (g *schemaGen) typeOf(t reflect.Type) map[string]any {
 	case reflect.Struct:
 		return g.define(t)
 	default:
-		// An unmapped kind must not silently become "anything": that is how a schema starts
-		// accepting what the parser rejects.
+		// An unmapped kind must not become "anything", or the schema accepts what the parser rejects.
 		return map[string]any{}
 	}
 }
 
 type schemaFieldOpts struct{ omitempty bool }
 
-// schemaFieldName reads the field's YAML name; ok is false for unexported fields and for `yaml:"-"`,
-// which is derived state the document never carries.
+// `yaml:"-"` fields are derived state the document never carries.
 func schemaFieldName(f reflect.StructField) (string, schemaFieldOpts, bool) {
 	if f.PkgPath != "" {
 		return "", schemaFieldOpts{}, false
@@ -193,8 +182,7 @@ func schemaFieldName(f reflect.StructField) (string, schemaFieldOpts, bool) {
 	return name, o, true
 }
 
-// schemaEnumFor returns the values Normalize accepts for a field. Reusing the same constants means a
-// change there breaks the build rather than leaving the schema quietly permissive.
+// Reusing Normalize's constants means a change there breaks the build rather than loosening the schema.
 func schemaEnumFor(typeName, field string) []string {
 	if typeName+"."+field == "RegistrySpec.Storage" {
 		return []string{registryStorageFilesystem, registryStorageS3}
@@ -202,8 +190,6 @@ func schemaEnumFor(typeName, field string) []string {
 	return nil
 }
 
-// documentDocs maps "Type" and "Type.Field" to the doc comments in document.go, so the schema's
-// descriptions and the code's comments are the same words.
 func documentDocs() map[string]string {
 	out := map[string]string{}
 	fset := token.NewFileSet()
@@ -245,8 +231,7 @@ func documentDocs() map[string]string {
 	return out
 }
 
-// schemaComment flattens a comment group onto one line: an editor hover renders the wrapping as-is,
-// and a Go source wrap width is not a tooltip's.
+// Editor hovers render wrapping as-is, and Go source wrap width is not a tooltip's.
 func schemaComment(g *ast.CommentGroup) string {
 	if g == nil {
 		return ""

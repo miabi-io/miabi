@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package eventbus is a lightweight in-process publish/subscribe bus used to
-// fan out live events (e.g. deploy logs) to SSE subscribers. Single-node only;
-// a separate worker process would require a Redis-backed bus instead.
+// Package eventbus is an in-process pub/sub for SSE fan-out; single-node only, a separate worker would need Redis.
 package eventbus
 
 import "sync"
@@ -68,8 +66,7 @@ func (b *Bus) Subscribe(topic string) (<-chan Event, func()) {
 	}
 }
 
-// Publish delivers an event to all current subscribers of a topic. Slow
-// subscribers whose buffer is full drop the event rather than block producers.
+// Slow subscribers with a full buffer drop the event rather than block producers.
 func (b *Bus) Publish(topic string, e Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()

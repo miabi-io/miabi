@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// UpgradeStep records an applied, versioned data-upgrade step so it runs at
-// most once. Schema changes use GORM AutoMigrate; data backfills use steps.
+// UpgradeStep makes a data backfill run at most once; schema changes use AutoMigrate.
 type UpgradeStep struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	Version   string    `json:"version" gorm:"index;not null"`

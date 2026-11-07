@@ -46,8 +46,7 @@ onBeforeUnmount(() => {
   clearInterval(ticker)
 })
 
-// A finding is only reported once two consecutive checks agree; the unconfirmed ones are shown apart, so a
-// container caught mid-deploy never reads as a problem.
+// Reported only once two checks agree, so a container mid-deploy never reads as a problem.
 const confirmed = computed(() => (status.value?.findings ?? []).filter((f) => f.confirmed))
 const suspected = computed(() => (status.value?.findings ?? []).filter((f) => !f.confirmed))
 const dataLoss = computed(() => confirmed.value.filter((f) => f.kind === 'volume'))

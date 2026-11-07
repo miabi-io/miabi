@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The console disables the name/username fields from the profile payload, so an
-// account with no stored auth source has to report a concrete one.
+// The console disables profile fields from this payload, so a missing auth source must report a concrete one.
 func TestProfileOf_ReportsTheAuthSource(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -52,8 +51,7 @@ func TestProfileOf_ReportsTheAuthSource(t *testing.T) {
 	}
 }
 
-// The refusal has to name where the profile actually lives, or the user has nowhere
-// to go with it.
+// The refusal must name where the profile actually lives.
 func TestAuthSourceLabel(t *testing.T) {
 	for _, src := range []string{models.AuthSourceLDAP, models.AuthSourceOAuth, models.AuthSourceSAML, models.AuthSourceSCIM, "something-new"} {
 		if label := authSourceLabel(src); strings.TrimSpace(label) == "" {

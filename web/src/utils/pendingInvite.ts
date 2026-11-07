@@ -1,6 +1,4 @@
-// The invitation token a visitor arrived with, kept for the session so it survives signing in or a
-// round trip through SSO. Storage can be unavailable (private mode, blocked site data); the flow
-// then just loses the token and the invitee can still accept from the in-app pending list.
+// Survives sign-in and SSO; if storage is unavailable the invitee can still accept from the in-app pending list.
 const KEY = 'mb_pending_invite'
 
 export function savePendingInvite(token: string) {

@@ -26,8 +26,7 @@ import type { ApiResponse, ElevationState } from '@/api/types'
 export const ELEVATION_CODES = ['ADMIN_ELEVATION_REQUIRED', 'ADMIN_ELEVATION_STALE', 'ADMIN_2FA_SETUP_REQUIRED'] as const
 export type ElevationCode = (typeof ELEVATION_CODES)[number]
 
-// The admin console unlock. Requests that fail for want of an unlock wait on requestUnlock(),
-// which opens the dialog once however many requests are waiting, and resolve together.
+// Waiting requests share one unlock dialog and resolve together.
 export const useElevationStore = defineStore('elevation', () => {
   const state = ref<ElevationState | null>(null)
   const dialogOpen = ref(false)
@@ -78,8 +77,7 @@ export const useElevationStore = defineStore('elevation', () => {
     return requestUnlock()
   }
 
-  // Warns a minute before the unlock lapses, rather than waiting for a failed request. Idle
-  // expiry moves as the admin works, so re-read the state before warning.
+  // Idle expiry moves as the admin works, so re-read the state before warning.
   function scheduleExpiryWarning() {
     if (expiryTimer) clearTimeout(expiryTimer)
     expiryTimer = null

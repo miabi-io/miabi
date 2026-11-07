@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package config owns workspace configuration files: named text payloads,
-// encrypted at rest, projected into containers as read-only files.
+// Package config owns workspace configuration files, encrypted at rest and projected read-only.
 package config
 
 import (
@@ -48,9 +47,7 @@ var (
 	ErrUnresolvedRef = errors.New("config references a value that does not exist")
 )
 
-// Limits mirror internal/declarative so a config rejected by a manifest is also
-// rejected over the API. The per-file cap is what matters against Docker's
-// 500 KB config-object limit, since projection is always per file.
+// Mirrors internal/declarative; the per-file cap guards Docker's 500 KB config-object limit.
 const (
 	MaxFileBytes    = 256 * 1024
 	MaxTotalBytes   = 512 * 1024
@@ -62,24 +59,19 @@ var (
 	keyRe  = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)
 )
 
-// Consumers resolves which apps mount a config and redeploys them. Implemented by
-// the application service; nil in processes that only read configs.
+// nil in processes that only read configs.
 type Consumers interface {
 	AppsMountingConfig(workspaceID, configID uint) ([]models.Application, error)
 	AutoRedeploy(app *models.Application) (*models.Deployment, error)
 }
 
-// ProjectedFile is one file as it lands in a container. Every projection reduces
-// to this, whether the mount named a single key or a directory prefix.
 type ProjectedFile struct {
 	Path    string
 	Content string
 	Mode    string
 }
 
-// FileDigest fingerprints a projected file over content *and* mode: two mounts of
-// the same key at different modes are different files, and a content-only digest
-// would collide on one materialized path.
+// Mode is included so two mounts of one key at different modes don't collide on one path.
 func (f ProjectedFile) FileDigest() string {
 	sum := sha256.Sum256([]byte(f.Content + "\x00" + f.Mode))
 	return hex.EncodeToString(sum[:])
@@ -164,9 +156,7 @@ func (s *Service) Create(workspaceID uint, in Input, userID *uint) (*models.Conf
 	return cfg, nil
 }
 
-// Update replaces the config's content and bumps its version, then redeploys the
-// apps mounting it. That redeploy is the imperative half of change propagation:
-// an edit over the API never runs an apply, so nothing else would restart them.
+// The redeploy is needed because an API edit never runs an apply, so nothing else would restart them.
 func (s *Service) Update(workspaceID, id uint, in Input, userID *uint) (*models.Config, error) {
 	cfg, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -215,8 +205,6 @@ func (s *Service) Update(workspaceID, id uint, in Input, userID *uint) (*models.
 	return cfg, nil
 }
 
-// UpsertOwned creates or updates a config owned by another resource (a template
-// install, for example), so its lifecycle follows the owner.
 func (s *Service) UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, in Input) (*models.Config, error) {
 	existing, err := s.repo.FindByName(workspaceID, in.Name)
 	if err == nil {
@@ -234,8 +222,7 @@ func (s *Service) UpsertOwned(workspaceID uint, ownerKind string, ownerID uint, 
 	return cfg, nil
 }
 
-// Delete refuses while an application still mounts the config, so a deploy can
-// never lose a file out from under a running app.
+// So a deploy can never lose a file out from under a running app.
 func (s *Service) Delete(workspaceID, id uint) error {
 	cfg, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -283,8 +270,7 @@ func referencesSecret(data map[string]string) bool {
 	return len(SecretRefNames(data)) > 0
 }
 
-// Data decrypts a config's files. Callers handling a sensitive config must not
-// return this to an unprivileged reader.
+// Callers handling a sensitive config must not return this to an unprivileged reader.
 func (s *Service) Data(cfg *models.Config) (map[string]string, error) {
 	if cfg.DataEnc == "" {
 		return map[string]string{}, nil
@@ -300,17 +286,12 @@ func (s *Service) Data(cfg *models.Config) (map[string]string, error) {
 	return data, nil
 }
 
-// Project expands a mount into the files it lands in the container. A mount
-// naming a key projects that one file at Path; without a key every file is
-// projected under Path as a directory prefix. This is the only place path
-// expansion happens.
+// The only place path expansion happens: a key projects one file, no key projects a directory prefix.
 func (s *Service) Project(cfg *models.Config, mount models.AppMount) ([]ProjectedFile, error) {
 	return s.ProjectWith(cfg, mount, nil)
 }
 
-// ProjectWith is Project with references resolved. Resolution happens here, not
-// at save time: one config is mounted by many apps, and a rotated secret must
-// reach the next deploy without the file being edited.
+// Resolved at projection, not save, so a rotated secret reaches the next deploy without editing the file.
 func (s *Service) ProjectWith(cfg *models.Config, mount models.AppMount, r Resolver) ([]ProjectedFile, error) {
 	data, err := s.Data(cfg)
 	if err != nil {
@@ -330,8 +311,6 @@ func (s *Service) ProjectWith(cfg *models.Config, mount models.AppMount, r Resol
 	return files, nil
 }
 
-// project is Project over already-decrypted data, so callers holding the files
-// (and tests) do not decrypt twice.
 func (s *Service) project(cfg *models.Config, data map[string]string, mount models.AppMount) ([]ProjectedFile, error) {
 	mode := mount.Mode
 	if mode == "" {
@@ -363,8 +342,7 @@ func (s *Service) project(cfg *models.Config, data map[string]string, mount mode
 	return out, nil
 }
 
-// fanOut redeploys every app mounting the config, skipping those that watch their
-// own config file (reloadPolicy: none).
+// Skips apps that watch their own config file (reloadPolicy: none).
 func (s *Service) fanOut(cfg *models.Config) {
 	if s.consumers == nil {
 		return
@@ -388,8 +366,7 @@ func (s *Service) ExistsByName(workspaceID uint, name string) bool {
 
 func (s *Service) IDByUID(uid string) (uint, error) { return s.repo.IDByUID(uid) }
 
-// Digest is sha256 over the canonical sorted-key serialization, so the same files
-// in any order produce the same value.
+// Sorted keys so the same files in any order produce the same value.
 func Digest(data map[string]string) string {
 	keys := make([]string, 0, len(data))
 	for k := range data {
@@ -406,8 +383,7 @@ func Digest(data map[string]string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// ValidateData enforces the key and size rules the declarative layer applies, so
-// the API cannot store a config a manifest would reject.
+// So the API cannot store a config a manifest would reject.
 func ValidateData(data map[string]string) error {
 	if len(data) == 0 {
 		return ErrNoData
@@ -433,8 +409,7 @@ func ValidateData(data map[string]string) error {
 	return nil
 }
 
-// ValidateMode accepts a 3- or 4-digit octal mode and rejects setuid, setgid and
-// the sticky bit.
+// Setuid, setgid and the sticky bit are rejected.
 func ValidateMode(mode string) error {
 	if mode == "" {
 		return nil

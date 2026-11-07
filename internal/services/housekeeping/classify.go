@@ -26,11 +26,8 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// The managed-resource label scheme lives in the docker package (io.miabi.*), and the owner a label names
-// is resolved by the drift package. Housekeeping joins live Docker against the DB by these labels.
+// Housekeeping joins live Docker against the DB by the io.miabi.* labels defined in the docker package.
 
-// Local aliases for the platform label keys (canonical definitions live in the
-// docker package); used by the package tests.
 const (
 	labelApp       = docker.LabelApp
 	labelDatabase  = docker.LabelDatabase
@@ -41,29 +38,22 @@ const (
 	labelWorkspace = docker.LabelWorkspace
 )
 
-// isManaged reports whether a resource carries any platform label (i.e. is
-// owned by the platform). The safety contract: managed resources are never a
-// blanket prune target — they are reclaimed only via the precise drift path.
+// Managed resources are never a blanket prune target, only reclaimed via the precise drift path.
 func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// isPlatformInfra reports whether a managed resource is platform infrastructure that housekeeping must
-// never classify as an orphan or remove: the node's edge gateway / its Redis (io.miabi.role). These are
-// managed through their own pages, not reclaimed here.
+// Edge gateways and their Redis are managed through their own pages, never classified as orphans.
 func isPlatformInfra(labels map[string]string) bool {
 	return docker.IsPlatformInfra(labels)
 }
 
-// swarmServiceName returns the swarm service a container is a task of, or "" when it is a plain
-// container. Swarm reconciles its own tasks, so this decides whether the reclaimable resource is
-// the container or the service above it.
+// Swarm reconciles its own tasks, so this decides whether the reclaimable resource is the container or service.
 func swarmServiceName(labels map[string]string) string {
 	return labels[docker.SwarmServiceNameLabel]
 }
 
-// isMiabiVolumeName reports whether name is the Docker name storage gives a volume,
-// mb-vol-<workspaceID>-<name>. Keep in step with storage.CreateWith.
+// Keep in step with storage.CreateWith.
 func isMiabiVolumeName(name string) bool {
 	rest, ok := strings.CutPrefix(name, "mb-vol-")
 	if !ok {

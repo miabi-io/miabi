@@ -33,8 +33,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// A service account's API keys would carry platform-wide power if it could be made an admin, and a
-// password or cleared 2FA would hand it a sign-in it is never meant to have.
+// A service account made admin would give its API keys platform-wide power.
 func TestAdminActionsRefuseServiceAccounts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

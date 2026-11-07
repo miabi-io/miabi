@@ -32,9 +32,7 @@ import (
 // Scan cadence and TLS thresholds.
 const (
 	scanInterval = 30 * time.Minute
-	// fastScanInterval drives the scans whose threshold is measured in minutes,
-	// where the 30-minute cadence would make "offline for 2 minutes" mean anything
-	// up to 32.
+	// At the 30-minute cadence "offline for 2 minutes" could mean up to 32.
 	fastScanInterval   = time.Minute
 	certExpiryWarn     = 14 * 24 * time.Hour
 	certExpiryCritical = 3 * 24 * time.Hour
@@ -51,18 +49,13 @@ type CertLister interface {
 // SetCertLister enables the TLS-expiry / issuance-failure scan.
 func (e *Engine) SetCertLister(c CertLister) { e.certs = c }
 
-// ScanLoop runs the periodic, self-contained condition scans (time-based catalog
-// rules that aren't event-driven: TLS expiry today; backup-overdue and quota
-// scans slot in the same way). Returns when ctx is cancelled.
+// Returns when ctx is cancelled.
 func (e *Engine) ScanLoop(ctx context.Context) {
-	// A scan on start so a fresh control plane surfaces existing conditions
-	// immediately rather than after the first interval.
+	// Scan on start so a fresh control plane surfaces existing conditions immediately.
 	e.scan(ctx)
 	slow := time.NewTicker(scanInterval)
 	defer slow.Stop()
-	// The runner scan is deliberately NOT run on start: every runner is out of
-	// contact for the moment it takes them to redial a control plane that just
-	// booted, and firing on that would alert on our own restart.
+	// Not on start: runners are briefly out of contact while redialing a just-booted control plane.
 	fast := time.NewTicker(fastScanInterval)
 	defer fast.Stop()
 	for {
@@ -101,9 +94,7 @@ const (
 	diskCriticalRatio = 0.95
 )
 
-// VolumeUsageLister is the scanner's view of volumes (the volume repo). Usage is
-// the last measured on-disk size (docker system df), compared to the declared
-// capacity.
+// Usage is the last measured size (docker system df), compared to the declared capacity.
 type VolumeUsageLister interface {
 	ListAll() ([]models.Volume, error)
 }
@@ -111,9 +102,7 @@ type VolumeUsageLister interface {
 // SetVolumeLister enables the disk-usage scan.
 func (e *Engine) SetVolumeLister(v VolumeUsageLister) { e.volumes = v }
 
-// scanVolumes fires "disk near full" (warning ≥ 85%, critical ≥ 95%) for volumes
-// with a declared capacity and a measured usage, and resolves when usage drops
-// back below the warning threshold (or capacity was raised).
+// Resolves once usage drops below the warning threshold or capacity was raised.
 func (e *Engine) scanVolumes(ctx context.Context) {
 	vols, err := e.volumes.ListAll()
 	if err != nil {
@@ -168,13 +157,9 @@ type RunnerLister interface {
 // SetRunnerLister enables the runner-reachability scan.
 func (e *Engine) SetRunnerLister(r RunnerLister) { e.runners = r }
 
-// SetSystemWorkspace supplies the built-in system workspace, which owns alerts
-// whose subject belongs to the platform rather than to one workspace.
 func (e *Engine) SetSystemWorkspace(fn func() uint) { e.sysWorkspace = fn }
 
-// scanRunners fires "runner offline" for runners out of contact for at least runnerOfflineAfter, and clears it
-// only once one is back and has stayed back for runnerStableFor. Reachability is judged on LastSeenAt, not
-// Status, which a control plane killed mid-connection leaves reading "online". Flapping runners are held.
+// Judged on LastSeenAt, not Status, which a control plane killed mid-connection leaves reading "online".
 func (e *Engine) scanRunners(ctx context.Context) {
 	all, err := e.runners.ListAll()
 	if err != nil {
@@ -218,9 +203,7 @@ func (e *Engine) scanRunners(ctx context.Context) {
 	e.resolveStale(ctx, models.CategoryCI, "runner_offline:", held)
 }
 
-// runnerAlertScope resolves who hears about a runner: a shared runner is
-// platform-scoped (system workspace → super-admins), a workspace-owned one
-// notifies its own members.
+// Shared runners are platform-scoped (super-admins); workspace runners notify their own members.
 func runnerAlertScope(r *models.Runner, sysWs uint) (workspaceID uint, platform bool) {
 	if r.Scope == models.ScopeShared || r.WorkspaceID == nil {
 		return sysWs, true
@@ -228,8 +211,6 @@ func runnerAlertScope(r *models.Runner, sysWs uint) (workspaceID uint, platform 
 	return *r.WorkspaceID, false
 }
 
-// runnerStablyBack reports whether a runner is connected now and has been for
-// runnerStableFor — the bar for clearing its alert.
 func runnerStablyBack(r *models.Runner, now time.Time) bool {
 	if r.Status == models.RunnerStatusOffline || r.ConnectedSince == nil {
 		return false
@@ -273,8 +254,6 @@ func (e *Engine) SetQuotaLister(q QuotaLister) { e.quota = q }
 
 const quotaNearThreshold = 0.9
 
-// scanQuotas fires "approaching quota" (warning) for workspace resources past 90%
-// of their plan limit, and resolves when usage drops back below.
 func (e *Engine) scanQuotas(ctx context.Context) {
 	breaches, err := e.quota.NearQuota(quotaNearThreshold)
 	if err != nil {
@@ -298,9 +277,7 @@ func (e *Engine) scanQuotas(ctx context.Context) {
 	e.resolveStale(ctx, models.CategoryQuota, "quota_near:", fired)
 }
 
-// resolveStale resolves every active alert of a category whose dedup key has the
-// given prefix and is not in the current fired set — the generic "condition no
-// longer holds" reconciliation used by all scans.
+// The generic "condition no longer holds" reconciliation used by all scans.
 func (e *Engine) resolveStale(ctx context.Context, category models.AlertCategory, prefix string, fired map[string]bool) {
 	active, err := e.alerts.ListActiveByCategory(category)
 	if err != nil {
@@ -314,9 +291,7 @@ func (e *Engine) resolveStale(ctx context.Context, category models.AlertCategory
 	}
 }
 
-// scanCerts reconciles TLS alerts against the current certificate state: it fires "expiring" (warning under
-// 14d, critical under 3d) and "issuance failed", and resolves any active TLS alert whose condition no longer
-// holds. Reconciling by set-difference means a renewed cert auto-resolves without the producer tracking state.
+// Set-difference reconciliation lets a renewed cert auto-resolve without the producer tracking state.
 func (e *Engine) scanCerts(ctx context.Context) {
 	now := e.now().UTC()
 

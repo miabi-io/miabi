@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TemplateRepository persists template sources and their versioned templates
-// (the DB-backed catalog: custom user imports now, git/http syncs later).
 type TemplateRepository struct {
 	db *gorm.DB
 }
@@ -36,8 +34,6 @@ func NewTemplateRepository(db *gorm.DB) *TemplateRepository {
 	return &TemplateRepository{db: db}
 }
 
-// EnsureCustomSource returns the workspace's "custom" source (for user-imported
-// templates), creating it on first use.
 func (r *TemplateRepository) EnsureCustomSource(workspaceID uint) (*models.TemplateSource, error) {
 	var src models.TemplateSource
 	err := r.db.Where("workspace_id = ? AND type = ?", workspaceID, models.TemplateSourceCustom).First(&src).Error
@@ -65,8 +61,6 @@ func (r *TemplateRepository) findCustomSource(workspaceID uint) (*models.Templat
 	return &src, err
 }
 
-// UpsertTemplate inserts or updates a template version (keyed by
-// source_id+name+version), so re-importing the same version replaces it.
 func (r *TemplateRepository) UpsertTemplate(t *models.Template) error {
 	var existing models.Template
 	err := r.db.Where("source_id = ? AND name = ? AND version = ?", t.SourceID, t.Name, t.Version).First(&existing).Error
@@ -91,9 +85,7 @@ func (r *TemplateRepository) ListCustom(workspaceID uint) ([]models.Template, er
 	return out, err
 }
 
-// DeleteCustom removes every version of a custom template (by name) from the
-// workspace's custom source. It reports how many rows were deleted so the caller
-// can distinguish "not found" (0) from a successful delete.
+// DeleteCustom returns the deleted row count so the caller can tell "not found" (0) from success.
 func (r *TemplateRepository) DeleteCustom(workspaceID uint, name string) (int64, error) {
 	src, err := r.findCustomSource(workspaceID)
 	if err != nil || src == nil {
@@ -121,8 +113,6 @@ func (r *TemplateRepository) FindCustom(workspaceID uint, name, version string) 
 	return &t, err
 }
 
-// TemplateInstallRepository persists records of templates installed in a
-// workspace (provenance for the marketplace).
 type TemplateInstallRepository struct {
 	db *gorm.DB
 }

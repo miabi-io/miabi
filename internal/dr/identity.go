@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dr holds the disaster-recovery primitives shared by the running platform and the
-// host-side `miabi restore`: the sealed identity envelope and the naming of a recovery point's
-// artifacts. It depends on nothing else in Miabi — the restore path runs on a bare host.
+// Package dr holds disaster-recovery primitives and depends on nothing else in Miabi: restore runs on a bare host.
 package dr
 
 import (
@@ -37,12 +35,10 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// IdentitySchema is the envelope payload version. Restore refuses a schema it
-// does not know rather than guessing at fields.
+// Restore refuses an unknown schema rather than guessing at fields.
 const IdentitySchema = 1
 
-// Envelope framing. The header is self-describing so a future format change is a
-// clean refusal instead of a garbled decrypt.
+// Self-describing header so a future format change is a clean refusal, not a garbled decrypt.
 const (
 	magic       = "MBID1"
 	saltLen     = 16
@@ -57,19 +53,14 @@ const (
 )
 
 var (
-	// ErrBadPassphrase means the envelope did not authenticate: a wrong
-	// passphrase, or a tampered file. The two are indistinguishable by design.
+	// Wrong passphrase and tampering are indistinguishable by design.
 	ErrBadPassphrase = errors.New("identity envelope did not decrypt: wrong passphrase or corrupt file")
 	// ErrNotEnvelope means the bytes are not an identity envelope at all.
-	ErrNotEnvelope = errors.New("not a Miabi identity envelope")
-	// ErrWeakPassphrase is returned when a passphrase is too weak to protect the
-	// most sensitive artifact the platform produces.
+	ErrNotEnvelope    = errors.New("not a Miabi identity envelope")
 	ErrWeakPassphrase = fmt.Errorf("backup passphrase must be at least %d characters and mix letters with digits or symbols", minPassLen)
 )
 
-// Identity is everything needed to rebuild the stack that owns a control-plane dump. Without it a
-// fresh host lists every workspace and decrypts no secret, since a fresh install generates a new
-// key. The database and Redis passwords are NOT here — those belong to the new host.
+// Identity omits the database and Redis passwords; those belong to the new host.
 type Identity struct {
 	Schema int `json:"schema"`
 
@@ -77,8 +68,7 @@ type Identity struct {
 	MiabiVersion string `json:"miabi_version"`
 	DBSchema     string `json:"db_schema,omitempty"`
 
-	// EncryptionKey is MIABI_ENCRYPTION_KEY — the master key every workspace
-	// data-encryption key is wrapped under. It is the reason this envelope exists.
+	// EncryptionKey wraps every workspace data key; it is the reason this envelope exists.
 	EncryptionKey string `json:"encryption_key"`
 	// JWTSecret keeps issued API tokens and sessions valid across the restore.
 	JWTSecret string `json:"jwt_secret"`
@@ -111,9 +101,7 @@ func (i *Identity) Validate() error {
 	return nil
 }
 
-// ValidatePassphrase rejects passphrases too weak for the envelope. This is the
-// one artifact whose compromise hands over the whole platform, so the floor is
-// enforced rather than suggested.
+// Enforced, not suggested: compromising this artifact hands over the whole platform.
 func ValidatePassphrase(pass string) error {
 	if len([]rune(pass)) < minPassLen {
 		return ErrWeakPassphrase
@@ -133,9 +121,6 @@ func ValidatePassphrase(pass string) error {
 	return nil
 }
 
-// Seal encrypts the identity under a key derived from passphrase with Argon2id,
-// returning the framed envelope. A fresh random salt and nonce are generated per
-// call, so sealing the same identity twice never produces the same bytes.
 func Seal(id *Identity, passphrase string) ([]byte, error) {
 	if id == nil {
 		return nil, errors.New("nil identity")
@@ -170,16 +155,13 @@ func Seal(id *Identity, passphrase string) ([]byte, error) {
 	out = append(out, byte(formatVer))
 	out = append(out, salt...)
 	out = append(out, nonce...)
-	// The header is authenticated as additional data, so a file whose salt or
-	// version was edited fails to open rather than decrypting to nonsense.
+	// The header is authenticated data, so editing the salt or version fails to open.
 	out = gcm.Seal(out, nonce, plaintext, out[:headerLen])
 	zero(plaintext)
 	return out, nil
 }
 
-// Open decrypts a sealed envelope. A wrong passphrase and a tampered file are
-// reported identically — the AEAD cannot tell them apart, and pretending
-// otherwise would be a decryption oracle.
+// A wrong passphrase and tampering look identical, or Open would be a decryption oracle.
 func Open(sealed []byte, passphrase string) (*Identity, error) {
 	if len(sealed) < headerLen || string(sealed[:len(magic)]) != magic {
 		return nil, ErrNotEnvelope
@@ -230,9 +212,7 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	return gcm, nil
 }
 
-// zero wipes key material we are done with. Go's GC gives no guarantee the
-// backing array is not copied, but leaving live keys in a long-running control
-// plane's heap for no reason is worse.
+// Go's GC may copy the array, but leaving live keys in the heap for no reason is worse.
 func zero(b []byte) {
 	for i := range b {
 		b[i] = 0

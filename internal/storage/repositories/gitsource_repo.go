@@ -53,8 +53,7 @@ func (r *GitSourceRepository) NameInWorkspace(workspaceID, id uint) (string, err
 	return name, err
 }
 
-// FindByID looks a source up without workspace scoping (used by the worker/cron
-// sweep, which iterates across workspaces).
+// Unscoped: the worker/cron sweep iterates across workspaces.
 func (r *GitSourceRepository) FindByID(id uint) (*models.GitSource, error) {
 	var g models.GitSource
 	if err := r.db.First(&g, id).Error; err != nil {
@@ -69,8 +68,6 @@ func (r *GitSourceRepository) ListByWorkspace(workspaceID uint) ([]models.GitSou
 	return out, err
 }
 
-// ListAuto returns every source set to automatic sync, across all workspaces —
-// the working set for the polling reconciler.
 func (r *GitSourceRepository) ListAuto() ([]models.GitSource, error) {
 	var out []models.GitSource
 	err := r.db.Where("sync_policy = ?", models.GitSyncAuto).Find(&out).Error

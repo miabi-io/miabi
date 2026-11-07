@@ -18,8 +18,7 @@ const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const { t } = useI18n()
 const notify = useNotificationStore()
-// Gate the edit, not the traffic: `has` keeps an already-configured rule set
-// visible and serving, `mutable` is what a change needs.
+// Gate the edit, not the traffic: `has` keeps configured rules serving, `mutable` is what a change needs.
 const advanced = useEntitlement('advanced_canary')
 
 const SOURCES: { value: CanaryMatchSource; label: string }[] = [
@@ -48,17 +47,13 @@ const savedWarnings = ref<string[]>([])
 
 const canaryActive = computed(() => !!props.app.canary_release_id)
 const weight = computed(() => props.app.canary_weight ?? 0)
-// What the rules are judged against: the live share, or the share the next
-// rollout starts at when none is running.
+// The live share, or the share the next rollout starts at when none is running.
 const projectedWeight = computed(() => (canaryActive.value ? weight.value : (props.app.canary_initial_weight ?? 10)))
 const editable = computed(() => props.canEdit && advanced.mutable.value)
 // A configured-but-lapsed licence: keep showing what is serving, refuse changes.
 const readOnlyNotice = computed(() => advanced.has.value && !advanced.mutable.value)
 
-// The canary routing as stored, and as the form currently has it. Both are
-// serialized so they can be compared by value: while a rollout is live the app
-// is re-fetched every few seconds, handing us a brand new object each time with
-// identical contents.
+// Serialized for by-value comparison: a live rollout refetches the app every few seconds as a new object.
 const storedRouting = computed(() =>
   JSON.stringify({
     mode: props.app.canary_mode ?? 'auto',
@@ -83,8 +78,7 @@ function syncFromApp() {
 }
 
 const dirty = computed(() => formRouting.value !== storedRouting.value)
-// edited: the user has changed something since the form was last filled. Kept
-// apart from `dirty`, which also goes true when the STORED value moves.
+// Kept apart from `dirty`, which also goes true when the stored value moves.
 const edited = computed(() => formRouting.value !== lastSynced.value)
 
 // Switching apps always refills the form.
@@ -101,8 +95,7 @@ function removeRule(i: number) {
   rules.value.splice(i, 1)
 }
 
-// Switching to the automatic ramp drops the rules with it: automatic mode is
-// this same model with an empty rule set, and the backend enforces that.
+// Automatic mode is this model with an empty rule set, and the backend enforces that.
 watch(mode, (m) => {
   if (m === 'auto') {
     rules.value = []
@@ -111,8 +104,7 @@ watch(mode, (m) => {
   }
 })
 
-// Client-side echo of the backend's refusals, so a config that would route
-// somewhere surprising is caught before a round trip.
+// Client-side echo of the backend's refusals to save a round trip.
 const problem = computed<string | null>(() => {
   if (mode.value === 'auto') return null
   if (exclusive.value && rules.value.length === 0) {
@@ -135,8 +127,7 @@ const problem = computed<string | null>(() => {
   return null
 })
 
-// Advisory, not blocking: an IP rule is only as trustworthy as the gateway's
-// trusted-proxy configuration. The backend says the same on save.
+// Advisory: an IP rule is only as trustworthy as the gateway's trusted-proxy configuration.
 const ipWarning = computed(() => mode.value === 'manual' && rules.value.some((r) => r.source === 'ip'))
 
 async function save() {
@@ -149,11 +140,9 @@ async function save() {
       priority: priority.value,
       match: rules.value,
     })
-    // Warnings persist as a banner rather than a toast: they describe something
-    // outside Miabi that has to be true, which outlives a 4-second notification.
+    // A banner, not a toast: they describe an external precondition that outlives a 4-second notification.
     savedWarnings.value = res.data.data?.warnings ?? []
-    // What is in the form is now what is stored; adopt it as the baseline so the
-    // next fetch doesn't look like an unsaved edit and freeze out later syncs.
+    // Adopt as baseline so the next fetch doesn't look like an unsaved edit and freeze out later syncs.
     lastSynced.value = formRouting.value
     notify.success(t('notify.canary.routingUpdated'))
     emit('changed')
@@ -174,8 +163,7 @@ watch(
   },
   { immediate: true },
 )
-// 0 only means something for an exclusive canary, where the rules alone decide
-// who reaches it.
+// 0 only means something for an exclusive canary, where the rules alone decide who reaches it.
 const minWeight = computed(() => (exclusive.value && rules.value.length > 0 ? 0 : 1))
 
 async function applyWeight() {
@@ -196,8 +184,6 @@ const preview = ref<CanaryPreview | null>(null)
 const previewBusy = ref(false)
 const probe = ref({ headerName: '', headerValue: '', queryName: '', queryValue: '', cookieName: '', cookieValue: '', ip: '' })
 
-// Seed the probe fields from the saved rules, so the first preview is one click
-// rather than retyping what the rules already name.
 function seedProbe() {
   for (const r of props.app.canary_match ?? []) {
     if (r.source === 'header' && !probe.value.headerName) probe.value.headerName = r.name
@@ -251,8 +237,7 @@ const previewLabel = computed(() => {
     </div>
 
     <div v-else class="card-body">
-      <!-- A lapsed licence must never move production traffic: what is configured
-           keeps serving, and only changes are refused. -->
+      <!-- A lapsed licence must never move production traffic: the configuration keeps serving, only changes are refused. -->
       <div v-if="readOnlyNotice" class="banner banner-warning">
         <span class="mdi mdi-lock-clock"></span>
         <i18n-t keypath="canary.readOnlyNotice" tag="span"><template #link><router-link to="/admin/license">{{ $t('canary.renew') }}</router-link></template></i18n-t>

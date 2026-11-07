@@ -48,8 +48,7 @@ type ClusterPatch struct {
 	// ExternalBaseDomain and ExternalCertProvider set where generated app URLs live; a change re-hosts them.
 	ExternalBaseDomain   *string
 	ExternalCertProvider *string
-	// ExternalCertificateID serves the generated URLs from a system-workspace certificate; 0 goes back to a
-	// certificate per app.
+	// 0 goes back to a certificate per app.
 	ExternalCertificateID *uint
 	// ServiceEndpointMode switches how the cluster's service apps are reached by name; running services follow.
 	ServiceEndpointMode *models.ServiceEndpointMode
@@ -57,18 +56,13 @@ type ClusterPatch struct {
 	IngressIP       *string
 	IngressIPv6     *string
 	IngressHostname *string
-	// OrganizationID dedicates the cluster to one organization; 0 releases it back to shared. Set it
-	// together with Visibility "organization" — the handler keeps the two in step.
+	// The handler keeps this in step with Visibility "organization".
 	OrganizationID *uint
-	// Acknowledge confirms the caller accepts what changing the dedication does to the tenants
-	// already here. Required whenever OrganizationID actually changes hands: it decides who may see
-	// and place in the location, and it strands whatever the new owner does not own.
+	// Required when ownership changes: it decides who may see and place, and strands what the new owner doesn't own.
 	Acknowledge bool
 }
 
-// clearStaleDefaults drops workspace default locations that dedicating a cluster just invalidated.
-// Best-effort: placement already skips a default it may not use, so a failure here leaves a stale
-// row rather than a broken deploy.
+// Placement already skips an unusable default, so a failure leaves a stale row rather than a broken deploy.
 func (s *Service) clearStaleDefaults() {
 	if s.store == nil {
 		return
@@ -161,11 +155,7 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 	}
 	if p.OrganizationID != nil && *p.OrganizationID != previousOrg {
 		if *p.OrganizationID != 0 {
-			// Dedicating hides the cluster from every other tenant. Their workloads would keep
-			// running here while their workspace could no longer see, scale or place beside them —
-			// so refuse rather than strand them. A reassignment strands the previous owner the same
-			// way, which is why this is not limited to a location nobody owns yet. Checked before
-			// the acknowledgement: this one cannot be acknowledged away.
+			// Foreign workloads would be stranded; checked before the acknowledgement since it cannot be acknowledged away.
 			if n, err := s.foreignWorkloads(c.ID, *p.OrganizationID); err != nil {
 				return nil, err
 			} else if n > 0 {
@@ -177,8 +167,7 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		}
 		if *p.OrganizationID == 0 {
 			cols["organization_id"] = nil
-			// A cluster left on "organization" visibility with no owner would be visible to nobody,
-			// so releasing it always returns it to shared.
+			// An "organization" cluster with no owner would be visible to nobody.
 			if p.Visibility == nil || *p.Visibility == models.ClusterVisibilityOrganization {
 				cols["visibility"] = models.ClusterVisibilityAll
 			}
@@ -236,9 +225,7 @@ func (s *Service) UpdateCluster(id uint, p ClusterPatch) (*models.Cluster, error
 		}
 	}
 	if p.OrganizationID != nil && *p.OrganizationID != previousOrg {
-		// Dedicating a location invalidates the default location of every workspace that may no
-		// longer place there — the ones outside the organization, and the organization's own if it
-		// was pointing at shared hardware. Left alone they are skipped silently at every deploy.
+		// Left alone, invalidated defaults would be skipped silently at every deploy.
 		s.clearStaleDefaults()
 		s.alignOrgDefaults(c.ID, previousOrg, *p.OrganizationID)
 	}

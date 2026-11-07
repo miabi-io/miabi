@@ -30,44 +30,31 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// The registry used to serve auth-less on the platform's private network, which made being on that
-// network the whole of the authorization story. It now requires HTTP Basic even there, so reaching
-// it is not the same as being allowed to use it: the gateway is the only client that holds the
-// credential, and every tenant request still passes the forwardAuth check in front of it.
+// The registry requires HTTP Basic even on the private network; only the gateway holds the credential.
 const (
-	// upstreamUser names the single account in the registry's htpasswd file. It is not a person and
-	// never appears in a tenant's `docker login` — those authenticate at the gateway.
+	// Not a person; tenants authenticate at the gateway, never with this account.
 	upstreamUser = "miabi-gateway"
-	// upstreamTokenLabel keys the derived credential. Changing it rotates the password, which takes
-	// effect when the registry is next recreated — never do so casually.
+	// Changing this rotates the password on the next registry recreate; never do so casually.
 	upstreamTokenLabel = "registry:upstream-auth"
 
-	// authVolume carries the htpasswd file. A volume of its own, not the data volume: the data
-	// volume may live on S3, where there is nothing to mount.
+	// Separate from the data volume, which may live on S3 where there is nothing to mount.
 	authVolume   = "mb-registry-auth"
 	authPath     = "/auth"
 	htpasswdName = "htpasswd"
 	authRealm    = "Miabi internal registry"
 )
 
-// upstreamPassword is the credential the gateway presents to the registry. It derives from the
-// master encryption key rather than being stored, so it survives a restart, is identical in the
-// gateway config and the htpasswd file without a second source of truth, and never sits in the
-// database. Resolved lazily so it does not depend on construction order relative to crypto.Init.
+// Derived from the master key so gateway and htpasswd agree without storage; lazy to avoid crypto.Init ordering.
 func (s *Service) upstreamPassword() string {
 	return crypto.DeriveToken(upstreamTokenLabel)
 }
 
-// upstreamAuthHeader is the Authorization value the gateway sets on requests it forwards to the
-// registry, replacing whatever the tenant's docker client sent — by then forwardAuth has already
-// decided whether that tenant may proceed.
+// Replaces the tenant's Authorization; forwardAuth has already decided whether the tenant may proceed.
 func (s *Service) upstreamAuthHeader() string {
 	raw := upstreamUser + ":" + s.upstreamPassword()
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(raw))
 }
 
-// ensureUpstreamAuth writes the htpasswd file the registry authenticates against into its own
-// volume, using image (already pulled for the registry itself) as the helper.
 func (s *Service) ensureUpstreamAuth(ctx context.Context, dc docker.Client, image string) error {
 	if _, err := dc.CreateVolume(ctx, authVolume, docker.PlatformLabels(docker.RoleRegistry, docker.ManagedByMiabi, nil), 0); err != nil {
 		return fmt.Errorf("ensure registry auth volume: %w", err)
@@ -82,9 +69,7 @@ func (s *Service) ensureUpstreamAuth(ctx context.Context, dc docker.Client, imag
 	return nil
 }
 
-// htpasswdLine renders one bcrypt htpasswd entry. Distribution accepts only bcrypt, and bcrypt
-// silently truncates at 72 bytes — the derived token is well under that, but a future longer
-// credential would hash to the same value as its own prefix, so refuse rather than truncate.
+// Distribution accepts only bcrypt, which silently truncates at 72 bytes, so refuse rather than truncate.
 func htpasswdLine(user, password string) (string, error) {
 	if len(password) > 72 {
 		return "", fmt.Errorf("registry upstream password is %d bytes; bcrypt truncates above 72", len(password))

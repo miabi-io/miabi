@@ -49,9 +49,7 @@ import (
 )
 
 type AuthHandler struct {
-	auth *auth.Service
-	// userSettings owns the caller's preferences and landing workspace. Nil-safe:
-	// /me simply omits them.
+	auth         *auth.Service
 	userSettings *usersettings.Service
 	users        *repositories.UserRepository
 	sessions     *repositories.SessionRepository
@@ -59,35 +57,23 @@ type AuthHandler struct {
 	settings     *settings.Provider
 	mailer       *mailer.Service
 	devMode      bool
-	// passwordResetEnabled gates the self-service "forgot password" flow. A
-	// critical auth control, so it is fixed at boot from MIABI_PASSWORD_RESET_ENABLED
-	// rather than a runtime setting — changing it requires a restart.
+	// A critical auth control, so fixed at boot from MIABI_PASSWORD_RESET_ENABLED, not a runtime setting.
 	passwordResetEnabled bool
-	// branding and ee drive the sign-in page's identity. Both nil-safe: without
-	// them the page shows Miabi's own, which is what Community does anyway.
-	branding *branding.Service
-	ee       enterprise.EE
+	branding             *branding.Service
+	ee                   enterprise.EE
 	// registration decides whether the sign-in page offers a sign-up link.
 	registration   *registration.Service
 	creationPolicy func(userID uint) workspace.CreationPolicy
-	// enforceSSO reports whether a user must sign in via SSO (password login blocked). Set by
-	// SetSSOEnforcement; nil means never enforced. Platform admins are exempt by the closure so a
-	// misconfigured IdP can't lock everyone out.
+	// Platform admins are exempt so a misconfigured IdP can't lock everyone out.
 	enforceSSO func(user *models.User) bool
-	// directoryLogin attempts LDAP/AD auth as a fall-through when local password auth fails (Enterprise). Set
-	// by SetDirectoryLogin; nil means no directory. Returns (user,nil) on success, (nil,nil) to fall through,
-	// (nil,err) on a bind/disabled failure.
+	// Returns (user,nil) on success, (nil,nil) to fall through, (nil,err) on a bind/disabled failure.
 	directoryLogin func(ctx context.Context, identifier, password string) (*models.User, error)
-	// loginTokens mints the short-lived personal API token behind the "Copy login
-	// command" flow. Set by SetLoginTokens; nil disables the endpoint.
-	loginTokens *logintoken.Service
+	loginTokens    *logintoken.Service
 	// passkeys is nil when the server has no public URL to bind them to. Set by SetPasskeys.
 	passkeys    *passkey.Service
 	passkeyRepo *repositories.PasskeyRepository
 }
 
-// SetLoginTokens wires the CLI login-token issuer (the "Copy login command"
-// flow). Optional; without it POST /auth/login-token returns 503.
 func (h *AuthHandler) SetLoginTokens(s *logintoken.Service) { h.loginTokens = s }
 
 // SetSSOEnforcement wires the enforced-SSO predicate (Enterprise). Optional.
@@ -95,18 +81,12 @@ func (h *AuthHandler) SetSSOEnforcement(fn func(user *models.User) bool) {
 	h.enforceSSO = fn
 }
 
-// SetDirectoryLogin wires the LDAP/AD fall-through authenticator (Enterprise).
-// Optional; without it login is local-password + redirect-SSO only.
 func (h *AuthHandler) SetDirectoryLogin(fn func(ctx context.Context, identifier, password string) (*models.User, error)) {
 	h.directoryLogin = fn
 }
 
-// SetMailer wires the platform mailer used to deliver password-reset emails.
-// Optional; without it (or without SMTP configured) the email is skipped.
 func (h *AuthHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 
-// SetBranding wires the sign-in page's operator identity. Nil-safe: unset means
-// the page shows Miabi's own, exactly as Community does.
 func (h *AuthHandler) SetBranding(b *branding.Service, ee enterprise.EE) {
 	h.branding, h.ee = b, ee
 }
@@ -123,45 +103,33 @@ func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, session
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
 }
 
-// SetUserSettings wires per-user preferences and the default-workspace resolver
-// (nil-safe; nil leaves /me without them and refuses the preference endpoints).
 func (h *AuthHandler) SetUserSettings(s *usersettings.Service) { h.userSettings = s }
 
 type LoginRequest struct {
 	Body struct {
 		// Username is the login handle — a username or an email address.
-		Username string `json:"username" required:"true"`
-		Password string `json:"password" required:"true"`
-		// TwoFactorCode is the TOTP code, required only on the second login step
-		// when the account has two-factor authentication enabled.
+		Username      string `json:"username" required:"true"`
+		Password      string `json:"password" required:"true"`
 		TwoFactorCode string `json:"two_factor_code"`
 	} `json:"body"`
 }
 
-// LoginTokenRequest re-authenticates the user (username, password, and a TOTP code when 2FA is
-// on) to mint a short-lived personal API token for the CLI. It deliberately takes credentials in
-// the body: the token is never issued off an ambient session, so even a signed-in user re-auths.
+// Takes credentials in the body: the token is never issued off an ambient session.
 type LoginTokenRequest struct {
 	Body struct {
 		Username      string `json:"username" required:"true"`
 		Password      string `json:"password" required:"true"`
 		TwoFactorCode string `json:"two_factor_code"`
-		// RedirectURI, when set, switches the response from the raw token to the loopback CLI-login
-		// flow: the token is stashed under a single-use code and the caller gets a redirect_to pointing
-		// at the CLI's local callback. Must be loopback. State is echoed back as the CLI's CSRF check.
+		// Switches to the loopback flow; must be a loopback URI, and State is echoed as the CLI's CSRF check.
 		RedirectURI string `json:"redirect_uri"`
 		State       string `json:"state"`
-		// Scopes optionally narrows the token; admin/"*" are rejected. Empty
-		// defaults to read/write/deploy (console-equivalent).
+		// admin and "*" are rejected; empty defaults to read/write/deploy.
 		Scopes []string `json:"scopes"`
 		// ExpiresInHours optionally overrides the default lifetime, capped server-side.
 		ExpiresInHours *int `json:"expires_in_hours"`
 	} `json:"body"`
 }
 
-// LoginTokenResponse carries the freshly minted token and the ready-to-paste CLI
-// and curl commands (shown once). TwoFactorRequired mirrors login: a valid
-// password on a 2FA account returns a challenge to re-submit with a code.
 type LoginTokenResponse struct {
 	Token             string     `json:"token,omitempty"`
 	SHA256            string     `json:"sha256,omitempty"`
@@ -171,9 +139,7 @@ type LoginTokenResponse struct {
 	LoginCommand      string     `json:"login_command,omitempty"`
 	CurlExample       string     `json:"curl_example,omitempty"`
 	TwoFactorRequired bool       `json:"two_factor_required,omitempty"`
-	// RedirectTo is set only for the loopback CLI-login flow (a redirect_uri was
-	// supplied): the caller navigates here to hand the single-use code back to the
-	// CLI's local server. The raw token is omitted in that case.
+	// Set only for the loopback flow, in which case the raw token is omitted.
 	RedirectTo string `json:"redirect_to,omitempty"`
 }
 
@@ -208,16 +174,11 @@ type ChangePasswordRequest struct {
 // UpdateProfileRequest carries the editable fields of a user's own profile.
 type UpdateProfileRequest struct {
 	Body struct {
-		Name string `json:"name" required:"true" minLength:"1" maxLength:"100"`
-		// Username optionally changes the unique handle. Omitted leaves it
-		// unchanged; when set it is slug-validated, reserved words and taken
-		// handles are rejected.
+		Name     string `json:"name" required:"true" minLength:"1" maxLength:"100"`
 		Username string `json:"username"`
 	} `json:"body"`
 }
 
-// SessionInfo describes one active sign-in session for the /me/sessions list.
-// Current flags the session the request itself is authenticated with.
 type SessionInfo struct {
 	ID        uint      `json:"id"`
 	IPAddress string    `json:"ip_address"`
@@ -234,41 +195,25 @@ type RevokeOthersResult struct {
 }
 
 type UserProfile struct {
-	ID               uint              `json:"id"`
-	Name             string            `json:"name"`
-	Username         string            `json:"username"`
-	Email            string            `json:"email"`
-	Role             models.SystemRole `json:"role"`
-	TwoFactorEnabled bool              `json:"two_factor_enabled"`
-	// OnboardingDismissed is true once the user has dismissed or completed the
-	// getting-started checklist; the web hides onboarding guidance when set.
-	OnboardingDismissed bool `json:"onboarding_dismissed"`
-	// AuthSource names the system that owns the identity: local, or the provider that
-	// provisioned it (oauth, ldap, saml, scim).
-	AuthSource string `json:"auth_source"`
-	// ProfileManaged is true when AuthSource is external, i.e. name and username are
-	// the provider's to change and self-service edits are refused.
-	ProfileManaged bool `json:"profile_managed"`
+	ID                  uint              `json:"id"`
+	Name                string            `json:"name"`
+	Username            string            `json:"username"`
+	Email               string            `json:"email"`
+	Role                models.SystemRole `json:"role"`
+	TwoFactorEnabled    bool              `json:"two_factor_enabled"`
+	OnboardingDismissed bool              `json:"onboarding_dismissed"`
+	AuthSource          string            `json:"auth_source"`
+	ProfileManaged      bool              `json:"profile_managed"`
 	// RecoveryCodesRemaining is populated on the profile (/me) endpoint only.
-	RecoveryCodesRemaining *int `json:"recovery_codes_remaining,omitempty"`
-	// Auth describes the credential the request authenticated with. Populated on
-	// /me only, so a CLI/Terraform can discover the workspace its token manages.
-	Auth *AuthContext `json:"auth,omitempty"`
-	// DefaultWorkspaceID is where a client with no workspace in mind should land.
-	// Resolved (and repaired) on /me, so it always names a workspace the caller can
-	// actually open, or is absent when they belong to none. It is a landing hint:
-	// authorization still comes from the WorkspaceScope middleware on every request.
+	RecoveryCodesRemaining *int         `json:"recovery_codes_remaining,omitempty"`
+	Auth                   *AuthContext `json:"auth,omitempty"`
+	// A landing hint only: authorization still comes from WorkspaceScope on every request.
 	DefaultWorkspaceID *uint `json:"default_workspace_id,omitempty"`
 	// Preferences are the user's console settings. Populated on /me only.
-	Preferences *models.UserSetting `json:"preferences,omitempty"`
-	// WorkspaceCreation says whether the user may create a workspace, so clients hide the action
-	// rather than offer one that fails. Populated on /me only.
+	Preferences       *models.UserSetting       `json:"preferences,omitempty"`
 	WorkspaceCreation *workspace.CreationPolicy `json:"workspace_creation,omitempty"`
 }
 
-// AuthContext reports the principal behind the current request: how it
-// authenticated and, for a workspace-bound API key, which workspace the token is
-// scoped to (nil = account-wide / session).
 type AuthContext struct {
 	Method      string   `json:"method"`                 // "jwt" | "api_key"
 	APIKeyID    *uint    `json:"api_key_id,omitempty"`   // nil for session callers
@@ -277,28 +222,20 @@ type AuthContext struct {
 }
 
 type AuthResponse struct {
-	Token string       `json:"token,omitempty"`
-	User  *UserProfile `json:"user,omitempty"`
-	// TwoFactorRequired is true when the credentials were valid but the account
-	// needs a TOTP code; the client should re-submit login with two_factor_code.
-	TwoFactorRequired bool `json:"two_factor_required,omitempty"`
-	// MustChangePassword is true when the credentials were valid but the account has an admin-set
-	// password it must replace. No session is issued; ResetToken is a short-lived, single-use token
-	// the client exchanges via /auth/complete-password-reset for a real session.
+	Token             string       `json:"token,omitempty"`
+	User              *UserProfile `json:"user,omitempty"`
+	TwoFactorRequired bool         `json:"two_factor_required,omitempty"`
+	// No session is issued; ResetToken is single-use and exchanged via /auth/complete-password-reset.
 	MustChangePassword bool   `json:"must_change_password,omitempty"`
 	ResetToken         string `json:"reset_token,omitempty"`
 }
 
-// Setup2FAResponse carries the new TOTP secret, its otpauth:// URL, and a
-// ready-to-render QR code (PNG data URI) for the authenticator app.
 type Setup2FAResponse struct {
 	Secret string `json:"secret"`
 	URL    string `json:"url"`
 	QRCode string `json:"qr_code"`
 }
 
-// RecoveryCodesResponse carries freshly generated single-use backup codes,
-// shown to the user once.
 type RecoveryCodesResponse struct {
 	RecoveryCodes []string `json:"recovery_codes"`
 }
@@ -309,8 +246,7 @@ type Verify2FARequest struct {
 	} `json:"body"`
 }
 
-// Disable2FARequest / RegenerateCodesRequest accept either a 6-digit TOTP code
-// or a recovery code, so the field is not length-constrained.
+// Accepts a TOTP or a recovery code, so the field is not length-constrained.
 type Disable2FARequest struct {
 	Body struct {
 		Code string `json:"code" required:"true"`
@@ -323,16 +259,11 @@ type RegenerateCodesRequest struct {
 	} `json:"body"`
 }
 
-// AuthStatus advertises which auth features are enabled, so the login and
-// register screens can render conditionally.
 type AuthStatus struct {
 	PasswordResetEnabled bool `json:"password_reset_enabled"`
-	// Brand is the operator's identity for the sign-in page, which has no user and
-	// therefore no personal preference to read. Empty fields mean Miabi's own.
+	// The sign-in page has no user and so no personal preference; empty fields mean Miabi's own.
 	Brand branding.Branding `json:"brand"`
-	// RegistrationEnabled tells the sign-in page whether to offer a "create
-	// account" link. False also when sign-up is on but unusable — see
-	// registration.Available.
+	// False also when sign-up is on but unusable; see registration.Available.
 	RegistrationEnabled bool `json:"registration_enabled"`
 	// PasskeysEnabled tells the sign-in page whether to offer passkey sign-in.
 	PasskeysEnabled bool `json:"passkeys_enabled"`
@@ -346,8 +277,6 @@ func profileOf(u *models.User) UserProfile {
 	return UserProfile{ID: u.ID, Name: u.Name, Username: u.Username, Email: u.Email, Role: u.Role, TwoFactorEnabled: u.TwoFactorEnabled, OnboardingDismissed: u.OnboardingDismissedAt != nil, AuthSource: src, ProfileManaged: u.IsExternal()}
 }
 
-// authSourceLabel names an auth source for an end user, who knows the provider by
-// what they sign in with, not by the column value.
 func authSourceLabel(src string) string {
 	switch strings.ToLower(strings.TrimSpace(src)) {
 	case models.AuthSourceLDAP:
@@ -363,33 +292,24 @@ func authSourceLabel(src string) string {
 	}
 }
 
-// Status reports which auth features are enabled (public). Registration is
-// closed — the platform admin is seeded at install; accounts are created by an
-// admin from the Users page.
 func (h *AuthHandler) Status(c *okapi.Context) error {
 	st := AuthStatus{PasswordResetEnabled: h.passwordResetEnabled, PasskeysEnabled: h.passkeys.Enabled()}
 	if h.registration != nil {
 		st.RegistrationEnabled = h.registration.Available() == nil
 	}
-	// Read, not write: an expired licence must not blank an operator's sign-in page
-	// and replace it with someone else's branding. See SetBranding.
+	// Read, not write: an expired licence must not replace an operator's sign-in branding.
 	if h.branding != nil && h.ee != nil && h.ee.Has(enterprise.FlagWhiteLabel) {
 		st.Brand = h.branding.Public()
 	}
 	return ok(c, st)
 }
 
-// errEmailUnverified / errSSORequired are credential-check policy failures,
-// mapped to 403 by abortCredential. They keep the shared check independent of the
-// two callers (Login, LoginToken).
 var (
 	errEmailUnverified = errors.New("email address is not verified")
 	errSSORequired     = errors.New("password login is disabled for this organization; use single sign-on")
 )
 
-// credentialCheck runs the shared login gate: local password auth with the LDAP/AD fall-through,
-// then the disabled / email-verification / enforced-SSO policy. Returns the user and whether auth
-// came via the directory; 2FA and the success path are per-caller. Errors go to abortCredential.
+// Returns the user and whether auth came via the directory; 2FA and success are per-caller.
 func (h *AuthHandler) credentialCheck(ctx context.Context, identifier, password string) (*models.User, bool, error) {
 	user, err := h.auth.Authenticate(identifier, password)
 	viaDirectory := false
@@ -408,16 +328,13 @@ func (h *AuthHandler) credentialCheck(ctx context.Context, identifier, password 
 	if h.settings.Bool(settings.KeyRequireEmailVerification, false) && user.EmailVerifiedAt == nil && !user.IsAdmin() {
 		return nil, false, errEmailUnverified
 	}
-	// Enforced SSO blocks LOCAL password login (platform admins exempt — a
-	// lock-out safety valve). A directory login is itself an accepted SSO method.
+	// Platform admins are exempt as a lock-out safety valve; a directory login is itself an SSO method.
 	if !viaDirectory && h.enforceSSO != nil && h.enforceSSO(user) {
 		return nil, false, errSSORequired
 	}
 	return user, viaDirectory, nil
 }
 
-// abortCredential maps a credentialCheck error to the same HTTP responses Login
-// has always returned.
 func (h *AuthHandler) abortCredential(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, auth.ErrAccountDisabled), errors.Is(err, directory.ErrAccountDisabled):
@@ -441,8 +358,6 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 	if err != nil {
 		return h.abortCredential(c, err)
 	}
-	// Second factor: when enabled, the first request (no code) returns a
-	// challenge; the client re-submits the same credentials plus the TOTP code.
 	if user.TwoFactorEnabled {
 		if req.Body.TwoFactorCode == "" {
 			return ok(c, AuthResponse{TwoFactorRequired: true})
@@ -452,9 +367,7 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 			return c.AbortUnauthorized("invalid two-factor code")
 		}
 	}
-	// Forced password change: the credentials (and 2FA) are valid, but the account has an admin-set/reset
-	// password. Issue a short-lived reset session instead of a real one — the user exchanges it for a session
-	// once they set their own password, so they never have to re-enter the admin-set one.
+	// Issue a short-lived reset session so the user never has to re-enter the admin-set password.
 	if user.MustChangePassword {
 		token, err := h.auth.CreateResetSession(c.Request().Context(), user.ID)
 		if err != nil {
@@ -474,8 +387,6 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 	return h.issue(c, user, 200)
 }
 
-// CompletePasswordResetRequest carries the reset token from login plus the new
-// password the user chose.
 type CompletePasswordResetRequest struct {
 	Body struct {
 		ResetToken  string `json:"reset_token" required:"true"`
@@ -483,9 +394,6 @@ type CompletePasswordResetRequest struct {
 	} `json:"body"`
 }
 
-// CompletePasswordReset finishes the forced-change flow: it consumes the short-lived reset token
-// issued at login, sets the new password (clearing the must-change flag) and issues a full
-// session, so the user never re-enters the admin-set password.
 func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePasswordResetRequest) error {
 	user, err := h.auth.CompletePasswordReset(c.Request().Context(), req.Body.ResetToken, req.Body.NewPassword)
 	if errors.Is(err, models.ErrPasswordTooShort) {
@@ -502,9 +410,7 @@ func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePassw
 	return h.issue(c, user, 200)
 }
 
-// LoginToken re-authenticates the user and mints a short-lived personal API token for the CLI.
-// It never reads the session cookie — the token is issued only against credentials in this
-// request, so even a signed-in user re-authenticates. No session is created.
+// LoginToken never reads the session cookie: it is issued only against credentials in this request.
 func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error {
 	if h.loginTokens == nil {
 		return c.AbortWithError(503, errors.New("login tokens are not available"))
@@ -529,9 +435,7 @@ func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error
 	if user.MustChangePassword {
 		return c.AbortForbidden("set a new password before creating an API token")
 	}
-	// Loopback CLI-login flow: the browser reached this page from `miabi login`
-	// with a local callback. Reject anything that is not a loopback address before
-	// minting — we must never hand a token off to an arbitrary redirect target.
+	// A token must never be handed to an arbitrary redirect target.
 	redirectURI := strings.TrimSpace(req.Body.RedirectURI)
 	if redirectURI != "" && !isLoopbackRedirect(redirectURI) {
 		return c.AbortBadRequest("redirect_uri must be a loopback (127.0.0.1/localhost) address")
@@ -548,8 +452,7 @@ func (h *AuthHandler) LoginToken(c *okapi.Context, req *LoginTokenRequest) error
 	if redirectURI == "" {
 		return ok(c, tokenPayload(tok))
 	}
-	// Loopback target: stash the token behind a single-use code and hand back the
-	// callback URL so the secret rides a one-time reference, not the address bar.
+	// The secret rides a one-time reference, not the address bar.
 	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
 	if err != nil {
 		return c.AbortInternalServerError("failed to prepare CLI login", err)
@@ -567,9 +470,7 @@ type AuthorizeCLIRequest struct {
 	} `json:"body"`
 }
 
-// AuthorizeCLI signs the CLI in with the browser's session. The session already passed the account's
-// sign-in, second factor included, so the explicit click on /cli/authorize stands in for entering
-// credentials again. Session-only: an API key must not be able to mint itself more tokens.
+// Session-only: an API key must not be able to mint itself more tokens.
 func (h *AuthHandler) AuthorizeCLI(c *okapi.Context, req *AuthorizeCLIRequest) error {
 	if h.loginTokens == nil {
 		return c.AbortWithError(503, errors.New("login tokens are not available"))
@@ -601,8 +502,6 @@ func (h *AuthHandler) AuthorizeCLI(c *okapi.Context, req *AuthorizeCLIRequest) e
 	return ok(c, LoginTokenResponse{RedirectTo: buildCliRedirect(redirectURI, ref, req.Body.State)})
 }
 
-// isLoopbackRedirect reports whether raw is an http URL pointing at the local
-// machine — the only redirect target the CLI-login flows may hand a token to.
 func isLoopbackRedirect(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "http" {
@@ -616,8 +515,6 @@ func isLoopbackRedirect(raw string) bool {
 	}
 }
 
-// buildCliRedirect appends the single-use code and echoed state to the CLI's
-// loopback callback URL, preserving any query already present on it.
 func buildCliRedirect(redirectURI, code, state string) string {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
@@ -639,18 +536,14 @@ func redirectVia(redirectURI string) string {
 	return "cli_loopback"
 }
 
-// ClaimLoginTokenRequest carries the single-use hand-off reference minted by the
-// SSO login-token flow (the OAuth callback stashed the token in Redis and
-// redirected here with the reference, never the token itself).
+// The OAuth callback stashes the token in Redis and redirects with the reference, never the token.
 type ClaimLoginTokenRequest struct {
 	Body struct {
 		Handoff string `json:"handoff" required:"true"`
 	} `json:"body"`
 }
 
-// ClaimLoginToken exchanges a single-use hand-off reference for the login token
-// the SSO flow minted. Public — the reference is the (short-lived, one-time)
-// credential — but rate-limited like the other auth endpoints.
+// Public because the one-time reference is the credential, but rate-limited like other auth endpoints.
 func (h *AuthHandler) ClaimLoginToken(c *okapi.Context, req *ClaimLoginTokenRequest) error {
 	if h.loginTokens == nil {
 		return c.AbortWithError(503, errors.New("login tokens are not available"))
@@ -794,9 +687,7 @@ func (h *AuthHandler) SetDefaultWorkspace(c *okapi.Context, req *SetDefaultWorks
 	return ok(c, out)
 }
 
-// ForgotPassword issues a reset token and emails the reset link, always returning 200 so it
-// cannot leak whether the email exists. Gated by MIABI_PASSWORD_RESET_ENABLED, a boot-time
-// control: when disabled, no token is created and no email is sent.
+// Always returns 200 so it cannot leak whether the email exists.
 func (h *AuthHandler) ForgotPassword(c *okapi.Context, req *ForgotPasswordRequest) error {
 	if !h.passwordResetEnabled {
 		return message(c, "if the email exists, a reset link has been sent")
@@ -806,9 +697,7 @@ func (h *AuthHandler) ForgotPassword(c *okapi.Context, req *ForgotPasswordReques
 		return c.AbortInternalServerError("failed to process request", err)
 	}
 	if user != nil {
-		// Deliver the reset link by email (best-effort, async). The token is a full
-		// account-takeover credential, so it is never logged in production; in dev
-		// it is surfaced so the flow stays testable without an SMTP server.
+		// The token is an account-takeover credential: never logged in production, surfaced only in dev.
 		h.mailer.SendPasswordReset(user.Email, user.Name, raw, int(auth.PasswordResetTTL/time.Hour))
 		if h.devMode {
 			logger.Warn("password reset token (dev only — not logged in production)", "user_id", user.ID, "token", raw)
@@ -833,8 +722,6 @@ func (h *AuthHandler) ResetPassword(c *okapi.Context, req *ResetPasswordRequest)
 	return message(c, "password updated")
 }
 
-// ChangePassword lets an authenticated user change their own password by
-// supplying their current one (the self-service path from the security page).
 func (h *AuthHandler) ChangePassword(c *okapi.Context, req *ChangePasswordRequest) error {
 	uid := middlewares.UserID(c)
 	if err := h.auth.ChangePassword(uid, req.Body.CurrentPassword, req.Body.NewPassword); err != nil {
@@ -847,8 +734,7 @@ func (h *AuthHandler) ChangePassword(c *okapi.Context, req *ChangePasswordReques
 		return c.AbortInternalServerError("failed to change password", err)
 	}
 	h.audit.Record(audit.Entry{ActorID: &uid, Action: "user.password_changed", TargetType: "user", IP: c.RealIP()})
-	// Every session ended with the old password, this one included; a fresh one keeps the user signed in
-	// here while everywhere else is signed out.
+	// A fresh session keeps the user signed in here while everywhere else is signed out.
 	h.revokeSessions(c, uid)
 	user, err := h.users.FindByID(uid)
 	if err != nil {
@@ -857,8 +743,7 @@ func (h *AuthHandler) ChangePassword(c *okapi.Context, req *ChangePasswordReques
 	return h.issue(c, user, 200)
 }
 
-// revokeSessions ends every recorded session of a user, so the sessions list matches what the
-// middleware already enforces after a password change.
+// Keeps the sessions list consistent with what the middleware already enforces after a password change.
 func (h *AuthHandler) revokeSessions(c *okapi.Context, userID uint) {
 	sessions, err := h.sessions.ListByUser(userID)
 	if err != nil {
@@ -874,10 +759,7 @@ func (h *AuthHandler) revokeSessions(c *okapi.Context, userID uint) {
 	_ = h.sessions.RevokeAllForUser(userID, "")
 }
 
-// UpdateProfile lets an authenticated user edit their own profile — the display
-// name and (optionally) the username handle. Email and role are managed by an
-// admin, not self-service, and an externally provisioned account is managed by its
-// identity provider.
+// Email and role are admin-managed; an externally provisioned account is managed by its IdP.
 func (h *AuthHandler) UpdateProfile(c *okapi.Context, req *UpdateProfileRequest) error {
 	uid := middlewares.UserID(c)
 	user, err := h.users.FindByID(uid)
@@ -909,8 +791,6 @@ func (h *AuthHandler) UpdateProfile(c *okapi.Context, req *UpdateProfileRequest)
 	return ok(c, profileOf(user))
 }
 
-// DismissOnboarding marks the getting-started checklist as dismissed (or
-// completed) for the authenticated user, so the web stops showing it. Idempotent.
 func (h *AuthHandler) DismissOnboarding(c *okapi.Context) error {
 	user, err := h.users.FindByID(middlewares.UserID(c))
 	if err != nil {
@@ -926,9 +806,6 @@ func (h *AuthHandler) DismissOnboarding(c *okapi.Context) error {
 	return ok(c, profileOf(user))
 }
 
-// ListSessions returns the authenticated user's active sign-in sessions,
-// flagging the one the current request is using so the UI can label it and
-// prevent revoking the session you're sitting on.
 func (h *AuthHandler) ListSessions(c *okapi.Context) error {
 	uid := middlewares.UserID(c)
 	sessions, err := h.sessions.ListByUser(uid)
@@ -954,9 +831,6 @@ func (h *AuthHandler) ListSessions(c *okapi.Context) error {
 	return ok(c, out)
 }
 
-// RevokeSession revokes one of the authenticated user's own sessions, signing
-// out that device. The session is blacklisted (Redis) and marked revoked so the
-// JWT is rejected on its next request.
 func (h *AuthHandler) RevokeSession(c *okapi.Context) error {
 	uid := middlewares.UserID(c)
 	id, err := strconv.Atoi(c.Param("id"))
@@ -973,9 +847,6 @@ func (h *AuthHandler) RevokeSession(c *okapi.Context) error {
 	return message(c, "session revoked")
 }
 
-// RevokeOtherSessions signs out every active session belonging to the user
-// except the one making this request, so a user can drop all other devices in
-// one click without logging themselves out.
 func (h *AuthHandler) RevokeOtherSessions(c *okapi.Context) error {
 	uid := middlewares.UserID(c)
 	currentJTI := c.GetString("jti")
@@ -1000,9 +871,7 @@ func (h *AuthHandler) RevokeOtherSessions(c *okapi.Context) error {
 	return ok(c, RevokeOthersResult{Revoked: revoked, Message: fmt.Sprintf("signed out %d other session(s)", revoked)})
 }
 
-// Setup2FA generates a pending TOTP secret for the authenticated user and
-// returns it with an otpauth:// URL for QR rendering. 2FA is not active until
-// confirmed via Verify2FA.
+// 2FA is not active until confirmed via Verify2FA.
 func (h *AuthHandler) Setup2FA(c *okapi.Context) error {
 	user, err := h.users.FindByID(middlewares.UserID(c))
 	if err != nil {
@@ -1022,8 +891,6 @@ func (h *AuthHandler) Setup2FA(c *okapi.Context) error {
 	return ok(c, Setup2FAResponse{Secret: secret, URL: url, QRCode: qr})
 }
 
-// Verify2FA confirms a TOTP code, activates two-factor authentication, and
-// returns the user's one-time recovery codes (shown once).
 func (h *AuthHandler) Verify2FA(c *okapi.Context, req *Verify2FARequest) error {
 	user, err := h.users.FindByID(middlewares.UserID(c))
 	if err != nil {
@@ -1046,8 +913,6 @@ func (h *AuthHandler) Verify2FA(c *okapi.Context, req *Verify2FARequest) error {
 	return ok(c, RecoveryCodesResponse{RecoveryCodes: codes})
 }
 
-// RegenerateRecoveryCodes verifies a current TOTP code and replaces the user's
-// recovery codes with a fresh set.
 func (h *AuthHandler) RegenerateRecoveryCodes(c *okapi.Context, req *RegenerateCodesRequest) error {
 	user, err := h.users.FindByID(middlewares.UserID(c))
 	if err != nil {

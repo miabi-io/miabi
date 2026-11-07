@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { LOG_SIZES, type LogSize } from '@/composables/useLogSize'
 
-// The glyph is the control's whole label, so it shows the shape it produces: one
-// block, same width, growing upward off a shared baseline. A framed "panel with
-// fill" was the first attempt and turned to mush at 15px — at this size the
-// silhouette has to carry the meaning on its own.
+// The glyph is the whole label, so its silhouette must carry the meaning at 15px.
 const BAR: Record<LogSize, number> = { small: 4, medium: 8, large: 12 }
 const BASELINE = 14
 
@@ -32,8 +29,6 @@ const size = defineModel<LogSize>({ required: true })
 </template>
 
 <style scoped>
-/* An inset track with a raised chip for the active option, rather than three
-   adjacent bordered buttons — it reads as one control at toolbar size. */
 .log-size {
   display: inline-flex;
   gap: 2px;
@@ -64,8 +59,7 @@ const size = defineModel<LogSize>({ required: true })
   color: var(--primary-600);
   box-shadow: var(--shadow-sm);
 }
-/* The lift comes from a shadow, which reads as nothing on a dark surface — the
-   raised chip needs an edge there instead. */
+/* A shadow reads as nothing on a dark surface, so the chip needs an edge there. */
 [data-theme='dark'] .log-size-opt.active {
   box-shadow: inset 0 0 0 1px var(--border-primary);
 }

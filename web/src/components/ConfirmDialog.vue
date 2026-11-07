@@ -16,8 +16,7 @@ const props = withDefaults(
   }>(),
   {
     message: '',
-    // Empty rather than English: the fallback is translated at render, where t() is
-    // reactive and a language change updates an open dialog.
+    // Empty, not English: the fallback is translated at render so a language change updates an open dialog.
     confirmLabel: '',
     cancelLabel: '',
     variant: 'primary',
@@ -35,15 +34,10 @@ const titleId = `confirm-title-${seq++}`
 const confirmBtn = ref<HTMLButtonElement | null>(null)
 const cancelBtn = ref<HTMLButtonElement | null>(null)
 
-// Escape cancels, unless the dialog is mid-action; on open, focus lands on the
-// primary action rather than on the page behind it. Only the buttons dismiss
-// this dialog — clicking the backdrop does nothing, so a confirmation cannot be
-// waved away by an errant click.
+// Only the buttons dismiss; a backdrop click does nothing, so a confirmation cannot be waved away by accident.
 
 
-// Focus goes to the safe choice on a destructive prompt: Enter should not be
-// able to delete something the user has only just been asked about. Everywhere
-// else the primary action is the one they came for.
+// Focus the safe choice on a destructive prompt so Enter cannot delete something just asked about.
 watch(
   () => props.open,
   (open) => {
@@ -82,8 +76,6 @@ watch(
 </template>
 
 <style scoped>
-/* pre-line so a message can carry a second paragraph (e.g. the consequence of an
-   action, which is often the part that actually needs saying). Single-line messages
-   are unaffected. */
+/* pre-line lets a message carry a second paragraph, such as the consequence of the action. */
 .confirm-message { color: var(--text-secondary); font-size: 14px; line-height: 1.5; margin: 0; white-space: pre-line; }
 </style>

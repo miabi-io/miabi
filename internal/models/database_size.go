@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// DatabaseSize is a named CPU and memory limit a database instance can be given, like a cloud instance class
-// (Enterprise). Editing one sizes only the instances given it afterwards; those already on it keep their limits.
+// DatabaseSize is a named CPU/memory limit class (Enterprise); edits apply only to instances sized afterwards.
 type DatabaseSize struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 	// Name is the handle manifests and the API use. Fixed once created, since instances carry it as a label.

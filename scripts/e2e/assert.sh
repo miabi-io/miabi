@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Checks the manual install's gateway, routing and analytics, plus the build under test and
-# traffic through the gateway. Each of these once failed silently, which is why it is asserted directly.
+# Each of these once failed silently, which is why it is asserted directly.
 source "$(dirname "$0")/lib.sh"
 load
 
@@ -38,8 +37,7 @@ wait_until "gateway loaded the app's route" 120 sh -c "docker logs mb-node-gatew
 wait_until "$APP_HOST answers 200 through the gateway" 120 served
 
 log "Analytics"
-# settled prints the stream length once it has stopped moving: Goma publishes in 250 ms batches, so the
-# events of the requests just made (the probes above included) may still be in flight.
+# Goma publishes in 250 ms batches, so wait for the stream length to stop moving.
 settled() {
   local last now
   last=$(redis XLEN goma:analytics)

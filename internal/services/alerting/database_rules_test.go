@@ -32,8 +32,7 @@ func dbEvent(t models.AppEventType, sev models.AppEventSeverity) *models.AppEven
 	}
 }
 
-// TestEvaluateDispatchesOnSubject pins the subject dispatch: the app rules would have dropped
-// a database event outright, since its ApplicationID is 0.
+// The app rules would drop a database event outright since its ApplicationID is 0.
 func TestEvaluateDispatchesOnSubject(t *testing.T) {
 	got := evaluate(dbEvent(models.EventContainerOOM, models.SeverityError), "orders-db")
 	if len(got) != 1 {
@@ -50,8 +49,7 @@ func TestEvaluateDispatchesOnSubject(t *testing.T) {
 	}
 }
 
-// TestDatabaseBackupOutcomesRaiseNoIntent is the guard against double-alerting: the backup
-// service already reports outcomes through the Signal path, so the event rules must stay silent.
+// The backup service already reports outcomes via Signal, so event rules must stay silent to avoid double alerts.
 func TestDatabaseBackupOutcomesRaiseNoIntent(t *testing.T) {
 	for _, typ := range []models.AppEventType{
 		models.EventDatabaseBackupFailed,
@@ -88,8 +86,7 @@ func TestDatabaseRecoveryResolves(t *testing.T) {
 	}
 }
 
-// TestAppEventsUnaffected pins that an event with no explicit subject still evaluates as an
-// application event, so rows predating SubjectType keep alerting.
+// Rows predating SubjectType must keep alerting as application events.
 func TestAppEventsUnaffected(t *testing.T) {
 	e := &models.AppEvent{WorkspaceID: 1, ApplicationID: 5, Type: models.EventContainerOOM, Severity: models.SeverityError}
 	got := evaluate(e, "web")

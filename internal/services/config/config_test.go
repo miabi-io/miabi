@@ -113,8 +113,6 @@ func TestProjectDirectoryPrefixAndSingleKey(t *testing.T) {
 	}
 }
 
-// Two mounts of the same key at different modes must not collide on one
-// materialized path, which is why the file digest covers mode as well.
 func TestFileDigestCoversMode(t *testing.T) {
 	a := ProjectedFile{Path: "/x", Content: "same", Mode: "0644"}
 	b := ProjectedFile{Path: "/x", Content: "same", Mode: "0444"}

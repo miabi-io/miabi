@@ -2,8 +2,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Pageable } from '@/api/types'
 
-// Keeps a 0-indexed page in sync with the URL (?page= is 1-indexed for
-// readability) and invokes fetchFn whenever the page changes.
+// ?page= is 1-indexed for readability; the internal page is 0-indexed.
 export function usePagination(fetchFn: (page: number) => Promise<void>) {
   const route = useRoute()
   const router = useRouter()

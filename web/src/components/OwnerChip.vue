@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-// Renders a resource's owner as a compact, linkable chip. Owner is recorded
-// under the reserved keys miabi.io/owner-kind|id|name (see models.SetOwner).
-// Renders nothing when no owner is set.
+// Owner lives under the reserved miabi.io/owner-kind|id|name keys (see models.SetOwner).
 const props = defineProps<{ metadata?: Record<string, string> | null }>()
 
 const KIND = 'miabi.io/owner-kind'
@@ -32,8 +30,6 @@ const owner = computed<Owner | null>(() => {
     user: { icon: 'mdi-account-outline', route: '', noun: 'user' },
   }
   const m = meta[kind] || { icon: 'mdi-help-circle-outline', route: '', noun: kind }
-  // A resource owner links to its detail page; a user owner is shown as text
-  // (a member name, or "Member #id" when the name wasn't captured).
   const to = m.route && id ? `/${m.route}/${id}` : null
   const label = name || (kind === 'user' ? (id ? `Member #${id}` : 'a member') : `${m.noun} #${id}`)
   return { kind, id, name, icon: m.icon, to, label }

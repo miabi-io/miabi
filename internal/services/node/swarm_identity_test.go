@@ -51,9 +51,7 @@ func swarmIDOf(t *testing.T, repo *repositories.ServerRepository, id uint) strin
 	return srv.SwarmNodeID
 }
 
-// The control plane only ever recorded a swarm node id when Miabi itself ran the `swarm join`. A host joined
-// with `docker swarm join`, or already in a swarm when Miabi met it, stayed unmapped — and an unmapped node
-// cannot be resolved from a service's task, leaving a replica's logs and metrics unreachable.
+// Hosts joined by hand stayed unmapped, leaving their replicas' logs and metrics unreachable.
 func TestLearnSwarmNodeIDFillsAnUnmappedNode(t *testing.T) {
 	repo := newSwarmRepo(t, swarmRow{ID: 1, Name: "dns"})
 	s := NewService(repo, nil)
@@ -65,8 +63,7 @@ func TestLearnSwarmNodeIDFillsAnUnmappedNode(t *testing.T) {
 	}
 }
 
-// A node can leave one swarm and join another. Its own report is always more current
-// than ours, so it overwrites what we stored.
+// The node's own report is more current than ours, so it overwrites a stale id.
 func TestLearnSwarmNodeIDOverwritesAStaleID(t *testing.T) {
 	repo := newSwarmRepo(t, swarmRow{ID: 1, Name: "dns", SwarmNodeID: "old-swarm-id"})
 	s := NewService(repo, nil)
@@ -78,9 +75,7 @@ func TestLearnSwarmNodeIDOverwritesAStaleID(t *testing.T) {
 	}
 }
 
-// An empty value must NOT be read as "this node left the swarm": an older agent
-// sends no header at all, and wiping a good id because of it would re-break exactly
-// the lookup this feature exists to fix. The leave paths clear it explicitly.
+// Empty is not "left the swarm": older agents send no header; the leave paths clear it explicitly.
 func TestLearnSwarmNodeIDIgnoresEmpty(t *testing.T) {
 	repo := newSwarmRepo(t, swarmRow{ID: 1, Name: "dns", SwarmNodeID: "keep-me"})
 	s := NewService(repo, nil)

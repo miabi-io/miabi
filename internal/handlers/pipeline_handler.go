@@ -41,8 +41,6 @@ import (
 	"github.com/miabi-io/miabi/internal/worker"
 )
 
-// PipelineHandler exposes pipeline definition CRUD, run triggering, run history,
-// and live run-log streaming.
 type PipelineHandler struct {
 	svc   *pipeline.Service
 	bus   *eventbus.Bus
@@ -54,41 +52,30 @@ func NewPipelineHandler(svc *pipeline.Service, bus *eventbus.Bus, auditLog *audi
 	return &PipelineHandler{svc: svc, bus: bus, audit: auditLog}
 }
 
-// SetLogStore wires the shared execution-log store so a finished run's step
-// history is replayed from the store and full step logs can be downloaded. nil
-// keeps DB-tail-only behavior.
 func (h *PipelineHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 type CreatePipelineRequest struct {
 	Body struct {
 		Name        string `json:"name" required:"true"` // desired unique slug handle
 		DisplayName string `json:"display_name"`         // free-text label (defaults to name)
-		// Bind to an application, or to a registered repository — not both. A
-		// repository-bound pipeline builds and pushes without a deploy target.
+		// Not both; a repository-bound pipeline builds and pushes without a deploy target.
 		ApplicationID *uint `json:"application_id"`
-		// GitRepository names the repository, or gives its numeric id. The JSON type
-		// decides which: a string is a name, a number is an id. That matters because
-		// an all-digit name is a valid handle, so any "try one then the other" rule
-		// would silently resolve the wrong repository for someone named "123".
+		// A string is a name and a number is an id: an all-digit name like "123" is a valid handle.
 		GitRepository json.RawMessage `json:"git_repository"`
 		Branch        string          `json:"branch"` // ref a repository-bound run builds
 		Spec          string          `json:"spec" required:"true"`
 		Enabled       bool            `json:"enabled"`
-		// Versioning configures how the image repository numbers its builds, when it has no policy yet.
-		// Omitted gives a building pipeline the default: v1.0.0, then a patch bump per build.
+		// Omitted gives v1.0.0, then a patch bump per build.
 		Versioning *versioning.Settings `json:"versioning"`
 	} `json:"body"`
 }
 
-// UpdatePipelineRequest is a partial update: an omitted field is left unchanged. Enabled is a
-// pointer (nil = unchanged) and application_id is tri-state — omitted keeps the binding, null
-// unbinds, a number rebinds — so a spec-only PATCH cannot silently disable or unbind it.
+// Pointers and tri-state application_id so a spec-only PATCH cannot silently disable or unbind it.
 type UpdatePipelineRequest struct {
 	Body struct {
 		Name          string          `json:"name"`
 		ApplicationID json.RawMessage `json:"application_id"` // omitted=keep, null=unbind, N=bind
-		// GitRepository is the same tri-state, and the same name-or-id form as on
-		// create: omitted keeps the binding, null unbinds, a string or number binds.
+		// Tri-state: omitted keeps, null unbinds, a string or number binds.
 		GitRepository json.RawMessage `json:"git_repository"`
 		Branch        *string         `json:"branch"` // nil=keep
 		Spec          string          `json:"spec"`
@@ -98,14 +85,11 @@ type UpdatePipelineRequest struct {
 
 type TriggerPipelineRequest struct {
 	Body struct {
-		// Branch selects the ref to build. Blank uses the pipeline's tracked ref
-		// (a repo-owned pipeline's source_ref); it also selects the ref a repo-owned
-		// pipeline re-reads its spec from.
+		// Blank uses the tracked ref, which is also where a repo-owned pipeline re-reads its spec.
 		Branch        string `json:"branch"`
 		Commit        string `json:"commit"`
 		CommitMessage string `json:"commit_message"`
-		// NoCache rebuilds every layer of this run's build steps, ignoring the cache.
-		// Per-run and one-off: it never edits the pipeline file.
+		// Per-run only: it never edits the pipeline file.
 		NoCache bool `json:"no_cache"`
 		// Bump raises this run's version by patch, minor or major instead of the policy default.
 		Bump string `json:"bump"`
@@ -165,8 +149,6 @@ func (h *PipelineHandler) Update(c *okapi.Context, req *UpdatePipelineRequest) e
 	}
 	wsID := middlewares.WorkspaceID(c)
 	in := pipeline.Input{Name: req.Body.Name, Spec: req.Body.Spec, Enabled: req.Body.Enabled}
-	// Tri-state application_id: present ⇒ write the binding (null clears it),
-	// absent ⇒ leave it unchanged.
 	present, appID, perr := optionalUintRef(req.Body.ApplicationID)
 	if perr != nil {
 		return c.AbortBadRequest("invalid application_id")
@@ -227,8 +209,7 @@ func (h *PipelineHandler) Trigger(c *okapi.Context, req *TriggerPipelineRequest)
 	return created(c, run)
 }
 
-// WebhookInfo reveals the push-webhook path and secret so a user can configure
-// their Git provider. Role-gated (Developer+) since the secret is sensitive.
+// Developer+ since the secret is sensitive.
 func (h *PipelineHandler) WebhookInfo(c *okapi.Context) error {
 	id, err := h.pipelineRef(c)
 	if err != nil {
@@ -246,9 +227,7 @@ func (h *PipelineHandler) WebhookInfo(c *okapi.Context) error {
 	})
 }
 
-// Webhook fires a pipeline from a provider push. It is unauthenticated; the
-// request is verified against the pipeline's webhook secret, and the run starts
-// only when the pushed branch matches the pipeline's `on.push` trigger.
+// Unauthenticated; verified against the webhook secret, and runs only when the branch matches on.push.
 func (h *PipelineHandler) Webhook(c *okapi.Context) error {
 	wsID, err := uintParam(c, "workspace")
 	if err != nil {
@@ -329,8 +308,6 @@ func (h *PipelineHandler) ListRuns(c *okapi.Context) error {
 // GetRun returns a single run with its steps.
 type RerunPipelineRequest struct {
 	Body struct {
-		// NoCache rebuilds every layer on the re-run — the usual reason to re-run a build that
-		// succeeded with a stale cached layer.
 		NoCache bool `json:"no_cache"`
 	} `json:"body"`
 }
@@ -363,9 +340,6 @@ func (h *PipelineHandler) GetRun(c *okapi.Context) error {
 	return ok(c, run)
 }
 
-// RunLogs streams a run's step logs over SSE: for a finished run it replays each
-// step's full history from the store (falling back to the DB tail), then the
-// terminal status; for a running one it streams live step logs from the bus.
 func (h *PipelineHandler) RunLogs(c *okapi.Context) error {
 	id, err := uintParam(c, "runID")
 	if err != nil {
@@ -443,9 +417,6 @@ type PipelineRunLogHistory struct {
 	Steps  []StepLogHistory `json:"steps"`
 }
 
-// RunLogsHistory returns a pipeline run's full per-step logs (from the store, else
-// each step's bounded DB tail) as JSON — the load-once counterpart to the SSE
-// stream, for viewing a finished run.
 func (h *PipelineHandler) RunLogsHistory(c *okapi.Context) error {
 	id, err := uintParam(c, "runID")
 	if err != nil {
@@ -503,15 +474,7 @@ func (h *PipelineHandler) mapErr(c *okapi.Context, err error) error {
 	}
 }
 
-// resolveRepositoryRef decodes the API's `git_repository` value into the stored
-// binding, a numeric id.
-//
-// The JSON type is the disambiguator rather than a precedence rule: a string is a
-// name, a number is an id. A repository may legitimately be named "123", so
-// "try an id, then a name" (or the reverse) would quietly bind the wrong one.
-//
-// Tri-state, like application_id: omitted leaves the binding alone, null unbinds,
-// a value binds.
+// The JSON type disambiguates (string name, number id) since a repository may be named "123".
 func (h *PipelineHandler) resolveRepositoryRef(workspaceID uint, raw json.RawMessage) (present bool, id *uint, err error) {
 	if len(raw) == 0 {
 		return false, nil, nil

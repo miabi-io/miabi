@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// AlertSeverity ranks an alert's urgency. Only warning/critical notify by
-// default; info lives in the inbox.
+// Only warning and critical notify by default; info lives in the inbox.
 type AlertSeverity string
 
 const (
@@ -31,9 +30,7 @@ const (
 	AlertCritical AlertSeverity = "critical"
 )
 
-// AlertState is the alert's lifecycle position. An alert is a small FSM, not a
-// log row: it fires, may be acknowledged, auto-resolves when the condition
-// clears, and is archived after a retention window.
+// A small FSM: fires, may be acknowledged, auto-resolves when cleared, archived after retention.
 type AlertState string
 
 const (
@@ -43,8 +40,7 @@ const (
 	AlertArchived     AlertState = "archived"
 )
 
-// Active reports whether the alert is still an open condition (firing or
-// acknowledged) — the states the dedup key is unique across.
+// The dedup key is unique across these states.
 func (s AlertState) Active() bool { return s == AlertFiring || s == AlertAcknowledged }
 
 // AlertCategory groups alerts for role-based fan-out and UI filtering.
@@ -62,9 +58,7 @@ const (
 	CategorySecurity AlertCategory = "security"
 )
 
-// Alert is a workspace-level, deduplicated condition derived from signals; per-user delivery
-// is a Notification. The dedup key identifies the condition ("crashloop:app:42"), so a repeat
-// signal bumps Count/LastSeen instead of adding a row — 40 crash events become one line.
+// A repeat signal bumps Count/LastSeen instead of adding a row.
 type Alert struct {
 	ID          uint          `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint          `json:"workspace_id" gorm:"index;not null"`
@@ -73,8 +67,7 @@ type Alert struct {
 	Severity    AlertSeverity `json:"severity" gorm:"not null"`
 	State       AlertState    `json:"state" gorm:"not null;default:firing"`
 
-	// DedupKey identifies the condition+subject. The partial unique index in the
-	// migration enforces at most one ACTIVE alert per (workspace, dedup_key).
+	// A partial unique index enforces at most one active alert per (workspace, dedup_key).
 	DedupKey    string `json:"dedup_key" gorm:"not null"`
 	SubjectType string `json:"subject_type"`           // app | database | node | route | backup
 	SubjectRef  string `json:"subject_ref"`            // stable id/slug of the subject

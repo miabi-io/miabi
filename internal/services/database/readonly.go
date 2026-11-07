@@ -32,9 +32,7 @@ import (
 // ErrReadOnlyUnsupported refuses a read-only user on an engine that has none here.
 var ErrReadOnlyUnsupported = errors.New("read-only users are available for PostgreSQL databases only")
 
-// EnableReadOnly gives a logical database a read-only user: SELECT on every table, now and future. The
-// credentials are generated once; a database still provisioning gets them when its instance comes up,
-// a running one at once. Calling it again re-applies the grants (after a restore that stripped them).
+// EnableReadOnly gives a database a read-only user; calling it again re-applies grants a restore stripped.
 func (s *Service) EnableReadOnly(ctx context.Context, d *models.Database) error {
 	inst, err := s.repo.FindByID(d.InstanceID)
 	if err != nil {
@@ -80,8 +78,6 @@ func (s *Service) DisableReadOnly(ctx context.Context, d *models.Database) error
 	return s.repo.UpdateDatabase(d)
 }
 
-// applyReadOnly creates (or re-passwords) the read-only user and grants it read access inside the
-// database. A no-op for a database without one.
 func (s *Service) applyReadOnly(ctx context.Context, inst *models.DatabaseInstance, d *models.Database) error {
 	if d.ReadOnlyUsername == "" || inst.Engine != models.DBEnginePostgres {
 		return nil

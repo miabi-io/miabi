@@ -19,8 +19,7 @@ export interface CronJobInput {
   entrypoint?: string[]
   image?: string
   registry_id?: number | null
-  // Pins spawned runs to an account ("1000", "1000:1000", "node"); blank inherits
-  // the app's when each run fires.
+  // Account like "1000", "1000:1000" or "node"; blank inherits the app's when each run fires.
   run_as_user?: string
   timeout_secs?: number
   enabled?: boolean
@@ -28,8 +27,7 @@ export interface CronJobInput {
   history_limit?: number
 }
 
-// Workspace-scoped one-off Jobs and CronJobs. Each targets an application
-// (application_id) but is managed at the workspace level.
+// Each job targets an application but is managed at the workspace level.
 export const jobApi = {
   list: (ws: number, appId?: number) =>
     api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs${appId ? `?app_id=${appId}` : ''}`),
@@ -243,8 +241,7 @@ export const apiKeyApi = {
 
 export const usageApi = {
   get: (ws: number) => api.get<ApiResponse<WorkspaceUsage>>(`${w(ws)}/usage`),
-  // Live, aggregated actual consumption across the workspace's running
-  // app/database containers (one-shot fallback for the SSE stream below).
+  // One-shot fallback for the SSE stream below.
   getLive: (ws: number) => api.get<ApiResponse<WorkspaceLiveSample>>(`${w(ws)}/usage/live`),
   liveStreamUrl: (ws: number) => sseUrl(`${w(ws)}/usage/live/stream`),
   // Time-bucketed workspace usage aggregated from stored per-app samples (sparkline).
@@ -289,7 +286,6 @@ export const workspaceEventApi = {
     }),
 }
 
-// Branding: the operator's identity on the sign-in page and in the console.
 // Enterprise (white_label).
 export interface BrandingSettings {
   name?: string

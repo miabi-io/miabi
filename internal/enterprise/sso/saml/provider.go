@@ -10,9 +10,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
-// Package saml implements a SAML 2.0 service provider on top of crewjam/saml, compiled only into
-// the Enterprise build. It holds no core dependencies — it maps an authenticated assertion to a
-// session via a Login callback supplied by the routes layer.
+// Package saml is a SAML 2.0 SP (Enterprise only) with no core deps; sessions come via a Login callback.
 package saml
 
 import (
@@ -33,23 +31,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// Deps are the core dependencies, passed as plain values/closures so this
-// package never imports auth/session/user code.
 type Deps struct {
 	DB        *gorm.DB
 	BaseURL   string
 	SPKeyPEM  string
 	SPCertPEM string
-	// Login maps an authenticated identity to a session and returns the post-login
-	// redirect URL (the SPA callback carrying the token).
-	Login func(ctx context.Context, email, name, provider string) (string, error)
-	// Entitled re-checks the sso_saml license per request so a degrade disables
-	// SAML without a restart.
+	Login     func(ctx context.Context, email, name, provider string) (string, error)
+	// Re-checked per request so a degrade disables SAML without a restart.
 	Entitled func() bool
 }
 
-// Provider is the SAML service-provider handler set. Its Metadata/Login/ACS
-// methods satisfy enterprise.SAMLProvider structurally.
 type Provider struct {
 	db       *gorm.DB
 	baseURL  string
@@ -78,8 +69,6 @@ func New(d Deps) (*Provider, error) {
 	}, nil
 }
 
-// serviceProvider builds a crewjam ServiceProvider for a stored config: the SP
-// key/cert, the per-config ACS/metadata URLs, and the parsed IdP metadata.
 func (p *Provider) serviceProvider(ctx context.Context, cfg *models.SAMLConfig) (*saml.ServiceProvider, error) {
 	idp, err := p.idpMetadata(ctx, cfg)
 	if err != nil {
@@ -98,8 +87,7 @@ func (p *Provider) serviceProvider(ctx context.Context, cfg *models.SAMLConfig) 
 		MetadataURL: *meta,
 		AcsURL:      *acs,
 		IDPMetadata: idp,
-		// The IdP is a trusted, admin-configured enterprise directory; allow
-		// IdP-initiated SSO. Assertion signatures are still fully validated.
+		// The IdP is admin-configured and trusted; assertion signatures are still fully validated.
 		AllowIDPInitiated: true,
 	}, nil
 }
@@ -167,8 +155,6 @@ func (p *Provider) Login(c *okapi.Context) error {
 	return nil
 }
 
-// ACS is the assertion consumer service: validate the IdP's response, extract
-// the identity, and hand it to the core Login callback for a session.
 func (p *Provider) ACS(c *okapi.Context) error {
 	if !p.entitled() {
 		return c.AbortWithError(402, errLicense)
@@ -203,9 +189,6 @@ func (p *Provider) ACS(c *okapi.Context) error {
 	return nil
 }
 
-// identityFromAssertion pulls the email and name out of the assertion using the
-// config's attribute mapping, falling back to standard attribute names and the
-// NameID for email.
 func identityFromAssertion(a *saml.Assertion, cfg *models.SAMLConfig) (email, name string) {
 	emailAttr := orDefault(cfg.AttrEmail, "email")
 	nameAttr := orDefault(cfg.AttrName, "displayName")

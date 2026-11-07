@@ -45,34 +45,25 @@ import (
 	"github.com/miabi-io/miabi/internal/services/updatecheck"
 )
 
-// ImageRef resolves a platform-image catalog key to an image ref (implemented
-// by platformimage.Resolver).
 type ImageRef interface {
 	Ref(key string) string
 }
 
-// agentContainerName is the container the agent runs as on a node host. Fixed, because the join
-// command creates it and the upgrade command has to find it again.
+// Fixed, because the join command creates it and the upgrade command has to find it again.
 const agentContainerName = "miabi-agent"
 
-// AgentReleases reports the newest node-agent release the platform knows of. Implemented by
-// updatecheck.Service. nil (or a check that has never succeeded) leaves nodes classified against the
-// locally-known supported floor alone, which is the verdict that matters and needs no network.
+// nil leaves nodes classified against the local supported floor alone, which needs no network.
 type AgentReleases interface {
 	LatestVersion() string
 }
 
-// SwarmEnricher annotates servers with their transient swarm role/availability
-// for the Nodes page. Implemented by cluster.Service; nil on builds without it.
 type SwarmEnricher interface {
 	Enrich(servers []models.Server)
 	// LearnIngressIP gives a node's cluster the public IP its agent connected from, when the cluster has none.
 	LearnIngressIP(serverID uint, remoteAddr string)
 }
 
-// ClusterAgentAuth authorizes an agent presenting the CLUSTER-wide token carried by the global
-// agent service. Identity comes from the swarm node id the agent read off its own engine, which
-// the manager verifies against its membership list. Optional: nil means only per-node tokens.
+// Identity is the swarm node id the agent reports, verified against the manager's membership list.
 type ClusterAgentAuth interface {
 	AuthenticateAgent(ctx context.Context, token, swarmNodeID, hostname string) (*models.Server, error)
 }
@@ -92,11 +83,9 @@ type NodeHandler struct {
 	bus         *eventbus.Bus
 	members     WorkspaceMembership
 	gpu         *gpu.Service // GPU inventory + admin device policy (nil = disabled)
-	// secEnforce blocks disruptive raw-Docker actions (stop/remove) on managed
-	// containers from the admin node view (MIABI_SECURITY_ENFORCEMENT, default on).
-	secEnforce bool
-	hostProc   string          // procfs dir for local-node host metrics (default /host/proc)
-	nodeStats  NodeHostSampler // nil = remote nodes report no host metrics
+	secEnforce  bool
+	hostProc    string          // procfs dir for local-node host metrics (default /host/proc)
+	nodeStats   NodeHostSampler // nil = remote nodes report no host metrics
 	// clusterAuth caches cluster-token agents resolved by the stats push endpoint.
 	clusterAuth clusterAgentAuthCache
 	// poolLabeler mirrors a node's pool onto its Swarm node label; nil leaves it to the cluster refresh.
@@ -104,23 +93,17 @@ type NodeHandler struct {
 	upgrader    websocket.Upgrader
 }
 
-// WorkspaceMembership lists the workspaces a user belongs to. It gates node container-log
-// streaming so a platform admin cannot read the logs of a container owned by a workspace they
-// are not in; listing and operating are unaffected. Injected after construction (nil disables).
+// Listing and operating containers are unaffected; nil disables the gate.
 type WorkspaceMembership interface {
 	ListForUser(userID uint) ([]models.WorkspaceWithRole, error)
 }
 
-// SetMembership wires the workspace-membership lookup used to gate foreign
-// container-log streaming (nil-safe).
 func (h *NodeHandler) SetMembership(m WorkspaceMembership) { h.members = m }
 
 // SetAgentReleases wires the node-agent release check (nil-safe).
 func (h *NodeHandler) SetAgentReleases(r AgentReleases) { h.agentRel = r }
 
-// annotateAgentVersions marks each agent-mode node against the supported floor and the newest known
-// release. Computed here rather than stored: the verdict depends on the node's build and on the
-// release list, which move independently, so a persisted one is wrong as soon as either does.
+// Computed, not stored: the node's build and the release list move independently.
 func (h *NodeHandler) annotateAgentVersions(servers []models.Server) {
 	latest := ""
 	if h.agentRel != nil {
@@ -139,16 +122,10 @@ func (h *NodeHandler) annotateAgentVersions(servers []models.Server) {
 	}
 }
 
-// SetSecurityEnforcement toggles blocking of stop/remove on managed containers
-// from the admin node view (MIABI_SECURITY_ENFORCEMENT; default on).
 func (h *NodeHandler) SetSecurityEnforcement(on bool) { h.secEnforce = on }
 
-// SetGPU wires the GPU inventory/policy service (nil-safe; nil = GPU support
-// disabled, so the GPU endpoints report it off).
 func (h *NodeHandler) SetGPU(g *gpu.Service) { h.gpu = g }
 
-// NodeHostSampler reads a node's real host CPU/memory, from its agent's pushes or by sampling it on
-// the node. Satisfied by nodestats.Service, which also implements NodeStatsIngester.
 type NodeHostSampler interface {
 	Get(ctx context.Context, serverID uint) (nodestats.Sample, error)
 }
@@ -173,24 +150,19 @@ func NewNodeHandler(n *node.Service, mgr *nodes.Manager, gw *edgegateway.Service
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
-			// The agent is a Go client (no Origin header), so it passes; a browser
-			// with a cross-site Origin is rejected. SetAllowedOrigins may widen this
-			// to the configured allowlist.
+			// The Go agent sends no Origin header, so it passes; a cross-site browser Origin is rejected.
 			CheckOrigin: allowWSOrigin(nil),
 		},
 	}
 }
 
-// SetAllowedOrigins restricts browser WebSocket upgrades to same-origin plus the
-// given origins (Go agents send no Origin and are unaffected).
 func (h *NodeHandler) SetAllowedOrigins(origins []string) {
 	h.upgrader.CheckOrigin = allowWSOrigin(origins)
 }
 
 type CreateNodeRequest struct {
 	Body struct {
-		// DisplayName is the node's free-text label and the only name a caller
-		// supplies. The URL-safe handle is derived from it at creation.
+		// The URL-safe handle is derived from it at creation.
 		DisplayName string `json:"display_name" required:"true"`
 		Address     string `json:"address"`
 		// Connectivity "cluster" relies on the cluster's gateway, "edge-gateway" runs one on the node.
@@ -203,8 +175,7 @@ type CreateNodeRequest struct {
 		TLSCACert string `json:"tls_ca_cert"`
 		TLSCert   string `json:"tls_cert"`
 		TLSKey    string `json:"tls_key"`
-		// Acknowledge confirms the caller accepts that a reachability change may
-		// briefly interrupt the node's running workloads (required on such a change).
+		// A reachability change may briefly interrupt the node's running workloads.
 		Acknowledge bool `json:"acknowledge"`
 	} `json:"body"`
 }
@@ -244,8 +215,6 @@ func (h *NodeHandler) List(c *okapi.Context) error {
 	return ok(c, servers)
 }
 
-// Create registers a remote node. For agent mode it returns a one-time join
-// token; for socket/api it connects the node's Docker client immediately.
 func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 	srv, token, err := h.nodes.CreateNode(req.input())
 	if err != nil {
@@ -258,7 +227,6 @@ func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 		var limitErr *node.NodeLimitError
 		if errors.As(err, &limitErr) {
 			// 402: the cap is an edition limit, lifted by an Enterprise license.
-			// The envelope promotes Code()/Message() (NODE_LIMIT_REACHED).
 			return c.AbortWithError(402, limitErr)
 		}
 		return c.AbortInternalServerError("failed to create node", err)
@@ -272,9 +240,7 @@ func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 	return created(c, map[string]any{"node": srv, "token": token})
 }
 
-// JoinCommand returns the docker command an operator runs on the node host to start the agent
-// and connect it to this control plane. The join token is hashed and unrecoverable, so the
-// command carries a placeholder — use the token shown at node creation, or regenerate one.
+// The join token is hashed and unrecoverable, so the command carries a placeholder.
 func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -308,8 +274,6 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 	})
 }
 
-// agentInstallScript installs the agent on a node host; it reads the control URL and join token
-// from the environment.
 const agentInstallScript = "https://get.miabi.io/agent"
 
 // agentScriptCommand is the one-liner alternative to agentRunCommand.
@@ -318,12 +282,7 @@ func agentScriptCommand(controlURL, token string) string {
 		"  MIABI_CONTROL_URL=" + controlURL + " MIABI_NODE_TOKEN=" + token + " bash"
 }
 
-// agentRunCommand is the docker run an operator pastes on the node host. token is either the
-// placeholder (a fresh join) or a shell expansion (an in-place upgrade).
-//
-// The labels give the agent a platform identity on a node whose engine Miabi can only reach through
-// that very agent: they keep it out of the import list and block stop/remove from the containers
-// page. managed-by=external, since it is installed by hand and must not be recreated.
+// The labels keep the agent out of the import list and block stop/remove; managed-by=external.
 func agentRunCommand(image, controlURL, token string) string {
 	return "docker run -d --name " + agentContainerName + " --restart unless-stopped \\\n" +
 		"  -v /var/run/docker.sock:/var/run/docker.sock \\\n" +
@@ -336,14 +295,7 @@ func agentRunCommand(image, controlURL, token string) string {
 		"  " + image
 }
 
-// agentUpgradeCommand replaces a running agent with a newer image in place.
-//
-// Two things make this more than "pull and restart". The join token is hashed on this side and
-// unrecoverable, and the only copy lives in the container the upgrade is about to destroy — so it is
-// read back out of the running container first, and the chain stops if it comes back empty rather
-// than starting an agent that cannot authenticate. And the pull happens BEFORE the removal: an agent
-// is the only remote path to its host, so a pull that failed after the old one was gone would cost
-// the operator the node.
+// Reads the token back from the old container first and pulls before removing: losing the agent loses the node.
 func agentUpgradeCommand(image, controlURL string) string {
 	return "TOKEN=$(docker inspect " + agentContainerName +
 		" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MIABI_NODE_TOKEN=//p') \\\n" +
@@ -364,17 +316,12 @@ func (h *NodeHandler) Update(c *okapi.Context, req *CreateNodeRequest) error {
 	if err != nil {
 		return h.mapErr(c, err)
 	}
-	// Rebuild the client to pick up endpoint/mode/credential changes — but never
-	// evict a live agent tunnel (that would flip a connected node offline).
+	// Never evict a live agent tunnel: that would flip a connected node offline.
 	h.manager.RefreshClient(srv)
-	// React to a connectivity change: deploy the gateway when switching to
-	// edge-gateway, tear it down when switching away (best-effort, only if the
-	// node is reachable now).
+	// Best-effort, only if the node is reachable now.
 	if prev != nil && prev.Connectivity != srv.Connectivity {
 		h.applyConnectivity(c.Request().Context(), prev, srv)
 	}
-	// Record a reachability change distinctly (with before/after) so it stands out
-	// in the audit log from a routine metadata edit.
 	if prev != nil && (prev.Connectivity != srv.Connectivity || prev.AccessMode != srv.AccessMode ||
 		prev.DockerEndpoint != srv.DockerEndpoint || prev.Address != srv.Address) {
 		actor := middlewares.UserID(c)
@@ -392,8 +339,6 @@ func (h *NodeHandler) Update(c *okapi.Context, req *CreateNodeRequest) error {
 	return ok(c, srv)
 }
 
-// Workloads returns how many apps and databases are placed on the node, so the
-// UI can show the blast radius of a connectivity change.
 func (h *NodeHandler) Workloads(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -445,9 +390,7 @@ func (h *NodeHandler) ApplyConnectivity(ctx context.Context, prev, srv *models.S
 	h.applyConnectivity(ctx, prev, srv)
 }
 
-// applyConnectivity deploys or tears down the node gateway after a connectivity
-// switch. Best-effort: a deploy needs a live Docker client; failures are logged
-// (the admin can retry from the gateway panel) but never fail the update.
+// Best-effort: failures are logged but never fail the update.
 func (h *NodeHandler) applyConnectivity(ctx context.Context, prev, srv *models.Server) {
 	dc, err := h.manager.Clients().For(srv.ID)
 	if err != nil {
@@ -500,8 +443,7 @@ func (h *NodeHandler) setCordon(c *okapi.Context, v bool) error {
 		action = "node.cordon"
 	}
 	h.record(c, action, id)
-	// The flag is saved either way; a mirror that failed is reported so the operator knows Swarm was
-	// not told, rather than reading "node updated" and trusting a cordon Swarm will ignore.
+	// A failed Swarm mirror is reported so the operator does not trust a cordon Swarm will ignore.
 	if err != nil {
 		return message(c, err.Error())
 	}
@@ -514,8 +456,7 @@ func (h *NodeHandler) Delete(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest("invalid node id")
 	}
-	// Tear down node-side infrastructure (e.g. the edge gateway) over the
-	// still-open tunnel before closing it and dropping the record.
+	// Tear down over the still-open tunnel before closing it.
 	if srv, err := h.nodes.Get(id); err == nil {
 		h.manager.Teardown(c.Request().Context(), srv)
 	}
@@ -529,16 +470,11 @@ func (h *NodeHandler) Delete(c *okapi.Context) error {
 	return message(c, "node deleted")
 }
 
-// NodeStats is the node detail dashboard payload: the engine info plus volume
-// and network counts, so the page needs a single request rather than separate
-// info/containers/volumes/networks calls.
 type NodeStats struct {
 	docker.Info
 	Volumes  int `json:"volumes"`
 	Networks int `json:"networks"`
-	// SelfContainer is Miabi's own runtime container on this node (the
-	// control plane locally, or the node's agent), surfaced so the UI can show a
-	// dedicated card. Nil when unknown (detection found nothing / agent offline).
+	// Nil when unknown (detection found nothing or the agent is offline).
 	SelfContainer *SelfContainerRef `json:"self_container,omitempty"`
 }
 
@@ -548,8 +484,6 @@ type SelfContainerRef struct {
 	Name string `json:"name"`
 }
 
-// Stats returns the node's live Docker engine info (version, CPU, memory,
-// container/image counts) plus volume and network counts, in one request.
 func (h *NodeHandler) Stats(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -571,8 +505,7 @@ func (h *NodeHandler) Stats(c *okapi.Context) error {
 	if nets, nerr := dc.ListNetworks(ctx); nerr == nil {
 		stats.Networks = len(nets)
 	}
-	// Miabi's own container on this node, so the UI can show a runtime card.
-	// Resolve the full ID + name (detection may only know a short ID/hostname).
+	// Detection may only know a short ID or hostname.
 	if selfID := h.manager.Clients().SelfContainerID(id); selfID != "" {
 		if cont, ierr := dc.InspectContainer(ctx, selfID); ierr == nil {
 			name := cont.ID
@@ -585,14 +518,10 @@ func (h *NodeHandler) Stats(c *okapi.Context) error {
 	return ok(c, stats)
 }
 
-// HostMetricsResponse reports real host CPU/memory for a node. Available is false when the stats
-// cannot be read: no readable procfs locally, or a remote node that could not be sampled.
 type HostMetricsResponse struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
-	// Source is "local" (this process's procfs), "agent" (pushed by the node's agent) or "sampled"
-	// (a helper container on the node).
-	Source string `json:"source,omitempty"`
+	Source    string `json:"source,omitempty"`
 	// Sampled is true for any remote reading. Deprecated: read Source.
 	Sampled      bool `json:"sampled,omitempty"`
 	PhysicalHost bool `json:"physical_host,omitempty"`
@@ -603,9 +532,6 @@ type HostMetricsResponse struct {
 	hoststats.Stats
 }
 
-// HostMetrics returns a node's real host CPU and memory usage through the node stats service: the
-// local node from procfs, a remote one from its agent's pushes or a helper container. Without the
-// service only the local node is reported, read directly.
 func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -620,8 +546,7 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 		if serr != nil {
 			return ok(c, HostMetricsResponse{Available: false, Reason: "could not sample the node: " + serr.Error()})
 		}
-		// /proc is not cgroup-aware, so a node that is itself a container or a limited VM reports the
-		// machine underneath it. Still worth showing — but say whose numbers these are.
+		// /proc is not cgroup-aware, so a containerized node reports the machine underneath it.
 		age := 0
 		if !st.MeasuredAt.IsZero() {
 			age = int(time.Since(st.MeasuredAt).Seconds())
@@ -635,8 +560,7 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	if !srv.IsLocal {
 		return ok(c, HostMetricsResponse{Available: false, Reason: "host metrics are only available for the local node"})
 	}
-	// Prefer the configured path (default /host/proc); fall back to /proc, which
-	// already reflects host CPU/memory even from inside a container.
+	// /proc already reflects host CPU/memory even from inside a container.
 	path := h.hostProc
 	if path == "" || !hoststats.Available(path) {
 		path = "/proc"
@@ -648,9 +572,7 @@ func (h *NodeHandler) HostMetrics(c *okapi.Context) error {
 	return ok(c, HostMetricsResponse{Available: true, Source: "local", Stats: st})
 }
 
-// Connect is the agent WebSocket endpoint: authenticated by join token (not the
-// user JWT). It upgrades the connection and hands the tunnel to the manager,
-// blocking until the agent disconnects.
+// Authenticated by join token, not the user JWT; blocks until the agent disconnects.
 func (h *NodeHandler) Connect(c *okapi.Context) error {
 	token := bearer(c.Header("Authorization"))
 	if token == "" {
@@ -661,9 +583,7 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 
 	srv, err := h.nodes.Authenticate(token)
 	if err != nil {
-		// Not a per-node mbn_ token. It may be the cluster-wide token carried by the global agent
-		// service, where identity comes from the swarm node id the agent read off its own engine and is
-		// trusted only because the manager verifies it against its membership list.
+		// The cluster-wide token is trusted only because the manager verifies the swarm node id.
 		srv, err = h.registerClusterAgent(c, token, swarmNodeID, hostname)
 		if err != nil {
 			return c.AbortUnauthorized("invalid agent token")
@@ -683,8 +603,6 @@ func (h *NodeHandler) Connect(c *okapi.Context) error {
 	return nil
 }
 
-// registerClusterAgent authorizes an agent carrying the cluster-wide token. Returns
-// an error (and never a node) when the capability is unwired or the token is unknown.
 func (h *NodeHandler) registerClusterAgent(c *okapi.Context, token, swarmNodeID, hostname string) (*models.Server, error) {
 	auth, ok := h.cluster.(ClusterAgentAuth)
 	if !ok || auth == nil {
@@ -697,16 +615,12 @@ func bearer(h string) string {
 	return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
 }
 
-// GPUListResponse is a node's GPU inventory plus whether the node advertises the
-// NVIDIA runtime (so the UI can explain a node showing no cards).
 type GPUListResponse struct {
 	Enabled        bool               `json:"enabled"`         // platform GPU support on (MIABI_GPU_ENABLED)
 	ToolkitPresent bool               `json:"toolkit_present"` // node has the NVIDIA Container Toolkit
 	Devices        []models.GPUDevice `json:"devices"`
 }
 
-// UpdateGPURequest toggles a device's admin policy. Both fields are optional
-// (nil = leave unchanged).
 type UpdateGPURequest struct {
 	Body struct {
 		Enabled *bool `json:"enabled"`
@@ -714,8 +628,7 @@ type UpdateGPURequest struct {
 	} `json:"body"`
 }
 
-// ListGPUs returns the GPUs discovered on a node and the platform/node GPU
-// capability flags. Devices arrive disabled until an admin opts each one in.
+// Devices arrive disabled until an admin opts each one in.
 func (h *NodeHandler) ListGPUs(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -738,8 +651,6 @@ func (h *NodeHandler) ListGPUs(c *okapi.Context) error {
 	})
 }
 
-// UpdateGPU applies admin policy (enable/disable, shared/dedicated) to one of a
-// node's GPUs.
 func (h *NodeHandler) UpdateGPU(c *okapi.Context, req *UpdateGPURequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -763,8 +674,6 @@ func (h *NodeHandler) UpdateGPU(c *okapi.Context, req *UpdateGPURequest) error {
 	return ok(c, dev)
 }
 
-// RescanGPUs re-runs the inventory probe on a node on demand (the admin "Rescan
-// GPUs" button) and returns the refreshed device list.
 func (h *NodeHandler) RescanGPUs(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {

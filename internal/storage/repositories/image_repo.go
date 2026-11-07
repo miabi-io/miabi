@@ -59,8 +59,6 @@ func (r *ImageRepository) FindByDigest(workspaceID uint, digest string) (*models
 	return &i, nil
 }
 
-// ListByDigests looks up several images at once, for enriching a page of
-// registry tags with build provenance without a query per tag.
 func (r *ImageRepository) ListByDigests(workspaceID uint, digests []string) ([]models.Image, error) {
 	if len(digests) == 0 {
 		return nil, nil
@@ -83,8 +81,6 @@ func (r *ImageRepository) ListByApp(workspaceID, appID uint) ([]models.Image, er
 	return out, err
 }
 
-// ListAll returns every catalog image across all workspaces, newest first. Used
-// by the GC sweep, which applies retention globally.
 func (r *ImageRepository) ListAll() ([]models.Image, error) {
 	var out []models.Image
 	err := r.db.Order("application_id ASC, created_at DESC").Find(&out).Error

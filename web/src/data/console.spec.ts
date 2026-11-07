@@ -4,8 +4,7 @@ import { adminNavSections } from './adminNav'
 import { rememberConsoleRoute, workspaceReturnPath, adminReturnPath, ADMIN_HOME, isAdminPath } from './console'
 
 describe('console separation', () => {
-  // The two consoles have separate shells, so a destination listed in the wrong
-  // menu navigates out of the shell the user is looking at.
+  // The consoles have separate shells, so a misplaced destination navigates out of the current one.
   it('keeps admin destinations out of the workspace navigation', () => {
     const stray = navSections.flatMap((s) => s.items).filter((i) => isAdminPath(i.path))
     expect(stray).toEqual([])
@@ -16,9 +15,7 @@ describe('console separation', () => {
     expect(stray).toEqual([])
   })
 
-  // Every destination the old flat "Platform Admin" section offered must still be
-  // reachable. Pinned as a set rather than a count: adding a page is normal,
-  // losing one in a regrouping is the regression.
+  // Pinned as a set, not a count: adding a page is normal, losing one in a regrouping is the regression.
   const ORIGINAL_ADMIN_PATHS = [
     '/admin/dashboard', '/admin/users', '/admin/workspaces', '/admin/domains', '/admin/routes',
     '/admin/nodes', '/admin/runners', '/admin/events', '/admin/jobs', '/admin/oauth',
@@ -32,9 +29,7 @@ describe('console separation', () => {
     for (const p of ORIGINAL_ADMIN_PATHS) expect(paths).toContain(p)
   })
 
-  // The point of the split was that nineteen items in one list is a scroll, not a
-  // menu. What this guards is a slide back toward that — one section swallowing the
-  // console — not the exact size of any section, which grows as pages are added.
+  // Guards against one section swallowing the console, not the exact size of any section.
   it('keeps sections short enough to scan', () => {
     expect(adminNavSections.length).toBeGreaterThanOrEqual(5)
     const total = adminNavSections.reduce((n, s) => n + s.items.length, 0)
@@ -48,8 +43,7 @@ describe('console separation', () => {
 })
 
 describe('return path', () => {
-  // The suite runs in node, where there is no localStorage; the module is written
-  // to tolerate its absence, so give it one to exercise the stored path.
+  // The suite runs in node with no localStorage; provide one to exercise the stored path.
   beforeEach(() => {
     const store = new Map<string, string>()
     vi.stubGlobal('localStorage', {
@@ -69,8 +63,7 @@ describe('return path', () => {
     expect(workspaceReturnPath()).toBe('/')
   })
 
-  // A stored admin path would send "back to the workspace" straight into the
-  // console the user just asked to leave.
+  // A stored admin path would send "back to the workspace" straight into the admin console.
   it('refuses an admin path as the way out of the admin console', () => {
     rememberConsoleRoute('workspace', '/admin/nodes')
     expect(workspaceReturnPath()).toBe('/')
@@ -90,8 +83,7 @@ describe('return path', () => {
   })
 })
 
-// The helpers run in a browser that may refuse storage entirely (private mode,
-// blocked site data). A thrown accessor must not take the console switch with it.
+// A thrown storage accessor (private mode, blocked data) must not break the console switch.
 describe('without storage', () => {
   it('still resolves both return paths', () => {
     vi.stubGlobal('localStorage', {

@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// stackRoutes registers workspace-scoped application stacks. Viewer reads; Developer creates,
-// edits and assigns apps; Admin deletes.
+// Viewer reads; Developer creates, edits and assigns apps; Admin deletes.
 func (r *Router) stackRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Stacks", Description: "Group applications into stacks."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

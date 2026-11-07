@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// UserIdentity binds an account to the subject an OAuth/OIDC provider knows it by. A returning SSO
-// login matches on this stable subject, never on an email the provider may let its users change.
+// UserIdentity: SSO logins match on the provider's stable subject, never an email users may change.
 type UserIdentity struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
 	ProviderID uint      `json:"provider_id" gorm:"not null;uniqueIndex:idx_identity_subject;uniqueIndex:idx_identity_user"`

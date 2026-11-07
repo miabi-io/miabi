@@ -25,8 +25,7 @@ const editing = ref<Organization | null>(null)
 const confirmTarget = ref<Organization | null>(null)
 const promoteTarget = ref<Organization | null>(null)
 
-// unlimited is tracked apart from the number so clearing the field cannot be mistaken for 0, which
-// genuinely means "no workspaces allowed".
+// Tracked apart from the number so a cleared field isn't mistaken for 0, which means no workspaces.
 const form = ref({ name: '', display_name: '', max_workspaces: 0, unlimited: true, default_cluster_id: 0 })
 
 function blank() {
@@ -50,8 +49,6 @@ async function load() {
 }
 onMounted(load)
 
-// dedicatedTo maps each cluster to the organization it belongs to, so the table can show an org's
-// locations without a request per row.
 const dedicatedTo = computed(() => {
   const m = new Map<number, Cluster[]>()
   for (const c of clusters.value) {
@@ -65,8 +62,7 @@ const dedicatedTo = computed(() => {
 
 const clusterLabel = (c: Cluster) => c.display_name || c.name
 
-// An organization that owns clusters is confined to them, so offering a shared one here would only
-// show a location the API refuses and placement skips. Mirrors the organization detail page.
+// A cluster-owning organization is confined to its clusters; mirrors the organization detail page.
 const editingConfined = computed(() => (dedicatedTo.value.get(editing.value?.id ?? 0) ?? []).length > 0)
 const selectableClusters = computed<Cluster[]>(() =>
   editingConfined.value
@@ -74,9 +70,7 @@ const selectableClusters = computed<Cluster[]>(() =>
     : clusters.value.filter((c) => !c.organization_id),
 )
 
-// Promoting an organization that runs its own clusters confines every future unassigned user and
-// workspace to them. Existing rows keep the organization they already carry, so nothing moves — but
-// the next workspace someone makes lands somewhere they did not choose.
+// Nothing existing moves, but future unassigned users and workspaces land on this org's clusters.
 const promoteWarning = computed(() => {
   const o = promoteTarget.value
   if (!o) return ''
@@ -122,8 +116,7 @@ async function save() {
         display_name: form.value.display_name.trim(),
         max_workspaces: cap,
       }
-      // The location is the one field still gated on the organizations entitlement, so send it only
-      // when it changed — otherwise an edit Community is allowed to make would be refused.
+      // The location is entitlement-gated, so send it only when changed or a Community edit is refused.
       if (form.value.default_cluster_id !== (editing.value.default_cluster_id ?? 0)) {
         payload.default_cluster_id = form.value.default_cluster_id
       }

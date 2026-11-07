@@ -50,9 +50,7 @@ func message(c *okapi.Context, msg string) error {
 	return ok(c, dto.MessageData{Message: msg})
 }
 
-// userIDPtr returns the request's actor as a pointer, or nil when there is no
-// authenticated user (an API-key call). Services take *uint so a run or record
-// can be left unattributed rather than attributed to user 0.
+// Nil for API-key calls, so records stay unattributed rather than attributed to user 0.
 func userIDPtr(c *okapi.Context) *uint {
 	id := middlewares.UserID(c)
 	if id == 0 {
@@ -61,8 +59,7 @@ func userIDPtr(c *okapi.Context) *uint {
 	return &id
 }
 
-// quotaAbort maps a plan quota / capability error to a 403 response. Returns nil
-// when err is not a quota error, so callers fall through to their own mapping.
+// Returns nil when err is not a quota error, so callers fall through to their own mapping.
 func quotaAbort(c *okapi.Context, err error) error {
 	if errors.Is(err, quota.ErrQuotaExceeded) || errors.Is(err, quota.ErrCapabilityDenied) {
 		return c.AbortForbidden(err.Error(), err)
@@ -73,8 +70,6 @@ func quotaAbort(c *okapi.Context, err error) error {
 	return nil
 }
 
-// entitlementAbort maps an enterprise license/entitlement error to its HTTP status (402
-// license_required / license_expired, 403 entitlement_denied), preserving the stable error code.
 // Returns nil when err is not a gate error, so callers fall through to their own mapping.
 func entitlementAbort(c *okapi.Context, err error) error {
 	if err == nil {
@@ -95,8 +90,6 @@ func appIDParam(c *okapi.Context) (uint, error) {
 	return uint(id), nil
 }
 
-// appParamInt returns the {appID} WorkspaceScope resolved (an id, uid or name), falling back to
-// parsing a numeric id on routes without it.
 func appParamInt(c *okapi.Context) (int, error) {
 	if id := middlewares.AppID(c); id != 0 {
 		return int(id), nil
@@ -112,9 +105,7 @@ func appRef(c *okapi.Context, resolveUID func(string) (uint, error)) (uint, erro
 	return resolveID(c.Param("appID"), resolveUID)
 }
 
-// resolveID resolves a route param that is either a numeric primary key or a resource uid to the
-// numeric id, so every public route accepts both forms. Ownership is still enforced by the
-// caller's workspace-scoped lookup, so a uid from another workspace resolves but then 404s.
+// A uid from another workspace resolves but then 404s on the caller's workspace-scoped lookup.
 func resolveID(ref string, resolveUID func(string) (uint, error)) (uint, error) {
 	ref = strings.TrimSpace(ref)
 	if n, err := strconv.ParseUint(ref, 10, 64); err == nil && n > 0 {
@@ -134,9 +125,7 @@ func uintParam(c *okapi.Context, name string) (uint, error) {
 	return uint(id), nil
 }
 
-// optionalUintRef decodes a JSON field that may be absent, null, or a positive integer — the
-// tri-state a partial update needs. present is false when omitted (leave unchanged); when
-// present, value is nil for JSON null (clear) or the parsed id. Zero or non-integer is an error.
+// present=false means omitted (leave unchanged); value nil means JSON null (clear).
 func optionalUintRef(raw json.RawMessage) (present bool, value *uint, err error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
@@ -152,9 +141,7 @@ func optionalUintRef(raw json.RawMessage) (present bool, value *uint, err error)
 	return true, &n, nil
 }
 
-// selfOwnerMeta records the authenticated user as the owner of a resource they create by hand.
-// The display name is best-effort; a lookup miss still records the id. Higher-level callers pass
-// an app/database/stack owner instead, which wins over this default via models.DefaultOwner.
+// An app/database/stack owner from a higher-level caller wins over this via models.DefaultOwner.
 func selfOwnerMeta(users *repositories.UserRepository, c *okapi.Context) models.Metadata {
 	uid := middlewares.UserID(c)
 	if uid == 0 {
@@ -184,9 +171,7 @@ var (
 	errUsernameInvalid         = errors.New("username must be lowercase letters, digits and hyphens, and not a reserved word")
 )
 
-// validateUsername normalizes and validates a user-chosen handle, returning the canonical form.
-// A blank desired value returns ("", nil) so callers can treat it as "leave unchanged".
-// excludeUserID is skipped in the uniqueness check (pass 0 when creating).
+// A blank value returns ("", nil) meaning leave unchanged; pass excludeUserID 0 when creating.
 func validateUsername(users *repositories.UserRepository, desired string, excludeUserID uint) (string, error) {
 	desired = strings.TrimSpace(desired)
 	if desired == "" {
@@ -202,8 +187,6 @@ func validateUsername(users *repositories.UserRepository, desired string, exclud
 	return handle, nil
 }
 
-// pageParams parses the standard ?limit / ?offset query parameters, clamping
-// limit to a sane default and maximum.
 func pageParams(c *okapi.Context) (limit, offset int) {
 	limit, _ = strconv.Atoi(c.Query("limit"))
 	if limit <= 0 || limit > 200 {
@@ -223,9 +206,7 @@ func queryInt(c *okapi.Context, key string, def int) int {
 	return def
 }
 
-// queryBool reads an optional tri-state boolean query parameter: "true"/"false" select a value,
-// anything else (including absent) means "no filter" and yields nil. Use it where "either" is a
-// meaningful third choice, so omitting the parameter cannot accidentally narrow the result.
+// Absent or unknown means no filter, so omitting the parameter cannot narrow the result.
 func queryBool(c *okapi.Context, key string) *bool {
 	switch strings.ToLower(strings.TrimSpace(c.Query(key))) {
 	case "true":
@@ -239,9 +220,7 @@ func queryBool(c *okapi.Context, key string) *bool {
 	}
 }
 
-// timeRange parses the ?from / ?to query params into a created_at window. Each accepts RFC3339
-// or YYYY-MM-DD; absent or invalid values yield a zero time (unbounded). A date-only `to` is
-// advanced to the next midnight so the `created_at < to` bound includes the whole day.
+// A date-only to is advanced to the next midnight so the whole day is included.
 func timeRange(c *okapi.Context) (from, to time.Time) {
 	return parseTimeParam(c.Query("from"), false), parseTimeParam(c.Query("to"), true)
 }
@@ -263,8 +242,7 @@ func parseTimeParam(s string, endExclusive bool) time.Time {
 	return time.Time{}
 }
 
-// normalizePageParams clamps a (page, size) pair and computes the offset. Page
-// is 0-indexed; size defaults to 20 and is capped at 100 (Posta convention).
+// Page is 0-indexed; size defaults to 20 and is capped at 100 (Posta convention).
 func normalizePageParams(page, size int) (normPage, normSize, offset int) {
 	if size <= 0 || size > 100 {
 		size = 20
@@ -275,8 +253,6 @@ func normalizePageParams(page, size int) (normPage, normSize, offset int) {
 	return page, size, page * size
 }
 
-// paginated writes a PageableResponse with full pagination metadata, computing
-// total_pages from total and size.
 func paginated[T any](c *okapi.Context, items []T, total int64, page, size int) error {
 	if items == nil {
 		items = []T{}

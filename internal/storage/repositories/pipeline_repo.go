@@ -65,8 +65,6 @@ func (r *PipelineRepository) ListByWorkspace(workspaceID uint) ([]models.Pipelin
 	return out, err
 }
 
-// ListByWorkspacePaged returns a page of pipeline definitions plus the total
-// count, newest first.
 func (r *PipelineRepository) ListByWorkspacePaged(workspaceID uint, limit, offset int) ([]models.PipelineDefinition, int64, error) {
 	var (
 		out   []models.PipelineDefinition
@@ -90,8 +88,6 @@ func (r *PipelineRepository) ExistsByName(workspaceID uint, name string) (bool, 
 func (r *PipelineRepository) CreateRun(run *models.PipelineRun) error { return r.db.Create(run).Error }
 func (r *PipelineRepository) UpdateRun(run *models.PipelineRun) error { return r.db.Save(run).Error }
 
-// SetRunImage records the artifact a run produced without touching its other
-// columns or re-saving step associations.
 func (r *PipelineRepository) SetRunImage(runID, imageID uint) error {
 	return r.db.Model(&models.PipelineRun{}).Where("id = ?", runID).Update("image_id", imageID).Error
 }
@@ -101,17 +97,12 @@ func (r *PipelineRepository) SetRunCommit(runID uint, commit string) error {
 	return r.db.Model(&models.PipelineRun{}).Where("id = ?", runID).Update("commit", commit).Error
 }
 
-// ListEnabledByApp returns the enabled pipeline definitions bound to an app.
-// Used to fan a push out to the pipelines that should fire for it.
 func (r *PipelineRepository) ListEnabledByApp(appID uint) ([]models.PipelineDefinition, error) {
 	var out []models.PipelineDefinition
 	err := r.db.Where("application_id = ? AND enabled = ?", appID, true).Find(&out).Error
 	return out, err
 }
 
-// ListByApp returns every pipeline definition bound to an app, enabled or not.
-// Used when the app is deleted, to clean up the repo-owned ones and unbind the
-// rest.
 func (r *PipelineRepository) ListByApp(appID uint) ([]models.PipelineDefinition, error) {
 	var out []models.PipelineDefinition
 	err := r.db.Where("application_id = ?", appID).Find(&out).Error
@@ -130,8 +121,7 @@ func (r *PipelineRepository) DeleteRun(id uint) error {
 	return r.db.Delete(&models.PipelineRun{}, id).Error
 }
 
-// CreateNumberedRun stores a run with the next per-pipeline number. The pipeline row is locked for the
-// count and insert, so two triggers at once cannot both read the same MAX and share a number.
+// The pipeline row is locked so two triggers can't read the same MAX and share a number.
 func (r *PipelineRepository) CreateNumberedRun(run *models.PipelineRun) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var def models.PipelineDefinition
@@ -158,8 +148,6 @@ func (r *PipelineRepository) FindRun(workspaceID, id uint) (*models.PipelineRun,
 	return &run, nil
 }
 
-// RunDeployment returns the newest deployment a run's deploy step created, or nil when it
-// deployed nothing.
 func (r *PipelineRepository) RunDeployment(workspaceID, runID uint) (*models.RunDeployment, error) {
 	var rows []models.RunDeployment
 	err := r.db.Table("deployments").
@@ -184,8 +172,6 @@ func (r *PipelineRepository) FindRunByID(id uint) (*models.PipelineRun, error) {
 	return &run, nil
 }
 
-// ListRunsPaged returns a page of a pipeline's runs plus the total count,
-// newest run number first.
 func (r *PipelineRepository) ListRunsPaged(workspaceID, pipelineID uint, limit, offset int) ([]models.PipelineRun, int64, error) {
 	var (
 		out   []models.PipelineRun
@@ -199,9 +185,7 @@ func (r *PipelineRepository) ListRunsPaged(workspaceID, pipelineID uint, limit, 
 	return out, total, nil
 }
 
-// LatestRunByPipeline returns the most recent run for each of the given pipeline IDs, keyed by
-// pipeline ID; pipelines with no runs are absent. Uses a correlated subquery so it stays
-// portable across Postgres and SQLite (no window functions / DISTINCT ON).
+// Correlated subquery keeps it portable across Postgres and SQLite (no window functions / DISTINCT ON).
 func (r *PipelineRepository) LatestRunByPipeline(pipelineIDs []uint) (map[uint]models.PipelineRun, error) {
 	out := make(map[uint]models.PipelineRun, len(pipelineIDs))
 	if len(pipelineIDs) == 0 {
@@ -234,9 +218,7 @@ func (r *PipelineRepository) ListRuns(workspaceID, pipelineID uint, limit int) (
 func (r *PipelineRepository) CreateStep(s *models.PipelineStepRun) error { return r.db.Create(s).Error }
 func (r *PipelineRepository) UpdateStep(s *models.PipelineStepRun) error { return r.db.Save(s).Error }
 
-// SetStepLogMeta records the log-store reference + counters for a step and
-// replaces the DB column with the bounded tail (the full log lives in the
-// store). A zero ref is ignored so a store failure leaves the full DB tail intact.
+// A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *PipelineRepository) SetStepLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil
@@ -256,8 +238,7 @@ func (r *PipelineRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.PipelineDefinition](r.db, uid)
 }
 
-// IDByRef resolves a pipeline in a workspace from its id, uid or name. An all-digit ref is tried as
-// an id first and then as a name, since an all-digit name is a valid handle.
+// An all-digit ref is tried as an id first, then as a name, since all-digit names are valid.
 func (r *PipelineRepository) IDByRef(workspaceID uint, ref string) (uint, error) {
 	ref = strings.TrimSpace(ref)
 	find := func(where string, arg any) uint {

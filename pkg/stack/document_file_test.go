@@ -50,8 +50,6 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// Both shapes convert into the same internal type, so nothing downstream of Load learns which one
-// the host happens to have.
 func TestLoadReadsBothShapes(t *testing.T) {
 	for name, m := range map[string]*Manifest{"flat": flatManifest(), "kinded": testManifest()} {
 		t.Run(name, func(t *testing.T) {
@@ -70,8 +68,7 @@ func TestLoadReadsBothShapes(t *testing.T) {
 	}
 }
 
-// Converting is an explicit act. A flat file rewritten by `setup` must come back flat, or an
-// operator's older CLI stops reading the install without anyone saying so.
+// A flat file rewritten by `setup` must stay flat, or an older CLI silently stops reading it.
 func TestSaveKeepsTheShapeItRead(t *testing.T) {
 	flat := writeManifest(t, flatManifest())
 	if strings.Contains(readFile(t, flat), "apiVersion:") {
@@ -91,8 +88,7 @@ func TestDefaultsProduceTheKindedDocument(t *testing.T) {
 	}
 }
 
-// The copy is the way back: a converted file cannot be read by an older CLI, and it is the only
-// record of the install's secrets.
+// A converted file can't be read by an older CLI, and the copy is the only record of the install's secrets.
 func TestConversionBacksUpTheOriginal(t *testing.T) {
 	path := writeManifest(t, flatManifest())
 	original := readFile(t, path)
@@ -151,8 +147,7 @@ func TestConvertingAnAlreadyKindedManifestIsANoOp(t *testing.T) {
 	}
 }
 
-// The asymmetry is deliberate: files already on thousands of hosts keep loading, and get the check
-// the moment they are converted.
+// Deliberate asymmetry: existing flat files keep loading and get the check once converted.
 func TestUnknownFieldIsRefusedInTheKindedDocumentButNotTheFlatOne(t *testing.T) {
 	dir := t.TempDir()
 
@@ -174,8 +169,7 @@ func TestUnknownFieldIsRefusedInTheKindedDocumentButNotTheFlatOne(t *testing.T) 
 	}
 }
 
-// Minting one here would switch config encryption on for a host whose imported gateways will never
-// receive the key, and their routes would fail silently.
+// Minting a key would enable config encryption for imported gateways that never receive it.
 func TestConversionNeverMintsAGatewayKey(t *testing.T) {
 	m := flatManifest()
 	delete(m.Gateway.Env, gomaConfigEncryptionKey)

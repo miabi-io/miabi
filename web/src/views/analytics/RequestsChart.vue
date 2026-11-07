@@ -1,10 +1,5 @@
 <script setup lang="ts">
-// Requests over time: one stacked column per bucket (success / 4xx / 5xx) on a
-// real time axis. The series arrives gap-filled from the API, so column N is
-// always one bucket after column N-1 and the x labels can be trusted.
-//
-// Hovering (or arrowing through) a column reads out every series for that
-// bucket; the columns themselves stay the hit target, so there's no crosshair.
+// The series arrives gap-filled, so column N is always one bucket after N-1.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { AnalyticsSeriesPoint } from '@/api/analytics'
 import { fmtNum, fmtMs, niceAxisMax } from './format'
@@ -49,8 +44,7 @@ interface Segment {
   h: number
 }
 
-// Columns are built top-down (5xx, 4xx, success) so the topmost non-empty
-// segment can carry the rounded cap.
+// Built top-down so the topmost non-empty segment can carry the rounded cap.
 const columns = computed(() =>
   props.series.map((p) => {
     const e5 = Math.max(0, p.errors_5xx)
@@ -97,8 +91,6 @@ const active = computed(() => {
   return { i, point: props.series[i], col: columns.value[i], at: times.value[i] }
 })
 
-// Keep the tooltip inside the card: it centers on its column until it would
-// run off an edge, then pins to that edge.
 const tipStyle = computed(() => {
   const i = hover.value
   if (i === null) return {}
@@ -115,8 +107,7 @@ const summary = computed(
 
 <template>
   <div class="rc">
-    <!-- Height rides a custom property rather than grid-template-rows directly,
-         so the narrow-screen clamp below still wins over the prop. -->
+    <!-- A custom property so the narrow-screen clamp still wins over the prop. -->
     <div class="rc-frame" :style="{ '--rc-height': height + 'px' }">
       <div class="rc-yaxis">
         <span v-for="t in yTicks" :key="t.f" class="rc-ylabel" :style="{ bottom: t.pct + '%' }">{{ t.label }}</span>
@@ -217,9 +208,7 @@ const summary = computed(
 .rc-col { flex: 1 1 0; min-width: 2px; height: 100%; display: flex; align-items: flex-end; justify-content: center; border-radius: 3px; }
 .rc-col.on { background: var(--bg-tertiary); }
 
-/* The column keeps its share of the width for hovering, but the bar itself is
-   capped — a 7-day range would otherwise draw 70px slabs. overflow guards the
-   couple of px the inter-segment gaps add to a full-height column. */
+/* Bars are capped so a 7-day range doesn't draw 70px slabs; overflow absorbs segment-gap pixels. */
 .rc-stack { width: 100%; max-width: 26px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
 .rc-bar { width: 100%; min-height: 2px; }
 .rc-bar.cap { border-radius: 3px 3px 0 0; }

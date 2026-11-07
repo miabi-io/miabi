@@ -2,8 +2,7 @@ import { ref, watch } from 'vue'
 
 export type LogSize = 'small' | 'medium' | 'large'
 
-// title is the control's accessible name and tooltip: LogSizeControl draws each
-// option rather than labelling it, so this is the only text a user ever reads.
+// LogSizeControl draws each option, so title is the only text a user ever reads.
 export const LOG_SIZES: { value: LogSize; title: string; height: string }[] = [
   { value: 'small', title: 'Small', height: '350px' },
   { value: 'medium', title: 'Medium', height: '600px' },
@@ -28,8 +27,7 @@ function stored(): LogSize | null {
   } catch { return null }
 }
 
-// One preference across every log panel, remembered between sessions. `initial`
-// wins when present (a shared ?size= link), and is what gets remembered.
+// `initial` (a shared ?size= link) wins when present, and is what gets remembered.
 export function useLogSize(initial?: unknown) {
   const size = ref<LogSize>(isLogSize(initial) ? initial : (stored() ?? DEFAULT_SIZE))
   watch(size, (v) => {

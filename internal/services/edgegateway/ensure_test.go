@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeDC records what Ensure did to the node, which is the whole point: a reconnect must not touch a gateway
-// that already runs what we would deploy.
+// A reconnect must not touch a gateway that already runs what we would deploy.
 type fakeDC struct {
 	docker.Client
 	containers map[string]docker.Container
@@ -38,8 +37,7 @@ type fakeDC struct {
 	removed    []string
 }
 
-// ranGateway counts runs of the gateway itself. A first Ensure on a remote edge node also starts that node's
-// gateway Redis, which is not what these tests are about.
+// A first Ensure on a remote node also starts its Redis, which these tests don't count.
 func (f *fakeDC) ranGateway() int {
 	n := 0
 	for _, spec := range f.ran {
@@ -207,8 +205,7 @@ func ranRedis(f *fakeDC) int {
 	return n
 }
 
-// A reinstalled node gets a new Redis password; the Redis still running with the old one must be
-// replaced, or the gateway started with the new password is refused (WRONGPASS).
+// A Redis still on the old password would refuse the new gateway (WRONGPASS).
 func TestNodeRedisRecreatedWhenPasswordChanges(t *testing.T) {
 	s, dc, srv := ensureService(), newFakeDC(), edgeNode()
 	ctx := context.Background()

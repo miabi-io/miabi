@@ -79,8 +79,6 @@ func (r *WorkspaceKeyRepository) MaxVersion(workspaceID uint) (int, error) {
 	return *max, nil
 }
 
-// DeactivateAll clears the active flag for a workspace's keys (used before
-// activating a new version during rotation).
 func (r *WorkspaceKeyRepository) DeactivateAll(tx *gorm.DB, workspaceID uint) error {
 	db := r.db
 	if tx != nil {
@@ -90,24 +88,18 @@ func (r *WorkspaceKeyRepository) DeactivateAll(tx *gorm.DB, workspaceID uint) er
 		Where("workspace_id = ?", workspaceID).Update("active", false).Error
 }
 
-// ListActiveOlderThan returns active keys whose RotatedAt is before the cutoff
-// (used by the auto-rotate cron). RotatedAt is set on create and on rotation.
 func (r *WorkspaceKeyRepository) ListActiveOlderThan(cutoff time.Time) ([]models.WorkspaceKey, error) {
 	var ks []models.WorkspaceKey
 	err := r.db.Where("active = ? AND rotated_at < ?", true, cutoff).Find(&ks).Error
 	return ks, err
 }
 
-// DeleteOldVersions deletes every key version for a workspace except `keep`
-// (used to retire old DEKs after a fully-successful rotation sweep).
 func (r *WorkspaceKeyRepository) DeleteOldVersions(workspaceID uint, keep int) error {
 	return r.db.Where("workspace_id = ? AND version <> ?", workspaceID, keep).
 		Delete(&models.WorkspaceKey{}).Error
 }
 
-// StaleCiphertext lists the "table.column" locations that still hold the workspace's ciphertext under
-// a key version other than activeVersion. It scans every text and JSON column so it also catches owners
-// that were never registered for re-encryption; slow on large tables, but rotation is rare.
+// Scans every text and JSON column to catch unregistered owners; slow on large tables, but rotation is rare.
 func (r *WorkspaceKeyRepository) StaleCiphertext(workspaceID uint, activeVersion int) ([]string, error) {
 	var cols []struct {
 		TableName  string

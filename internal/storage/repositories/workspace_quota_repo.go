@@ -33,8 +33,6 @@ func NewWorkspaceQuotaRepository(db *gorm.DB) *WorkspaceQuotaRepository {
 	return &WorkspaceQuotaRepository{db: db}
 }
 
-// FindByWorkspace returns the override row for a workspace, or
-// gorm.ErrRecordNotFound when none is set.
 func (r *WorkspaceQuotaRepository) FindByWorkspace(workspaceID uint) (*models.WorkspaceQuota, error) {
 	var q models.WorkspaceQuota
 	if err := r.db.Where("workspace_id = ?", workspaceID).First(&q).Error; err != nil {

@@ -32,8 +32,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 )
 
-// RunBackupSetRequest triggers a recovery point across every database on an
-// instance.
 type RunBackupSetRequest struct {
 	Body struct {
 		Comment     string `json:"comment"`
@@ -41,10 +39,7 @@ type RunBackupSetRequest struct {
 	} `json:"body"`
 }
 
-// BackupSetsResponse carries the recovery points plus whether the workspace can
-// take one at all. The capability rides along because a developer can open this
-// page without being able to read the workspace's backup settings, and a disabled
-// button with no reason is worse than no button.
+// The capability rides along because a developer may not be able to read the backup settings.
 type BackupSetsResponse struct {
 	Sets         []models.DatabaseBackupSet `json:"sets"`
 	S3Configured bool                       `json:"s3_configured"`
@@ -77,8 +72,6 @@ func (h *BackupHandler) s3Configured(workspaceID uint) bool {
 	return err == nil && cfg != nil
 }
 
-// RunSet backs up every database on the instance as one recovery point (Enterprise; gated
-// recovery_points).
 func (h *BackupHandler) RunSet(c *okapi.Context, req *RunBackupSetRequest) error {
 	if err := h.ee.Require(enterprise.FlagRecoveryPoints); err != nil {
 		return entitlementAbort(c, err)
@@ -124,9 +117,7 @@ func (h *BackupHandler) DeleteSet(c *okapi.Context) error {
 	return ok(c, okapi.M{"deleted": true})
 }
 
-// setDestination resolves where a set is written. It is the same workspace target
-// manual and scheduled per-database backups use, so a set is encrypted on exactly
-// the same terms as they are.
+// Same target as per-database backups, so a set is encrypted on exactly the same terms.
 func (h *BackupHandler) setDestination(workspaceID uint) (backup.Destination, error) {
 	if h.settings == nil {
 		return backup.Destination{Type: "local"}, nil
@@ -150,9 +141,7 @@ func (h *BackupHandler) loadSet(c *okapi.Context, workspaceID uint) (*models.Dat
 	return h.sets.FindInWorkspace(workspaceID, uint(id))
 }
 
-// DiscoverSets lists the recovery points in the workspace's bucket, including any
-// this platform has no record of. Read-only: it reads the cleartext descriptors and
-// writes nothing.
+// Read-only: it reads the cleartext descriptors and writes nothing.
 func (h *BackupHandler) DiscoverSets(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	if h.settings == nil {
@@ -182,8 +171,7 @@ type AdoptSetRequest struct {
 	} `json:"body"`
 }
 
-// AdoptSet writes a recovery point found in the bucket into this instance's
-// history. It creates rows and touches no data.
+// Creates rows only and touches no data.
 func (h *BackupHandler) AdoptSet(c *okapi.Context, req *AdoptSetRequest) error {
 	if err := h.ee.Require(enterprise.FlagRecoveryPoints); err != nil {
 		return entitlementAbort(c, err)
@@ -212,8 +200,6 @@ func (h *BackupHandler) AdoptSet(c *okapi.Context, req *AdoptSetRequest) error {
 // RestoreSetRequest carries the restore method for a whole recovery point.
 type RestoreSetRequest struct {
 	Body struct {
-		// "force" drops and recreates each database first; anything else restores
-		// over what is there.
 		Method string `json:"method" enum:"normal,force"`
 		// AllowVersionMismatch loads dumps taken from a newer engine anyway.
 		AllowVersionMismatch bool `json:"allow_version_mismatch"`
@@ -287,9 +273,7 @@ func (h *BackupHandler) VerifySet(c *okapi.Context) error {
 	return ok(c, res)
 }
 
-// RecoveryKit downloads the instructions for reading a recovery point back without
-// Miabi. The kit carries the sealed envelope but never the data key, so it is only
-// useful to someone who also has the passphrase.
+// The kit never carries the data key, so it is only useful with the passphrase too.
 func (h *BackupHandler) RecoveryKit(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	set, err := h.loadSet(c, wsID)
@@ -343,8 +327,7 @@ func (h *BackupHandler) CreateSetSchedule(c *okapi.Context, req *SetScheduleRequ
 	if err != nil {
 		return c.AbortNotFound("database instance not found")
 	}
-	// Refuse a schedule that could only ever fail, rather than letting it discover
-	// that at 03:00 every night.
+	// Refuse a schedule that could only ever fail.
 	if !h.s3Configured(inst.WorkspaceID) {
 		return c.AbortBadRequest("recovery points need the workspace S3 backup target — configure it under Workspace settings → Backups")
 	}

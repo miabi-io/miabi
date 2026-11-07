@@ -35,14 +35,11 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// SetPasskeys wires passkey sign-in. A nil service leaves passkeys off; the repository is still used to
-// report and clean up existing ones.
+// The repository is still used to report and clean up existing passkeys when the service is nil.
 func (h *AuthHandler) SetPasskeys(svc *passkey.Service, repo *repositories.PasskeyRepository) {
 	h.passkeys, h.passkeyRepo = svc, repo
 }
 
-// PasskeyBegin carries the options for navigator.credentials.create or .get, and the token that
-// identifies the ceremony when the browser's answer comes back.
 type PasskeyBegin struct {
 	Token   string `json:"token"`
 	Options any    `json:"options"`
@@ -56,8 +53,6 @@ type PasskeyLoginRequest struct {
 	} `json:"body"`
 }
 
-// PasskeyRegisterBeginRequest re-authenticates the caller before a passkey is added: the password, plus
-// a TOTP or recovery code when two-factor is on.
 type PasskeyRegisterBeginRequest struct {
 	Body struct {
 		Password      string `json:"password" required:"true"`
@@ -103,8 +98,7 @@ func (h *AuthHandler) passkeyAbort(c *okapi.Context, err error, what string) err
 	}
 }
 
-// confirmPassword re-checks the caller's password, against the directory for an LDAP account. An
-// account that signs in only through SSO has no password to confirm, and so cannot manage passkeys.
+// An SSO-only account has no password to confirm, and so cannot manage passkeys.
 func (h *AuthHandler) confirmPassword(c *okapi.Context, user *models.User, password string) error {
 	identifier := user.Email
 	switch strings.ToLower(strings.TrimSpace(user.AuthSource)) {
@@ -130,9 +124,7 @@ func (h *AuthHandler) PasskeyLoginBegin(c *okapi.Context) error {
 	return ok(c, PasskeyBegin{Token: token, Options: opts})
 }
 
-// PasskeyLogin finishes a passwordless sign-in. A passkey proves possession and, with user verification,
-// a PIN or biometric, so it stands in for both the password and the TOTP code. The account policies a
-// password login enforces still apply.
+// A verified passkey stands in for password and TOTP; account policies still apply.
 func (h *AuthHandler) PasskeyLogin(c *okapi.Context, req *PasskeyLoginRequest) error {
 	if len(req.Body.Credential) == 0 {
 		return c.AbortBadRequest("credential is required")
@@ -186,8 +178,7 @@ func (h *AuthHandler) ListPasskeys(c *okapi.Context) error {
 	return ok(c, rows)
 }
 
-// PasskeyRegisterBegin starts adding a passkey. A passkey is a new way into the account that skips the
-// password and the TOTP code, so both are confirmed first: a stolen session alone must not plant one.
+// Password and TOTP are confirmed first: a stolen session alone must not plant a passkey.
 func (h *AuthHandler) PasskeyRegisterBegin(c *okapi.Context, req *PasskeyRegisterBeginRequest) error {
 	user, err := h.users.FindByID(middlewares.UserID(c))
 	if err != nil {

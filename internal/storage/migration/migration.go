@@ -29,9 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// detachOrphanPlatformBackups nulls platform_backups.set_id where it is 0. Rows written before
-// SetID became a nullable pointer reference a row that cannot exist, so AutoMigrate cannot add
-// the FK and every ad-hoc backup would then fail with SQLSTATE 23503. Skipped on fresh installs.
+// SetID=0 rows reference a nonexistent row, blocking the FK AutoMigrate adds; skipped on fresh installs.
 func detachOrphanPlatformBackups(db *gorm.DB) error {
 	m := db.Migrator()
 	if !m.HasTable("platform_backups") || !m.HasColumn("platform_backups", "set_id") {
@@ -47,10 +45,7 @@ func detachOrphanPlatformBackups(db *gorm.DB) error {
 	return nil
 }
 
-// backfillBackupNumbers assigns backups.number (per-database, 1-based, ordered by id) to rows
-// written before the column existed. It runs BEFORE AutoMigrate — and adds the column itself —
-// because AutoMigrate is what creates the (database_id, number) unique index, which every
-// pre-existing row at the default 0 would violate. Idempotent: a second run matches nothing.
+// Runs before AutoMigrate, which creates the (database_id, number) unique index every 0 row would violate.
 func backfillBackupNumbers(db *gorm.DB) error {
 	m := db.Migrator()
 	if !m.HasTable("backups") {
@@ -74,9 +69,7 @@ func backfillBackupNumbers(db *gorm.DB) error {
 	return nil
 }
 
-// slugifyCronJobNames turns cron job names into unique per-workspace slugs, keeping the
-// original as the display name. It runs BEFORE AutoMigrate, which adds the
-// (workspace_id, name) unique index that free-text and duplicate names would violate.
+// Runs before AutoMigrate, which adds the (workspace_id, name) unique index free-text names would violate.
 func slugifyCronJobNames(db *gorm.DB) error {
 	m := db.Migrator()
 	if !m.HasTable("cron_jobs") || m.HasIndex(&models.CronJob{}, "idx_cronjob_workspace_name") {
@@ -130,8 +123,7 @@ func slugifyCronJobNames(db *gorm.DB) error {
 
 // Run executes all schema migrations via GORM AutoMigrate.
 func Run(db *gorm.DB) error {
-	// Fixups that must happen BEFORE AutoMigrate, because AutoMigrate is what
-	// adds the constraint they make satisfiable.
+	// These must run before AutoMigrate, which adds the constraints they make satisfiable.
 	if err := detachOrphanPlatformBackups(db); err != nil {
 		return err
 	}
@@ -253,9 +245,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	// Partial unique index enforcing at most one ACTIVE lease per job at the DB
-	// level (GORM can't express a partial index via struct tags). Keyed by
-	// (kind, run_id) so pipeline-run and deploy-build id spaces never collide.
+	// GORM can't express partial indexes; keyed by (kind, run_id) so pipeline and build id spaces never collide.
 	if err := db.Exec(
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_runner_lease_active_run ` +
 			`ON runner_leases (kind, run_id) WHERE status = 'active'`,
@@ -263,9 +253,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create runner-lease active-run index: %w", err)
 	}
 
-	// Partial unique index: a hostname may be VERIFIED by at most one workspace
-	// platform-wide, so two tenants can't both serve the same domain. Registration
-	// (unverified rows) stays open; only verification is exclusive. Idempotent.
+	// A hostname may be verified by only one workspace platform-wide; unverified registration stays open.
 	if err := db.Exec(
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_verified_name ` +
 			`ON domains (lower(name)) WHERE verified`,
@@ -273,9 +261,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create verified-domain uniqueness index: %w", err)
 	}
 
-	// Partial unique index: at most one ACTIVE alert per (workspace, dedup_key), so
-	// a repeated signal folds into the existing alert instead of creating a new
-	// row. Resolved/archived alerts stay as history and don't block a re-fire.
+	// Repeat signals fold into the active alert; resolved/archived alerts don't block a re-fire.
 	if err := db.Exec(
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_active_dedup ` +
 			`ON alerts (workspace_id, dedup_key) WHERE state IN ('firing', 'acknowledged')`,
@@ -283,9 +269,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create active-alert uniqueness index: %w", err)
 	}
 
-	// Unique index making an announcement's delivery idempotent: the broadcast
-	// fan-out and the per-user backfill both insert, and without this a user who
-	// read their inbox as a broadcast landed could receive the notice twice.
+	// Broadcast fan-out and per-user backfill both insert, so without this a user could get the notice twice.
 	if err := db.Exec(
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_user_announcement ` +
 			`ON notifications (user_id, announcement_id) WHERE announcement_id IS NOT NULL`,
@@ -293,8 +277,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create announcement-delivery uniqueness index: %w", err)
 	}
 
-	// One version policy per image repository: an app, or an unbound pipeline. Two policies on one
-	// repository would mint the same tag twice.
+	// Two policies on one repository would mint the same tag twice.
 	for _, stmt := range []string{
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_version_policy_app ON version_policies (application_id) WHERE application_id IS NOT NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_version_policy_pipeline ON version_policies (pipeline_id) WHERE pipeline_id IS NOT NULL`,
@@ -310,9 +293,7 @@ func Run(db *gorm.DB) error {
 		return fmt.Errorf("failed to create default-cluster uniqueness index: %w", err)
 	}
 
-	// Exactly one default organization. Every nullable organization_id — on workspaces, users and the
-	// identity providers — resolves to it, so two rows carrying the flag would make that resolution
-	// ambiguous across five tables.
+	// Every nullable organization_id resolves to the default, so two flagged rows would be ambiguous.
 	if err := db.Exec(
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_default ON organizations (is_default) WHERE is_default`,
 	).Error; err != nil {

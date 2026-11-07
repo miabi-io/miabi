@@ -80,8 +80,7 @@ func TestGitRepositoryRefUsesTheJSONType(t *testing.T) {
 	}
 }
 
-// The classification above must match what the handler actually does, or the
-// test pins a copy rather than the code.
+// Must match the handler, or the test pins a copy rather than the code.
 func TestClassifyMatchesTheHandler(t *testing.T) {
 	h := &PipelineHandler{}
 	for _, raw := range []string{"", "null", `""`, "3", "123"} {

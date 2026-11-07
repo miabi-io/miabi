@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// collect reads the live workspace into a bundle state document. Everything is keyed by name and nothing by id,
-// because the install that reads this may share no id space with the one that wrote it. A reference that cannot
-// be a name — a host-mount preset, an uploaded certificate, a node — is left out and named in the report.
+// Keyed by name, never id: the reading install may share no id space; unnameable refs are reported.
 func (s *Service) collect(workspaceID uint, report *models.BundleReport) (*wsbundle.State, error) {
 	ws, err := s.Workspace.Get(workspaceID)
 	if err != nil {
@@ -83,8 +81,6 @@ func (s *Service) collect(workspaceID uint, report *models.BundleReport) (*wsbun
 	return st, nil
 }
 
-// collectCredentials carries the registry and Git credentials apps depend on, so
-// a private image still pulls and a private repo still clones on the target.
 func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, report *models.BundleReport) {
 	regs, err := s.Registry.List(workspaceID)
 	if err != nil {
@@ -92,9 +88,7 @@ func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, repor
 	}
 	for i := range regs {
 		r := &regs[i]
-		// Read the secret through the service: listed records are stripped, and a
-		// vault-backed credential exports as its reference (the Secret it names
-		// travels in the same bundle).
+		// Listed records are stripped; a vault-backed credential exports as its reference.
 		sec, err := s.Registry.BundleSecret(workspaceID, r.ID)
 		if err != nil {
 			report.Add("registry", r.Name, "failed", "credential could not be read: "+err.Error())
@@ -146,9 +140,7 @@ func (s *Service) collectCredentials(workspaceID uint, st *wsbundle.State, repor
 	}
 }
 
-// collectCertificates carries uploaded certificates with their material, and
-// Miabi-issued ones as a declaration only — their key belongs to a host that
-// still points at the source, so re-issuing is a cutover step, not an import one.
+// Issued certs are declared only: their key belongs to a host still pointing at the source.
 func (s *Service) collectCertificates(workspaceID uint, st *wsbundle.State, report *models.BundleReport) {
 	providerName := map[uint]string{}
 	if provs, err := s.DNSProvider.List(workspaceID); err == nil {
@@ -186,9 +178,7 @@ func (s *Service) collectCertificates(workspaceID uint, st *wsbundle.State, repo
 	}
 }
 
-// collectDelivery carries the pieces that build and reconcile a workspace: pipeline definitions, GitOps
-// sources, promotion environments and schedules. None of their history travels — a run, a sync and a job
-// execution are records of something that happened on the platform it happened on.
+// No history travels: runs, syncs and executions are records of the platform they happened on.
 func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *models.BundleReport) {
 	appName := map[uint]string{}
 	if apps, err := s.App.List(workspaceID); err == nil {
@@ -319,9 +309,7 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 	}
 }
 
-// collectNetworks carries the workspace's own networks. The default network is
-// skipped: every workspace has one, the target creates it itself, and carrying it
-// would mean an import trying to create a second.
+// The target creates its own default network, so carrying it would create a second.
 func (s *Service) collectNetworks(workspaceID uint, st *wsbundle.State, report *models.BundleReport) {
 	nets, err := s.Network.List(workspaceID)
 	if err != nil {
@@ -340,8 +328,7 @@ func (s *Service) collectNetworks(workspaceID uint, st *wsbundle.State, report *
 	}
 }
 
-// collectSealingKeys carries the private sealing keys: without them every SealedSecret in the workspace's git
-// repositories would stop opening on the target.
+// Without them every SealedSecret in the workspace's git repos stops opening on the target.
 func (s *Service) collectSealingKeys(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	if s.Sealing == nil {
 		return nil
@@ -357,9 +344,7 @@ func (s *Service) collectSealingKeys(workspaceID uint, st *wsbundle.State, repor
 	return nil
 }
 
-// collectSecrets carries the vault, values included — the one part of a bundle that makes the sealed state file
-// non-negotiable. Managed secrets are skipped: they are minted and owned by a managed database, so the target
-// creates its own with the credentials it generated. Carrying them would overwrite live credentials.
+// Managed secrets are skipped: the target mints its own, and carrying them would overwrite live credentials.
 func (s *Service) collectSecrets(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	secrets, err := s.Secret.List(workspaceID)
 	if err != nil {
@@ -385,13 +370,7 @@ func (s *Service) collectSecrets(workspaceID uint, st *wsbundle.State, report *m
 	return nil
 }
 
-// collectConfigs carries config file sets, contents included — like secrets, and
-// for the same reason: a config is configuration the workspace owns, and a
-// restore that recreated the apps without the files they mount would produce a
-// workspace that looks right and does not run.
-//
-// Managed configs are skipped on the same rule as managed secrets: they belong to
-// a platform resource that mints its own on the target.
+// Without the files the apps mount, a restore looks right and does not run; managed configs are skipped.
 func (s *Service) collectConfigs(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	if s.Config == nil {
 		return nil
@@ -421,8 +400,7 @@ func (s *Service) collectConfigs(workspaceID uint, st *wsbundle.State, report *m
 	return nil
 }
 
-// collectStorage carries volume declarations. Their contents travel separately,
-// as archives (see exportVolumes).
+// Volume contents travel separately as archives (see exportVolumes).
 func (s *Service) collectStorage(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	vols, err := s.Volume.List(workspaceID)
 	if err != nil {
@@ -447,8 +425,7 @@ func (s *Service) collectStorage(workspaceID uint, st *wsbundle.State, report *m
 			Name: k.Name, DisplayName: k.DisplayName, Description: k.Description,
 			Metadata: k.Metadata, Annotations: k.Annotations,
 		}
-		// The shared environment travels with the stack: without it a member app
-		// starts missing variables it never declared itself.
+		// Without the shared environment a member app starts missing variables it never declared itself.
 		vars, err := s.Stack.ListEnvVars(workspaceID, k.ID)
 		if err != nil {
 			report.Add("stack", k.Name, "failed", "environment could not be read: "+err.Error())
@@ -470,8 +447,6 @@ func (s *Service) collectStorage(workspaceID uint, st *wsbundle.State, report *m
 	return nil
 }
 
-// collectDatabases carries the managed servers and their logical databases,
-// including which app each belongs to so the target can re-attach it.
 func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	instances, err := s.Database.List(workspaceID)
 	if err != nil {
@@ -528,9 +503,7 @@ func (s *Service) collectDatabases(workspaceID uint, st *wsbundle.State, report 
 	return nil
 }
 
-// attachOnly reports whether a database is attached to its app without having injected connection env.
-// A recorded injection settles it; a link made before injections were recorded counts as injected only
-// if the app still holds every default variable.
+// A link made before injections were recorded counts as injected only if the app holds every default variable.
 func (s *Service) attachOnly(inst *models.DatabaseInstance, d *models.Database) bool {
 	if len(d.EnvVars) > 0 {
 		return false
@@ -551,8 +524,7 @@ func (s *Service) attachOnly(inst *models.DatabaseInstance, d *models.Database) 
 	return false
 }
 
-// collectApps carries the workloads: their spec, their environment (secret values
-// decrypted into the sealed file), their ports and their mounts.
+// Secret env values are decrypted into the sealed state file.
 func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	apps, err := s.App.List(workspaceID)
 	if err != nil {
@@ -566,9 +538,7 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 	for i := range vols {
 		volName[vols[i].ID] = vols[i].Name
 	}
-	// Config mounts reference by id on the source; the bundle references by name.
-	// Only the configs the bundle actually carries are resolvable, so a managed
-	// one (skipped above) is reported rather than silently dropped.
+	// Only configs the bundle carries resolve, so a skipped managed one is reported rather than silently dropped.
 	cfgName := map[uint]string{}
 	if s.Config != nil {
 		configs, cerr := s.Config.List(workspaceID)
@@ -653,9 +623,7 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 			})
 		}
 		for _, m := range full.Mounts {
-			// A config mount carries by config name; its contents travel in the state
-			// document. Checked before the host-bind branch below, which would
-			// otherwise report it as an unportable host mount and drop it.
+			// Checked before the host-bind branch, which would otherwise drop it as an unportable host mount.
 			if m.ConfigID != 0 {
 				name := cfgName[m.ConfigID]
 				if name == "" {
@@ -669,9 +637,7 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 				continue
 			}
 			if m.VolumeID == 0 {
-				// A privileged host bind: its source is an allow-listed preset on the
-				// node that granted it, which may not exist — or may mean something
-				// else — on the target.
+				// A host bind's source is a preset on the granting node, which may not exist or differ on the target.
 				report.Add("app", full.Name, "skipped",
 					"host mount at "+m.Path+" is not portable; re-create it on the target")
 				continue
@@ -694,9 +660,7 @@ func (s *Service) collectApps(workspaceID uint, st *wsbundle.State, report *mode
 	return nil
 }
 
-// appEnv reads an app's environment with secret values decrypted. They land in
-// the sealed state file and nowhere else; the target re-encrypts them under its
-// own workspace key on restore.
+// Decrypted values land only in the sealed state file; the target re-encrypts them under its own key.
 func (s *Service) appEnv(app *models.Application) ([]wsbundle.EnvVar, error) {
 	vars, err := s.Apps.ListEnvVars(app.ID)
 	if err != nil {
@@ -713,13 +677,9 @@ func (s *Service) appEnv(app *models.Application) ([]wsbundle.EnvVar, error) {
 	return out, nil
 }
 
-// secretRef matches a `${{ secrets.NAME }}` reference — the same shape the vault
-// resolves at deploy time (see services/secret).
 var secretRef = regexp.MustCompile(`^\s*\$\{\{\s*secrets\.[A-Za-z][A-Za-z0-9_-]{0,62}\s*\}\}\s*$`)
 
-// envEntry converts one stored environment variable into its bundle form. A variable pointing at the vault is
-// carried as the POINTER: the secret it names travels in the same bundle, so resolving would duplicate it and
-// cut the rotation link. A genuine literal is decrypted here, since the target has nowhere else to read it.
+// A vault reference travels as the pointer: resolving would duplicate the secret and cut the rotation link.
 func envEntry(key, stored string, isSecret bool) (wsbundle.EnvVar, error) {
 	value := stored
 	if isSecret {
@@ -735,9 +695,7 @@ func envEntry(key, stored string, isSecret bool) (wsbundle.EnvVar, error) {
 	return wsbundle.EnvVar{Key: key, Value: value, IsSecret: isSecret}, nil
 }
 
-// collectRouting carries routes and domains. Generated external-access routes are
-// skipped: they belong to a port's exposure flag, and the target regenerates them
-// under its own base domain.
+// Generated routes are skipped: the target regenerates them under its own base domain.
 func (s *Service) collectRouting(workspaceID uint, st *wsbundle.State, report *models.BundleReport) error {
 	appName := map[uint]string{}
 	apps, err := s.App.List(workspaceID)
@@ -748,9 +706,7 @@ func (s *Service) collectRouting(workspaceID uint, st *wsbundle.State, report *m
 		appName[apps[i].ID] = apps[i].Name
 	}
 
-	// Middlewares first: a route names the ones it attaches, and a route restored
-	// against a middleware that did not travel is a route serving without the
-	// authentication or the rate limit it was written to have.
+	// A route restored without its middlewares would serve without its authentication or rate limit.
 	middlewares, err := s.Middleware.List(workspaceID)
 	if err != nil {
 		return fmt.Errorf("list middlewares: %w", err)
@@ -831,9 +787,7 @@ func (s *Service) collectRouting(workspaceID uint, st *wsbundle.State, report *m
 	return nil
 }
 
-// collectMembers carries membership by email. Users are instance-global and
-// authenticate against the platform they live on, so a bundle names people — it
-// never carries the credentials that identify them.
+// Users are instance-global, so a bundle names people by email and never carries credentials.
 func (s *Service) collectMembers(workspaceID, ownerID uint, st *wsbundle.State, report *models.BundleReport) {
 	members, err := s.Workspace.ListMembers(workspaceID)
 	if err != nil {

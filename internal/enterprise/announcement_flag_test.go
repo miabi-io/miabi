@@ -15,9 +15,7 @@ import (
 	"testing"
 )
 
-// Announcements are a paid capability, so the flag must be grantable and the tier
-// presets must actually grant it — otherwise the admin UI stays locked for
-// customers whose licence is supposed to include it.
+// The tier presets must grant the paid flag, or the admin UI stays locked for entitled customers.
 func TestAnnouncementsEntitlement(t *testing.T) {
 	if !IsKnownFlag(FlagAnnouncements) {
 		t.Fatalf("%s is missing from AllFlags, so no license can grant it", FlagAnnouncements)

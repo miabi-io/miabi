@@ -50,8 +50,6 @@ var (
 	applicationRefFields = []string{"host", "port", "scheme", "url", "alias"}
 )
 
-// References lists the references in every value apply renders: application and stack env, registry
-// passwords, middleware rules and config files (under their own delimiters).
 func (s *ResourceSet) References() []Reference {
 	var out []Reference
 	for _, r := range s.All() {
@@ -105,8 +103,7 @@ func ruleRefs(where string, v any) []Reference {
 	return nil
 }
 
-// envRefs adds the runtime `${{ secrets.NAME }}` form, which env also checks at apply (see deferSecrets),
-// so a typo in either spelling fails the dry run rather than the apply.
+// Checks the runtime `${{ secrets.NAME }}` form too, so a typo in either spelling fails the dry run.
 func envRefs(where, s string) []Reference {
 	out := refsIn(where, s, actionPattern)
 	for _, m := range runtimeSecretRef.FindAllStringSubmatch(s, -1) {
@@ -130,13 +127,9 @@ func refsIn(where, s string, action *regexp.Regexp) []Reference {
 	return out
 }
 
-// KnownNames holds, per collection, the names a reference may resolve to: those declared in the bundle
-// and those already in the workspace.
 type KnownNames map[string]map[string]bool
 
-// CheckReferences reports every reference to a name that exists nowhere, or to a field its kind lacks.
-// Those can only fail at apply, so a dry run should say so. A name that does exist is never flagged,
-// even where apply might still resolve it late: this check never blocks what apply would accept.
+// CheckReferences never flags an existing name, so it never blocks what apply would accept.
 func CheckReferences(refs []Reference, known KnownNames) error {
 	var problems []string
 	seen := map[string]bool{}

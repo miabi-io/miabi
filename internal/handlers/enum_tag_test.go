@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// requestBodies are the bound request DTOs whose enum tags this test guards.
-// Add new ones here; the cost is one line and the failure it prevents is a
-// 400 on every call to the endpoint.
+// Add new DTOs here: a bad enum tag means a 400 on every call to the endpoint.
 var requestBodies = []any{
 	UpdatePreferencesRequest{},
 	SetDefaultWorkspaceRequest{},
@@ -41,9 +39,7 @@ var requestBodies = []any{
 	SetWorkspaceQuotaRequest{},
 }
 
-// TestEnumTagsAreValidatable pins a framework rule that fails loudly at runtime and
-// silently at compile time: okapi's enum validator dereferences a pointer field but not
-// the elements of a slice, so an enum tag on []*string 400s every request that sends it.
+// okapi's enum validator dereferences pointers but not slice elements, so []*string with enum 400s.
 func TestEnumTagsAreValidatable(t *testing.T) {
 	for _, req := range requestBodies {
 		typ := reflect.TypeOf(req)

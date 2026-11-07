@@ -1,9 +1,7 @@
 import api from './client'
 import type { ApiResponse } from './types'
 
-// A bundle's index, as read from the info file in the bucket. It is the same
-// document an operator finds beside the artifacts, so what the UI lists is what
-// the bucket actually holds — not this platform's memory of writing it.
+// Read from the bucket's info file, so the UI lists what the bucket actually holds, not this platform's memory.
 export interface BundleArtifact {
   subject: 'state' | 'database' | 'volume'
   database?: string

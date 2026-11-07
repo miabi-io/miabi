@@ -28,8 +28,7 @@ import (
 )
 
 func TestRefuseImmutableStorageClass(t *testing.T) {
-	// Converging this would mean deleting and recreating the volume — destroying tenant data from
-	// a git push — so the apply has to fail instead.
+	// Converging would recreate the volume and destroy tenant data from a git push.
 	ch := declarative.Change{
 		Action: declarative.ActionUpdate, Kind: declarative.KindVolume, Name: "pgdata",
 		Fields: []declarative.FieldDiff{{Field: "storage.class", From: "ssd-fast", To: "bulk"}},
@@ -53,8 +52,7 @@ func TestRefuseImmutableStillRefusesAMove(t *testing.T) {
 	}
 }
 
-// Size is the one volume field that converges: it is a declared number for quota accounting, so
-// changing it moves no data.
+// Size is a quota number, so changing it moves no data.
 func TestRefuseImmutableAllowsAResize(t *testing.T) {
 	ch := declarative.Change{
 		Action: declarative.ActionUpdate, Kind: declarative.KindVolume, Name: "pgdata",

@@ -40,12 +40,9 @@ type WorkspaceDeletedEvent struct {
 var ErrWorkspaceManagedByConsole = coded(http.StatusConflict, "WORKSPACE_MANAGED_BY_CONSOLE",
 	"this workspace is billed through Miabi Console; delete it there")
 
-// SetConsoleOnly wires whether workspace creation and deletion belong to the console
-// (MIABI_WORKSPACE_CREATION=console).
 func (s *Service) SetConsoleOnly(fn func() bool) { s.consoleOnly = fn }
 
-// GuardWorkspaceDeletion refuses a Miabi-side delete of a billed workspace in console mode: the
-// console would keep charging for a workspace that no longer exists.
+// The console would keep charging for a workspace that no longer exists.
 func (s *Service) GuardWorkspaceDeletion(ws *models.Workspace) error {
 	if s.consoleOnly != nil && s.consoleOnly() && ws.BillingAccountID != nil {
 		return ErrWorkspaceManagedByConsole
@@ -53,8 +50,7 @@ func (s *Service) GuardWorkspaceDeletion(ws *models.Workspace) error {
 	return nil
 }
 
-// WorkspaceDeleted queues billing.workspace.deleted for a billed workspace, so the console learns
-// of a delete it did not make.
+// Tells the console about a delete it did not make.
 func (s *Service) WorkspaceDeleted(ws *models.Workspace) {
 	if ws == nil || ws.BillingAccountID == nil {
 		return

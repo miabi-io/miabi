@@ -133,8 +133,7 @@ func TestUnusedVolumes_NoLookupReclaimsNothing(t *testing.T) {
 	}
 }
 
-// The guarded categories are removed resource by resource, never by handing the category to the
-// daemon's prune, so what the report counted is exactly what goes.
+// Removed one by one, never via the daemon's prune, so exactly what the report counted goes.
 func TestApply_ReclaimsUnusedImagesAndVolumes(t *testing.T) {
 	dc := &reclaimDocker{
 		fakeDocker: &fakeDocker{
@@ -213,8 +212,7 @@ func TestPlan_NamesTheGuardedResources(t *testing.T) {
 	}
 }
 
-// Asking for unused-image reclaim on a build with no guard wired must say so rather than quietly
-// reclaim nothing and report success.
+// Without a guard it must error rather than reclaim nothing and report success.
 func TestApply_UnusedImagesWithoutGuardErrors(t *testing.T) {
 	dc := &reclaimDocker{fakeDocker: &fakeDocker{images: []docker.Image{pulled("free", "nginx:1.25", 100, 0)}}}
 	s := newTestService(dc, nil, existsSet())
@@ -267,8 +265,7 @@ func TestAnalyze_ReclaimBreakdownIsGuarded(t *testing.T) {
 	}
 }
 
-// Regression: summing each image's total size counted a shared base layer once per image carrying
-// it, so the estimate promised several times the disk the apply could return.
+// Summing total sizes counted shared base layers once per image and overstated the estimate.
 func TestAnalyze_EstimateExcludesSharedLayers(t *testing.T) {
 	shared := func(id, tag string, size, sharedSize int64) docker.Image {
 		im := pulled(id, tag, size, 0)

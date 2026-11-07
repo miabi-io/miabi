@@ -24,9 +24,7 @@ import (
 	"testing"
 )
 
-// The three prefixes are each tested, but only once: bucket policies are
-// commonly scoped by prefix, so testing one proves nothing about the others —
-// while testing the same path three times is noise in the operator's result.
+// Each prefix once: policies are prefix-scoped, but repeating a path is noise.
 func TestDistinctPrefixes(t *testing.T) {
 	cases := []struct {
 		name string
@@ -75,8 +73,7 @@ func TestDistinctPrefixes(t *testing.T) {
 	}
 }
 
-// The client and the *-bkup helpers must sign for the same region, or a mismatch
-// surfaces as a credential problem rather than a region one.
+// A region mismatch surfaces as a credential problem rather than a region one.
 func TestDefaultRegionMatchesTheHelpers(t *testing.T) {
 	if got := defaultRegion(""); got != "us-east-1" {
 		t.Fatalf("defaultRegion(%q) = %q, want us-east-1", "", got)

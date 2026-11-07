@@ -21,10 +21,7 @@ package models
 
 import "time"
 
-// NotifiableEvents is the curated set of lifecycle events that webhooks and notification
-// channels may subscribe to. Configuration changes and other timeline noise are intentionally
-// excluded. Routine database transitions (started/stopped/restarted) are left out for the same
-// reason: only outcomes worth waking someone for are here.
+// NotifiableEvents excludes config changes and routine DB transitions: only outcomes worth waking someone for.
 var NotifiableEvents = []AppEventType{
 	EventDeployStarted,
 	EventDeploySucceeded,
@@ -62,8 +59,6 @@ func IsNotifiable(t AppEventType) bool {
 	return ok
 }
 
-// NotificationChannelType identifies a notification transport. Telegram ships
-// first; the model is generic so Slack/Discord/email can follow.
 type NotificationChannelType string
 
 const (
@@ -79,9 +74,7 @@ const (
 	ConfigWebhookURL = "webhook_url" // slack/discord; encrypted at rest
 )
 
-// NotificationChannel is a workspace-configured outbound channel that pushes a human-readable
-// message when a subscribed event fires. Transport settings live in Config; secret values are
-// encrypted at rest and masked in API responses.
+// NotificationChannel secret Config values are encrypted at rest and masked in API responses.
 type NotificationChannel struct {
 	ID          uint                    `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint                    `json:"workspace_id" gorm:"index;not null"`

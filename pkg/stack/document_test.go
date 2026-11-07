@@ -24,8 +24,7 @@ import (
 	"testing"
 )
 
-// roundTrip renders a manifest as a document, parses it back, and converts it to a manifest again —
-// through the YAML, so a wrong tag fails here rather than in production.
+// Goes through the YAML so a wrong tag fails here rather than in production.
 func roundTrip(t *testing.T, m *Manifest) *Manifest {
 	t.Helper()
 	b, err := MarshalDocument(NewDocument(m))
@@ -39,8 +38,7 @@ func roundTrip(t *testing.T, m *Manifest) *Manifest {
 	return d.Manifest()
 }
 
-// The document is a second on-disk shape for the SAME internal type. If a field is lost here it is
-// lost from the install: the converge that follows reads the manifest, not the file.
+// A field lost here is lost from the install: converge reads the manifest, not the file.
 func TestDocumentRoundTripsThroughTheManifest(t *testing.T) {
 	m := testManifest()
 	got := roundTrip(t, m)
@@ -50,8 +48,7 @@ func TestDocumentRoundTripsThroughTheManifest(t *testing.T) {
 	}
 }
 
-// Secrets are the values a conversion may never mint or drop: a regenerated db_password is an
-// install nobody can recover, because Postgres keeps the password its data directory was created with.
+// A regenerated db_password is unrecoverable: Postgres keeps the password its data dir was created with.
 func TestEverySecretSurvivesTheRoundTrip(t *testing.T) {
 	m := testManifest()
 	got := roundTrip(t, m)
@@ -65,8 +62,7 @@ func TestEverySecretSurvivesTheRoundTrip(t *testing.T) {
 	}
 }
 
-// The digest of the default gateway config is what keeps a customized goma.yml from being
-// overwritten. Recomputing or dropping it silently breaks that, one upgrade later.
+// Recomputing or dropping the default-config digest would overwrite a customized goma.yml one upgrade later.
 func TestTheGatewayConfigDigestSurvivesTheRoundTrip(t *testing.T) {
 	m := testManifest()
 	m.Gateway.ConfigSHA = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
@@ -76,8 +72,6 @@ func TestTheGatewayConfigDigestSurvivesTheRoundTrip(t *testing.T) {
 	}
 }
 
-// The document keeps the gateway key with the other secrets; the manifest keeps it in gateway.env,
-// which is where the gateway and control-plane specs already read it from.
 func TestTheGatewayKeyMovesBetweenSecretsAndGatewayEnv(t *testing.T) {
 	m := testManifest()
 	if m.Gateway.Env == nil {
@@ -130,8 +124,7 @@ func TestTheKindedOnlySettingsSurviveTheRoundTrip(t *testing.T) {
 	}
 }
 
-// An unset optional must stay unset: the compiler emits a variable only for a field the manifest
-// states, because an emitted variable pins the console's field to whatever it says.
+// An emitted variable pins the console's field, so an unset optional must emit nothing.
 func TestAnUnsetOptionalStaysUnset(t *testing.T) {
 	m := testManifest()
 	m.Install.Backup = nil
@@ -145,8 +138,7 @@ func TestAnUnsetOptionalStaysUnset(t *testing.T) {
 	}
 }
 
-// Every other manifest parser in the platform refuses unknown fields. A tolerated `acme_emial:` is
-// an install with no ACME contact and no error to show for it.
+// A tolerated `acme_emial:` is an install with no ACME contact and no error.
 func TestUnknownFieldIsRefused(t *testing.T) {
 	doc := `
 apiVersion: install.miabi.io/v1
@@ -211,8 +203,7 @@ func TestMetadataNameDefaultsAndIsValidated(t *testing.T) {
 	}
 }
 
-// A file may hold several documents, and a trailing --- leaves an empty one. Two ControlPlanes are a
-// mistake worth refusing: an install has exactly one, and silently taking the first hides the other.
+// An install has exactly one ControlPlane; silently taking the first would hide the other.
 func TestEmptyDocumentsAreSkippedAndDuplicatesRefused(t *testing.T) {
 	one := "---\napiVersion: install.miabi.io/v1\nkind: ControlPlane\nspec:\n  domain: x.example.com\n---\n"
 	if _, err := ParseDocument([]byte(one)); err != nil {
@@ -231,8 +222,7 @@ func TestParseReportsInputThatHoldsNoDocument(t *testing.T) {
 	}
 }
 
-// Load dispatches on this, so a malformed document must still read as one — otherwise it is reported
-// as "not a Miabi stack manifest", which sends the operator looking in the wrong place.
+// A malformed document must still read as one, or the operator looks in the wrong place.
 func TestIsDocumentTellsTheTwoShapesApart(t *testing.T) {
 	flat := "version: 1\ndomain: miabi.example.com\n"
 	if IsDocument([]byte(flat)) {

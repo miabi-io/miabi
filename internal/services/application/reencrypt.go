@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts every secret env var of the workspace's applications
-// under the workspace's active DEK. Non-secret vars (stored plaintext) are
-// skipped. Idempotent; returns the number rewritten.
+// Reencrypt is idempotent and skips non-secret vars.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	apps, err := s.apps.ListByWorkspace(workspaceID)
 	if err != nil {

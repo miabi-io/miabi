@@ -223,8 +223,7 @@ async function confirmDelete() {
       </div>
     </div>
 
-    <!-- The record stays visible after verification: this is the panel people read
-         when a domain breaks, not a one-time setup wizard. -->
+    <!-- The record stays visible after verification: this is the panel people read when a domain breaks. -->
     <div class="card mb-4">
       <div class="card-header"><h2>{{ $t('domainDetail.dnsRecord') }}</h2></div>
       <div class="card-body">

@@ -25,8 +25,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// healthcheckImageStep moves apps on "none" to "image". "none" used to keep the image's own
-// HEALTHCHECK and now disables it, so "image" is what those apps were running with.
+// "none" used to keep the image's HEALTHCHECK and now disables it, so "image" preserves behaviour.
 func healthcheckImageStep(ctx context.Context, db *gorm.DB) error {
 	return db.WithContext(ctx).Table("applications").
 		Where("healthcheck_type = ? OR healthcheck_type = ''", "none").

@@ -28,12 +28,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 )
 
-// registryUsername is the advisory docker username a job logs in with; the
-// short-lived token is what actually authorizes the push/pull.
+// Advisory: the short-lived token is what actually authorizes the push/pull.
 const registryUsername = "miabi-job"
 
-// JobCredentials are the per-job, short-lived secrets injected into a runner job: a registry login
-// scoped to this app's repo, and an optional callback token scoped to deploy just this app/run.
 // Both are ephemeral APIKey rows, so a leaked value is useless once the run ends or expires.
 type JobCredentials struct {
 	RegistryUser  string
@@ -42,8 +39,6 @@ type JobCredentials struct {
 	keyIDs        []uint // the minted APIKey ids, revoked on terminal
 }
 
-// Secrets returns the credential values that must be redacted from the run's
-// live log stream (a step that echoes one prints ••••).
 func (c *JobCredentials) Secrets() []string {
 	if c == nil {
 		return nil
@@ -57,8 +52,7 @@ func (c *JobCredentials) Secrets() []string {
 	return out
 }
 
-// sourceURLSecrets returns the password embedded in a clone URL, raw and as it appears
-// percent-encoded, so a step that prints the remote or .git/config shows ••••.
+// Covers the raw and percent-encoded forms so printing the remote or .git/config shows the mask.
 func sourceURLSecrets(sourceURL string) []string {
 	u, err := url.Parse(sourceURL)
 	if err != nil || u.User == nil {
@@ -75,8 +69,7 @@ func sourceURLSecrets(sourceURL string) []string {
 	return out
 }
 
-// CredentialMinter issues (and revokes) a run's ephemeral job credentials as
-// APIKey rows, so they ride the exact same auth/RBAC/audit path as a user token.
+// APIKey rows so job credentials ride the same auth/RBAC/audit path as a user token.
 type CredentialMinter struct {
 	keys            *auth.APIKeyService
 	jobTokenEnabled bool // MIABI_JOB_API_TOKEN_ENABLED
@@ -86,15 +79,11 @@ func NewCredentialMinter(keys *auth.APIKeyService, jobTokenEnabled bool) *Creden
 	return &CredentialMinter{keys: keys, jobTokenEnabled: jobTokenEnabled}
 }
 
-// Mint issues the per-job registry credential (registry_write, bound to the app) and, unless
-// withheld by config, the MIABI_JOB_TOKEN callback. Both expire at the job deadline and are
-// attributed to the run's subject user for audit. Call Revoke when the run goes terminal.
+// Both expire at the job deadline; call Revoke when the run goes terminal.
 func (m *CredentialMinter) Mint(subjectUserID, workspaceID uint, appID *uint, runID uint, deadline time.Time) (*JobCredentials, error) {
 	creds := &JobCredentials{RegistryUser: registryUsername}
 
-	// Both write AND read: a `docker push` first HEADs each blob to skip layers the
-	// registry already has, and those existence checks are reads. A write-only
-	// token gets "pull requires a read scope" on the HEADs and the push fails.
+	// Read too: docker push HEADs each blob first, and a write-only token fails those checks.
 	regTok, regKey, err := m.keys.CreateEphemeral(subjectUserID, workspaceID, appID,
 		fmt.Sprintf("job:run-%d:registry", runID), []string{models.ScopeRegistryWrite, models.ScopeRegistryRead}, deadline)
 	if err != nil {
@@ -116,8 +105,7 @@ func (m *CredentialMinter) Mint(subjectUserID, workspaceID uint, appID *uint, ru
 	return creds, nil
 }
 
-// Revoke kills a run's minted credentials the moment the run reaches a terminal
-// state. They also expire at the deadline regardless (defense in depth).
+// They also expire at the deadline regardless (defense in depth).
 func (m *CredentialMinter) Revoke(creds *JobCredentials) {
 	if creds == nil {
 		return

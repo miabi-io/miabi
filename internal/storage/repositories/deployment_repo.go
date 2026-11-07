@@ -34,9 +34,7 @@ func NewDeploymentRepository(db *gorm.DB) *DeploymentRepository {
 
 func (r *DeploymentRepository) Create(d *models.Deployment) error { return r.db.Create(d).Error }
 
-// Update saves a deployment WITHOUT its log columns: those are managed out-of-band by AppendLog
-// and SetLogMeta, so the in-memory d.Logs is a stale "" here and a plain Save would wipe the
-// accumulated build/deploy log the log store later reads.
+// Omits log columns: they're managed by AppendLog/SetLogMeta, and d.Logs here is a stale "".
 func (r *DeploymentRepository) Update(d *models.Deployment) error {
 	return r.db.Omit("logs", "log_ref", "log_bytes", "log_lines", "log_truncated").Save(d).Error
 }
@@ -59,8 +57,7 @@ func (r *DeploymentRepository) ListByApp(appID uint, limit int) ([]models.Deploy
 	return deployments, err
 }
 
-// ListByAppWithActor is ListByApp with each deployment's triggering user resolved to a name. A LEFT
-// join, so a machine trigger or a deleted user yields an empty name rather than dropping the row.
+// A LEFT join, so a machine trigger or deleted user yields an empty name rather than dropping the row.
 func (r *DeploymentRepository) ListByAppWithActor(appID uint, limit int) ([]models.DeploymentWithActor, error) {
 	var out []models.DeploymentWithActor
 	q := r.db.Model(&models.Deployment{}).
@@ -75,9 +72,7 @@ func (r *DeploymentRepository) ListByAppWithActor(appID uint, limit int) ([]mode
 	return out, err
 }
 
-// LatestSucceededByApp is the app's most recent deployment that actually shipped, with its actor
-// resolved. Succeeded rather than most-recent: a deploy that failed five minutes ago must not read
-// as "deployed five minutes ago" when the code still running is older than that.
+// A deploy that failed recently must not read as "deployed recently" when older code still runs.
 func (r *DeploymentRepository) LatestSucceededByApp(appID uint) (*models.DeploymentWithActor, error) {
 	var out models.DeploymentWithActor
 	err := r.db.Model(&models.Deployment{}).
@@ -92,9 +87,7 @@ func (r *DeploymentRepository) LatestSucceededByApp(appID uint) (*models.Deploym
 	return &out, nil
 }
 
-// LatestNumberByApp returns the highest deployment Number for an app (0 when it
-// has none). A pending deploy whose Number is below this has been superseded by a
-// newer one, so it should step aside rather than keep waiting.
+// A pending deploy numbered below this was superseded and should step aside rather than wait.
 func (r *DeploymentRepository) LatestNumberByApp(appID uint) (int, error) {
 	var n int
 	err := r.db.Model(&models.Deployment{}).
@@ -103,8 +96,7 @@ func (r *DeploymentRepository) LatestNumberByApp(appID uint) (int, error) {
 	return n, err
 }
 
-// InProgressAppIDs returns the apps with a deployment still pending, building or deploying. A canary rollout is
-// not in progress in this sense: the stable release keeps running for as long as it lasts.
+// A canary rollout doesn't count: the stable release keeps running throughout.
 func (r *DeploymentRepository) InProgressAppIDs() ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.Deployment{}).
@@ -119,9 +111,7 @@ func (r *DeploymentRepository) AppendLog(id uint, line string) error {
 		Update("logs", gorm.Expr("COALESCE(logs, '') || ?", line+"\n")).Error
 }
 
-// SetLogMeta records the log-store reference + counters for a deployment and
-// replaces the DB column with the bounded tail (the full log now lives in the
-// store). A zero ref is ignored so a store failure leaves the full DB tail intact.
+// A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *DeploymentRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil
@@ -136,8 +126,6 @@ func (r *DeploymentRepository) SetLogMeta(id uint, ref, tail string, bytes int64
 		}).Error
 }
 
-// InProgressByApp returns the app's newest deployment still pending, building or
-// deploying, or gorm.ErrRecordNotFound when none is.
 func (r *DeploymentRepository) InProgressByApp(appID uint) (*models.Deployment, error) {
 	var d models.Deployment
 	err := r.db.Where("application_id = ? AND status IN ?", appID,

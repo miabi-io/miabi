@@ -30,8 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// rollback puts the app back at the source on the data it left there, then removes what the move created
-// at the target. cause is set when the rollback is automatic, after a failure past the switch.
+// cause is set when the rollback is automatic, after a failure past the switch.
 func (s *Service) rollback(ctx context.Context, m *models.LocationMigration, cause error) {
 	m.Phase = models.MigrationPhaseRollback
 	m.Progress.Message = "Rolling back to " + s.clusterLabel(m.SourceClusterID)
@@ -67,8 +66,6 @@ func (s *Service) rollback(ctx context.Context, m *models.LocationMigration, cau
 	logger.Info("location migration rolled back", "migration", m.ID, "app", m.AppName)
 }
 
-// switchBack reverses the switch: it takes the app down at the target, points every row back at the source,
-// and starts the app and its instances there again.
 func (s *Service) switchBack(ctx context.Context, m *models.LocationMigration) error {
 	app, err := s.app(m)
 	if err != nil {
@@ -174,8 +171,7 @@ func (s *Service) switchBack(ctx context.Context, m *models.LocationMigration) e
 	return nil
 }
 
-// restartSource starts the app and its moved instances again where they were, for a failure after the stop
-// but before the switch: nothing was repointed, so the source is still the truth.
+// Nothing was repointed before the switch, so the source is still the truth.
 func (s *Service) restartSource(ctx context.Context, m *models.LocationMigration) {
 	for _, ms := range m.State.Instances {
 		if inst, err := s.Databases.FindInstance(ms.InstanceID); err == nil && inst.Status != models.DBStatusRunning {
@@ -218,8 +214,7 @@ func (s *Service) removeRuntime(ctx context.Context, app *models.Application, cl
 	}
 }
 
-// cleanupTarget removes everything the move created at the target. The rows point at the source when it
-// runs, so nothing here touches data the app still uses.
+// The rows point at the source when this runs, so nothing here touches data the app still uses.
 func (s *Service) cleanupTarget(ctx context.Context, m *models.LocationMigration) {
 	for _, vs := range m.State.Volumes {
 		if !vs.Prepared {
@@ -264,8 +259,7 @@ func (s *Service) cleanupTarget(ctx context.Context, m *models.LocationMigration
 	m.State.Volumes, m.State.Instances, m.State.Restores = nil, nil, nil
 }
 
-// finalize deletes the source copy: the app's old container or service, the volumes and instances it left
-// there, and the logical databases it was restored from. The move can no longer be rolled back.
+// After finalize the move can no longer be rolled back.
 func (s *Service) finalize(ctx context.Context, m *models.LocationMigration) {
 	app, err := s.app(m)
 	if err == nil {

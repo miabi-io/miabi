@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// fakeVault resolves the references it knows and errors on the rest, like
-// secret.Service.ResolveAll.
 type fakeVault struct {
 	values map[string]string
 	calls  int
@@ -117,8 +115,7 @@ func TestResolveJobSecretsFailsOnStepMiss(t *testing.T) {
 	}
 }
 
-// Sending the literal reference to a runner would be worse than failing: the
-// step would run with a nonsense value and nothing would say why.
+// A literal reference would run the step with a nonsense value and nothing would say why.
 func TestResolveJobSecretsWithoutAVault(t *testing.T) {
 	spec := specWith([]string{"TOKEN=${{ secrets.X }}"}, nil)
 	if _, err := resolveJobSecrets(nil, 1, spec); !errors.Is(err, ErrSecretsUnavailable) {

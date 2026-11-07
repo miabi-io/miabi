@@ -27,8 +27,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Lease is one holder's claim on a Redis key with a TTL. Every operation compares the holder's
-// token, so a lease that expired and was taken by someone else is never renewed or deleted.
+// Every operation compares the token, so a lease taken by someone else is never renewed or deleted.
 type Lease struct {
 	rdb   redis.Cmdable
 	key   string
@@ -64,8 +63,7 @@ if redis.call("get", KEYS[1]) == ARGV[1] then
 end
 return 0`)
 
-// Acquire takes the key when it is free and renews it when this lease already holds it, so an
-// acquire whose reply was lost doesn't lock its own holder out until the key expires.
+// Renews when already held, so a lost acquire reply doesn't lock its own holder out.
 func (l *Lease) Acquire(ctx context.Context) (bool, error) {
 	n, err := acquireScript.Run(ctx, l.rdb, []string{l.key}, l.token, l.ttl.Milliseconds()).Int()
 	return n == 1, err

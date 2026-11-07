@@ -22,8 +22,7 @@ package quota
 import "testing"
 
 func TestStorageClassBindingAllows(t *testing.T) {
-	// An empty list binds nothing: every install without plan enforcement behaves this way, and the
-	// node's own default decides.
+	// An empty list binds nothing; the node's own default decides.
 	unbound := StorageClassBinding{}
 	if !unbound.Allows("ssd-fast") || !unbound.Allows("default") {
 		t.Fatal("an empty binding allows every class")

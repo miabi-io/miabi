@@ -21,9 +21,7 @@ package worker
 
 import "github.com/hibiken/asynq"
 
-// NewServer builds an asynq server with Miabi's queue priorities. embedded must be true only for the
-// control-plane server's embedded worker: it is the one holding the agent tunnels (QueueNode) and the
-// platform's full service graph (QueueControl). A standalone worker passes false.
+// embedded must be true only for the control-plane worker, which holds agent tunnels and the full service graph.
 func NewServer(redisAddr, redisPassword string, redisDB, concurrency int, embedded bool) *asynq.Server {
 	queues := map[string]int{
 		QueueDeploy:  6,
@@ -57,9 +55,7 @@ func NewMux(deploy *DeployHandler, provision *ProvisionDBHandler, upgrade *Upgra
 	mux.HandleFunc(TypeVolumeBackup, volumeBackup.ProcessTask)
 	mux.HandleFunc(TypeRunPipeline, pipeline.ProcessTask)
 	mux.HandleFunc(TypePlatformBackup, platformBackup.ProcessTask)
-	// Portable workspace bundles run only where the full service graph exists, so
-	// a standalone worker passes nil here and leaves TypeWSBundle unregistered —
-	// its server does not consume QueueControl either, so nothing is stranded.
+	// A standalone worker also doesn't consume QueueControl, so leaving TypeWSBundle unregistered strands nothing.
 	if wsBundle != nil {
 		mux.HandleFunc(TypeWSBundle, wsBundle.ProcessTask)
 	}

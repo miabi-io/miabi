@@ -125,8 +125,6 @@ func TestPoolExhaustion(t *testing.T) {
 	}
 }
 
-// fakeDocker records EnsureNetworkSpec calls and can force an overlap error on a
-// specific subnet, to exercise the reserve-and-retry path.
 type fakeDocker struct {
 	docker.Client
 	overlapSubnet string

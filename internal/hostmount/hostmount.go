@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package hostmount defines the fixed, allow-listed set of host bind mounts a privileged workspace
-// may attach to a container. The host source path is owned by the server and resolved from a preset
-// key — never supplied by the client — so the blast radius can never widen beyond these presets.
+// Package hostmount defines the allow-listed host bind mounts; sources are server-owned, never client-supplied.
 package hostmount
 
 import (
@@ -29,18 +27,12 @@ import (
 	"strings"
 )
 
-// CustomHostRoot is the only host tree a privileged workspace may bind a custom path under.
-// Deliberately narrow: /mnt is the conventional mount point for operator-managed external storage,
-// so a bind under it can't reach system paths and stays useful for shared storage.
+// Narrow on purpose: binds under /mnt can't reach system paths and stay useful for shared storage.
 const CustomHostRoot = "/mnt"
 
-// ErrInvalidHostPath is returned when a custom host path is not a clean absolute
-// path strictly under CustomHostRoot.
 var ErrInvalidHostPath = errors.New("host path must be an absolute path under " + CustomHostRoot + "/ (e.g. " + CustomHostRoot + "/nas/app)")
 
-// ValidateCustomHostPath cleans p and verifies it is an absolute path strictly inside
-// CustomHostRoot (a real subpath, not the root itself), with no traversal, returning the cleaned
-// path. The source-under-/mnt rule is the trust boundary and can never widen.
+// The source-under-/mnt rule is the trust boundary and can never widen.
 func ValidateCustomHostPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" || strings.ContainsRune(p, 0) || !strings.HasPrefix(p, "/") {
@@ -54,8 +46,7 @@ func ValidateCustomHostPath(p string) (string, error) {
 	return clean, nil
 }
 
-// Preset is one allow-listed host bind. Source is the host path (server-owned);
-// callers never accept a raw source from the client.
+// Callers never accept a raw source from the client.
 type Preset struct {
 	Key             string `json:"key"`
 	Label           string `json:"label"`
@@ -67,8 +58,7 @@ type Preset struct {
 	Danger          string `json:"danger"`            // warning shown to the operator
 }
 
-// presets is the complete allow-list. Adding a capability is a deliberate,
-// reviewed change here — there is no path to bind anything else.
+// Adding a capability is a deliberate, reviewed change here; nothing else can be bound.
 var presets = map[string]Preset{
 	"docker-socket": {
 		Key:             "docker-socket",

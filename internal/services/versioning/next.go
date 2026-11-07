@@ -63,8 +63,7 @@ type Request struct {
 	Now   time.Time
 }
 
-// Plan is the version a run would receive. Skip means the policy gives this run no version, and the
-// image keeps its run-<number> tag.
+// Skip means the run gets no version and the image keeps its run-<number> tag.
 type Plan struct {
 	Skip       bool               `json:"skip,omitempty"`
 	Version    string             `json:"version"`
@@ -201,8 +200,7 @@ func nextSemver(p *models.VersionPolicy, existing []models.VersionAllocation, re
 	return plan, nil
 }
 
-// chooseBump resolves the bump for a run: an explicit override must fit the series, while a default or
-// commit-derived bump is lowered to fit, so a push never fails because of the commit's wording.
+// A default or commit-derived bump is lowered to fit the series so a push never fails on commit wording.
 func chooseBump(p *models.VersionPolicy, series Series, req Request) (models.VersionBump, string, error) {
 	if req.Bump != "" {
 		if !ValidBump(req.Bump) {
@@ -303,8 +301,7 @@ func nextCalver(p *models.VersionPolicy, existing []models.VersionAllocation, re
 	return plan, nil
 }
 
-// groupKey names the sequence an allocation belongs to. Versions within a group are handed out in
-// increasing order, so the newest row of a group is its head.
+// Versions within a group are handed out in increasing order, so the newest row is its head.
 func groupKey(a *models.VersionAllocation) string {
 	if a.Prerelease {
 		core, _, _ := strings.Cut(a.Version, "-")

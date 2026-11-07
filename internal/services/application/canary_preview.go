@@ -32,14 +32,11 @@ import (
 const (
 	CanaryPreviewStable = "stable"
 	CanaryPreviewCanary = "canary"
-	// CanaryPreviewSplit means the request is eligible for both and the gateway
-	// picks by weight, so no single answer is truthful.
+	// Eligible for both, so the gateway picks by weight and no single answer is truthful.
 	CanaryPreviewSplit = "split"
 )
 
-// CanaryPreviewRequest is the request attributes to evaluate the rules against.
-// Header names are matched case-insensitively (as HTTP does); query and cookie
-// names are matched exactly, as the gateway reads them.
+// Header names match case-insensitively; query and cookie names match exactly, as the gateway reads them.
 type CanaryPreviewRequest struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	Query   map[string]string `json:"query,omitempty"`
@@ -47,8 +44,6 @@ type CanaryPreviewRequest struct {
 	IP      string            `json:"ip,omitempty"`
 }
 
-// CanaryPreviewRule is one rule's verdict, with the value the gateway would have
-// read — so a preview that surprises the user shows why.
 type CanaryPreviewRule struct {
 	Rule    models.CanaryMatchRule `json:"rule"`
 	Actual  string                 `json:"actual"`
@@ -58,7 +53,6 @@ type CanaryPreviewRule struct {
 // CanaryPreview answers "which backend would serve this request?".
 type CanaryPreview struct {
 	Backend string `json:"backend"` // stable | canary | split
-	// CanaryChance is the percentage of such requests the canary would serve:
 	// 0, 100, or the weight when the request lands in the weighted pool.
 	CanaryChance int                 `json:"canary_chance"`
 	Matched      bool                `json:"matched"` // every rule held
@@ -66,11 +60,7 @@ type CanaryPreview struct {
 	Rules        []CanaryPreviewRule `json:"rules"`
 }
 
-// PreviewCanaryRouting resolves a hypothetical request against the app's canary
-// configuration, mirroring the gateway's selection: an exclusive canary takes
-// every matching request, a non-exclusive one joins the weighted pool, and a
-// request matching nothing goes to stable. Pure — no deploy, no canary and no
-// gateway required to run it.
+// PreviewCanaryRouting mirrors the gateway's selection and is pure: no deploy or gateway needed.
 func PreviewCanaryRouting(app *models.Application, req CanaryPreviewRequest) CanaryPreview {
 	weight := effectiveCanaryWeight(app)
 	if weight > 100 {
@@ -136,8 +126,7 @@ func previewValue(req CanaryPreviewRequest, r models.CanaryMatchRule) string {
 	return ""
 }
 
-// lookupHeader resolves a header case-insensitively, since the gateway reads it
-// through Go's canonicalizing http.Header.
+// The gateway reads headers through Go's canonicalizing http.Header.
 func lookupHeader(headers map[string]string, name string) string {
 	if v, ok := headers[name]; ok {
 		return v
@@ -151,9 +140,7 @@ func lookupHeader(headers map[string]string, name string) string {
 	return ""
 }
 
-// evaluateCanaryOperator mirrors the gateway's comparison table exactly. An
-// unknown operator never matches there and must never match here; validation
-// keeps one from being stored in the first place.
+// Must mirror the gateway exactly: an unknown operator never matches there, so never here.
 func evaluateCanaryOperator(op, actual, expected string) bool {
 	switch op {
 	case models.CanaryMatchOpEquals:

@@ -24,17 +24,12 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// EncryptionInfo is the platform encryption posture shown read-only in admin
-// Settings. Per-workspace keys + auto-rotation are operator-configured (env), so
-// this is informational, not editable.
+// Informational only: per-workspace keys and auto-rotation are operator-configured via env.
 type EncryptionInfo struct {
-	EncryptionEnabled bool `json:"encryption_enabled"` // a master key is configured
-	PerWorkspaceKeys  bool `json:"per_workspace_keys"` // the keyring is wired
-	AutoRotate        bool `json:"auto_rotate"`
-	RotateMonths      int  `json:"rotate_months"`
-	// GatewayConfigEncryption reports whether GOMA_CONFIG_ENCRYPTION_KEY is set, so
-	// the config Miabi hands to Goma Gateway (middleware rules + TLS material) is
-	// encrypted at rest in transit between the two.
+	EncryptionEnabled       bool `json:"encryption_enabled"` // a master key is configured
+	PerWorkspaceKeys        bool `json:"per_workspace_keys"` // the keyring is wired
+	AutoRotate              bool `json:"auto_rotate"`
+	RotateMonths            int  `json:"rotate_months"`
 	GatewayConfigEncryption bool `json:"gateway_config_encryption"`
 }
 

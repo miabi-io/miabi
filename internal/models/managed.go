@@ -19,6 +19,5 @@
 
 package models
 
-// ManagedByConsole marks a resource whose configuration a connected billing console owns: Miabi
-// shows it read-only and refuses to delete it.
+// ManagedByConsole marks a console-owned resource that Miabi shows read-only and refuses to delete.
 const ManagedByConsole = "console"

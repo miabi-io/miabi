@@ -39,14 +39,12 @@ import (
 
 // OAuthHandler serves the public SSO login flow (unauthenticated).
 type OAuthHandler struct {
-	oauth    *oauth.Service
-	repo     *repositories.OAuthProviderRepository
-	auth     *auth.Service
-	sessions *repositories.SessionRepository
-	audit    *audit.Logger
-	cfg      *config.Config
-	// loginTokens mints a CLI login token when the SSO flow is started with
-	// intent=login_token. Set by SetLoginTokens; nil disables that intent.
+	oauth       *oauth.Service
+	repo        *repositories.OAuthProviderRepository
+	auth        *auth.Service
+	sessions    *repositories.SessionRepository
+	audit       *audit.Logger
+	cfg         *config.Config
 	loginTokens *logintoken.Service
 }
 
@@ -54,26 +52,17 @@ func NewOAuthHandler(oauthSvc *oauth.Service, repo *repositories.OAuthProviderRe
 	return &OAuthHandler{oauth: oauthSvc, repo: repo, auth: authSvc, sessions: sessions, audit: auditLog, cfg: cfg}
 }
 
-// SetLoginTokens wires the login-token issuer used by the SSO "Copy login
-// command" path (intent=login_token). Optional.
 func (h *OAuthHandler) SetLoginTokens(s *logintoken.Service) { h.loginTokens = s }
 
-// intentLoginToken is the SSO intent that mints a CLI token instead of a console
-// session on callback.
 const intentLoginToken = "login_token"
 
-// intentCliLogin is the SSO intent behind `miabi login`'s loopback flow: like intentLoginToken it
-// mints a CLI token on callback, but redirects the browser to the CLI's local callback with a
-// single-use code. The loopback target, CLI state and any narrowed scopes ride in the intent
-// value, joined by intentSep.
+// The loopback target, CLI state and narrowed scopes ride in the intent value, joined by intentSep.
 const intentCliLogin = "cli_login"
 
-// intentNext carries where the browser goes after an ordinary sign-in (?next=, a same-site path),
-// so a deep link such as the billing console's "Open in Miabi" survives the IdP round-trip.
+// Lets a deep link such as "Open in Miabi" survive the IdP round-trip.
 const intentNext = "next"
 
-// intentSep joins the intent kind with its loopback redirect and CLI state in
-// the Redis-stored intent value. A unit separator never appears in a URL/state.
+// A unit separator never appears in a URL or state.
 const intentSep = "\x1f"
 
 // PublicProvider is the safe subset of a provider exposed on the login screen.
@@ -88,8 +77,6 @@ type ProvidersResponse struct {
 	SSOAvailable bool             `json:"sso_available"`
 }
 
-// ListProviders returns enabled, non-hidden providers for login buttons, plus a
-// flag indicating whether hidden providers exist (reachable via DiscoverSSO).
 func (h *OAuthHandler) ListProviders(c *okapi.Context) error {
 	providers, err := h.repo.FindEnabled()
 	if err != nil {
@@ -110,8 +97,6 @@ type DiscoverSSORequest struct {
 	} `json:"body"`
 }
 
-// DiscoverSSOResponse names the provider to begin the SSO flow with (its handle
-// feeds the /{slug}/authorize redirect).
 type DiscoverSSOResponse struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
@@ -131,9 +116,7 @@ func (h *OAuthHandler) DiscoverSSO(c *okapi.Context, req *DiscoverSSORequest) er
 	return ok(c, DiscoverSSOResponse{Name: p.Name, DisplayName: p.DisplayName, Type: string(p.Type)})
 }
 
-// Authorize redirects the browser to the provider's consent screen. With ?intent=login_token it
-// forces a fresh IdP login (prompt=login) and the callback mints a CLI token instead of a console
-// session — the SSO half of "Copy login command".
+// login_token forces a fresh IdP login (prompt=login) and the callback mints a CLI token.
 func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 	p, err := h.oauth.Get(c.Param("slug"))
 	if err != nil {
@@ -149,9 +132,7 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 			}
 		}
 	case intentCliLogin:
-		// `miabi login` loopback: carry the CLI's local callback + state through the
-		// IdP round-trip so the callback can deliver the token straight to it. Reject
-		// non-loopback targets here, before we ever start the flow.
+		// Reject non-loopback targets before ever starting the flow.
 		cliRedirect := strings.TrimSpace(c.Query("cli_redirect"))
 		if h.loginTokens != nil && isLoopbackRedirect(cliRedirect) {
 			intent = strings.Join([]string{
@@ -176,8 +157,6 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 	return nil
 }
 
-// Callback completes the flow: exchanges the code, provisions/links the user,
-// issues a session, and redirects back to the web app with a token.
 func (h *OAuthHandler) Callback(c *okapi.Context) error {
 	slug := c.Param("slug")
 	if e := c.Query("error"); e != "" {
@@ -239,8 +218,6 @@ type OAuthTwoFactorResponse struct {
 	Redirect string `json:"redirect"`
 }
 
-// CompleteTwoFactor verifies the TOTP or recovery code of an SSO sign-in parked by Callback and
-// finishes it.
 func (h *OAuthHandler) CompleteTwoFactor(c *okapi.Context, req *OAuthTwoFactorRequest) error {
 	ctx := c.Request().Context()
 	id := cookieValue(c, oauthTwoFactorCookie)
@@ -268,9 +245,6 @@ func (h *OAuthHandler) CompleteTwoFactor(c *okapi.Context, req *OAuthTwoFactorRe
 	return ok(c, OAuthTwoFactorResponse{Redirect: target})
 }
 
-// complete finishes an authenticated SSO sign-in and returns where to send the browser, or an error
-// code for the login page. CLI login intents mint a short-lived token instead of a console session:
-// login_token hands off to the display page; cli_login goes straight to the CLI's loopback callback.
 func (h *OAuthHandler) complete(c *okapi.Context, user *models.User, slug, intent string) (string, string) {
 	next := ""
 	if rest, isNext := strings.CutPrefix(intent, intentNext+intentSep); isNext {
@@ -305,14 +279,11 @@ func (h *OAuthHandler) complete(c *okapi.Context, user *models.User, slug, inten
 		IP: c.RealIP(), Metadata: map[string]any{"provider": slug},
 	})
 
-	// Set the session as an HttpOnly cookie and redirect to a clean URL — the
-	// token is never exposed in the address bar / browser history.
+	// The token is never exposed in the address bar or browser history.
 	setSessionCookie(c, token)
 	return h.successURL(next), ""
 }
 
-// issueLoginToken mints a CLI login token for a user who just re-authenticated via SSO, stashes
-// it under a single-use hand-off reference, and returns the display page with that reference
 func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string, scopes []string) (string, string) {
 	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
@@ -331,9 +302,7 @@ func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug
 	return base + "/request-token?handoff=" + url.QueryEscape(ref), ""
 }
 
-// issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a fresh IdP login it
-// mints a CLI token, stashes it behind a single-use code, and returns the CLI's local callback with
-// that code. redirect was validated as loopback when the flow started.
+// redirect was validated as loopback when the flow started.
 func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string, scopes []string) (string, string) {
 	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
@@ -351,9 +320,7 @@ func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, s
 	return buildCliRedirect(redirect, ref, cliState), ""
 }
 
-// parseIntent splits a stored intent value into its kind and (for CLI-login) the loopback
-// redirect, CLI state and requested scopes. The 3-part form is accepted so an intent stored before
-// scopes were carried still completes after an upgrade. ok is false when the value is malformed.
+// The 3-part form is accepted so an intent stored before scopes were carried still completes.
 func parseIntent(intent string) (kind, redirect, cliState string, scopes []string, ok bool) {
 	parts := strings.Split(intent, intentSep)
 	switch len(parts) {
@@ -370,8 +337,7 @@ func parseIntent(intent string) (kind, redirect, cliState string, scopes []strin
 	}
 }
 
-// splitScopes turns the comma-joined scope list the CLI sent into the slice the token service
-// takes. Empty means "no narrowing requested", which the service reads as its own default.
+// Empty means no narrowing requested, which the service reads as its own default.
 func splitScopes(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -394,8 +360,7 @@ func (h *OAuthHandler) callbackURI(c *okapi.Context, slug string) string {
 	return base + "/auth/oauth/" + slug + "/callback"
 }
 
-// successURL points the browser at the SPA's OAuth callback page, which continues to next when
-// set. The session is carried by the HttpOnly cookie set on the redirect, not in the URL.
+// The session rides in the HttpOnly cookie, not the URL.
 func (h *OAuthHandler) successURL(next string) string {
 	base := strings.TrimRight(h.cfg.AppWebURL, "/")
 	if next != "" {
@@ -404,8 +369,7 @@ func (h *OAuthHandler) successURL(next string) string {
 	return base + "/oauth/callback"
 }
 
-// SafeNext returns raw when it is a path on this site ("/apps?workspace=prod"), else "". It refuses
-// anything a browser could read as another origin: a scheme, "//host", or a backslash.
+// Refuses anything a browser could read as another origin: a scheme, "//host", or a backslash.
 func SafeNext(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if len(raw) == 0 || len(raw) > 2048 || raw[0] != '/' || strings.HasPrefix(raw, "//") ||
@@ -419,8 +383,6 @@ func SafeNext(raw string) string {
 	return raw
 }
 
-// BackchannelLogout receives an OpenID Connect Back-Channel Logout token from the provider: it
-// re-applies the groups the token carries and ends the named user's sessions.
 func (h *OAuthHandler) BackchannelLogout(c *okapi.Context) error {
 	c.SetHeader("Cache-Control", "no-store")
 	p, err := h.oauth.Get(c.Param("slug"))

@@ -46,8 +46,7 @@ func TestRulesetBlocksMetadataButNotDNS(t *testing.T) {
 	if strings.Index(r, `iifname "br-*" ip daddr @metadata4 meta l4proto`) > strings.Index(r, `iifname "br-*" ip daddr @metadata4 counter drop`) {
 		t.Error("DNS accept is after the drop")
 	}
-	// Only traffic forwarded from container bridges: the host's own access (cloud agents,
-	// the control plane) must be untouched.
+	// Only container-forwarded traffic: the host's own access (cloud agents, control plane) must be untouched.
 	if strings.Contains(r, "hook input") || strings.Contains(r, "hook output") {
 		t.Error("ruleset touches the host's own traffic")
 	}

@@ -27,8 +27,6 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// clustersRoutes registers the platform admin's cluster inventory. Swarm operations on the default
-// cluster stay under /admin/cluster until they become per cluster.
 func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/clusters").WithTagInfo(okapi.GroupTag{Name: "Clusters", Description: "Deploy targets: every node belongs to exactly one cluster."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}

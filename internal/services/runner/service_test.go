@@ -28,9 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// TestConnectionBroke pins down when a runner's uptime clock restarts — the input the offline alert debounces
-// its resolve on. Getting this wrong in either direction is a bug you only notice in production: reset too
-// eagerly and an alert never clears, too rarely and a flapping runner clears it instantly.
+// Reset too eagerly and the offline alert never clears; too rarely and a flapping runner clears it instantly.
 func TestConnectionBroke(t *testing.T) {
 	now := time.Now()
 	at := func(d time.Duration) *time.Time { t := now.Add(-d); return &t }
@@ -70,8 +68,6 @@ func TestConnectionBroke(t *testing.T) {
 
 func TestNormalizeLabels(t *testing.T) {
 	got := normalizeLabels([]string{"  buildkit ", "arch=amd64", "buildkit", "", "  "})
-	// trimmed, de-duplicated, blanks dropped, sorted for an order-independent
-	// scheduler subset match.
 	want := []string{"arch=amd64", "buildkit"}
 	if len(got) != len(want) {
 		t.Fatalf("normalizeLabels = %v, want %v", got, want)
@@ -112,8 +108,7 @@ func TestTokenGenerateAndHash(t *testing.T) {
 	if a == b {
 		t.Error("generateToken must not repeat")
 	}
-	// Hashing is deterministic (for the constant-time compare on authenticate) and
-	// never returns the plaintext.
+	// Deterministic for the constant-time compare on authenticate.
 	if h1, h2 := hashToken(a), hashToken(a); h1 != h2 {
 		t.Error("hashToken must be deterministic")
 	}
@@ -122,8 +117,7 @@ func TestTokenGenerateAndHash(t *testing.T) {
 	}
 }
 
-// Authenticate rejects a token without the runner prefix before touching the
-// repository, so it is safe to call with no DB wired.
+// Rejected before touching the repository, so it is safe with no DB wired.
 func TestAuthenticateRejectsBadPrefix(t *testing.T) {
 	s := NewService(nil)
 	if _, err := s.Authenticate("mbn_notarunner"); !errors.Is(err, ErrBadToken) {

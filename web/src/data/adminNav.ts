@@ -1,11 +1,6 @@
 import type { NavSection } from './nav'
 
-// The platform admin console's navigation.
-//
-// Grouped rather than listed: the same nineteen destinations were one flat
-// section appended to the workspace menu, which made the sidebar a single scroll
-// from "Applications" to "Deployment Config" with no boundary between a tenant's
-// resources and the whole server's.
+// Grouped so the sidebar keeps a boundary between a tenant's resources and the whole server's.
 export const adminNavSections: NavSection[] = [
   {
     id: 'admin-overview',
@@ -50,9 +45,7 @@ export const adminNavSections: NavSection[] = [
     ],
   },
   {
-    // How traffic reaches what the infrastructure runs. Grouped apart from the machines because an
-    // admin arrives here asking about a hostname, not about a node — and because Infrastructure had
-    // grown past a list anyone scans.
+    // Apart from the machines because admins arrive here asking about a hostname, not a node.
     id: 'admin-networking',
     key: 'adminNav.networking.title', title: 'Networking',
     items: [

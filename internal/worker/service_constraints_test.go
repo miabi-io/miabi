@@ -40,8 +40,6 @@ func (fakePools) NodeConstraint(id uint) string {
 	return fmt.Sprintf("node.id==sw-%d", id)
 }
 
-// A service is pinned to the node its node-local volumes live on; shared and host-path volumes, and a
-// node outside the swarm, add nothing.
 func TestServiceConstraintsPinNodeLocalVolumes(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

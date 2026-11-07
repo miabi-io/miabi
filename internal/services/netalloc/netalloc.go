@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package netalloc hands out non-overlapping subnets, carved from a single platform pool, for every Docker
-// network Miabi creates. It works around Docker's tiny built-in default-address-pools by allocating an
-// explicit /N per network. A DB ledger is the source of truth, so allocations survive restarts.
+// Package netalloc allocates non-overlapping subnets from one platform pool, ledgered in the DB to survive restarts.
 package netalloc
 
 import (
@@ -38,13 +36,10 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ErrPoolExhausted is returned when every subnet in the pool is allocated or
-// reserved. The operator must enlarge MIABI_NETWORK_POOL_CIDR.
+// ErrPoolExhausted means every pool subnet is taken; the operator must enlarge MIABI_NETWORK_POOL_CIDR.
 var ErrPoolExhausted = errors.New("network subnet pool exhausted")
 
-// NetworkProvisioner is the subset of docker.Client the allocator drives — kept
-// small so both the full client and narrower service-level interfaces (e.g. the
-// stack service's NetworkManager) satisfy it.
+// Kept small so narrower service-level interfaces (e.g. the stack NetworkManager) satisfy it too.
 type NetworkProvisioner interface {
 	EnsureNetworkSpec(ctx context.Context, spec docker.NetworkSpec) (string, error)
 	ListNetworks(ctx context.Context) ([]docker.Network, error)
@@ -63,9 +58,7 @@ type Service struct {
 	mu            sync.Mutex
 }
 
-// NewService builds the allocator for an IPv4 pool CIDR and a per-network subnet prefix. Returns an error
-// on an invalid or IPv6 pool, or a prefix that doesn't fit inside it — config.validate catches these first
-// at boot, so this is defence in depth.
+// config.validate catches bad pools first at boot, so the error here is defence in depth.
 func NewService(repo *repositories.NetworkAllocationRepository, poolCIDR string, subnetPrefix int) (*Service, error) {
 	ip, ipnet, err := net.ParseCIDR(strings.TrimSpace(poolCIDR))
 	if err != nil {
@@ -115,16 +108,13 @@ func (s *Service) Stats() (used int, total int) {
 	return int(n), int(s.total)
 }
 
-// PublishStats updates the Prometheus pool-utilization gauges. Called after every
-// mutation so /metrics reflects the current usage without a background loop.
+// PublishStats is called after every mutation so /metrics stays current without a background loop.
 func (s *Service) PublishStats() {
 	used, total := s.Stats()
 	metrics.SetSubnetPoolUsage(used, total)
 }
 
-// Allocate reserves a subnet for dockerName idempotently: an existing allocation for the same name is
-// returned unchanged, otherwise the lowest-index free subnet is reserved and persisted. Callers that
-// create the Docker network should prefer EnsureManaged, which also handles host-level overlaps.
+// Allocate is idempotent per name; callers creating the Docker network should prefer EnsureManaged, which handles host overlaps.
 func (s *Service) Allocate(dockerName string, nodeID uint, kind string) (*models.NetworkAllocation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -168,8 +158,7 @@ func (s *Service) usedSet() (map[string]bool, error) {
 	return used, nil
 }
 
-// Release frees the allocation for a removed network so its subnet returns to the
-// pool. Idempotent.
+// Release returns a removed network's subnet to the pool; idempotent.
 func (s *Service) Release(dockerName string) error {
 	err := s.repo.DeleteByDockerName(dockerName)
 	s.PublishStats()
@@ -181,8 +170,7 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 	defer s.mu.Unlock()
 	defer s.PublishStats()
 
-	// Reuse an existing allocation for this network name (e.g. remote-node recreate,
-	// or a redeploy) so the subnet is stable across nodes and restarts.
+	// Reuse the existing allocation so the subnet is stable across nodes, redeploys and restarts.
 	if a, ferr := s.repo.FindByDockerName(spec.Name); ferr == nil {
 		spec.Subnet, spec.Gateway = a.Subnet, a.Gateway
 		s.applyIPv6(&spec)
@@ -203,8 +191,7 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 			return nid, a.Subnet, nil
 		}
 		if isSubnetOverlap(cerr) {
-			// Not ours but occupies the pool: convert the allocation into a permanent
-			// reservation and try the next subnet.
+			// Not ours but occupies the pool: turn the allocation into a permanent reservation and try the next subnet.
 			_ = s.repo.DeleteByDockerName(spec.Name)
 			_ = s.repo.Create(&models.NetworkAllocation{
 				DockerName: reservedName(a.Subnet), Subnet: a.Subnet, Gateway: a.Gateway,
@@ -220,9 +207,7 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 	return "", "", fmt.Errorf("could not allocate a non-overlapping subnet for %q after %d attempts", spec.Name, maxAttempts)
 }
 
-// ImportExisting reserves any pool subnet already in use by a Docker network on
-// the node, so the allocator never hands out an overlapping one. Best-effort and
-// idempotent — called at boot. Networks Miabi already tracks are skipped.
+// ImportExisting reserves pool subnets already used by Docker networks on the node so none is handed out twice.
 func (s *Service) ImportExisting(ctx context.Context, dc NetworkProvisioner, nodeID uint) error {
 	nets, err := dc.ListNetworks(ctx)
 	if err != nil {
@@ -252,8 +237,6 @@ func (s *Service) ImportExisting(ctx context.Context, dc NetworkProvisioner, nod
 	return nil
 }
 
-// inPool reports whether a subnet's network address falls within the pool and
-// aligns to a subnet boundary (so it maps to one of our indices).
 func (s *Service) inPool(subnet string) bool {
 	_, ipnet, err := net.ParseCIDR(strings.TrimSpace(subnet))
 	if err != nil || ipnet.IP.To4() == nil {
@@ -269,9 +252,6 @@ func (s *Service) inPool(subnet string) bool {
 
 func reservedName(subnet string) string { return "reserved:" + subnet }
 
-// isSubnetOverlap matches Docker's "Pool overlaps with other one" / "overlaps"
-// errors so the allocator can skip a subnet that collides with something outside
-// its ledger.
 func isSubnetOverlap(err error) bool {
 	if err == nil {
 		return false

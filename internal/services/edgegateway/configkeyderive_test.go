@@ -38,8 +38,7 @@ func envValue(env []string, key string) string {
 
 const central = "s3cr3t-key"
 
-// The point of the change: one shared passphrase meant any gateway could decrypt any other's
-// config. Each node's must differ from the central one and from every other node's.
+// A shared passphrase let any gateway decrypt another's config.
 func TestConfigKeyIsPerNode(t *testing.T) {
 	a := ConfigKey(&models.Server{ID: 7, Name: "edge-a"}, central)
 	b := ConfigKey(&models.Server{ID: 8, Name: "edge-b"}, central)
@@ -53,8 +52,7 @@ func TestConfigKeyIsPerNode(t *testing.T) {
 	if a == b {
 		t.Fatal("two nodes derived the same key")
 	}
-	// Deterministic: the container env and the provider's rendering are computed separately and
-	// must agree, with nothing stored to tie them together.
+	// The container env and the provider's rendering compute it separately and must agree.
 	if ConfigKey(&models.Server{ID: 7, Name: "edge-a"}, central) != a {
 		t.Error("the derivation is not stable")
 	}
@@ -64,9 +62,6 @@ func TestConfigKeyIsPerNode(t *testing.T) {
 	}
 }
 
-// The manager's gateway ships with the control plane and its environment is the operator's, so it
-// keeps the central passphrase. An imported gateway is never redeployed, so Miabi could not hand it
-// a derived key even if it wanted to.
 func TestConfigKeyKeepsTheCentralPassphraseWhereItMust(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -82,9 +77,6 @@ func TestConfigKeyKeepsTheCentralPassphraseWhereItMust(t *testing.T) {
 	}
 }
 
-// Encryption is one install-wide switch. With no central key configured nothing is encrypted, so a
-// node must not be handed a key for content that has none — its gateway would look for encrypted
-// fields that are not there.
 func TestConfigKeyOffWhenEncryptionIsOff(t *testing.T) {
 	if got := ConfigKey(&models.Server{ID: 7}, ""); got != "" {
 		t.Errorf("key = %q, want none when config encryption is off", got)

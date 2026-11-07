@@ -55,9 +55,7 @@ const (
 	JobSourceRelease = "release"
 )
 
-// Job is a one-off command run in an application's runtime context (same image, env,
-// networks, volumes, node and limits). The command is captured for history/audit; secrets are
-// resolved into the container env at run time and never persisted on the row.
+// Job runs in an app's runtime context; secrets are resolved into the container env and never persisted on the row.
 type Job struct {
 	ID            uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID   uint `json:"workspace_id" gorm:"index;not null"`
@@ -67,30 +65,22 @@ type Job struct {
 	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// CronJobID links runs spawned by a CronJob to their schedule.
 	CronJobID *uint `json:"cronjob_id,omitempty" gorm:"index"`
-	// JobDefinitionID links runs of a declared Job to their definition; NULL once
-	// the definition is deleted, so its history stays.
+	// NULL once the definition is deleted, so its history stays.
 	JobDefinitionID *uint `json:"job_definition_id,omitempty" gorm:"index"`
-	// WaitDeploymentID holds the run until that deployment ends: it starts on the
-	// release the deploy activates, or is skipped when the deploy fails.
+	// Runs on the release the deploy activates, or is skipped when the deploy fails.
 	WaitDeploymentID *uint `json:"wait_deployment_id,omitempty"`
 	// Attempt numbers a declared Job's retries of one run, from 1.
-	Attempt int `json:"attempt,omitempty" gorm:"not null;default:1"`
-	// AppName is the owning application's name (transient; populated on read for
-	// the workspace-level Jobs view).
+	Attempt int    `json:"attempt,omitempty" gorm:"not null;default:1"`
 	AppName string `json:"app_name,omitempty" gorm:"-"`
 
 	Name       string   `json:"name"`
 	Command    []string `json:"command" gorm:"serializer:json"`
 	Entrypoint []string `json:"entrypoint,omitempty" gorm:"serializer:json"`
 	Image      string   `json:"image"` // resolved image actually run
-	// RegistryID authenticates the image pull for a custom image (nil = the app's registry, or
-	// anonymous). Pull marks that the image must be fetched first — set for a custom image; the
-	// app's release image is already on its node and git-built images are local-only.
+	// Pull is set only for custom images: release images are already on the node and git-built ones are local-only.
 	RegistryID *uint `json:"registry_id,omitempty"`
 	Pull       bool  `json:"pull"`
-	// RunAsUser is the account the run was pinned to, snapshotted from the request or the app so
-	// history shows what actually ran. Empty = the image's own user (or the platform UID when the
-	// restricted profile applies). See models.NormalizeRunAsUser.
+	// Snapshotted so history shows what actually ran; empty means the image's own user. See NormalizeRunAsUser.
 	RunAsUser   string    `json:"run_as_user,omitempty"`
 	Status      JobStatus `json:"status" gorm:"not null;default:pending"`
 	ExitCode    *int      `json:"exit_code,omitempty"`
@@ -113,37 +103,29 @@ type Job struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
-// CronJob concurrency policies (Kubernetes parity): what to do when a tick fires
-// while the previous run is still active.
 const (
 	ConcurrencyAllow   = "allow"   // always spawn a new Job
 	ConcurrencyForbid  = "forbid"  // skip the tick if a run is still active
 	ConcurrencyReplace = "replace" // cancel the in-flight run, then spawn
 )
 
-// CronJob is a schedule that spawns Jobs on a cron expression — the command it
-// carries is the template each spawned Job is created from. Schedules are
-// evaluated in UTC; missed ticks (control plane down) are not backfilled.
+// CronJob schedules are evaluated in UTC; missed ticks while the control plane is down are not backfilled.
 type CronJob struct {
 	UIDModel
-	ID            uint `json:"id" gorm:"primaryKey"`
-	WorkspaceID   uint `json:"workspace_id" gorm:"index;index:idx_cronjob_workspace_name,unique;not null"`
-	ApplicationID uint `json:"application_id" gorm:"index;not null"`
-	// Name is the unique slug handle scoped to the workspace; the declarative
-	// CronJob/<name> key. DisplayName is the free-text label shown in the UI.
-	Name        string `json:"name" gorm:"index:idx_cronjob_workspace_name,unique;not null"`
-	DisplayName string `json:"display_name"`
-	Schedule    string `json:"schedule" gorm:"not null"` // cron expression (UTC)
+	ID            uint   `json:"id" gorm:"primaryKey"`
+	WorkspaceID   uint   `json:"workspace_id" gorm:"index;index:idx_cronjob_workspace_name,unique;not null"`
+	ApplicationID uint   `json:"application_id" gorm:"index;not null"`
+	Name          string `json:"name" gorm:"index:idx_cronjob_workspace_name,unique;not null"`
+	DisplayName   string `json:"display_name"`
+	Schedule      string `json:"schedule" gorm:"not null"` // cron expression (UTC)
 	// AppName is the owning application's name (transient; populated on read).
 	AppName string `json:"app_name,omitempty" gorm:"-"`
 
 	Command     []string `json:"command" gorm:"serializer:json"`
 	Entrypoint  []string `json:"entrypoint,omitempty" gorm:"serializer:json"`
 	TimeoutSecs int      `json:"timeout_secs" gorm:"not null;default:0"`
-	// Image optionally overrides the app's active-release image for spawned jobs
-	// (blank = run the app's current image). RegistryID authenticates its pull.
-	Image      string `json:"image,omitempty"`
-	RegistryID *uint  `json:"registry_id,omitempty"`
+	Image       string   `json:"image,omitempty"`
+	RegistryID  *uint    `json:"registry_id,omitempty"`
 	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
 	RunAsUser string `json:"run_as_user,omitempty"`
 
@@ -151,8 +133,6 @@ type CronJob struct {
 	ConcurrencyPolicy string `json:"concurrency_policy" gorm:"not null;default:allow"`
 	HistoryLimit      int    `json:"history_limit" gorm:"not null;default:0"` // keep last N spawned jobs (0 = default)
 
-	// Metadata holds labels; "miabi.io/" keys are platform-managed (managed-by,
-	// gitops-source). Annotations are free-form descriptive metadata.
 	Metadata    Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
 	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
 
@@ -168,9 +148,7 @@ const (
 	JobRunOnRelease = "onRelease"
 )
 
-// JobDefinition is a declared Job: a run template bound to an application plus
-// the bookkeeping that decides when it runs again. Each run is an ordinary Job
-// row pointing back here through JobDefinitionID.
+// JobDefinition is a declared Job template; each run is an ordinary Job pointing back via JobDefinitionID.
 type JobDefinition struct {
 	UIDModel
 	ID            uint   `json:"id" gorm:"primaryKey"`
@@ -193,8 +171,7 @@ type JobDefinition struct {
 	// BackoffLimit is how many times a failed run is retried; 0 never retries.
 	BackoffLimit int `json:"backoff_limit" gorm:"not null;default:0"`
 
-	// SpecHash fingerprints the run template as last applied from the manifest;
-	// a sync runs an onChange definition only when it changes.
+	// A sync runs an onChange definition only when this changes.
 	SpecHash string `json:"spec_hash"`
 	// LastReleaseID is the release an onRelease definition last ran against.
 	LastReleaseID *uint `json:"last_release_id,omitempty"`

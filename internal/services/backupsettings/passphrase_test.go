@@ -57,9 +57,7 @@ func s3Input() SaveInput {
 	}
 }
 
-// The destination a workspace's database backups actually get built from must carry
-// the passphrase. Assembling a bare Destination beside it is how database backups
-// came to be written to object storage in the clear.
+// A hand-built Destination is how database backups went to object storage in the clear.
 func TestDatabaseDestinationCarriesThePassphrase(t *testing.T) {
 	svc := newSettingsService(t)
 	in := s3Input()
@@ -83,8 +81,7 @@ func TestDatabaseDestinationCarriesThePassphrase(t *testing.T) {
 	}
 }
 
-// A workspace with no S3 target still encrypts: the local backup volume is a
-// different destination, not a different policy.
+// The local volume is a different destination, not a different policy.
 func TestDatabaseDestinationEncryptsLocalBackupsToo(t *testing.T) {
 	svc := newSettingsService(t)
 	if _, err := svc.Save(1, SaveInput{BackupPassphrase: ptr(goodPass)}); err != nil {
@@ -102,8 +99,7 @@ func TestDatabaseDestinationEncryptsLocalBackupsToo(t *testing.T) {
 	}
 }
 
-// No passphrase is a valid state, not an error — it is what every existing
-// workspace has until someone sets one.
+// No passphrase is what every existing workspace has until someone sets one.
 func TestDatabaseDestinationWithoutAPassphrase(t *testing.T) {
 	svc := newSettingsService(t)
 	if _, err := svc.Save(1, s3Input()); err != nil {
@@ -187,8 +183,6 @@ func TestSavePassphraseLifecycle(t *testing.T) {
 	})
 }
 
-// A fake rotator, so the settings service can be exercised without the backup
-// service and its Docker dependencies.
 type fakeRotator struct {
 	sealed   int
 	rotated  [][2]string
@@ -204,8 +198,7 @@ func (f *fakeRotator) RewrapSets(_ uint, oldP, newP string) (int, error) {
 }
 func (f *fakeRotator) SealedSetCount(uint) (int, error) { return f.sealed, nil }
 
-// Changing the passphrase must re-seal the recovery points sealed with the old
-// one, or they become unreadable the moment the new value is stored.
+// Otherwise sealed sets become unreadable the moment the new value is stored.
 func TestSavePassphraseRotatesSealedSets(t *testing.T) {
 	svc := newSettingsService(t)
 	rot := &fakeRotator{sealed: 3}
@@ -233,8 +226,7 @@ func TestSavePassphraseRotatesSealedSets(t *testing.T) {
 	}
 }
 
-// If rewrapping fails the old passphrase must remain stored: it still opens every
-// set, which is recoverable. Storing the new one would strand them.
+// The old passphrase still opens every set; storing the new one would strand them.
 func TestSavePassphraseKeepsTheOldOneWhenRotationFails(t *testing.T) {
 	svc := newSettingsService(t)
 	in := s3Input()

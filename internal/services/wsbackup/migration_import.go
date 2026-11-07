@@ -75,8 +75,6 @@ type MigrationImportInput struct {
 	BatchID      string
 }
 
-// ProbeMigrationSource checks a source and key before anything is created: it reaches the source, and
-// returns what the key opens.
 func (s *Service) ProbeMigrationSource(ctx context.Context, src MigrationSource) (*MigrationSourceInfo, error) {
 	codeWS, err := src.resolve()
 	if err != nil {
@@ -97,8 +95,7 @@ func (s *Service) ProbeMigrationSource(ctx context.Context, src MigrationSource)
 	return info, nil
 }
 
-// StartMigrationImport creates the target workspace and schedules the pull. The workspace is created
-// here rather than on the worker, so a name already taken is an error the caller sees at once.
+// Created here rather than on the worker so a taken name is an error the caller sees at once.
 func (s *Service) StartMigrationImport(ctx context.Context, userID uint, in MigrationImportInput) (*models.WorkspaceBundle, error) {
 	codeWS, err := in.Source.resolve()
 	if err != nil {
@@ -284,8 +281,6 @@ func (s *Service) failImport(ctx context.Context, b *models.WorkspaceBundle, c *
 	s.fail(b, cause)
 }
 
-// settleSource tells the source how the import went: a failed import unfreezes it, a successful one may
-// retire it, and the export's staged data is purged either way.
 func (s *Service) settleSource(ctx context.Context, b *models.WorkspaceBundle, c *migrationClient) {
 	m := b.Migration
 	host := sourceHost(m.SourceURL)
@@ -320,8 +315,7 @@ func (s *Service) settleSource(ctx context.Context, b *models.WorkspaceBundle, c
 	if err := c.deleteExport(ctx, b.SourceWorkspace, m.RemoteExportID); err != nil {
 		logger.Warn("migration import: could not purge the source's export", "export", m.RemoteExportID, "error", err)
 	}
-	// Last, because it closes a workspace migration and the code with it: every call above needs it.
-	// Only a completed import ends the migration; after a partial or failed one the code still works.
+	// Last because it closes the migration and the code every call above needs; only a completed import ends it.
 	if b.Status == models.BackupCompleted && !m.Rehearse {
 		if err := c.action(ctx, b.SourceWorkspace, m.RemoteExportID, "complete", map[string]string{"target": target}); err != nil {
 			logger.Warn("migration import: could not tell the source it completed", "export", m.RemoteExportID, "error", err)
@@ -341,9 +335,7 @@ func artifactName(a models.MigrationArtifact) string {
 	return a.Instance + "/" + a.Database
 }
 
-// remoteSource pulls a migration's artifacts from the source install, one at a time, through a temporary
-// file on this control plane: that is what lets a dropped download resume, and the checksum be verified
-// before anything is loaded. The file is removed as soon as its restore returns.
+// A temp file lets a dropped download resume and the checksum be verified before anything loads.
 type remoteSource struct {
 	client    *migrationClient
 	workspace string

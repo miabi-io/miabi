@@ -43,16 +43,7 @@ type certDomainRow struct {
 	Banned      bool
 }
 
-// certVerifiedDomainsStep detaches stored certificates that the import gate would now refuse.
-//
-// A certificate used to need only a REGISTERED domain, and registering a name proves nothing — so a
-// workspace could hold a certificate for a hostname another tenant, or the console, actually serves.
-// Goma loads every inline certificate into one global map where an exact match beats ACME, which
-// makes such a certificate a way to take that hostname's TLS.
-//
-// The certificate rows are kept; only the routes pointing at them are detached, and those routes
-// fall back to ACME. Deleting a tenant's uploaded key material on their behalf is not this step's
-// call — an admin can see what was detached in the log and delete deliberately.
+// Goma's global cert map lets an exact match beat ACME, so certs for unverified names are detached from routes.
 func certVerifiedDomainsStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable("certificates") || !db.Migrator().HasTable("domains") {
 		return nil
@@ -92,8 +83,6 @@ func certVerifiedDomainsStep(ctx context.Context, db *gorm.DB) error {
 	})
 }
 
-// firstUncoveredName returns the first name the certificate asserts that no verified, unbanned
-// domain of its workspace covers, or "" when every name is covered.
 func firstUncoveredName(c certRow, domains []certDomainRow) string {
 	names := []string{c.CommonName}
 	var sans []string

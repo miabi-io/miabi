@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package groupsync applies an SSO provider's group claims to Miabi access at sign-in: explicit
-// mappings (group to platform admin, or to a role in a fixed workspace) and structured groups
-// "<prefix>:<workspace>:<role>". It only ever changes memberships it governs, so a member added by
-// hand keeps their place, and it never leaves a workspace without an owner.
+// Package groupsync applies SSO group claims at sign-in, touching only governed memberships and never orphaning a workspace.
 package groupsync
 
 import (
@@ -126,8 +123,7 @@ func parseStructured(prefix, group string) (workspace string, role models.Worksp
 	return strings.ToLower(parts[1]), role, true
 }
 
-// Reconcile brings the user's governed memberships and admin role in line with their groups.
-// Failures are logged, never returned: sign-in must not fail because a membership could not change.
+// Reconcile only logs failures: sign-in must not fail because a membership could not change.
 func (s *Syncer) Reconcile(in Input) {
 	if in.User == nil || in.Manager == "" {
 		return

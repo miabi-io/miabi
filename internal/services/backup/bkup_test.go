@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/blob"
 )
 
-// Output of a *-bkup v2 backup with retention: the old artifact it deleted is
-// printed before the one it uploaded, which ends the output.
+// The deleted old artifact is printed before the uploaded one, which ends the output.
 const v2Output = `time=2026-10-27T10:00:00Z level=INFO msg="Backup started" database=shop storage=s3 compression=gzip encryption=gpg
 time=2026-10-27T10:00:01Z level=INFO msg="Deleted old backup" file=shop_20261020_100000.sql.gz.gpg completed_at=2026-10-20T10:00:00Z
 time=2026-10-27T10:00:01Z level=INFO msg="Backup completed" database=shop file=shop_20261027_100000.sql.gz.gpg size="1.5 MiB" bytes=1572864 sha256=0f3c duration=1.2s storage=s3 location=s3://bucket/backups

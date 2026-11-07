@@ -31,24 +31,13 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/blob"
 )
 
-// SetInfoSchema is the descriptor's payload version. A reader refuses a schema it
-// does not know rather than guessing at fields.
+// A reader refuses an unknown schema rather than guessing at fields.
 const SetInfoSchema = 1
 
 // SetInfoObject is the descriptor's name within a set's prefix.
 const SetInfoObject = "info.json"
 
-// SetInfo is the CLEARTEXT descriptor written beside a recovery point's artifacts.
-//
-// Cleartext is the point, copied from platformbackup's discovery reader: you must
-// be able to list what a bucket holds without the passphrase, or a user who has
-// lost their secret cannot even see what they have lost. It carries the shape of
-// the data — never any of it.
-//
-// The sealed envelope rides along because it is the one piece a restore cannot
-// reconstruct and cannot read without the passphrase anyway. Without it here, a
-// set would be unreadable the moment the platform that took it was gone, which is
-// precisely the case this exists for.
+// SetInfo is cleartext so a bucket can be listed without the passphrase; it carries shape, never data.
 type SetInfo struct {
 	Schema int `json:"schema"`
 
@@ -61,8 +50,7 @@ type SetInfo struct {
 	SizeBytes int64     `json:"size_bytes"`
 
 	Encrypted bool `json:"encrypted"`
-	// Envelope seals this set's data key under the workspace backup passphrase.
-	// Ciphertext: useless to a reader who does not hold the passphrase.
+	// Ciphertext: useless without the passphrase.
 	Envelope string `json:"envelope,omitempty"`
 
 	Artifacts []SetInfoArtifact `json:"artifacts"`
@@ -76,10 +64,7 @@ type SetInfoArtifact struct {
 	Encrypted bool   `json:"encrypted"`
 }
 
-// SetPrefix is where a recovery point's objects live: one directory per set, under
-// one per instance, beneath the workspace's database backup path. Grouping matters
-// because discovery reads a set as a unit, and a flat prefix shared by every set
-// would make that a filename-parsing exercise.
+// Discovery reads a set as a unit, so each set gets its own directory.
 func SetPrefix(base, instance, ref string) string {
 	return path.Join(strings.Trim(strings.TrimSpace(base), "/"), instance, ref)
 }

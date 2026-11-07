@@ -16,8 +16,7 @@ const name = ref(auth.user?.name ?? '')
 const username = ref(auth.user?.username ?? '')
 const nameBusy = ref(false)
 const nameValid = computed(() => name.value.trim().length > 0)
-// An externally provisioned account is the provider's to rename: the API refuses the
-// edit, so the form reads it back instead of offering a button that always fails.
+// The API refuses renaming an externally provisioned account, so the form shows it read-only.
 const managed = computed(() => auth.user?.profile_managed === true)
 const providerLabel = computed(() => {
   switch (auth.user?.auth_source) {

@@ -83,8 +83,6 @@ func (r *DNSRecordRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DNSRecord{}, id).Error
 }
 
-// DeleteByDomain removes all ledger entries for a domain (used when a domain is
-// deleted).
 func (r *DNSRecordRepository) DeleteByDomain(domainID uint) error {
 	return r.db.Where("domain_id = ?", domainID).Delete(&models.DNSRecord{}).Error
 }

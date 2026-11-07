@@ -27,30 +27,22 @@ import (
 	"github.com/miabi-io/miabi/internal/dto"
 )
 
-// CustomErrorHandler returns an okapi.ErrorHandler that formats every error as
-// the standard {success, data, error} envelope.
 func CustomErrorHandler() okapi.ErrorHandler {
 	return func(c *okapi.Context, code int, message string, err error) error {
 		var errStr string
 		errCode := httpStatusToCode(code)
 		if err != nil {
 			errStr = err.Error()
-			// Errors carrying a stable machine code (e.g. quota.QuotaError ->
-			// "QUOTA_EXCEEDED") override the generic status-derived code.
 			var coder interface{ Code() string }
 			if errors.As(err, &coder) {
 				if cc := coder.Code(); cc != "" {
 					errCode = cc
 				}
 			}
-			// Keep message human-facing. AbortWithError(code, err) passes only the
-			// generic status text (e.g. "Conflict") as message and the real reason
-			// as err — promote it so the UI shows the reason, not the status word.
+			// AbortWithError passes only the status text as message, so promote the real reason.
 			if message == "" || message == http.StatusText(code) {
 				message = errStr
-				// A domain error may expose a curated user message distinct from its
-				// raw Error() string — prefer it for the human-facing `message` while
-				// `error` keeps the raw detail.
+				// Prefer a curated Message() for the human message; `error` keeps the raw detail.
 				var msgr interface{ Message() string }
 				if errors.As(err, &msgr) {
 					if m := msgr.Message(); m != "" {

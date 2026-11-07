@@ -71,11 +71,9 @@ interface AppForm {
   ports: AppPort[]
   runtime_kind: RuntimeKind
   replicas: number
-  // Swarm placement constraints, e.g. ["node.id==abc"]. Only meaningful for the
-  // service runtime, where the scheduler — not server_id — decides placement.
+  // Only meaningful for the service runtime, where the scheduler rather than server_id decides placement.
   placement_constraints: string[]
-  // Adopt the pipeline the repository carries at .miabi/pipeline.yaml. Only
-  // offered once a probe has actually found one.
+  // Only offered once a probe has actually found .miabi/pipeline.yaml.
   use_pipeline: boolean
   // Only asked for when the plan requires limits; prefilled with its defaults.
   cpu_cores: number
@@ -85,11 +83,7 @@ function emptyForm(): AppForm {
   return { name: '', server_id: 0, location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true, cpu_cores: 0, memory_mb: 0 }
 }
 
-// --- Repository inspection ---
-//
-// Probing is a depth-1 clone server-side, so it runs on its own only once the input
-// settles on something that looks like a whole repository. The result decides whether
-// the pipeline toggle is offered at all.
+// Probing is a server-side depth-1 clone, so it runs only once the input settles on a whole repository URL.
 const INSPECT_DEBOUNCE_MS = 800
 const inspecting = ref(false)
 const inspected = ref<GitInspectResult | null>(null)
@@ -126,9 +120,6 @@ const pipelineTriggerLabel = computed(() => {
   if (!parts.length) parts.push('when you deploy')
   return parts.join(' · ')
 })
-// A service is placed by the Swarm scheduler, which ignores server_id; a container
-// is placed by server_id. The two are never both meaningful, so the form shows one
-// control or the other.
 // The service runtime needs a swarm in the location the app will land in, not merely somewhere.
 const clusterEnabled = computed(() => {
   if (!servicePlanAllowed.value) return false
@@ -186,8 +177,7 @@ async function inspectRepo() {
     if (seq !== inspectSeq) return
     inspected.value = result
     inspectedKey = key
-    // Default the toggle on when a pipeline is found, off otherwise, so the
-    // create call never claims a pipeline the probe didn't see.
+    // Default from the probe so the create call never claims a pipeline it didn't see.
     form.value.use_pipeline = result?.has_pipeline === true
   } catch (e) {
     if (seq !== inspectSeq) return
@@ -208,8 +198,7 @@ async function load(id: number | null) {
     gitRepos.value = (await gitRepositoryApi.list(id)).data.data ?? []
     networks.value = (await networkApi.list(id)).data.data ?? []
     stacks.value = (await stackApi.list(id)).data.data ?? []
-    // Whether the "service" runtime is offerable comes from the workspace usage
-    // capabilities (readable by any member), not the platform-admin cluster status.
+    // From workspace usage capabilities (readable by any member), not the admin-only cluster status.
     try {
       const usage = (await usageApi.get(id)).data.data
       const caps = usage?.capabilities
@@ -234,8 +223,7 @@ watch(currentWorkspaceId, load, { immediate: true })
 
 function openCreate() {
   form.value = emptyForm()
-  // In cluster mode, default new apps to the replicated service runtime (mirrors
-  // the backend default); the user can still switch back to a single container.
+  // Mirrors the backend's cluster-mode default.
   if (clusterEnabled.value) form.value.runtime_kind = 'service'
   form.value.cpu_cores = planResources.value.cpuMillicores / 1000
   form.value.memory_mb = planResources.value.memoryMB
@@ -260,21 +248,14 @@ async function create() {
       builder: !isImage && form.value.build_method !== 'dockerfile' ? form.value.builder.trim() || undefined : undefined,
       registry_id: isImage ? form.value.registry_id : null,
       git_repository_id: !isImage ? form.value.git_repository_id : null,
-      // Only claim a pipeline the probe actually found — the backend re-reads the
-      // repository regardless, but asking for one that isn't there just produces a
-      // warning on the app's timeline.
+      // Asking for a pipeline that isn't there just produces a warning on the app's timeline.
       use_pipeline: !isImage && form.value.use_pipeline && inspected.value?.has_pipeline === true,
       stack_id: form.value.stack_id,
       network_ids: form.value.network_ids,
       ports: form.value.ports.filter((p) => p.container_port > 0),
-      // Cluster runtime. Send the explicit choice when the selector is shown;
-      // otherwise omit it so the backend applies its cluster-mode default (which
-      // is "service" when cluster mode is on) — this also self-heals if the UI
-      // couldn't read cluster state but the server is in fact a swarm manager.
+      // Omitted when hidden so the backend's cluster-mode default applies, self-healing if the UI misread cluster state.
       runtime_kind: clusterEnabled.value ? form.value.runtime_kind : undefined,
       replicas: isService.value ? Math.max(1, form.value.replicas) : undefined,
-      // Only a service has placement constraints — a container is placed by
-      // server_id above, and the Swarm scheduler is not involved.
       placement_constraints: isService.value && form.value.placement_constraints.length ? form.value.placement_constraints : undefined,
       // Omitted otherwise: the server fills the plan's defaults itself.
       ...(planResources.value.required ? {
@@ -292,8 +273,7 @@ async function create() {
   }
 }
 
-// When a saved repository is selected, reflect its clone URL in the URL field
-// so it's visible (and still editable as a per-app override).
+// The URL stays editable as a per-app override.
 function onGitRepoSelect() {
   const repo = gitRepos.value.find((r) => r.id === form.value.git_repository_id)
   if (repo) form.value.git_repo = repo.url

@@ -84,8 +84,7 @@ func (c *sqlCapture) Trace(_ context.Context, _ time.Time, fc func() (string, in
 	c.sql = append(c.sql, s)
 }
 
-// A full-row save of a node loaded before the password existed would write the empty value back, and
-// the next gateway deploy would mint a new password the running Redis does not know.
+// A full-row save of a stale node would blank the password, and the next deploy would mint one Redis does not know.
 func TestServerUpdateNeverWritesTheRedisPassword(t *testing.T) {
 	capture := &sqlCapture{Interface: logger.Discard}
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory"), &gorm.Config{DryRun: true, Logger: capture})
@@ -104,8 +103,7 @@ func TestServerUpdateNeverWritesTheRedisPassword(t *testing.T) {
 	}
 }
 
-// The analytics forwarder reads the password; minting one there is how a reinstalled node ended up with
-// a password its running Redis never got.
+// Minting here is how a reinstalled node got a password its running Redis never received.
 func TestStoredGatewayRedisPasswordNeverMints(t *testing.T) {
 	crypto.Init("test-master-key")
 	t.Cleanup(func() { crypto.Init("") })

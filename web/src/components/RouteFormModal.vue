@@ -1,11 +1,5 @@
 <script setup lang="ts">
-// Create / edit one Goma route. Extracted from the routes page so an application
-// can offer the same form in place: routing an app is something you decide while
-// looking at the app, not a reason to leave the page and come back.
-//
-// It loads its own reference data (domains, middlewares, certificates, the
-// selected app's ports), so a host only has to pass the workspace and the apps
-// that may be chosen.
+// Loads its own reference data, so a host only passes the workspace and the selectable apps.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '@/stores/notification'
@@ -67,18 +61,12 @@ const lockedAppName = computed(
   () => props.apps.find((a) => a.id === form.value.application_id)?.name ?? '',
 )
 
-// Host builder rows: each row is a registered domain + an optional subdomain.
-// Empty subdomain serves the domain at its root (apex). extraHosts holds any
-// host not under a registered domain (e.g. its domain was removed) so editing a
-// route never silently drops it.
-// Each row carries a stable id so v-for can key on identity, not array index —
-// otherwise removing a middle row reuses the wrong input's DOM/state.
+// extraHosts keeps hosts outside registered domains so editing never drops them; stable ids keep v-for state correct.
 let hostRowSeq = 0
 const hostRows = ref<{ id: number; sub: string; domain: string }[]>([])
 const extraHosts = ref<string[]>([])
 
-// Declared ports of the form's selected app, for the target-port dropdown. The
-// apps list doesn't carry ports, so fetch the app detail on selection (cached).
+// The apps list doesn't carry ports, so fetch the app detail on selection (cached).
 const appPorts = ref<AppPort[]>([])
 const portCache = new Map<number, AppPort[]>()
 async function loadAppPorts(appId: number | null) {
@@ -97,8 +85,7 @@ function onAppChange() {
   form.value.target_port = undefined
   loadAppPorts(form.value.application_id)
 }
-// Whether the chosen target port speaks HTTPS — the backend is then reached over
-// https and TLS verification is skipped for the internal address.
+// An HTTPS target is reached over https with TLS verification skipped for the internal address.
 const selectedPortHttps = computed(() => {
   const tp = form.value.target_port
   if (!tp) return false
@@ -173,8 +160,6 @@ function matchDomainName(host: string): string | null {
   return best
 }
 
-// parseHostsToRows splits the canonical form.hosts string into builder rows; any
-// host not under a registered domain is preserved verbatim in extraHosts.
 function parseHostsToRows() {
   const rows: { id: number; sub: string; domain: string }[] = []
   const extra: string[] = []
@@ -188,8 +173,7 @@ function parseHostsToRows() {
   extraHosts.value = extra
 }
 
-// syncHostsFromRows rebuilds form.hosts (the source of truth used by save + the
-// YAML view) from the builder rows. Empty subdomain → the domain's root.
+// form.hosts is the source of truth for save and the YAML view.
 function syncHostsFromRows() {
   const hosts: string[] = []
   for (const r of hostRows.value) {
@@ -207,12 +191,10 @@ function addHostRow() {
 function removeHostRow(i: number) { hostRows.value.splice(i, 1) }
 function removeExtraHost(i: number) { extraHosts.value.splice(i, 1) }
 
-// Keep form.hosts in lockstep with the builder. Rebuilding from rows is
-// idempotent, so the parse → build round-trip during open/switch is safe.
+// Rebuilding from rows is idempotent, so the parse/build round-trip on open is safe.
 watch([hostRows, extraHosts], syncHostsFromRows, { deep: true })
 
-// Reference data the form offers. Fetched on first open and kept for the
-// session — a host page shouldn't have to know the form needs them.
+// Fetched once per session so a host page needn't know the form needs them.
 let loaded = false
 async function ensureRefData() {
   if (loaded || !props.workspaceId) return
@@ -227,15 +209,13 @@ async function ensureRefData() {
     domains.value = doms.data.data ?? []
     loaded = true
   } catch {
-    // The form still works: hosts fall back to a free-text input, and the
-    // middleware/certificate pickers just have nothing to offer.
+    // The form still works: hosts fall back to free text, pickers just have nothing to offer.
   }
 }
 // A workspace switch invalidates every list above.
 watch(() => props.workspaceId, () => { loaded = false; portCache.clear() })
 
-// immediate, so a parent that mounts this already open still gets an
-// initialised form rather than an empty one.
+// immediate, so a parent that mounts this already open still gets an initialised form.
 watch(
   () => props.open,
   async (open) => {
@@ -249,9 +229,6 @@ watch(
   { immediate: true },
 )
 
-// A route is a long form — hosts, ports, TLS, middlewares — so closing it after
-// an edit asks before throwing the work away. The backdrop no longer dismisses
-// anything, so this only fires on a deliberate Escape, Cancel or close icon.
 const { dirty, reset: resetDirty } = useDirtyGuard(() => ({
   form: form.value,
   hostRows: hostRows.value,
@@ -286,8 +263,6 @@ function resetForCreate() {
   parseHostsToRows() // empty
   if (!hostRows.value.length && domains.value.length) addHostRow()
   loadAppPorts(form.value.application_id).then(() => {
-    // One declared port is the only sensible target, so choosing it saves the
-    // one field the caller can't already know.
     if (appPorts.value.length === 1) form.value.target_port = appPorts.value[0].container_port
   })
 }
@@ -373,8 +348,7 @@ async function save() {
           </div>
           <div class="form-group" style="flex: 1">
             <label class="form-label">{{ $t('routes.application') }}</label>
-            <!-- Opened from an application's own page the app is a given, not
-                 a choice — a picker there invites routing the wrong app. -->
+            <!-- From an app's own page the app is a given; a picker there invites routing the wrong app. -->
             <input v-if="lockApp" class="form-input" :value="lockedAppName" disabled :aria-label="$t('routes.application')" />
             <select v-else v-model="form.application_id" class="form-select" required @change="onAppChange">
               <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>

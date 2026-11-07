@@ -34,20 +34,14 @@ import (
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 )
 
-// AdminRegistryHandler exposes the platform's built-in Docker registry settings
-// to the super-admin. The registry itself is a Community feature (local storage);
-// S3/MinIO storage is gated behind the FlagRegistryS3 entitlement.
+// S3/MinIO registry storage is gated behind FlagRegistryS3; local storage is Community.
 type AdminRegistryHandler struct {
-	svc   *registryserver.Service
-	ee    enterprise.EE
-	audit *audit.Logger
-	// ensure re-creates/tears down the registry container after a settings change.
-	// Injected by the routes layer (it owns the control-plane Docker client).
-	ensure  func(context.Context) error
-	gc      func(context.Context) error
-	runtime func(context.Context) (*registryserver.Runtime, error)
-	// repoCount reports how many repositories the registry holds, so a storage
-	// change can tell "nothing to strand" from "this abandons real images".
+	svc       *registryserver.Service
+	ee        enterprise.EE
+	audit     *audit.Logger
+	ensure    func(context.Context) error
+	gc        func(context.Context) error
+	runtime   func(context.Context) (*registryserver.Runtime, error)
 	repoCount func(context.Context) (int, error)
 }
 
@@ -56,8 +50,6 @@ func (h *AdminRegistryHandler) SetRuntime(fn func(context.Context) (*registryser
 	h.runtime = fn
 }
 
-// SetRepoCount wires the "how many repositories are stored" probe used to decide
-// whether a storage change needs confirmation.
 func (h *AdminRegistryHandler) SetRepoCount(fn func(context.Context) (int, error)) {
 	h.repoCount = fn
 }
@@ -66,8 +58,6 @@ func NewAdminRegistryHandler(svc *registryserver.Service, ee enterprise.EE, audi
 	return &AdminRegistryHandler{svc: svc, ee: ee, audit: auditLog}
 }
 
-// SetEnsure wires the callback that applies the settings to the running
-// container (recreate on change, tear down when disabled).
 func (h *AdminRegistryHandler) SetEnsure(fn func(context.Context) error) { h.ensure = fn }
 
 // SetGC wires the on-demand garbage-collection callback.
@@ -85,15 +75,11 @@ func (h *AdminRegistryHandler) RunGC(c *okapi.Context) error {
 	return message(c, "garbage collection complete")
 }
 
-// UpdateRegistrySettingsRequest is the body for updating the registry settings. The platform
-// fields (enablement, hostname, storage) are pointers: nil means "not sent, leave alone", so a
-// partial save from one tab cannot clobber another's. Env-pinned fields are ignored.
+// Pointer fields: nil means leave alone, so a partial save from one tab cannot clobber another's.
 type UpdateRegistrySettingsRequest struct {
 	Body RegistrySettingsBody `json:"body"`
 }
 
-// RegistrySettingsBody is the settings payload, named so the confirmation check
-// can take it without restating every field.
 type RegistrySettingsBody struct {
 	DeleteEnabled       bool `json:"delete_enabled"`
 	PerWorkspaceQuotaMB int  `json:"per_workspace_quota_mb"`
@@ -101,8 +87,7 @@ type RegistrySettingsBody struct {
 	Enabled     *bool   `json:"enabled"`
 	Host        *string `json:"host"`
 	StorageType *string `json:"storage_type" enum:"filesystem,s3"`
-	// StorageClass places the local volume on a storage class of the control-plane node; empty or
-	// "default" is Docker's data root.
+	// StorageClass empty or "default" is Docker's data root.
 	StorageClass *string `json:"storage_class"`
 
 	S3Endpoint       *string `json:"s3_endpoint"`
@@ -112,30 +97,18 @@ type RegistrySettingsBody struct {
 	S3SecretKey      *string `json:"s3_secret_key"` // blank keeps the stored one
 	S3ForcePathStyle *bool   `json:"s3_force_path_style"`
 
-	// Confirm acknowledges a change the platform cannot undo — moving the hostname every stored
-	// image reference is anchored to, or switching a storage backend that does not migrate its
-	// blobs. Without it such a change is refused, so it can never be made by accident.
+	// Confirm is required for changes the platform cannot undo: moving the hostname or switching storage backend.
 	Confirm bool `json:"confirm"`
 }
 
-// RegistrySettingsView is the settings response enriched with the effective
-// host, which fields the environment pins, and why the registry might not be
-// serving.
 type RegistrySettingsView struct {
 	*models.RegistrySettings
-	EffectiveHost string `json:"effective_host"`
-	S3Entitled    bool   `json:"s3_entitled"`
-	// Locks reports the environment-pinned fields. The UI renders each as fixed
-	// and names the variable that owns it; everything else is editable.
-	Locks registryserver.Locks `json:"locks"`
-	// HostSource / StorageSource explain where the effective value came from,
-	// which is what the UI shows under a field ("set by MIABI_REGISTRY_HOST",
-	// "derived from the base domain", …).
-	HostSource    string `json:"host_source"`
-	StorageSource string `json:"storage_source"`
-	// StorageError is why the registry cannot serve from its configured storage
-	// (a missing entitlement or bucket). Empty when storage is usable.
-	StorageError string `json:"storage_error,omitempty"`
+	EffectiveHost string               `json:"effective_host"`
+	S3Entitled    bool                 `json:"s3_entitled"`
+	Locks         registryserver.Locks `json:"locks"`
+	HostSource    string               `json:"host_source"`
+	StorageSource string               `json:"storage_source"`
+	StorageError  string               `json:"storage_error,omitempty"`
 }
 
 func (h *AdminRegistryHandler) view(st *models.RegistrySettings) RegistrySettingsView {
@@ -171,9 +144,7 @@ func (h *AdminRegistryHandler) GetSettings(c *okapi.Context) error {
 	return ok(c, h.view(st))
 }
 
-// UpdateSettings saves the registry configuration and applies it to the running container. Two
-// changes are refused unless confirmed: moving the hostname (every recorded image reference is
-// anchored to it) and switching storage (blobs do not migrate, so pushed images go invisible).
+// Hostname and storage changes need confirmation: references are anchored to the host and blobs do not migrate.
 func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegistrySettingsRequest) error {
 	b := req.Body
 	if b.PerWorkspaceQuotaMB < 0 {
@@ -185,9 +156,7 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 	}
 	locks := h.svc.Locks()
 
-	// Selecting S3 is gated here, where the driver is chosen. The service checks
-	// it again at container start, which covers the environment path and a licence
-	// that lapses later.
+	// Checked again at container start, covering the env path and a licence that lapses later.
 	wantsS3 := current.UsesS3()
 	if b.StorageType != nil && !locks.Storage {
 		wantsS3 = *b.StorageType == models.RegistryStorageS3
@@ -205,7 +174,6 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 	}
 
 	if msg := h.destructiveChange(c.Request().Context(), current, locks, b); msg != "" && !b.Confirm {
-		// 409: the request is well-formed but conflicts with what is already stored.
 		// The message is the confirmation prompt the UI shows verbatim.
 		return c.AbortWithError(409, errors.New(msg))
 	}
@@ -231,8 +199,7 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 		}
 		return c.AbortInternalServerError("failed to save registry settings", err)
 	}
-	// Apply to the running container (recreate on change / tear down when disabled),
-	// best-effort so a Docker hiccup doesn't fail the settings save.
+	// Best-effort so a Docker hiccup doesn't fail the settings save.
 	if h.ensure != nil {
 		if err := h.ensure(c.Request().Context()); err != nil {
 			logger.Warn("registry ensure after settings change failed", "error", err)
@@ -242,9 +209,7 @@ func (h *AdminRegistryHandler) UpdateSettings(c *okapi.Context, req *UpdateRegis
 	return ok(c, h.view(st))
 }
 
-// destructiveChange returns the confirmation prompt for a change that strands data or breaks
-// stored references, or "" when the update is safe. A change is only destructive against
-// something that exists: moving the host of a registry that never served costs nothing.
+// Only destructive against something that exists: moving an unused registry's host costs nothing.
 func (h *AdminRegistryHandler) destructiveChange(
 	ctx context.Context, current *models.RegistrySettings, locks registryserver.Locks, b RegistrySettingsBody,
 ) string {
@@ -287,9 +252,7 @@ func (h *AdminRegistryHandler) destructiveChange(
 	return ""
 }
 
-// storedRepoCount is the repository count, or 0 when it cannot be determined —
-// an unreachable registry is treated as empty so a probe failure can't wedge the
-// settings form behind a confirmation nobody can satisfy.
+// An unreachable registry counts as empty so a probe failure can't wedge the form behind a confirmation.
 func (h *AdminRegistryHandler) storedRepoCount(ctx context.Context) int {
 	if h.repoCount == nil {
 		return 0

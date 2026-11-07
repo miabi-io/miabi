@@ -27,8 +27,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// GlobalTopic is the eventbus topic on which every audit entry is published so
-// the platform-admin Events stream can fan them out over SSE.
 const GlobalTopic = "audit:global"
 
 type Logger struct {
@@ -52,8 +50,7 @@ type Entry struct {
 	Metadata    map[string]any
 }
 
-// Record persists an audit entry. Failures are logged but never block the
-// caller — auditing must not break the request path.
+// Failures never block the caller: auditing must not break the request path.
 func (l *Logger) Record(e Entry) {
 	if l == nil || l.repo == nil {
 		return

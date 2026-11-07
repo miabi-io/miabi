@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Applies manifests through the same API GitOps uses: a bundle that should converge, and changes the plan
-# must refuse before anything is created.
 source "$(dirname "$0")/lib.sh"
 load
 login "$ADMIN_EMAIL" "$ADMIN_PW"
@@ -13,9 +11,7 @@ app() {
 }
 apply_body() { jq -nc --arg m "$1" --argjson dry "$2" '{manifests: $m, dry_run: $dry}'; }
 
-# expect_refused NAME MANIFEST NEEDLE [DRY] applies MANIFEST (a dry run unless DRY is false) and requires
-# a refusal mentioning NEEDLE: a plan refusal answers 400, and a change refused while applying is listed
-# under the result's failures.
+# A plan refusal answers 400; a change refused while applying is listed under the result's failures.
 expect_refused() {
   local out code
   out=$(mktemp)

@@ -42,8 +42,7 @@ func (r *OAuthProviderRepository) Update(p *models.OAuthProvider) error {
 	return r.db.Save(p).Error
 }
 
-// Delete removes a provider with the identities bound to it, so a provider created later under a
-// recycled id cannot inherit them.
+// Identities go too, so a provider created later under a recycled id can't inherit them.
 func (r *OAuthProviderRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("provider_id = ?", id).Delete(&models.UserIdentity{}).Error; err != nil {
@@ -80,8 +79,7 @@ func (r *OAuthProviderRepository) ReplaceMappings(providerID uint, mappings []mo
 	})
 }
 
-// Count returns the number of configured providers. Used by the single-provider
-// quota guard (Community allows one; the multi_sso entitlement lifts the cap).
+// Community allows one provider; the multi_sso entitlement lifts the cap.
 func (r *OAuthProviderRepository) Count() (int64, error) {
 	var n int64
 	if err := r.db.Model(&models.OAuthProvider{}).Count(&n).Error; err != nil {
@@ -109,9 +107,6 @@ func (r *OAuthProviderRepository) FindEnabled() ([]models.OAuthProvider, error) 
 	return providers, nil
 }
 
-// HasEnabledHidden reports whether any enabled provider is hidden from the login
-// buttons — i.e. reachable only via "Continue with SSO" email discovery. Drives
-// whether that button is offered on the login screen.
 func (r *OAuthProviderRepository) HasEnabledHidden() (bool, error) {
 	var count int64
 	if err := r.db.Model(&models.OAuthProvider{}).

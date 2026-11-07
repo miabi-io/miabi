@@ -84,9 +84,7 @@ func TestDuplicateSignUpCostsTheSameAsAFreshOne(t *testing.T) {
 		t.Errorf("a duplicate address answered differently:\n first  %d %s\n second %d %s",
 			first.status, first.body, second.status, second.body)
 	}
-	// A lower bound, not a comparison: bcrypt at the default cost cannot finish in
-	// under 10ms on any machine that runs this suite, so anything faster proves the
-	// handler branched before hashing.
+	// bcrypt at default cost cannot finish under 10ms, so faster proves the handler skipped hashing.
 	if second.elapsed < 10*time.Millisecond {
 		t.Errorf("the duplicate path took %v, too fast to have hashed a password — "+
 			"the existence check has moved back in front of bcrypt", second.elapsed)
@@ -96,8 +94,7 @@ func TestDuplicateSignUpCostsTheSameAsAFreshOne(t *testing.T) {
 	}
 }
 
-// The allow-list is readable one domain at a time if a rejected domain answers
-// differently from an accepted one, so it must not.
+// A rejected domain must answer like an accepted one, or the allow-list can be enumerated.
 func TestRejectedDomainAnswersLikeSuccess(t *testing.T) {
 	h, users := registerTestHandler(t, "acme.com")
 
@@ -119,8 +116,7 @@ func TestRejectedDomainAnswersLikeSuccess(t *testing.T) {
 	}
 }
 
-// Sign-up being shut is public — the sign-in page has to know — so it is the one
-// refusal that may look like a refusal.
+// Closed sign-up is public (the sign-in page must know), so it may look like a refusal.
 func TestClosedPlatformRefusesOutright(t *testing.T) {
 	h := NewRegisterHandler(registration.NewService(false, settings.NewFixedProvider(nil), nil), nil, nil, nil, nil)
 

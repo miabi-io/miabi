@@ -71,8 +71,7 @@ func guardedApp() *models.Application {
 	}
 }
 
-// Starting an app whose volume is gone would hand it an empty one, so the start is refused rather than
-// silently succeeding on no data.
+// A missing volume would be replaced by an empty one, so start is refused.
 func TestStartAndRestartRefuseAnAppWhoseDataIsGone(t *testing.T) {
 	s := guardService(map[string]docker.Volume{}) // the volume is missing on its node
 	app := guardedApp()

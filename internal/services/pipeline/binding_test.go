@@ -38,8 +38,7 @@ func specWith(t *testing.T, steps string) *Spec {
 	return s
 }
 
-// A deploy step needs somewhere to deploy. Caught at save, while the user is
-// editing, rather than at dispatch with a runner already warm.
+// Caught at save, not at dispatch with a runner already warm.
 func TestDeployStepRequiresAnApplication(t *testing.T) {
 	spec := specWith(t, "  - name: ship\n    uses: deploy\n")
 
@@ -54,8 +53,7 @@ func TestDeployStepRequiresAnApplication(t *testing.T) {
 	}
 }
 
-// A build step with nothing checked out would build an empty workspace and
-// succeed, which is worse than failing.
+// A build with nothing checked out would build an empty workspace and succeed, worse than failing.
 func TestBuildStepRequiresASource(t *testing.T) {
 	spec := specWith(t, "  - name: build\n    uses: build\n")
 
@@ -75,8 +73,7 @@ func TestBuildStepRequiresASource(t *testing.T) {
 	}
 }
 
-// A command-only pipeline is still legitimate: steps that only run commands need
-// no checkout and no deploy target.
+// Command-only steps need no checkout and no deploy target.
 func TestCommandOnlyPipelineNeedsNoBinding(t *testing.T) {
 	spec := specWith(t, "  - name: lint\n    image: node:20\n    run: npm run lint\n")
 	if err := validateStepsAgainstBinding(spec, nil, nil); err != nil {
@@ -84,8 +81,6 @@ func TestCommandOnlyPipelineNeedsNoBinding(t *testing.T) {
 	}
 }
 
-// The error names the offending step, so a long spec does not have to be read
-// end-to-end to find it.
 func TestBindingErrorNamesTheStep(t *testing.T) {
 	spec := specWith(t, "  - name: lint\n    image: node:20\n    run: echo\n  - name: ship-it\n    uses: deploy\n")
 	err := validateStepsAgainstBinding(spec, nil, nil)

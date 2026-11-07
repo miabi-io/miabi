@@ -30,12 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 )
 
-// notifyCooldown bounds how often a single condition may (re)notify, so a
-// re-firing alert can't ping the bell repeatedly.
-// const notifyCooldown = 10 * time.Minute
-
-// NotificationTopic is the per-user eventbus topic the bell's SSE stream
-// subscribes to.
 func NotificationTopic(userID uint) string { return fmt.Sprintf("notifications:user:%d", userID) }
 
 // Dependencies (interfaces so the engine is unit-testable; the repos satisfy them).
@@ -54,9 +48,7 @@ type MemberLister interface {
 	ListMembers(workspaceID uint) ([]models.WorkspaceMember, error)
 }
 
-// SystemAdminLister returns the user ids of the platform super-admins — the
-// recipients of platform-scoped alerts (node offline, engine too old, license),
-// which are attributed to the system workspace rather than any tenant workspace.
+// Platform-scoped alerts belong to the system workspace, not any tenant workspace.
 type SystemAdminLister interface {
 	ListAdminIDs() ([]uint, error)
 }
@@ -70,8 +62,7 @@ type AppNameFunc func(id uint) string
 
 func (f AppNameFunc) AppName(id uint) string { return f(id) }
 
-// DatabaseNamer resolves a database instance's display name for alert titles. Optional: when
-// unwired the engine falls back to "database #<id>".
+// Optional: unwired falls back to "database #<id>".
 type DatabaseNamer interface {
 	DatabaseName(id uint) string
 }
@@ -85,9 +76,7 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
-// Engine turns app-event signals into alerts and per-user notifications, implementing the events
-// service's alert-sink hook. Fan-out is workspace + role scoped; hot state (crash-loop windows,
-// notify cooldowns) lives in the Counter, Redis in production.
+// Hot state (crash-loop windows, notify cooldowns) lives in the Counter, Redis in production.
 type Engine struct {
 	alerts  AlertStore
 	inbox   InboxStore
@@ -97,31 +86,22 @@ type Engine struct {
 	bus     Publisher
 	counter Counter
 	// Optional scan sources; each enables a category of the periodic scanner.
-	certs   CertLister
-	volumes VolumeUsageLister
-	quota   QuotaLister
-	runners RunnerLister
-	// sysWorkspace resolves the built-in system workspace, which owns alerts whose
-	// subject belongs to the platform rather than to any one workspace.
+	certs        CertLister
+	volumes      VolumeUsageLister
+	quota        QuotaLister
+	runners      RunnerLister
 	sysWorkspace func() uint
-	// Platform-scoped alerts (category Node, …) are emitted on the system
-	// workspace and fan out to the platform super-admins instead of workspace
-	// members.
-	sysAdmins SystemAdminLister
-	now       func() time.Time
+	sysAdmins    SystemAdminLister
+	now          func() time.Time
 }
 
-// SetSystemAdmins enables platform-scoped alert delivery: platform alerts fan out
-// to the super-admins this lister returns.
 func (e *Engine) SetSystemAdmins(admins SystemAdminLister) { e.sysAdmins = admins }
 
 func NewEngine(alerts AlertStore, inbox InboxStore, members MemberLister, namer AppNamer, bus Publisher, counter Counter) *Engine {
 	return &Engine{alerts: alerts, inbox: inbox, members: members, namer: namer, bus: bus, counter: counter, now: time.Now}
 }
 
-// OnEvent is the alert-sink hook: it receives every recorded app event — unlike the outbound notifier,
-// which is filtered — evaluates the rules, and executes the resulting intents. Best-effort: a failure
-// is logged and never propagates to the recording caller.
+// Receives every event, unlike the filtered outbound notifier; best-effort, never fails the recording caller.
 func (e *Engine) OnEvent(ev *models.AppEvent) {
 	if ev == nil || ev.WorkspaceID == 0 {
 		return
@@ -174,9 +154,7 @@ func (e *Engine) subjectName(ev *models.AppEvent) string {
 // SetDatabaseNamer wires the database display-name resolver (optional).
 func (e *Engine) SetDatabaseNamer(n DatabaseNamer) { e.dbNamer = n }
 
-// doFire opens or folds an alert and, only when it is newly opened, fans a notification out to the
-// workspace's eligible members. A folded repeat (e.g. the 6th crash in a loop) just bumps the alert's
-// count — it never re-notifies, which is the storm control that keeps 40 events at one bell item.
+// Folded repeats only bump the count and never re-notify: the storm control keeping 40 events at one bell item.
 func (e *Engine) doFire(ctx context.Context, workspaceID uint, in intent) {
 	now := e.now().UTC()
 	a := &models.Alert{
@@ -196,9 +174,7 @@ func (e *Engine) doFire(ctx context.Context, workspaceID uint, in intent) {
 	e.fanOut(workspaceID, alert, true, in.platform)
 }
 
-// doResolve closes the active alert for a dedup key and rewrites its delivered
-// notifications to "recovered" (re-surfacing them as unread), then pushes the
-// change over SSE. A no-op when nothing was open.
+// A no-op when nothing was open.
 func (e *Engine) doResolve(ctx context.Context, workspaceID uint, dedupKey string) {
 	alert, err := e.alerts.Resolve(workspaceID, dedupKey, e.now().UTC())
 	if err != nil {
@@ -220,9 +196,7 @@ func (e *Engine) doResolve(ctx context.Context, workspaceID uint, dedupKey strin
 	}
 }
 
-// fanOut writes one notification per recipient and pushes each over SSE. Recipients are the eligible workspace
-// members (role at or above the alert's MinRole), or the platform super-admins for a platform alert. The
-// workspace and role boundary lives here: a user only ever receives an alert for a workspace they are in.
+// A user only ever receives an alert for a workspace they are in, at or above the alert's MinRole.
 func (e *Engine) fanOut(workspaceID uint, alert *models.Alert, resurface, platform bool) {
 	recipients, err := e.recipients(workspaceID, alert.MinRole, platform)
 	if err != nil {
@@ -243,9 +217,7 @@ func (e *Engine) fanOut(workspaceID uint, alert *models.Alert, resurface, platfo
 	}
 }
 
-// recipients resolves who should receive an alert: the system admins for a
-// platform alert on the system workspace, otherwise the workspace members whose
-// role meets the alert's minimum. Service accounts are members but read no inbox.
+// Service accounts are members but read no inbox.
 func (e *Engine) recipients(workspaceID uint, minRole models.WorkspaceRole, platform bool) ([]uint, error) {
 	if e.sysAdmins != nil && platform {
 		return e.sysAdmins.ListAdminIDs()
@@ -263,9 +235,7 @@ func (e *Engine) recipients(workspaceID uint, minRole models.WorkspaceRole, plat
 	return out, nil
 }
 
-// push notifies the user's SSE stream that their inbox changed. The payload is a
-// signal to refetch (count + list), keeping the wire small and the source of
-// truth in Postgres.
+// The payload is only a refetch signal, keeping the wire small and Postgres the source of truth.
 func (e *Engine) push(userID uint) {
 	if e.bus == nil {
 		return
@@ -273,8 +243,6 @@ func (e *Engine) push(userID uint) {
 	e.bus.Publish(NotificationTopic(userID), eventbus.Event{Type: "notification", Data: map[string]any{"user_id": userID}})
 }
 
-// subjectName strips a leading "<condition> — " prefix from an alert title to
-// reuse the subject (the app name) in the recovered message.
 func subjectName(title string) string {
 	const sep = " — "
 	if i := strings.Index(title, sep); i >= 0 {

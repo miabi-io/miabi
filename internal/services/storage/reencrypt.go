@@ -25,8 +25,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts this owner's workspace secrets under the workspace's
-// active DEK (key rotation). Idempotent; returns the number rewritten.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	rows, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

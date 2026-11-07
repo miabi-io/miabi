@@ -26,28 +26,21 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// ScopeMode is how strictly API-key scopes are enforced, set by
-// MIABI_API_KEY_SCOPE_ENFORCEMENT. Warn exists for installs upgraded from releases that never
-// enforced scopes: a key created with the default `read` scope may have been writing for months,
-// and flipping straight to enforce would break it without warning.
+// Warn exists for upgraded installs whose default read-scope keys may have been writing for months.
 type ScopeMode string
 
 const (
 	// ScopeModeOff skips the check entirely — the behaviour before scopes were enforced.
-	ScopeModeOff ScopeMode = "off"
-	// ScopeModeWarn lets the request through but records the violation, so an operator can see
-	// which of their keys would break before enforcing.
+	ScopeModeOff  ScopeMode = "off"
 	ScopeModeWarn ScopeMode = "warn"
 	// ScopeModeEnforce refuses a request whose key lacks the scope.
 	ScopeModeEnforce ScopeMode = "enforce"
 )
 
-// ScopeViolationHeader names the scope a warn-mode request would have needed, so a client sees the
-// coming break in its own responses rather than only in the operator's audit log.
+// Lets a client see the coming break in its own responses, not only the operator's audit log.
 const ScopeViolationHeader = "X-Miabi-Scope-Required"
 
-// ParseScopeMode reads a configured mode, falling back to warn for anything unrecognised — an
-// operator's typo must not silently disable a security control.
+// ParseScopeMode falls back to warn for anything unrecognised: a typo must not disable a security control.
 func ParseScopeMode(s string) ScopeMode {
 	switch ScopeMode(strings.ToLower(strings.TrimSpace(s))) {
 	case ScopeModeOff:
@@ -59,12 +52,10 @@ func ParseScopeMode(s string) ScopeMode {
 	}
 }
 
-// LegacyScopeModeSetting records the mode an install upgraded with existing API keys keeps until an
-// operator chooses: those keys predate enforcement and may rely on scopes they never had.
+// Upgraded keys predate enforcement and may rely on scopes they never had.
 const LegacyScopeModeSetting = "api_key_scope_enforcement_legacy"
 
-// ResolveScopeMode picks the effective mode: the operator's setting when given, else the legacy
-// mode recorded at upgrade, else enforce.
+// ResolveScopeMode prefers the operator's setting, then the legacy mode recorded at upgrade, else enforce.
 func ResolveScopeMode(configured, legacy string) (ScopeMode, string) {
 	if strings.TrimSpace(configured) != "" {
 		return ParseScopeMode(configured), "configured"
@@ -87,11 +78,7 @@ type ScopeViolation struct {
 	Enforced bool
 }
 
-// RequireScope guards a route for API-key callers, demanding the presented key carry a scope that
-// satisfies `required` on the ladder (see models.ScopeSatisfies). Session and JWT callers are
-// unaffected — their access is governed by the workspace RBAC middleware instead.
-//
-// `report` is called for every violation, in warn mode as well as enforce, and may be nil.
+// RequireScope applies to API-key callers only; sessions are governed by workspace RBAC.
 func RequireScope(mode ScopeMode, required string, report func(ScopeViolation)) okapi.Middleware {
 	if mode == ScopeModeOff || required == "" {
 		return func(c *okapi.Context) error { return c.Next() }

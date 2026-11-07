@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package logstore is the shared store for execution logs. It externalizes a finished run's full
-// log out of Postgres into a gzipped object on a shared volume, keeping only a bounded tail and a
-// reference in the database. A nil *Store is a no-op, so it is never a hard boot dependency.
+// Package logstore externalizes finished logs to gzipped objects; a nil *Store is a no-op.
 package logstore
 
 import (
@@ -33,19 +31,13 @@ import (
 	"time"
 )
 
-// Backend is the pluggable object store behind the log store. The filesystem
-// backend is the default; an S3/MinIO backend can be added later without
-// touching producers or readers (they only see *Store).
 type Backend interface {
 	// Create returns a write sink for ref, replacing any existing object.
 	Create(ref string) (io.WriteCloser, error)
-	// Open returns the raw stored bytes for ref (still gzip-compressed when the
-	// store compresses). ErrNotFound when the object is absent.
+	// Still gzip-compressed when the store compresses; ErrNotFound when absent.
 	Open(ref string) (io.ReadCloser, error)
 	// Delete removes the object for ref. Absent is not an error.
 	Delete(ref string) error
-	// Sweep deletes every object last modified before cutoff and returns the
-	// number removed.
 	Sweep(cutoff time.Time) (int, error)
 	// Name identifies the backend for logging (e.g. "filesystem").
 	Name() string
@@ -54,11 +46,9 @@ type Backend interface {
 // ErrNotFound is returned by a backend when an object does not exist.
 var ErrNotFound = errors.New("logstore: object not found")
 
-// Config bounds and shapes what the store writes. Zero values fall back to the
-// defaults below.
+// Zero values fall back to the defaults below.
 type Config struct {
-	// MaxBytes caps a single externalized log; past it the middle is dropped and
-	// Truncated is set (0 = no cap).
+	// Past the cap the middle is dropped and Truncated is set (0 = no cap).
 	MaxBytes int64
 	// TailBytes is the size of the bounded tail the store returns for the DB row.
 	TailBytes int
@@ -125,9 +115,7 @@ type Result struct {
 	Tail      string // bounded last slice for the DB LogTail column
 }
 
-// Externalize writes the full log for ref and returns the counters + bounded
-// tail to persist. On a disabled store it is a no-op returning a Result whose
-// Tail is the (bounded) input, so callers can always trust Result.Tail.
+// On a disabled store Tail is the bounded input, so callers can always trust Result.Tail.
 func (s *Store) Externalize(ref, content string) (Result, error) {
 	if !s.Enabled() || ref == "" {
 		return Result{Tail: boundTail(content, Config{}.tailBytes())}, nil
@@ -182,9 +170,7 @@ func (s *Store) Open(ref string) (io.ReadCloser, error) {
 	return &gzReadCloser{gz: gz, under: rc}, nil
 }
 
-// Tail returns the last n bytes of ref's decompressed log, trimmed to a line
-// boundary. Empty string (no error) when the object is absent or the store is
-// disabled — callers fall back to the DB tail.
+// Empty string, no error, when absent or disabled: callers fall back to the DB tail.
 func (s *Store) Tail(ref string, n int) (string, error) {
 	rc, err := s.Open(ref)
 	if errors.Is(err, ErrNotFound) {
@@ -209,8 +195,7 @@ func (s *Store) Delete(ref string) error {
 	return s.be.Delete(ref)
 }
 
-// Sweep removes objects older than the configured retention window and returns
-// the count deleted. A zero/absent retention keeps everything (no-op).
+// A zero retention keeps everything.
 func (s *Store) Sweep(now time.Time) (int, error) {
 	if !s.Enabled() || s.cfg.RetentionDays <= 0 {
 		return 0, nil
@@ -219,12 +204,9 @@ func (s *Store) Sweep(now time.Time) (int, error) {
 	return s.be.Sweep(cutoff)
 }
 
-// Compressed reports whether stored objects are gzip-compressed (for the
-// download endpoint's Content-Encoding).
 func (s *Store) Compressed() bool { return s.Enabled() && s.cfg.Compress }
 
-// OpenRaw returns the raw stored bytes for ref (still gzipped when Compressed),
-// for a streaming download that avoids server-side decompression.
+// Avoids server-side decompression for streaming downloads.
 func (s *Store) OpenRaw(ref string) (io.ReadCloser, error) {
 	if !s.Enabled() || ref == "" {
 		return nil, ErrNotFound
@@ -241,9 +223,6 @@ func (s *Store) encoder(w io.Writer) io.WriteCloser {
 	return nopWriteCloser{w}
 }
 
-// applyCap enforces MaxBytes by keeping the head and tail and dropping the
-// middle, marking the gap. Returns the (possibly truncated) content and whether
-// a cut was made.
 func (s *Store) applyCap(content string) (string, bool) {
 	max := s.cfg.maxBytes()
 	if max <= 0 || int64(len(content)) <= max {
@@ -259,8 +238,6 @@ func (s *Store) applyCap(content string) (string, bool) {
 	return b.String(), true
 }
 
-// boundTail returns the last n bytes of s, trimmed forward to a line boundary
-// so the tail never starts mid-line.
 func boundTail(s string, n int) string {
 	if n <= 0 || len(s) <= n {
 		return s
@@ -268,8 +245,6 @@ func boundTail(s string, n int) string {
 	return trimToLineStart(s[len(s)-n:])
 }
 
-// trimToLineStart drops a leading partial line (everything up to and including
-// the first newline) when s was cut mid-line.
 func trimToLineStart(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 && i+1 < len(s) {
 		return s[i+1:]

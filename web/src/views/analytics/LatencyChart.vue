@@ -1,8 +1,5 @@
 <script setup lang="ts">
-// p95 latency over time, on the same time axis as the requests chart.
-//
-// Buckets with no traffic have no latency to report, so the line breaks there
-// instead of diving to zero — a quiet hour is missing data, not a fast one.
+// Empty buckets break the line rather than diving to zero: a quiet hour is missing data, not a fast one.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { AnalyticsSeriesPoint } from '@/api/analytics'
 import { fmtMs, fmtNum, niceAxisMax } from './format'

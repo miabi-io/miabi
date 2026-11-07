@@ -46,8 +46,6 @@ import (
 	"github.com/libdns/transip"
 )
 
-// constructors maps a catalogued type to its libdns client. Credential keys match the
-// field keys the type's dnscatalog descriptor declares; required ones are already checked.
 var constructors = map[string]func(Credentials) zoneClient{
 	"cloudflare":   func(c Credentials) zoneClient { return &cloudflare.Provider{APIToken: c["api_token"]} },
 	"digitalocean": func(c Credentials) zoneClient { return &digitalocean.Provider{APIToken: c["api_token"]} },

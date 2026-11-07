@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 )
 
-// Deletion phase keys. Stable identifiers the deletion-progress UI maps to a
-// stepper; only the phases a workspace actually needs are present in a job.
+// Stable keys the UI maps to a stepper; only phases the workspace needs are present.
 const (
 	PhaseApps      = "apps"
 	PhaseDatabases = "databases"
@@ -64,8 +63,6 @@ type DeletionPhase struct {
 	Status PhaseStatus `json:"status"`
 }
 
-// DeletionJob is the live snapshot streamed to the deletion-progress UI: the
-// ordered phases, a transient status line, and — once terminal — an error.
 type DeletionJob struct {
 	ID      string          `json:"id"`
 	Status  JobStatus       `json:"status"`
@@ -85,12 +82,10 @@ func (j *DeletionJob) snapshot() DeletionJob {
 
 func deletionTopic(jobID string) string { return "workspace-deletion:" + jobID }
 
-// delJobRetention bounds how long a finished job is kept for late subscribers /
-// reconnects before being pruned.
+// Kept for late subscribers and reconnects before pruning.
 const delJobRetention = 15 * time.Minute
 
-// workspaceDeletionTimeout caps how long a teardown may run before the job is
-// abandoned (best-effort deletes can hang on an unresponsive Docker daemon).
+// Best-effort deletes can hang on an unresponsive Docker daemon.
 const workspaceDeletionTimeout = 15 * time.Minute
 
 func newDelJobID() string {
@@ -99,9 +94,6 @@ func newDelJobID() string {
 	return hex.EncodeToString(b)
 }
 
-// buildDeletionPhases derives the stepper from what the workspace actually
-// contains, listing only the phases the teardown will perform plus the always-
-// present finalize step.
 func (s *Service) buildDeletionPhases(wsID uint) []DeletionPhase {
 	var p []DeletionPhase
 	add := func(key, label string) { p = append(p, DeletionPhase{Key: key, Label: label, Status: PhasePending}) }
@@ -121,16 +113,13 @@ func (s *Service) buildDeletionPhases(wsID uint) []DeletionPhase {
 	return p
 }
 
-// delReporter records teardown progress onto a job and fans the snapshot out
-// over the event bus. A nil *delReporter is a no-op, so the synchronous
-// DeleteWorkspaceNow path can share teardownResources without a job.
+// A nil reporter is a no-op so DeleteWorkspaceNow can share teardownResources without a job.
 type delReporter struct {
 	s   *Service
 	job *DeletionJob
 }
 
-// phase transitions a named phase and publishes the new snapshot. Unknown keys
-// (a phase the workspace skips) are ignored.
+// Unknown keys (skipped phases) are ignored.
 func (r *delReporter) phase(key string, st PhaseStatus) {
 	if r == nil {
 		return
@@ -164,9 +153,7 @@ func (s *Service) publishDelJob(snap DeletionJob) {
 	s.bus.Publish(deletionTopic(snap.ID), eventbus.Event{Type: "job", Data: snap})
 }
 
-// StartWorkspaceDeletion validates the target synchronously, so a system workspace or missing id fails
-// fast, then tears it down in the background and returns the initial job snapshot. Progress is streamed
-// from StreamWorkspaceDeletion; the UI completes when the job reports a terminal state.
+// Validates synchronously so a system workspace or missing id fails fast, then tears down in the background.
 func (s *Service) StartWorkspaceDeletion(wsID uint) (DeletionJob, error) {
 	ws, err := s.workspaces.FindByID(wsID)
 	if err != nil {
@@ -196,8 +183,6 @@ func (s *Service) StartWorkspaceDeletion(wsID uint) (DeletionJob, error) {
 	return snap, nil
 }
 
-// runWorkspaceDeletion tears down the workspace's resources, then removes the
-// workspace itself, driving the job to a terminal state.
 func (s *Service) runWorkspaceDeletion(job *DeletionJob) {
 	ctx, cancel := context.WithTimeout(context.Background(), workspaceDeletionTimeout)
 	defer cancel()
@@ -237,8 +222,7 @@ func (s *Service) finishDelJob(job *DeletionJob, st JobStatus, errMsg string) {
 	s.publishDelJob(snap)
 }
 
-// pruneDelLocked drops finished jobs older than the retention window. Caller
-// holds delJobsMu.
+// Caller holds delJobsMu.
 func (s *Service) pruneDelLocked() {
 	cutoff := time.Now().Add(-delJobRetention)
 	for id, j := range s.delJobs {
@@ -248,8 +232,7 @@ func (s *Service) pruneDelLocked() {
 	}
 }
 
-// DeletionJobSnapshot returns a one-shot snapshot of a job (REST fallback for
-// the SSE stream / reconnects).
+// REST fallback for the SSE stream and reconnects.
 func (s *Service) DeletionJobSnapshot(jobID string) (DeletionJob, bool) {
 	s.delJobsMu.Lock()
 	defer s.delJobsMu.Unlock()
@@ -260,9 +243,7 @@ func (s *Service) DeletionJobSnapshot(jobID string) (DeletionJob, bool) {
 	return job.snapshot(), true
 }
 
-// StreamWorkspaceDeletion sends the job's current snapshot, then live updates, until the job is terminal
-// or the client disconnects. The bool reports whether the job exists. Every event carries a full
-// snapshot, so a missed update or a reconnect self-heals.
+// Every event carries a full snapshot, so a missed update or reconnect self-heals.
 func (s *Service) StreamWorkspaceDeletion(ctx context.Context, jobID string, send func(eventbus.Event) error) (bool, error) {
 	s.delJobsMu.Lock()
 	job := s.delJobs[jobID]

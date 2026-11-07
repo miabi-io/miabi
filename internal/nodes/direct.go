@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// BuildDirectClient creates a Docker client for a non-agent remote node (socket
-// or api) from its stored record. Agent nodes are connected by the tunnel
-// manager instead and return an error here.
+// Agent nodes are connected by the tunnel manager and return an error here.
 func BuildDirectClient(srv *models.Server) (docker.Client, error) {
 	switch srv.AccessMode {
 	case models.AccessSocket:
@@ -54,16 +52,12 @@ func BuildDirectClient(srv *models.Server) (docker.Client, error) {
 	}
 }
 
-// isDirect reports whether a node is reached by a control-plane-built client
-// (socket/api) rather than an inbound agent tunnel.
 func isDirect(srv *models.Server) bool {
 	return srv.AccessMode == models.AccessSocket ||
 		srv.AccessMode == models.AccessAPI
 }
 
-// ConnectDirect builds and registers a direct node's Docker client, replacing any existing one.
-// A no-op for agent or local nodes. Best-effort: a build error is returned so callers can surface
-// it, but the node stays registered as offline until the next attempt.
+// Best-effort: the node stays registered as offline until the next attempt.
 func (m *Manager) ConnectDirect(srv *models.Server) error {
 	if srv == nil || srv.IsLocal || !isDirect(srv) {
 		return nil
@@ -79,9 +73,7 @@ func (m *Manager) ConnectDirect(srv *models.Server) error {
 // DisconnectDirect drops a direct node's client (on delete or mode change).
 func (m *Manager) DisconnectDirect(id uint) { m.clients.RemoveRemote(id) }
 
-// RefreshClient rebuilds a node's Docker client after its connectivity settings change. A live
-// agent tunnel owns its own registration and is left untouched — rebuilding would evict the live
-// client and flip a connected node offline. Direct nodes are rebuilt to pick up new credentials.
+// A live agent tunnel is left untouched: rebuilding would evict the live client and flip the node offline.
 func (m *Manager) RefreshClient(srv *models.Server) {
 	if srv == nil || srv.IsLocal {
 		return
@@ -96,9 +88,7 @@ func (m *Manager) RefreshClient(srv *models.Server) {
 	_ = m.ConnectDirect(srv)       // no-op for agent mode; builds for socket/api
 }
 
-// LoadDirect registers clients for all direct-access nodes at startup and runs a
-// health poller that pings them on interval to keep their status current. It
-// blocks until ctx is cancelled.
+// Blocks until ctx is cancelled.
 func (m *Manager) LoadDirect(ctx context.Context, interval time.Duration) {
 	m.refreshDirect(ctx)
 	t := time.NewTicker(interval)
@@ -113,8 +103,6 @@ func (m *Manager) LoadDirect(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// refreshDirect ensures every direct node has a client and pings each to update
-// its online/offline status.
 func (m *Manager) refreshDirect(ctx context.Context) {
 	servers, err := m.nodes.List(ctx)
 	if err != nil {

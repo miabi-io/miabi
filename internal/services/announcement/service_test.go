@@ -515,8 +515,7 @@ func titles(rows []models.Notification) []string {
 	return out
 }
 
-// A service account is an active workspace member, but nobody reads its inbox: neither the broadcast nor
-// the per-user backfill may deliver to it.
+// Nobody reads a service account's inbox, so neither broadcast nor backfill may deliver to it.
 func TestServiceAccountsReceiveNoAnnouncements(t *testing.T) {
 	svc, db, _ := newService(t)
 	seedUsers(t, db)

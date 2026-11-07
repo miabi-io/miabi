@@ -88,8 +88,7 @@ func TestParseMiddlewareAndRouteChain(t *testing.T) {
 	}
 }
 
-// The gateway runs the chain in array order, so swapping two entries changes
-// behaviour and has to plan as an update rather than compare equal.
+// The gateway runs the chain in order, so swapping entries must plan as an update.
 func TestRouteChainOrderIsAChange(t *testing.T) {
 	base := `
 apiVersion: miabi.io/v1
@@ -119,8 +118,7 @@ spec: { hosts: [a.example.com], app: web, middlewares: [%s] }
 	t.Errorf("reordering the chain did not plan an update: %+v", plan.Changes)
 }
 
-// ...while the same chain in the same order is in sync, or every plan would
-// show drift on a converged route.
+// An unchanged chain must be in sync, or every plan shows drift on a converged route.
 func TestUnchangedRouteChainIsInSync(t *testing.T) {
 	y := `
 apiVersion: miabi.io/v1
@@ -146,8 +144,7 @@ spec: { hosts: [a.example.com], app: web, middlewares: [rate-limit] }
 	}
 }
 
-// A middleware must exist before a route naming it, or the apply fails on the
-// route it was meant to protect.
+// A middleware must exist before a route naming it, or the apply fails.
 func TestMiddlewaresApplyBeforeRoutes(t *testing.T) {
 	set, err := d.Parse([]byte(middlewareYAML))
 	if err != nil {
@@ -173,8 +170,7 @@ func TestMiddlewaresApplyBeforeRoutes(t *testing.T) {
 	}
 }
 
-// The rule is compared by fingerprint, which the engine stamps. Without one on
-// both sides a plan must not invent drift.
+// Without fingerprints on both sides a plan must not invent drift.
 func TestMiddlewareRuleDiffNeedsFingerprintsOnBothSides(t *testing.T) {
 	mk := func(fp string) *d.ResourceSet {
 		set := d.NewResourceSet()
@@ -243,8 +239,7 @@ spec: { hosts: [a.example.com], app: web, middlewares: [""] }`, "empty name"},
 	}
 }
 
-// A route may name a middleware the workspace already has — the defaults seeded
-// at workspace creation, say — so an undeclared name is not a dangling reference.
+// An undeclared middleware name may be a workspace default, so it is not a dangling reference.
 func TestRouteMayNameAnUndeclaredMiddleware(t *testing.T) {
 	_, err := d.Parse([]byte(`
 apiVersion: miabi.io/v1
@@ -261,8 +256,6 @@ spec: { hosts: [a.example.com], app: web, middlewares: [seeded-basic-auth] }`))
 	}
 }
 
-// The topology view links a route to the middlewares it runs, but only those
-// declared alongside it.
 func TestEdgesLinkRoutesToDeclaredMiddlewares(t *testing.T) {
 	set, err := d.Parse([]byte(middlewareYAML))
 	if err != nil {

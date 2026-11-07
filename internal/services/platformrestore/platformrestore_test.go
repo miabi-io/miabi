@@ -29,9 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// The database dump and volume archives live under separately configured
-// prefixes. A restore that assumed one prefix for both would look in the wrong
-// place and report a perfectly good recovery point as incomplete.
+// Dumps and volume archives have separate prefixes; assuming one would report a good point incomplete.
 func TestArtifactKeyUsesTheRightPrefix(t *testing.T) {
 	man := &dr.Manifest{Prefix: "platform/db", VolumePrefix: "platform/volumes"}
 	cases := []struct {
@@ -53,9 +51,7 @@ func TestArtifactKeyUsesTheRightPrefix(t *testing.T) {
 	}
 }
 
-// Migrations only run forward. A dump from a newer Miabi against older code
-// fails in ways that look like data corruption, well after the restore has
-// reported success — so the restore refuses instead.
+// A newer dump on older code fails like data corruption well after success is reported, so refuse.
 func TestAssertVersionForward(t *testing.T) {
 	orig := config.Version
 	t.Cleanup(func() { config.Version = orig })
@@ -103,9 +99,7 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
-// The check the whole feature turns on: an identity envelope that opens but carries the wrong master key must
-// be caught before anything is restored. Left undetected, it produces a platform that boots, lists
-// everything, and cannot decrypt a single secret.
+// An envelope with the wrong master key yields a platform that boots but cannot decrypt any secret.
 func TestKEKFingerprintDistinguishesKeys(t *testing.T) {
 	const label = models.KEKFingerprintLabel
 	right := crypto.DeriveTokenFrom("the-key-the-backup-was-taken-under", label)

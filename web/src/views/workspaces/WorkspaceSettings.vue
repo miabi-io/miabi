@@ -108,8 +108,6 @@ function meterClass(u: { used: number; limit: number; allowance?: number }): str
   return ''
 }
 
-// Live usage: actual CPU/memory/network consumed right now, aggregated across the
-// workspace's running containers and streamed over SSE while the tab is open.
 const live = ref<WorkspaceLiveSample | null>(null)
 const liveConnected = ref(false)
 let liveES: EventSource | null = null
@@ -169,8 +167,7 @@ const isAdmin = computed(() => ws.isWorkspaceAdmin)
 const isOwner = computed(() => ws.isWorkspaceOwner)
 const tabs = computed(() => allTabs.filter((x) => !x.admin || isAdmin.value))
 
-// General. `name` is the unique handle (URL/CLI/docker); `displayName` is the
-// free-text label.
+// `name` is the unique URL/CLI/docker handle; `displayName` is free text.
 const form = ref({ displayName: '', name: '', description: '' })
 const savingMeta = ref(false)
 // The built-in platform workspace cannot be renamed or deleted.
@@ -213,8 +210,7 @@ const backupSecretSet = ref(false)
 const bundlePassphraseSet = ref(false)
 const backupPassphraseSet = ref(false)
 const ageIdentitySet = ref(false)
-// The last connection test's result, kept on screen: it names each prefix it
-// wrote to, which is the detail that makes a failure actionable.
+// Kept on screen because it names each prefix written to, which makes a failure actionable.
 const backupTest = ref<BackupTestResult | null>(null)
 const savingBackup = ref(false)
 const testingBackup = ref(false)
@@ -312,14 +308,11 @@ async function testBackup() {
 const locations = ref<Location[]>([])
 const defaultLocation = ref('')
 const savingLocation = ref(false)
-// Set when the workspace's organization runs its own clusters. That is a dedication, not a
-// restriction: the nodes belong to the organization, and no workspace outside it can be placed on
-// them — so the field states what the workspace runs on rather than offering a picker with one value.
+// The organization owns the nodes, so the field states what the workspace runs on instead of a one-value picker.
 const locationPinned = ref(false)
 const locationPinnedTo = ref('')
 const orgLabel = computed(() => locationPinnedTo.value || t('wsSettings.yourOrganization'))
-// The location a pinned workspace runs in. Its organization may own several; this is the one new
-// resources land in.
+// The organization may own several locations; this is where new resources land.
 const pinnedLocation = computed(() =>
   locations.value.length ? locationLabel(locations.value.find((l) => l.default) ?? locations.value[0]) : '—',
 )
@@ -394,8 +387,7 @@ async function saveMeta() {
   }
 }
 
-// The handle (name) has its own endpoint, separate from display name/description
-// — renaming changes the workspace's URLs and its `docker login` handle.
+// Separate endpoint: renaming changes the workspace's URLs and its `docker login` handle.
 const savingName = ref(false)
 const currentName = computed(() => ws.workspaces.find((x) => x.id === wsId.value)?.name ?? form.value.name)
 const nameDirty = computed(() => form.value.name.trim() !== '' && form.value.name.trim() !== currentName.value)
@@ -479,8 +471,7 @@ function startDeletionStream(jobId: string) {
       }
     }
   }
-  // EventSource auto-reconnects on transient errors; the server re-sends the
-  // current snapshot on reconnect, so nothing to do here.
+  // EventSource auto-reconnects and the server re-sends the current snapshot.
 }
 
 async function onDeletionDone(job: DeletionJob) {
@@ -802,8 +793,7 @@ watch(activeTab, (t) => loadTab(t))
 
     <!-- Usage vs plan limits -->
     <template v-else-if="activeTab === 'usage'">
-      <!-- What this workspace runs on. Shown only when the organization owns its nodes: on an
-           ordinary install there is no second kind of node to contrast it with. -->
+      <!-- Shown only when the organization owns its nodes; otherwise there is nothing to contrast with. -->
       <div v-if="locationPinned" class="dedicated-note">
         <span class="mdi mdi-shield-check"></span>
         <span>{{ $t('wsSettings.dedicatedNodesChip', { org: orgLabel, location: pinnedLocation }) }}</span>
@@ -1097,8 +1087,7 @@ watch(activeTab, (t) => loadTab(t))
             </button>
           </div>
 
-          <!-- What the test actually did, per prefix. A connection test that only
-               says "looks valid" is the one nobody can act on. -->
+          <!-- A connection test that only says "looks valid" is one nobody can act on. -->
           <div v-if="backupTest" class="test-result" :class="backupTest.ok ? 'test-ok' : 'test-failed'">
             <p class="test-headline">
               <span class="mdi" :class="backupTest.ok ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'"></span>
@@ -1274,8 +1263,7 @@ watch(activeTab, (t) => loadTab(t))
   font-weight: 700;
   flex-shrink: 0;
 }
-/* The trait recolours the avatar it replaces the initial in. Both are off the brand accent on
-   purpose: system means the platform's own workspace, privileged relaxes the security profile. */
+/* Off the brand accent on purpose: system is the platform's own, privileged relaxes the security profile. */
 .ws-title-avatar-system {
   background: var(--danger-600, #dc2626);
 }

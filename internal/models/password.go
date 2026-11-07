@@ -24,11 +24,8 @@ import (
 )
 
 const (
-	// MinPasswordLength is the shortest password any flow may set: registration, invitations,
-	// changes, resets, admin-created accounts and the first-admin seed.
 	MinPasswordLength = 12
-	// MinLoginPasswordLength is the shortest password a local sign-in is checked against. It is lower
-	// than MinPasswordLength so passwords set under the earlier 8-character rule keep working.
+	// Lower than MinPasswordLength so passwords set under the earlier 8-character rule keep working.
 	MinLoginPasswordLength = 8
 )
 

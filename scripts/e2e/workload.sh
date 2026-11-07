@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Puts a real workload on the stack: a workspace, a sized volume grown in place, an nginx app mounting it,
-# a deploy, and one-click external access, so the gateway has a route to serve.
 source "$(dirname "$0")/lib.sh"
 load
 login "$ADMIN_EMAIL" "$ADMIN_PW"
@@ -8,8 +6,7 @@ login "$ADMIN_EMAIL" "$ADMIN_PW"
 log "Workspace"
 WS_ID=$(api POST /workspaces '{"name":"e2e","display_name":"E2E"}' | jq -r '.data.id')
 save WS_ID "$WS_ID"
-# Routes under a domain nobody verified render disabled; a privileged workspace skips that check, which
-# is the only way to serve one on a runner with no DNS of its own.
+# Unverified-domain routes render disabled; a privileged workspace skips that check.
 api PATCH "/admin/workspaces/$WS_ID" '{"privileged":true}' >/dev/null
 pass "workspace $WS_ID created and privileged"
 

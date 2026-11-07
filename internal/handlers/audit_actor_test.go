@@ -28,8 +28,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// "Who deployed this" must read as a person or a named service account, not a bare id a reader has to
-// look up; a system action and a deleted actor stay without one.
 func TestWithActorsResolvesPeopleAndServiceAccounts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

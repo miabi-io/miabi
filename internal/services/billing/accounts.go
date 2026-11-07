@@ -71,8 +71,6 @@ type WorkspaceCreator interface {
 	CreateForOwner(ownerID uint, displayName, handle string) (*models.Workspace, error)
 }
 
-// UsageMeter reports a workspace's usage under the contract's Usage keys (apps, cpu_cores…) and
-// its effective limits.
 type UsageMeter interface {
 	Measure(workspaceID uint) map[string]float64
 	Limits(workspaceID uint) any
@@ -193,8 +191,7 @@ type DryRun struct {
 
 var levelRank = map[string]int{models.BillingLevelNone: 0, models.BillingLevelWarning: 1, models.BillingLevelSoft: 2, models.BillingLevelHard: 3}
 
-// DerivedLevel maps a subscription status to a restriction level (contract table): an unpaid
-// account turns soft when its grace ends and hard hardAfter later (0 = never).
+// hardAfter 0 means never.
 func DerivedLevel(status string, graceUntil *time.Time, now time.Time, hardAfter time.Duration) string {
 	switch status {
 	case "past_due", "unpaid", "incomplete":
@@ -213,8 +210,7 @@ func DerivedLevel(status string, graceUntil *time.Time, now time.Time, hardAfter
 	return models.BillingLevelNone
 }
 
-// EffectiveLevel is max(derived, forced); a forced hold past its until no longer counts, and a
-// canceled account is always hard.
+// A forced hold past its until no longer counts; a canceled account is always hard.
 func EffectiveLevel(a *models.BillingAccount, now time.Time, hardAfter time.Duration) string {
 	if a.Status == models.BillingAccountCanceled {
 		return models.BillingLevelHard
@@ -270,8 +266,7 @@ func (s *Service) GetAccount(externalID string) (*Account, error) {
 	return s.render(&a)
 }
 
-// UpsertAccount creates or updates an account. A new account finds or creates its owner; an
-// existing one keeps it. create_workspace is honoured only while the account has no workspace.
+// create_workspace is honoured only while the account has no workspace.
 func (s *Service) UpsertAccount(ctx context.Context, externalID string, in AccountUpsert) (*Account, error) {
 	if !validExternalID(externalID) {
 		return nil, ErrInvalidRequest
@@ -409,8 +404,7 @@ func (s *Service) resolveOwner(tx *gorm.DB, o Owner, email string, orgID, defaul
 	return &u, true, nil
 }
 
-// organization resolves a realm name ("" = the default) to its id, with the default's id. Both are
-// 0 on an install without organizations.
+// Both ids are 0 on an install without organizations.
 func (s *Service) organization(name string) (id, defaultID uint, err error) {
 	var def models.Organization
 	if err := s.db.Where("is_default = ?", true).First(&def).Error; err == nil {
@@ -427,8 +421,7 @@ func (s *Service) organization(name string) (id, defaultID uint, err error) {
 	return org.ID, defaultID, nil
 }
 
-// CancelAccount cancels an account: its workspaces are kept for the operator, under a hard
-// restriction. Canceling a canceled account returns it unchanged.
+// Workspaces are kept under a hard restriction; canceling twice returns the account unchanged.
 func (s *Service) CancelAccount(ctx context.Context, externalID string) (*Account, error) {
 	var acct *models.BillingAccount
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -465,8 +458,7 @@ type PushResult struct {
 	Changed bool
 }
 
-// PushSubscription applies a subscription push. Pushes are ordered by event_at: an older one is
-// stale, and an equal one is a no-op when identical and stale otherwise.
+// Pushes are ordered by event_at: older is stale, equal is a no-op when identical and stale otherwise.
 func (s *Service) PushSubscription(ctx context.Context, externalID string, in SubscriptionPush, dryRun bool) (*PushResult, error) {
 	if !subscriptionStatuses[in.Status] {
 		return nil, ErrUnknownStatus
@@ -604,8 +596,7 @@ func validateLimits(l map[string]int64) error {
 	return nil
 }
 
-// withDelta adds an add-on delta to a plan limit; unlimited stays unlimited and the sum never
-// goes below zero.
+// Unlimited stays unlimited and the sum never goes below zero.
 func withDelta(base, delta int64) int64 {
 	if base < 0 {
 		return base
@@ -616,8 +607,7 @@ func withDelta(base, delta int64) int64 {
 	return 0
 }
 
-// applyLimits writes the add-on deltas as the workspace's quota override: fields billing set
-// before and no longer pushes are cleared, fields an admin set and billing does not manage stay.
+// Fields billing no longer pushes are cleared; fields an admin set and billing doesn't manage stay.
 func applyLimits(tx *gorm.DB, wsID uint, plan *models.Plan, oldLimits, newLimits map[string]int64) error {
 	p := Plan{Limits: map[string]int64{}}
 	if len(newLimits) > 0 {

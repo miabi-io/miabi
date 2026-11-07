@@ -36,9 +36,7 @@ const (
 	LeaveAction
 )
 
-// NodeWorkloadsError refuses a node with workloads entering or leaving a swarm other than the default cluster,
-// whose workspace networks are overlays from the start. It names what the node runs and the way forward, and
-// matches ErrNodeHasWorkloads.
+// Matches ErrNodeHasWorkloads.
 type NodeWorkloadsError struct {
 	Node      string
 	Action    NodeAction

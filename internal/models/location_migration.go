@@ -25,12 +25,9 @@ import "time"
 type MigrationStatus string
 
 const (
-	MigrationRunning MigrationStatus = "running"
-	// MigrationAwaitingCutover: the data is pre-copied and the app still serves at the source, waiting
-	// for someone to choose the moment of downtime.
+	MigrationRunning         MigrationStatus = "running"
 	MigrationAwaitingCutover MigrationStatus = "awaiting_cutover"
-	// MigrationCutOver: the app serves at the target; the source copy is kept until finalize, so the
-	// move can still be rolled back.
+	// The source copy is kept until finalize so the move can still be rolled back.
 	MigrationCutOver    MigrationStatus = "cut_over"
 	MigrationFinalized  MigrationStatus = "finalized"
 	MigrationRolledBack MigrationStatus = "rolled_back"
@@ -83,9 +80,7 @@ const (
 	CutoverManual = "manual"
 )
 
-// LocationMigration moves one application, with its volumes and databases, to another location. The row
-// is the run's only state: progress, what was created at the target and what the source looked like are
-// all here, so a restarted worker resumes and a rollback knows what to put back.
+// LocationMigration's row is the run's only state, so a restarted worker resumes and a rollback knows what to restore.
 type LocationMigration struct {
 	ID              uint            `json:"id" gorm:"primaryKey"`
 	WorkspaceID     uint            `json:"workspace_id" gorm:"index;not null"`
@@ -176,16 +171,13 @@ type MigrationLogicalDB struct {
 	EnvPrefix string `json:"env_prefix,omitempty"`
 }
 
-// MigrationState is what the run created and what the source looked like before it: everything rollback
-// and finalize need, so neither has to guess.
 type MigrationState struct {
 	SourceContainerID string                 `json:"source_container_id,omitempty"`
 	SourceReleaseID   uint                   `json:"source_release_id,omitempty"`
 	Volumes           []MigrationVolumeState `json:"volumes,omitempty"`
 	Instances         []MigrationMoveState   `json:"instances,omitempty"`
 	Restores          []MigrationRestore     `json:"restores,omitempty"`
-	// AppStopped records that the app was stopped at the source, so a resumed run does not treat the
-	// downtime as not yet started.
+	// Lets a resumed run know the downtime has already started.
 	AppStopped   bool `json:"app_stopped,omitempty"`
 	Switched     bool `json:"switched,omitempty"`
 	DeploymentID uint `json:"deployment_id,omitempty"`

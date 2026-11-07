@@ -29,18 +29,14 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// configHashLabel carries the fingerprint of the rendered goma.yml the gateway was started with. The config
-// lives in a volume rather than in the run spec, so without this a config edit would look like "no change".
+// The config lives in a volume, so without this a config edit would look like no change.
 const configHashLabel = "io.miabi.gateway-config-hash"
 
-// hashSpec fingerprints the run spec a gateway container was created from, so a reconnecting agent can tell
-// "same gateway, nothing to do" from "the spec changed, recreate it". Same idea as the platform stack's
-// converge in pkg/stack, which skips a component whose hash and state still match.
+// hashSpec lets a reconnecting agent skip recreating an unchanged gateway, like pkg/stack's converge.
 func hashSpec(spec docker.RunSpec) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "image=%s\ncmd=%q\nentrypoint=%q\n", spec.Image, spec.Cmd, spec.Entrypoint)
-	// Sorted: Go map and slice order would otherwise vary between runs, and an unstable hash turns every
-	// reconnect back into the recreate this exists to avoid.
+	// Unstable map/slice order would change the hash and recreate the gateway on every reconnect.
 	writeSorted(&b, "env", spec.Env)
 	writeSorted(&b, "networks", spec.Networks)
 	writeSortedMap(&b, "mounts", spec.Mounts)

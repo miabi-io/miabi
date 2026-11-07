@@ -26,9 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// appLabelRow is a sqlite-friendly stand-in for models.Application: the full model carries
-// Postgres-specific column defaults sqlite can't migrate, and ExternalLabelTaken only reads
-// id and external_label.
+// The full model carries Postgres-specific column defaults sqlite can't migrate.
 type appLabelRow struct {
 	ID            uint `gorm:"primaryKey"`
 	WorkspaceID   uint

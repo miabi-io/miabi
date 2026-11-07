@@ -1,16 +1,9 @@
-// Notifiable events shared by webhooks and notification channels.
-//
-// Mirrors models.NotifiableEvents on the backend, in the same order, and
-// internal/models/notifiable_events_test.go fails if the two drift. They did drift once: the backend
-// accepted every database event while this list offered none of them, so a workspace could not
-// subscribe a channel to a failed backup at all — the option simply was not on the page.
+// Mirrors models.NotifiableEvents in order; notifiable_events_test.go fails if they drift.
 export interface NotifiableEvent {
   value: string
   label: string
 }
 
-// A group is a heading in the picker. Twenty flat checkboxes is a wall; the split is what makes
-// "where do I turn on backup alerts" answerable by looking.
 export interface NotifiableEventGroup {
   label: string
   events: NotifiableEvent[]

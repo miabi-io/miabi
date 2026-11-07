@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// ProxyNetworkReconciler attaches or detaches an application's running container(s) from the shared
-// reverse-proxy network, so only route-exposed apps stay on it. It runs on the Docker engine of the
-// app's node, so it works for local and remote nodes alike. Satisfies the route service's ProxyAttacher.
+// ProxyNetworkReconciler keeps only route-exposed apps on the shared proxy network, on local and remote nodes.
 type ProxyNetworkReconciler struct {
 	apps     *repositories.ApplicationRepository
 	releases *repositories.ReleaseRepository
@@ -45,20 +43,15 @@ func NewProxyNetworkReconciler(apps *repositories.ApplicationRepository, release
 	return &ProxyNetworkReconciler{apps: apps, releases: releases, clients: clients}
 }
 
-// SetCluster wires swarm detection (nil-safe), so routed containers also join the ingress overlay in
-// cluster mode.
 func (r *ProxyNetworkReconciler) SetCluster(c ClusterCap) { r.cluster = c }
 
-// ReconcileProxyAttachment connects or disconnects the app's active and canary release containers
-// from the proxy network, with the app's stable DNS alias. Idempotent and best-effort: a missing
-// container or offline node is a no-op, so this never blocks a route change.
+// Idempotent and best-effort: a missing container or offline node is a no-op, so it never blocks a route change.
 func (r *ProxyNetworkReconciler) ReconcileProxyAttachment(ctx context.Context, appID uint, attached bool) error {
 	app, err := r.apps.FindByID(appID)
 	if err != nil {
 		return err
 	}
-	// Cluster (service) apps have no node-local container to attach; instead the
-	// central gateway must join the workspace overlay to reach the service VIP.
+	// Service apps have no node-local container; the gateway must join the overlay to reach the VIP.
 	if app.RuntimeKind == models.RuntimeService {
 		return r.reconcileServiceIngress(ctx, app, attached)
 	}
@@ -84,9 +77,7 @@ type attachTarget struct {
 	alias string
 }
 
-// applyAttachment connects or disconnects each target from the proxy network. In cluster mode it does the
-// same for the ingress overlay, mirroring buildRuntimeContext, so a container started before cluster mode
-// was enabled becomes reachable by alias without a redeploy.
+// Mirrors buildRuntimeContext so a container started before cluster mode becomes reachable without a redeploy.
 func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker.Client, clusterID uint, targets []attachTarget, attached bool) {
 	networks := []string{node.AppNetwork}
 	if r.cluster != nil && r.cluster.IsSwarm(clusterID) {
@@ -103,13 +94,7 @@ func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker
 	}
 }
 
-// reconcileServiceIngress puts a cluster app's service on the shared ingress overlay while it is
-// routed, and takes it off when it is not, so the central gateway can reach its VIP for public
-// ingress. Best-effort: a route change must not fail because an engine is unreachable.
-//
-// Swarm has no live network connect for a service, so an actual change is a rolling update and the
-// tasks restart. ServiceSetIngressNetwork does nothing when the service is already in the wanted
-// state, which is the common case — this runs on every route change.
+// Swarm has no live network connect for a service, so a change is a rolling update; a no-op when already set.
 func (r *ProxyNetworkReconciler) reconcileServiceIngress(ctx context.Context, app *models.Application, attached bool) error {
 	if r.cluster != nil {
 		if mgr, err := r.cluster.Manager(ctx, app.ClusterID); err == nil {
@@ -121,17 +106,13 @@ func (r *ProxyNetworkReconciler) reconcileServiceIngress(ctx context.Context, ap
 		}
 	}
 	if !attached {
-		// A single app losing its route must not detach the shared gateway — every
-		// other clustered app still needs it, and it being attached is harmless (the
-		// ingress overlay carries only gateway↔VIP traffic).
+		// Every other clustered app still needs the shared gateway, and leaving it attached is harmless.
 		return nil
 	}
 	return r.ReconcileIngressGateway(ctx)
 }
 
-// ReconcileIngressGateway joins the manager's central Goma gateway to the shared cluster ingress
-// overlay, creating it if needed, so public traffic can reach every clustered app's service VIP. It
-// re-asserts an attachment a compose recreate silently drops. Idempotent; a no-op off cluster mode.
+// Re-asserts an attachment a compose recreate silently drops; a no-op off cluster mode.
 func (r *ProxyNetworkReconciler) ReconcileIngressGateway(ctx context.Context) error {
 	mgr, err := r.clients.For(0)
 	if r.cluster != nil {
@@ -151,9 +132,7 @@ func (r *ProxyNetworkReconciler) ReconcileIngressGateway(ctx context.Context) er
 	return nil
 }
 
-// centralGatewayContainer resolves the compose-managed central gateway container on the manager
-// engine. The role label is authoritative: it survives a non-default compose project name, which the
-// container name does not. The name fallback exists only for stacks deployed before platform labels.
+// The role label survives a non-default compose project name; the name fallback is for pre-label stacks.
 func centralGatewayContainer(ctx context.Context, mgr docker.Client) (string, error) {
 	list, err := mgr.ListContainers(ctx, false)
 	if err != nil {

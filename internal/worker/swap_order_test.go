@@ -103,8 +103,7 @@ func newSwapHarness(t *testing.T) (*DeployHandler, *orderLog, *gorm.DB) {
 	return h, log, db
 }
 
-// dropUIDDefault strips UIDModel's Postgres-only gen_random_uuid() default, which SQLite can't parse,
-// from s and every schema AutoMigrate reaches through its relations. BeforeCreate sets uid anyway.
+// SQLite can't parse the Postgres-only gen_random_uuid() default; BeforeCreate sets uid anyway.
 func dropUIDDefault(s *schema.Schema, seen map[*schema.Schema]bool) {
 	if s == nil || seen[s] {
 		return
@@ -121,8 +120,7 @@ func dropUIDDefault(s *schema.Schema, seen map[*schema.Schema]bool) {
 	}
 }
 
-// A rolling deploy must point the route at the new release before it stops the old one; the other way
-// round, the gateway dials a stopped upstream and answers 503 until the route sync lands.
+// Otherwise the gateway dials a stopped upstream and answers 503 until the route sync lands.
 func TestSwapSyncsRouteBeforeRetiringPrevious(t *testing.T) {
 	h, log, db := newSwapHarness(t)
 	app := &models.Application{Name: "web", Image: "nginx", Tag: "1"}

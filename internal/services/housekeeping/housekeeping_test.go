@@ -28,9 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// fakeDocker implements docker.Client; only the methods the housekeeping service
-// touches are overridden. Anything else panics (embedded nil interface), which
-// keeps the tests honest about what the service actually calls.
+// Unoverridden methods panic via the embedded nil interface, keeping tests honest about what is called.
 type fakeDocker struct {
 	docker.Client
 	containers []docker.Container
@@ -81,14 +79,10 @@ type fakeApps struct{ apps []models.Application }
 
 func (f fakeApps) ListByServer(uint) ([]models.Application, error) { return f.apps, nil }
 
-// newTestService builds a Service with injected fakes (same package, so the
-// unexported fields are reachable).
 func newTestService(dc docker.Client, apps []models.Application, exists recordExister) *Service {
 	return &Service{clients: fakeClients{dc: dc}, apps: fakeApps{apps: apps}, exists: exists}
 }
 
-// existsSet returns a recordExister backed by a set of "<kind>:<id>" keys that
-// are considered present; anything else reads as gone (orphaned).
 func existsSet(present ...string) recordExister {
 	set := map[string]bool{}
 	for _, k := range present {
@@ -179,8 +173,7 @@ func TestAnalyzeDrift_NeverFlagsInfraOrLive(t *testing.T) {
 	}
 }
 
-// Apply must remove only resources that re-confirm as orphans; a crafted ref to
-// a managed-but-live container is silently ignored, never removed.
+// A crafted ref to a managed live container must be ignored, never removed.
 func TestApply_OnlyRemovesConfirmedOrphans(t *testing.T) {
 	dc := &fakeDocker{
 		containers: []docker.Container{
@@ -274,8 +267,7 @@ func namedSet(names ...string) func(string) (bool, error) {
 	return func(name string) (bool, error) { return set[name], nil }
 }
 
-// Volumes created before storage labelled them carry only their Miabi name, and a
-// database's data volume carries the instance id. Nothing else unlabelled is drift.
+// Only pre-label Miabi-named volumes and database data volumes count as drift when unlabelled.
 func TestAnalyzeDrift_VolumesWithoutVolumeLabel(t *testing.T) {
 	dc := &fakeDocker{volumes: []docker.Volume{
 		{Name: "mb-vol-3-uploads", Labels: map[string]string{labelWorkspace: "3"}}, // row claims it → keep
@@ -372,8 +364,7 @@ func (f fakeManagers) Manager(_ context.Context, clusterID uint) (docker.Client,
 	return nil, context.DeadlineExceeded
 }
 
-// Regression: a service app's tasks run wherever Swarm put them, so a node holding none of its
-// containers reported every such app missing. Only the app's own cluster manager can say so.
+// A node holding none of a service app's containers used to report it missing; only its cluster manager can.
 func TestAnalyzeDrift_ServiceAppsAskTheirSwarm(t *testing.T) {
 	dc := &fakeDocker{} // this node runs none of these apps' containers
 	apps := []models.Application{
@@ -434,8 +425,7 @@ func (f fakeConfigs) GetByName(workspaceID uint, name string) (*models.Config, e
 	return nil, docker.ErrNotFound
 }
 
-// Regression: config orphans were reported and audited as removed, but removeOrphan skipped the
-// kind, so nothing was ever deleted.
+// Config orphans were reported and audited as removed, but never actually deleted.
 func TestApply_RemovesConfigOrphans(t *testing.T) {
 	dc := &configDocker{fakeDocker: &fakeDocker{configs: []docker.ConfigInfo{
 		{ID: "cfg-ghost", Name: "mb-cfg-ghost", Workspace: "3", Config: "ghost"},
@@ -486,9 +476,7 @@ func swarmTask(id, name, service string, labels map[string]string) docker.Contai
 	return cont(id, name, "nginx", labels)
 }
 
-// Regression: an orphaned swarm service was reported once per task container, and removing those
-// containers only made Swarm schedule replacements — the report came back unchanged. The service
-// is the orphan, and it is reported once however many tasks it runs here.
+// Removing task containers only made Swarm reschedule them; the service is the orphan, reported once.
 func TestAnalyzeDrift_SwarmTaskOrphanReportsTheService(t *testing.T) {
 	dc := &fakeDocker{containers: []docker.Container{
 		swarmTask("c-t1", "mb-app-bb-99.1.abc", "mb-app-bb-99", map[string]string{labelApp: "99"}),
@@ -514,8 +502,7 @@ func TestAnalyzeDrift_SwarmTaskOrphanReportsTheService(t *testing.T) {
 	}
 }
 
-// Removing an orphaned service goes through its cluster's manager: the node's own engine may be a
-// worker, and removing the task container leaves the service to reschedule it.
+// The node's engine may be a worker, and removing the task container just reschedules it.
 func TestApply_RemovesOrphanedSwarmService(t *testing.T) {
 	dc := &fakeDocker{
 		containers: []docker.Container{
@@ -547,8 +534,7 @@ func TestApply_RemovesOrphanedSwarmService(t *testing.T) {
 	}
 }
 
-// Without a way to reach the cluster's manager, the failure is reported rather than swallowed as a
-// removal that never happened.
+// Without a manager the failure must be reported, not swallowed as a removal that never happened.
 func TestApply_OrphanedServiceWithoutManagerErrors(t *testing.T) {
 	dc := &fakeDocker{containers: []docker.Container{
 		swarmTask("c-t1", "mb-app-bb-99.1.abc", "mb-app-bb-99", map[string]string{labelApp: "99"}),

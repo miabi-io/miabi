@@ -30,8 +30,6 @@ import (
 	"text/template"
 )
 
-// ConnView is a resolved database's connection detail, exposed to env
-// interpolation as {{ .databases.<name>.* }}.
 type ConnView struct {
 	Host     string
 	Port     string
@@ -58,10 +56,7 @@ func (c ConnView) fields() map[string]string {
 	}
 }
 
-// AppView is how one application appears to another's manifest. Host is the app's own NAME, which is
-// registered as a DNS alias on every workspace network it joins — so a sibling can be addressed with
-// a value the manifest author writes rather than one the platform mints. Alias is the container's
-// exact identity (mb-app-<token>-<id>), kept because it predates Host and Config files use it.
+// Host is the app's own name, aliased on every workspace network; Alias predates it and Config files use it.
 type AppView struct {
 	Host   string
 	Port   string
@@ -69,8 +64,7 @@ type AppView struct {
 	Alias  string
 }
 
-// URL is the address a sibling actually dials. Falls back to the host alone when the app declares no
-// port, which is better than emitting a trailing colon.
+// URL omits the port when none is declared, rather than emitting a trailing colon.
 func (a AppView) URL() string {
 	scheme := a.Scheme
 	if scheme == "" {
@@ -82,9 +76,7 @@ func (a AppView) URL() string {
 	return scheme + "://" + a.Host + ":" + a.Port
 }
 
-// RenderContext is the read-only data env interpolation resolves against. It
-// mirrors the marketplace renderer's context but adds secrets, so GitOps and
-// apply share one interpolation surface.
+// RenderContext adds secrets to the marketplace context so GitOps and apply share one interpolation surface.
 type RenderContext struct {
 	Inputs    map[string]string
 	Databases map[string]ConnView
@@ -95,8 +87,7 @@ type RenderContext struct {
 // Renderer interpolates manifest strings against a RenderContext.
 type Renderer struct {
 	ctx RenderContext
-	// cur is the env key being rendered, and credential the keys whose value resolved a credential (a
-	// secret or a database password or URI) rather than deferring it; see CredentialKeys.
+	// credential holds keys whose value resolved a credential rather than deferring it; see CredentialKeys.
 	cur        string
 	credential map[string]bool
 }
@@ -128,8 +119,7 @@ func (r *Renderer) data() map[string]any {
 		apps[name] = map[string]string{
 			"host": a.Host, "port": a.Port, "scheme": a.Scheme,
 			"url": a.URL(),
-			// The container's exact identity. Predates host and is what a Config may
-			// already reference, so it keeps resolving.
+			// Predates host and may already be referenced by a Config, so it keeps resolving.
 			"alias": a.Alias,
 		}
 	}
@@ -155,17 +145,13 @@ var funcMap = template.FuncMap{
 	"upper": strings.ToUpper,
 }
 
-// refPattern matches a dotted reference into one of the resolvable collections, e.g.
-// ".databases.shop-db.uri" or ".secrets.app-key", capturing the collection and its trailing key segments.
-// actionPattern bounds the rewrite to inside "{{ … }}" so literal text is never touched.
+// actionPattern bounds the rewrite to inside "{{ ... }}" so literal text is never touched.
 var (
 	refPattern    = regexp.MustCompile(`\.(databases|secrets|applications|inputs)((?:\.[A-Za-z0-9_-]+)+)`)
 	actionPattern = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 )
 
-// pureSecretAction matches an action that is exactly one secret reference, pureDatabaseAction one database
-// password or URI, and runtimeSecretRef the vault's own `${{ secrets.NAME }}` form; all are deferred in env.
-// A piped or wrapped reference cannot be, as the worker only substitutes, so it keeps resolving at apply.
+// A piped or wrapped reference cannot be deferred, since the worker only substitutes.
 var (
 	pureSecretAction   = regexp.MustCompile(`^\{\{(-?\s*)\.secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})(\s*-?)\}\}$`)
 	pureDatabaseAction = regexp.MustCompile(`^\{\{(-?\s*)\.databases\.([A-Za-z0-9_-]+)(?:\.(password|uri|url))?(\s*-?)\}\}$`)
@@ -178,8 +164,7 @@ var credentialFields = map[string]bool{
 	"readonly_password": true, "readonly_uri": true, "readonly_url": true,
 }
 
-// deferSecrets rewrites env secret references into calls to `secretRef`, which emits the runtime reference
-// the worker resolves at deploy, so the stored env points at the vault and follows its rotations.
+// The stored env points at the vault so it follows secret rotations.
 func deferSecrets(s string) string {
 	s = runtimeSecretRef.ReplaceAllString(s, `{{ secretRef "$1" }}`)
 	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
@@ -193,16 +178,12 @@ func deferSecrets(s string) string {
 	})
 }
 
-// expandRefs rewrites dotted collection accessors into calls to the strict `ref` function. That
-// is what lets a reference name contain a hyphen: Go templates cannot access ".databases.shop-db"
-// but `(ref "databases" "shop-db" "uri")` resolves it. Non-hyphenated refs rewrite identically.
+// Go templates cannot access ".databases.shop-db", so dotted refs are rewritten into `ref` calls.
 func expandRefs(s string) string {
 	return expandRefsIn(s, actionPattern)
 }
 
-// expandRefsDelims is expandRefs for a config rendering under its own delimiters:
-// the action pattern must be built from those markers, or a hyphenated name
-// inside << >> would never be rewritten and would fail to resolve.
+// The pattern must use the config's delimiters, or hyphenated names inside << >> never resolve.
 func expandRefsDelims(s, left, right string) string {
 	if left == "{{" && right == "}}" {
 		return expandRefs(s)
@@ -233,9 +214,7 @@ func expandRefsIn(s string, action *regexp.Regexp) string {
 	})
 }
 
-// ref resolves a reference against the context, erroring on any unknown name or field so a typo
-// (or a not-yet-provisioned dependency) fails loudly rather than rendering an empty value. It
-// backs the rewritten "{{ .databases.x.y }}" syntax — see expandRefs.
+// Errors on unknown names so a typo or unprovisioned dependency fails loudly instead of rendering empty.
 func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	if len(keys) == 0 {
 		return "", fmt.Errorf("reference .%s needs a name", coll)
@@ -299,8 +278,7 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	return "", fmt.Errorf("unknown reference collection %q", coll)
 }
 
-// secretRef is the deferred form of a secret reference: it checks the secret exists, so a typo still fails
-// the apply rather than the deploy, but emits the runtime reference instead of the value.
+// Checks existence so a typo fails the apply rather than the deploy.
 func (r *Renderer) secretRef(name string) (string, error) {
 	if _, ok := r.ctx.Secrets[name]; !ok {
 		return "", fmt.Errorf("unknown secret %q", name)
@@ -308,8 +286,7 @@ func (r *Renderer) secretRef(name string) (string, error) {
 	return "${{ secrets." + name + " }}", nil
 }
 
-// databaseSecretRef defers a database's password or URI to its managed vault secret. A database without
-// one, or whose secret is not in the vault yet, renders the value instead, as before.
+// Falls back to the value when the database has no vault secret yet.
 func (r *Renderer) databaseSecretRef(name, field string) (string, error) {
 	c, ok := r.ctx.Databases[name]
 	if !ok {
@@ -334,8 +311,7 @@ func (r *Renderer) markCredential() {
 	}
 }
 
-// CredentialKeys lists the env keys of the last RenderEnv or RenderEnvLenient whose value resolved a
-// credential at apply instead of deferring it. They must be stored encrypted, whatever secretEnv says.
+// CredentialKeys must be stored encrypted, whatever secretEnv says.
 func (r *Renderer) CredentialKeys() []string {
 	out := make([]string, 0, len(r.credential))
 	for k := range r.credential {
@@ -345,8 +321,6 @@ func (r *Renderer) CredentialKeys() []string {
 	return out
 }
 
-// funcs returns the template functions for one render: the static helpers plus
-// the context-bound `ref`, `secretRef` and `databaseSecretRef`.
 func (r *Renderer) funcs() template.FuncMap {
 	fm := make(template.FuncMap, len(funcMap)+3)
 	for k, v := range funcMap {
@@ -358,8 +332,6 @@ func (r *Renderer) funcs() template.FuncMap {
 	return fm
 }
 
-// RenderString interpolates a single value. A reference to a missing key is a
-// hard error (no silent empty env).
 func (r *Renderer) RenderString(name, s string) (string, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil
@@ -375,10 +347,7 @@ func (r *Renderer) RenderString(name, s string) (string, error) {
 	return b.String(), nil
 }
 
-// RenderFiles interpolates a config's files. Delimiters, when set, replaces the
-// interpolation markers for this config only, so a file whose own syntax uses
-// {{ }} is not mangled. Strict: an unresolvable reference fails the render
-// rather than storing a broken file.
+// RenderFiles Delimiters replace the markers for this config only, so files using {{ }} are not mangled.
 func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters []string) (map[string]string, error) {
 	left, right := "{{", "}}"
 	if len(delimiters) == 2 && delimiters[0] != "" && delimiters[1] != "" {
@@ -404,8 +373,7 @@ func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters
 	return out, nil
 }
 
-// RenderEnv interpolates every value of an env map. A secret, or a database password or URI, is kept as a
-// `${{ secrets.NAME }}` pointer for the worker to resolve at deploy, never stored as its value.
+// RenderEnv keeps secrets and database credentials as `${{ secrets.NAME }}` pointers resolved at deploy.
 func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]string, error) {
 	r.credential = map[string]bool{}
 	defer func() { r.cur = "" }()
@@ -421,9 +389,7 @@ func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]st
 	return out, nil
 }
 
-// RenderEnvLenient interpolates every value best-effort: a value whose references cannot resolve
-// yet is left as its original template instead of failing. Used for plan/diff, where a
-// not-yet-created dependency must not abort the plan; apply re-renders strictly.
+// RenderEnvLenient leaves unresolvable values as templates for plan/diff; apply re-renders strictly.
 func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[string]string {
 	r.credential = map[string]bool{}
 	defer func() { r.cur = "" }()
@@ -443,8 +409,6 @@ func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[str
 
 const alphanum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-// RandAlphaNum returns a cryptographically-random alphanumeric string of length
-// n (used to satisfy secrets with generate: true).
 func RandAlphaNum(n int) string {
 	if n <= 0 {
 		n = 16

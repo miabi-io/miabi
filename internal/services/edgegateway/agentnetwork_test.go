@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// netDocker records the network attachments asked for, so the test can assert what the control
-// plane did without a Docker engine.
 type netDocker struct {
 	docker.Client
 	connected []string
@@ -52,9 +50,7 @@ func agentNetService(t *testing.T, agentID string) *Service {
 	return s
 }
 
-// The agent is installed before the gateway network exists and joins no network of its own, so the
-// control plane attaches it — otherwise it cannot resolve mb-node-gateway-redis to forward
-// analytics, and the dashboards look exactly like "no traffic".
+// The agent joins no network itself, and without the gateway network it cannot forward analytics.
 func TestAgentIsAttachedToTheGatewayNetwork(t *testing.T) {
 	dc := &netDocker{}
 	s := agentNetService(t, "agent123")
@@ -66,8 +62,7 @@ func TestAgentIsAttachedToTheGatewayNetwork(t *testing.T) {
 	}
 }
 
-// Nothing to attach: the manager has no agent, and an offline or undetected agent reports no
-// container id. Neither is an error.
+// No agent or no container id is not an error.
 func TestAttachAgentIsANoOpWithoutAnAgent(t *testing.T) {
 	dc := &netDocker{}
 	agentNetService(t, "").attachAgent(context.Background(), dc, &models.Server{ID: 7, Name: "edge-1"})
@@ -80,8 +75,7 @@ func TestAttachAgentIsANoOpWithoutAnAgent(t *testing.T) {
 	}
 }
 
-// A gateway that serves traffic is worth more than its analytics, so a failed attach is logged and
-// swallowed rather than failing the deploy.
+// Serving traffic matters more than analytics, so a failed attach must not fail the deploy.
 func TestAttachAgentFailureDoesNotPropagate(t *testing.T) {
 	dc := &netDocker{fail: errors.New("no such network")}
 	agentNetService(t, "agent123").attachAgent(context.Background(), dc, &models.Server{ID: 7, Name: "edge-1"})

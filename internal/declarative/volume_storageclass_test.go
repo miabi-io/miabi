@@ -46,8 +46,7 @@ func volumeChange(t *testing.T, desired, actual *d.VolumeSpec) d.Change {
 	return d.Change{}
 }
 
-// A manifest that names no class must not drift against a volume that landed on one: the same
-// repository has to stay portable across installs whose disks differ.
+// An unstated class must not drift, so a repository stays portable across installs.
 func TestUnstatedStorageClassDoesNotDrift(t *testing.T) {
 	ch := volumeChange(t,
 		&d.VolumeSpec{},
@@ -58,8 +57,7 @@ func TestUnstatedStorageClassDoesNotDrift(t *testing.T) {
 	}
 }
 
-// A class the manifest states and the volume already has is in sync — the diff must not report a
-// phantom update every time the manifest is applied.
+// A matching class must not report a phantom update on every apply.
 func TestMatchingStorageClassIsNoop(t *testing.T) {
 	ch := volumeChange(t,
 		&d.VolumeSpec{StorageClass: "ssd-fast"},
@@ -70,8 +68,7 @@ func TestMatchingStorageClassIsNoop(t *testing.T) {
 	}
 }
 
-// Changing a stated class must surface as a field diff so the apply can refuse it. If it did not
-// appear here, the immutability check could never fire and a git push would move data silently.
+// A changed class must appear in the diff, or the immutability refusal could never fire.
 func TestChangedStorageClassIsVisibleToTheDiff(t *testing.T) {
 	ch := volumeChange(t,
 		&d.VolumeSpec{StorageClass: "bulk"},
@@ -94,8 +91,6 @@ func TestChangedStorageClassIsVisibleToTheDiff(t *testing.T) {
 	}
 }
 
-// Size is compared as canonical bytes, so "5Gi" in a manifest matches the byte count the snapshot
-// reports rather than reading as a change on every apply.
 func TestVolumeSizeComparesAsBytes(t *testing.T) {
 	ch := volumeChange(t,
 		&d.VolumeSpec{Size: "5Gi"},
@@ -111,8 +106,7 @@ func TestVolumeSizeComparesAsBytes(t *testing.T) {
 	}
 }
 
-// A manifest silent about size leaves the volume's capacity alone, so expanding it in the console does
-// not turn every later apply into a change.
+// An unstated size leaves a console expansion alone.
 func TestUnstatedVolumeSizeDoesNotDrift(t *testing.T) {
 	ch := volumeChange(t, &d.VolumeSpec{}, &d.VolumeSpec{Size: "20Gi"})
 	if ch.Action != d.ActionNoop {

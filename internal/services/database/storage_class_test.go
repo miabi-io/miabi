@@ -59,8 +59,6 @@ func instOn(class string) *models.DatabaseInstance {
 	}
 }
 
-// A class-backed database binds the directory the class owns, so its data lands on the disk the
-// operator registered rather than in Docker's data root.
 func TestDataVolumeSpec_BindsTheClassDirectory(t *testing.T) {
 	placer := &fakePlacer{devicePath: "/mnt/ssd1/miabi/mb-db-abc-7-data"}
 	s := &Service{storage: placer}
@@ -78,8 +76,7 @@ func TestDataVolumeSpec_BindsTheClassDirectory(t *testing.T) {
 	}
 }
 
-// The default class is Docker's own data root: there is no directory to bind, and asking the class
-// service for one would be a pointless round trip on every bring-up.
+// The default class is Docker's own data root, so there is no directory to bind.
 func TestDataVolumeSpec_DefaultClassBindsNothing(t *testing.T) {
 	for _, class := range []string{models.DefaultStorageClassName, ""} {
 		placer := &fakePlacer{devicePath: "/mnt/ssd1/miabi/x"}
@@ -96,8 +93,7 @@ func TestDataVolumeSpec_DefaultClassBindsNothing(t *testing.T) {
 	}
 }
 
-// A class that has gone away — unregistered, or its node replaced — must not stop a database
-// starting. Falling back to the data root keeps the engine up; refusing would strand it.
+// A vanished class must not stop a database starting: falling back to the data root keeps it up.
 func TestDataVolumeSpec_UnavailableClassFallsBack(t *testing.T) {
 	s := &Service{storage: &fakePlacer{err: errors.New("no such class on this node")}}
 

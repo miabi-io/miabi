@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package announcement broadcasts platform notices into per-user inboxes. It
-// shares the alerting engine's delivery surface: an announcement becomes ordinary
-// models.Notification rows, so the bell, the SSE stream and the notifications page
-// need no announcement-specific code.
+// Package announcement broadcasts platform notices as ordinary per-user notification rows.
 package announcement
 
 import (
@@ -40,8 +37,6 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
-// Service owns an announcement's lifecycle: broadcast, edit, retract, and the
-// scheduled publish.
 type Service struct {
 	repo  *repositories.AnnouncementRepository
 	inbox *repositories.NotificationInboxRepository
@@ -56,13 +51,10 @@ func NewService(repo *repositories.AnnouncementRepository, inbox *repositories.N
 	return &Service{repo: repo, inbox: inbox, bus: bus, now: time.Now, lastSynced: map[uint]time.Time{}}
 }
 
-// syncInterval bounds how often one user's backfill re-queries. A page load hits
-// the inbox three times (list, badge, banners) and the answer cannot change in
-// between, so without it the read path triples its work to re-discover nothing.
+// A page load hits the inbox three times and the answer cannot change in between.
 const syncInterval = time.Minute
 
-// Create persists the announcement and broadcasts it, unless it is scheduled for
-// later — in which case Tick publishes it when its time arrives.
+// Create defers a scheduled announcement to Tick.
 func (s *Service) Create(a *models.Announcement) error {
 	now := s.now().UTC()
 	if a.PublishAt != nil && a.PublishAt.After(now) {
@@ -80,9 +72,7 @@ func (s *Service) Create(a *models.Announcement) error {
 	return s.broadcast(a)
 }
 
-// Update rewrites the announcement and every delivery it has made, so a correction
-// replaces the original notice instead of arriving beside it. A widened audience is
-// delivered by the next backfill, which is the one place membership is decided.
+// Update rewrites existing deliveries so a correction replaces the notice; a widened audience lands on next backfill.
 func (s *Service) Update(a *models.Announcement) error {
 	if err := s.repo.Save(a); err != nil {
 		return err
@@ -125,9 +115,7 @@ func (s *Service) PublishNow(a *models.Announcement) error {
 	return s.broadcast(a)
 }
 
-// SyncUser delivers any live announcement the user is entitled to but has not
-// received, which makes the audience a standing rule rather than a snapshot: a
-// user created after the broadcast is still caught up when they next open the app.
+// SyncUser makes the audience a standing rule: users created after the broadcast are still caught up.
 func (s *Service) SyncUser(userID uint) {
 	now := s.now().UTC()
 	if !s.claimSync(userID, now) {
@@ -164,9 +152,7 @@ func (s *Service) SyncUser(userID uint) {
 	}
 }
 
-// Tick publishes announcements whose scheduled time has arrived. Expiry needs no
-// sweep: every read path compares expires_at against now, so a lapsed notice stops
-// showing the moment it lapses rather than when a job next runs.
+// Tick needs no expiry sweep: every read path compares expires_at against now.
 func (s *Service) Tick() error {
 	due, err := s.repo.DueForPublish(s.now().UTC())
 	if err != nil {
@@ -181,9 +167,7 @@ func (s *Service) Tick() error {
 	return nil
 }
 
-// broadcast resolves the audience and writes one delivery per recipient. A row per
-// user rather than one shared row keeps read and dismissed state per-person, which
-// is the whole point of an inbox.
+// One row per user keeps read and dismissed state per-person.
 func (s *Service) broadcast(a *models.Announcement) error {
 	recipients, err := s.repo.RecipientIDs(a)
 	if err != nil {
@@ -210,9 +194,7 @@ func (s *Service) broadcast(a *models.Announcement) error {
 	return nil
 }
 
-// delivery renders the announcement as one inbox row. WorkspaceID stays 0: an
-// announcement belongs to the platform, so it follows the reader into whichever
-// workspace they have open rather than hiding behind a workspace filter.
+// WorkspaceID stays 0 so a platform announcement follows the reader into any workspace.
 func (s *Service) delivery(a *models.Announcement, userID uint) models.Notification {
 	return models.Notification{
 		UserID:         userID,
@@ -231,9 +213,7 @@ func (s *Service) delivery(a *models.Announcement, userID uint) models.Notificat
 	}
 }
 
-// claimSync rate-limits one user's backfill and reports whether the caller owns
-// this round. A fresh broadcast bypasses it: publish clears the marks it delivered
-// against, so an announcement is never delayed by an interval it did not exist for.
+// A fresh broadcast bypasses the limit: publish clears the marks it delivered against.
 func (s *Service) claimSync(userID uint, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -251,9 +231,6 @@ func (s *Service) claimSync(userID uint, now time.Time) bool {
 	return true
 }
 
-// clearSyncMarks drops the backfill rate-limit for the given users, so a broadcast
-// that just landed is picked up on their very next read rather than up to a minute
-// later.
 func (s *Service) clearSyncMarks(userIDs []uint) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -262,9 +239,7 @@ func (s *Service) clearSyncMarks(userIDs []uint) {
 	}
 }
 
-// resetSyncMarks clears every backfill rate-limit. An edit may have widened the
-// audience, and the users it newly covers are not knowable from the deliveries
-// that already exist.
+// An edit may widen the audience, and the newly covered users are not knowable from existing deliveries.
 func (s *Service) resetSyncMarks() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -277,9 +252,7 @@ func (s *Service) pushAll(userIDs []uint) {
 	}
 }
 
-// push nudges the user's SSE stream that their inbox changed. The payload is a
-// signal to refetch, keeping the wire small and Postgres the source of truth —
-// the same contract the alerting engine uses.
+// The payload is only a refetch signal; Postgres stays the source of truth.
 func (s *Service) push(userID uint) {
 	if s.bus == nil {
 		return

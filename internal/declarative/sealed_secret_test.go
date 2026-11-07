@@ -106,8 +106,7 @@ func TestSealedSecretPlansAnUpdateOnlyWhenTheFingerprintMoves(t *testing.T) {
 	}
 }
 
-// Moving a name from Secret to SealedSecret in git adopts the vault entry; it must not plan a delete of
-// the old kind next to a create the vault's unique name would refuse.
+// Must not plan a delete plus a create that the vault's unique name would refuse.
 func TestSwitchingKindAdoptsTheVaultEntry(t *testing.T) {
 	desired, _ := desiredSealed(t, "tok")
 	actual := d.NewResourceSet()

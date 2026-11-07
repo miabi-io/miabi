@@ -32,8 +32,7 @@ func manifestFor(web, control string) *stack.Manifest {
 	return m
 }
 
-// Two bare lines left the reader to work out which was which — and a password containing an "@"
-// makes that guess wrong, not merely slow.
+// A password containing "@" makes guessing which bare line is which go wrong.
 func TestPrintResultLabelsTheCredentials(t *testing.T) {
 	ui := &recUI{}
 	printResult(ui, manifestFor("https://example.com", ""), "/etc/miabi/miabi.yaml", true, false)
@@ -69,9 +68,7 @@ func TestPrintResultOmitsCredentialsOnUpgrade(t *testing.T) {
 	}
 }
 
-// Agents and runners dial the control URL, which need not be the panel's. When it differs the
-// operator has to be told; when it does not, repeating the same URL under a second name reads as a
-// distinction they then go looking for.
+// Repeating the same URL under a second name reads as a distinction the operator then hunts for.
 func TestControlURLShownOnlyWhenItDiffers(t *testing.T) {
 	same := &recUI{}
 	printResult(same, manifestFor("https://example.com", "https://example.com"), "/p", true, false)
@@ -112,8 +109,7 @@ func TestPrintPlanShowsADistinctControlURL(t *testing.T) {
 	}
 }
 
-// A separate control URL is usually an address only nodes can route to. The advice for it is the
-// opposite of the domain's: it must resolve from the NODES, and it is not a Let's Encrypt name.
+// A separate control URL must resolve from the nodes and is not a Let's Encrypt name.
 func TestControlHostAdvice(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -136,8 +132,7 @@ func TestControlHostAdvice(t *testing.T) {
 	}
 }
 
-// The two DNS sentences must stay apart: pointing a private control address at a public IP, or
-// expecting Let's Encrypt to validate it, is the opposite of what it is for.
+// A private control address must not be pointed at a public IP or validated by Let's Encrypt.
 func TestControlHostIsNotInTheLetsEncryptLine(t *testing.T) {
 	ui := &recUI{}
 	printResult(ui, manifestFor("https://example.com", "https://control.internal:9000"), "/p", true, false)

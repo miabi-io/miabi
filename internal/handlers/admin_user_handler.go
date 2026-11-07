@@ -73,31 +73,20 @@ func (h *AdminUserHandler) guarded(c *okapi.Context, target *models.User) (bool,
 	return false, nil
 }
 
-// SetMailer wires the platform mailer used to email a welcome to admin-created
-// users. Optional; without it (or without SMTP configured) the email is skipped.
 func (h *AdminUserHandler) SetMailer(m *mailer.Service) { h.mailer = m }
 
-// SetEnterprise wires the edition gate used to guard the per-user workspace-limit
-// override (the user_workspace_limit entitlement).
 func (h *AdminUserHandler) SetEnterprise(ee enterprise.EE) { h.ee = ee }
 
-// SetOrganizations wires the realm a user may be moved to (nil-safe; without it the organization
-// field on an update is refused).
 func (h *AdminUserHandler) SetOrganizations(svc *organization.Service) { h.orgs = svc }
 
 // AdminSetWorkspaceLimitRequest sets or clears a user's workspace-count override.
 type AdminSetWorkspaceLimitRequest struct {
 	Body struct {
-		// Limit overrides how many workspaces the user may own. null clears the
-		// override (inherit the platform max_workspaces_per_user); -1 = unlimited;
-		// 0 = none; N = at most N.
+		// null inherits max_workspaces_per_user; -1 = unlimited; 0 = none; N = at most N.
 		Limit *int `json:"limit" min:"-1"`
 	} `json:"body"`
 }
 
-// SetWorkspaceLimit sets or clears a user's per-user workspace-count override
-// (Enterprise: user_workspace_limit). null clears it (the user then inherits the
-// platform-global max_workspaces_per_user).
 func (h *AdminUserHandler) SetWorkspaceLimit(c *okapi.Context, req *AdminSetWorkspaceLimitRequest) error {
 	if h.ee == nil || h.ee.RequireMutable(enterprise.FlagUserWorkspaceLimit) != nil {
 		return entitlementAbort(c, h.requireLimitOverride())
@@ -126,14 +115,11 @@ func (h *AdminUserHandler) SetWorkspaceLimit(c *okapi.Context, req *AdminSetWork
 // AdminSetWorkspaceCreationRequest sets or clears a user's workspace creation override.
 type AdminSetWorkspaceCreationRequest struct {
 	Body struct {
-		// Allowed overrides the organization's workspace creation mode for this user. null clears
-		// it (inherit).
+		// null clears the override (inherit).
 		Allowed *bool `json:"allowed"`
 	} `json:"body"`
 }
 
-// SetWorkspaceCreation sets or clears whether a user may create workspaces, whatever their
-// organization's mode (Enterprise: user_workspace_limit, like the count override).
 func (h *AdminUserHandler) SetWorkspaceCreation(c *okapi.Context, req *AdminSetWorkspaceCreationRequest) error {
 	if err := h.requireLimitOverride(); err != nil {
 		return entitlementAbort(c, err)
@@ -157,8 +143,6 @@ func (h *AdminUserHandler) SetWorkspaceCreation(c *okapi.Context, req *AdminSetW
 	return ok(c, target)
 }
 
-// requireLimitOverride returns the entitlement error for the workspace-limit
-// override, tolerating a nil edition gate (treated as community).
 func (h *AdminUserHandler) requireLimitOverride() error {
 	if h.ee == nil {
 		return enterprise.ErrLicenseRequired
@@ -166,20 +150,13 @@ func (h *AdminUserHandler) requireLimitOverride() error {
 	return h.ee.RequireMutable(enterprise.FlagUserWorkspaceLimit)
 }
 
-// AdminSetWorkspaceMembershipLimitRequest sets or clears a user's membership
-// (workspaces-joined) override.
 type AdminSetWorkspaceMembershipLimitRequest struct {
 	Body struct {
-		// Limit overrides how many workspaces the user may join as a non-owner
-		// member. null clears the override (inherit max_workspace_memberships_per_user);
-		// -1 = unlimited; 0 = none; N = at most N.
+		// null inherits max_workspace_memberships_per_user; -1 = unlimited; 0 = none; N = at most N.
 		Limit *int `json:"limit" min:"-1"`
 	} `json:"body"`
 }
 
-// SetWorkspaceMembershipLimit sets or clears a user's per-user membership override
-// (Enterprise: user_workspace_membership_limit). null clears it (inherit the
-// platform-global max_workspace_memberships_per_user).
 func (h *AdminUserHandler) SetWorkspaceMembershipLimit(c *okapi.Context, req *AdminSetWorkspaceMembershipLimitRequest) error {
 	if h.ee == nil || h.ee.RequireMutable(enterprise.FlagUserWorkspaceMembershipLimit) != nil {
 		return entitlementAbort(c, h.requireMembershipOverride())
@@ -205,8 +182,6 @@ func (h *AdminUserHandler) SetWorkspaceMembershipLimit(c *okapi.Context, req *Ad
 	return ok(c, target)
 }
 
-// requireMembershipOverride returns the entitlement error for the membership
-// override, tolerating a nil edition gate (treated as community).
 func (h *AdminUserHandler) requireMembershipOverride() error {
 	if h.ee == nil {
 		return enterprise.ErrLicenseRequired
@@ -224,18 +199,15 @@ func NewAdminUserHandler(db *gorm.DB, users *repositories.UserRepository, sessio
 type AdminCreateUserRequest struct {
 	Body struct {
 		Name string `json:"name" required:"true"`
-		// Username optionally sets the unique handle; auto-derived from the email
-		// local-part when omitted. Slug-validated; reserved/taken handles rejected.
+		// Optional; auto-derived from the email local-part when omitted.
 		Username string `json:"username"`
 		Email    string `json:"email" required:"true" format:"email"`
 		// Password is the user's temporary password. Omitted, one is generated and returned once.
 		Password string `json:"password"`
 		Role     string `json:"role" enum:"admin,user"`
-		// Notify, when true, emails the new user a welcome with a sign-in link
-		// (requires a configured system SMTP server).
+		// Requires a configured system SMTP server.
 		Notify bool `json:"notify"`
-		// OrganizationID is the realm the user belongs to, and so the one their workspaces are
-		// created in. 0 or omitted leaves them in the default organization.
+		// 0 or omitted leaves the user in the default organization.
 		OrganizationID uint `json:"organization_id"`
 	} `json:"body"`
 }
@@ -267,8 +239,6 @@ func (h *AdminUserHandler) List(c *okapi.Context, req *AdminListUsersRequest) er
 	return paginated(c, users, total, page, size)
 }
 
-// MemberSummary is another member of a workspace — a candidate to receive
-// ownership when the owner's account is deleted.
 type MemberSummary struct {
 	UserID uint   `json:"user_id"`
 	Name   string `json:"name"`
@@ -276,9 +246,7 @@ type MemberSummary struct {
 	Role   string `json:"role"`
 }
 
-// WorkspaceSummary is one owned workspace with its resource counts. Members lists
-// the workspace's OTHER members (ownership-transfer candidates); when empty, the
-// workspace can only be deleted with the account.
+// Members lists the other members (ownership-transfer candidates); empty means delete-only.
 type WorkspaceSummary struct {
 	ID         uint            `json:"id"`
 	Name       string          `json:"name"`
@@ -318,9 +286,7 @@ func (h *AdminUserHandler) Get(c *okapi.Context) error {
 	}
 	memberships, _ := h.workspaces.CountMemberships(user.ID)
 
-	// Initialise the slices so they marshal as [] rather than null — the web UI
-	// reads .length on them and a null would break the page for users with no
-	// workspaces or no recorded activity.
+	// Slices must marshal as [] not null: the web UI reads .length on them.
 	detail := AdminUserDetail{
 		User:             *user,
 		WorkspacesOwned:  len(owned),
@@ -393,8 +359,7 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	if exists {
 		return c.AbortWithError(409, errEmailTaken)
 	}
-	// Validate an explicit handle up front; a blank one is auto-derived by the
-	// User.BeforeCreate hook.
+	// A blank handle is auto-derived by the User.BeforeCreate hook.
 	username, err := validateUsername(h.users, req.Body.Username, 0)
 	if err != nil {
 		if errors.Is(err, errUsernameTaken) {
@@ -433,17 +398,15 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	}
 	now := time.Now()
 	user := &models.User{
-		Name:            strings.TrimSpace(req.Body.Name),
-		Username:        username,
-		Email:           email,
-		PasswordHash:    string(hash),
-		Role:            role,
-		Active:          true,
-		EmailVerifiedAt: &now,
-		OrganizationID:  orgID,
-		SignupSource:    models.SignupSourceAdmin,
-		// Admin-set password is temporary — force the user to set their own on first
-		// login.
+		Name:               strings.TrimSpace(req.Body.Name),
+		Username:           username,
+		Email:              email,
+		PasswordHash:       string(hash),
+		Role:               role,
+		Active:             true,
+		EmailVerifiedAt:    &now,
+		OrganizationID:     orgID,
+		SignupSource:       models.SignupSourceAdmin,
 		MustChangePassword: true,
 	}
 	if err := h.users.Create(user); err != nil {
@@ -461,18 +424,13 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	return created(c, resp)
 }
 
-// AdminCreateUserResponse is the new user and, when the server generated it, their temporary password.
-// It is returned only here: it is not stored in clear and cannot be read back.
+// The generated password is returned only here: it is not stored in clear and cannot be read back.
 type AdminCreateUserResponse struct {
 	*models.User
 	Password string `json:"password,omitempty"`
 }
 
-// Update changes a user's role, active flag, username and/or email-verified state.
-//
-// Not the organization: a realm is decided at registration and never changes afterwards, the same
-// rule SSO follows. Moving an account would leave the workspaces it already owns behind in the old
-// realm, on clusters the new one cannot see.
+// Organization is immutable: owned workspaces would stay behind on clusters the new realm cannot see.
 func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -526,8 +484,7 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 	if err := h.users.Update(target); err != nil {
 		return c.AbortInternalServerError("failed to update user", err)
 	}
-	// Disabling an account stops all of its apps and databases (best-effort; the
-	// account is already deactivated regardless of stop outcomes).
+	// Best-effort: the account is already deactivated regardless of stop outcomes.
 	if wasActive && !target.Active {
 		h.revokeAll(c, target.ID)
 	}
@@ -539,8 +496,6 @@ func (h *AdminUserHandler) Update(c *okapi.Context, req *AdminUpdateUserRequest)
 	return ok(c, target)
 }
 
-// AdminScheduleDeletionRequest optionally transfers ownership of some of the
-// user's workspaces to another member before scheduling the account for deletion.
 type AdminScheduleDeletionRequest struct {
 	Body struct {
 		Transfers []struct {
@@ -550,9 +505,7 @@ type AdminScheduleDeletionRequest struct {
 	} `json:"body"`
 }
 
-// ScheduleDeletion marks a disabled account for permanent deletion after the grace period.
-// Workspaces whose ownership the admin chose to transfer are reassigned first and survive;
-// everything still owned is purged by the daily job. Admins cannot schedule themselves.
+// ScheduleDeletion marks a disabled account for deletion; transferred workspaces survive, the rest are purged.
 func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminScheduleDeletionRequest) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -573,8 +526,7 @@ func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminSchedule
 		}
 	}
 
-	// Apply ownership transfers up-front: a transferred workspace is no longer
-	// owned by the user, so it won't be purged with the account.
+	// A transferred workspace is no longer owned by the user, so it won't be purged with the account.
 	transferred := 0
 	for _, t := range req.Body.Transfers {
 		ws, err := h.workspaces.FindByID(t.WorkspaceID)
@@ -610,9 +562,7 @@ func (h *AdminUserHandler) ScheduleDeletion(c *okapi.Context, req *AdminSchedule
 	return ok(c, target)
 }
 
-// ForceDeletion permanently deletes an account immediately, skipping the rest of the grace
-// period. Only for an account already pending deletion, so any ownership transfers are already
-// applied. Same guards as scheduling: not your own account, not the last remaining admin.
+// ForceDeletion skips the grace period; only for an account already pending deletion.
 func (h *AdminUserHandler) ForceDeletion(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -663,8 +613,6 @@ func (h *AdminUserHandler) CancelDeletion(c *okapi.Context) error {
 	return ok(c, target)
 }
 
-// VerifyEmail marks a user's email address as verified — a one-click admin
-// action (e.g. when the user can't receive the verification mail).
 func (h *AdminUserHandler) VerifyEmail(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -693,9 +641,7 @@ func (h *AdminUserHandler) RevokeSessions(c *okapi.Context) error {
 	return message(c, "sessions revoked")
 }
 
-// DisableTwoFactor clears a user's two-factor authentication. This is the
-// account-recovery path for a user who has lost their authenticator; it needs
-// no TOTP code since the caller is a platform admin.
+// DisableTwoFactor is the account-recovery path; it needs no TOTP code since the caller is a platform admin.
 func (h *AdminUserHandler) DisableTwoFactor(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -717,8 +663,6 @@ func (h *AdminUserHandler) DisableTwoFactor(c *okapi.Context) error {
 	return message(c, "two-factor authentication disabled")
 }
 
-// ResetPasskeys removes every passkey of a user who lost the devices holding them, and ends their
-// sessions. They sign in with their password again and can register new passkeys.
 func (h *AdminUserHandler) ResetPasskeys(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -739,16 +683,12 @@ func (h *AdminUserHandler) ResetPasskeys(c *okapi.Context) error {
 	return message(c, "passkeys removed")
 }
 
-// AdminResetPasswordResponse carries the freshly generated password, returned
-// exactly once so the admin can hand it to the user (Miabi never stores it in
-// clear, only its bcrypt hash).
+// Returned exactly once: Miabi stores only the bcrypt hash.
 type AdminResetPasswordResponse struct {
 	Password string `json:"password"`
 }
 
-// ResetPassword generates a new strong password, replaces the current one, and returns it ONCE.
-// All the user's sessions are revoked so the old credential stops working immediately.
-// Irreversible: the previous password is discarded, not recoverable.
+// ResetPassword revokes all sessions and returns the new password once; the old one is unrecoverable.
 func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 	target, err := h.targetUser(c)
 	if err != nil {
@@ -770,15 +710,11 @@ func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 	if err := h.users.Update(target); err != nil {
 		return c.AbortInternalServerError("failed to reset password", err)
 	}
-	// The old password is gone; sign the user out everywhere so no stale session
-	// keeps the account open past the reset.
 	h.revokeAll(c, target.ID)
 	h.record(c, "admin.user.password_reset", target.ID, nil)
 	return ok(c, AdminResetPasswordResponse{Password: pw})
 }
 
-// generatePassword returns a strong random password from an unambiguous alphabet (no 0/O/1/l/I),
-// backed by crypto/rand — used for admin-created accounts and admin-initiated resets.
 func generatePassword() (string, error) {
 	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	const n = 20
@@ -792,8 +728,6 @@ func generatePassword() (string, error) {
 	return string(buf), nil
 }
 
-// errServiceAccountManaged refuses platform-admin actions that make no sense for a service account: it
-// signs in with API keys only, and holds a role in its workspace, never on the platform.
 var errServiceAccountManaged = errors.New("this is a service account: it has no password or two-factor, " +
 	"and cannot be a platform admin — manage it from its workspace's service accounts")
 
@@ -848,8 +782,7 @@ type AdminSuspendUserRequest struct {
 	} `json:"body"`
 }
 
-// Suspend puts a hold on a user: they keep read access and see the reason, every write they make is
-// refused until it is lifted or the end date passes. Not a ban: nothing is deleted or disabled.
+// Suspend keeps read access but refuses every write until lifted or expired; nothing is deleted.
 func (h *AdminUserHandler) Suspend(c *okapi.Context, req *AdminSuspendUserRequest) error {
 	target, err := h.targetUser(c)
 	if err != nil {

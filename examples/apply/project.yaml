@@ -1,14 +1,4 @@
-# A complete application bundled as a single miabi.io/v1 Project: a managed
-# Postgres database, a persistent volume, a generated secret, the web app
-# (pinned to an immutable image digest), and a public route with automatic TLS.
-#
-# Apply it with the declarative apply API:
-#   POST /api/v1/workspaces/{ws}/apply
-#   { "manifests": "<this file>", "dry_run": true }   # preview the plan
-#   { "manifests": "<this file>" }                     # converge the workspace
-#
-# Supported env interpolation in apply/GitOps: {{ .databases.<name>.host|port|
-# user|password|name|uri }}.
+# A complete app as one Project: database, volume, secret, digest-pinned app and TLS route.
 apiVersion: miabi.io/v1
 kind: Project
 metadata:

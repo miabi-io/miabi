@@ -15,10 +15,7 @@ export function isOverlayNetwork(name?: string): boolean {
   return (name ?? '').endsWith(OVERLAY_SUFFIX)
 }
 
-/**
- * Whether an app can reach a database instance by name. On a workspace overlay the database is
- * reachable from every node of its cluster; on a node-local bridge, only from its own node.
- */
+/** canReachDatabase: an overlay is reachable cluster-wide, a node-local bridge only from its own node. */
 export function canReachDatabase(app: Placed, inst: DatabaseNetworkInfo): boolean {
   if (isOverlayNetwork(inst.network_name)) {
     return (app.cluster_id ?? 0) === (inst.cluster_id ?? 0)

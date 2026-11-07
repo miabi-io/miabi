@@ -32,8 +32,7 @@ type PlanRepository struct {
 
 func NewPlanRepository(db *gorm.DB) *PlanRepository { return &PlanRepository{db: db} }
 
-// Create inserts a plan. GORM swaps a zero value for the column default on insert, so a column whose
-// default isn't its zero value (a capability off, a 0 limit meaning "none") is written back explicitly.
+// GORM swaps zero values for column defaults on insert, so non-zero-default columns are written back explicitly.
 func (r *PlanRepository) Create(p *models.Plan) error {
 	allowService, dbCPU, dbMem := p.AllowServiceRuntime, p.MaxDatabaseCPUCores, p.MaxDatabaseMemoryMB
 	return r.db.Transaction(func(tx *gorm.DB) error {
@@ -101,8 +100,7 @@ func (r *PlanRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Plan{}, id).Error
 }
 
-// ClearDefault unsets is_default on every plan (call inside a transaction before
-// marking a new default).
+// ClearDefault unsets is_default on every plan; call it in a transaction before marking a new default.
 func (r *PlanRepository) ClearDefault(tx *gorm.DB) error {
 	if tx == nil {
 		tx = r.db

@@ -33,8 +33,7 @@ afterEach(async () => {
 })
 
 describe('nav catalogue keys', () => {
-  // A key absent from en.json renders as the raw key string. The label() fallback hides
-  // that in production, so only a test catches it.
+  // The label() fallback hides a missing key in production, so only a test catches it.
   it('exist for every entry in both consoles', () => {
     const missing: string[] = []
     for (const s of [...navSections, ...adminNavSections]) {

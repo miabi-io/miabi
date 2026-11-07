@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package healthprobe embeds the static HTTP probe (cmd/healthprobe) that the deploy
-// worker copies into app containers. bin/ is a build artifact (`make build-probe`):
-// only a .gitkeep is committed, so a build without it falls back to a shell probe.
+// Package healthprobe embeds the probe binary; without bin/ (make build-probe) builds fall back to a shell probe.
 package healthprobe
 
 import (
@@ -33,8 +31,6 @@ const Path = "/.miabi/healthprobe"
 //go:embed all:bin
 var bins embed.FS
 
-// Binary returns the probe for a Docker-reported architecture, or false when
-// this build doesn't carry one.
 func Binary(arch string) ([]byte, bool) {
 	goarch, ok := goArch(arch)
 	if !ok {

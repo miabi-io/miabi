@@ -4,8 +4,6 @@ import { Handle, Position } from '@vue-flow/core'
 import type { NodeStatus } from '@/api/types'
 import { kindOf, nodeStatusMeta, healthOf } from './topologyMeta'
 
-// Data carried on each Vue Flow node (set in GitOpsDetail). Mirrors a
-// TopologyNode plus presentation flags.
 interface NodeData {
   kind: string
   name: string
@@ -25,9 +23,7 @@ const health = computed(() => healthOf(props.data.health))
 
 <template>
   <div class="rnode" :class="{ selected, dimmed: data.dimmed }" :style="{ '--accent': status.color }">
-    <!-- Left = incoming (this resource is a dependency of another); right =
-         outgoing (this resource depends on another). Both present so a node can
-         be either end of an edge. -->
+    <!-- Both handles so a node can be either end of an edge. -->
     <Handle type="target" :position="Position.Left" />
     <Handle type="source" :position="Position.Right" />
 

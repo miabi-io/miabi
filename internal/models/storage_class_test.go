@@ -71,8 +71,7 @@ func TestStorageClassVolumePath(t *testing.T) {
 		t.Fatal("a class with a path is managed")
 	}
 
-	// The built-in class has no path of its own: Docker decides where the volume lives, which is
-	// what makes an install that registers no class behave exactly as it did before.
+	// An install with no registered class must behave exactly as before.
 	builtin := &StorageClass{Name: DefaultStorageClassName}
 	if builtin.Managed() {
 		t.Fatal("the built-in class is not managed")

@@ -61,8 +61,6 @@ func (r *SessionRepository) ListByUser(userID uint) ([]models.Session, error) {
 	return sessions, err
 }
 
-// FindByIDForUser loads a session by id scoped to its owner, so a user can only
-// ever address their own sessions.
 func (r *SessionRepository) FindByIDForUser(id, userID uint) (*models.Session, error) {
 	var s models.Session
 	if err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&s).Error; err != nil {

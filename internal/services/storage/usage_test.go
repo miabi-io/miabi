@@ -31,9 +31,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// volumeRow is a sqlite-friendly stand-in for models.Volume: the production model embeds UIDModel with a
-// Postgres gen_random_uuid() default sqlite can't migrate, so this builds just the columns the usage sweep
-// reads and writes and lets the real VolumeRepository query them.
+// models.Volume's UIDModel has a Postgres gen_random_uuid() default sqlite can't migrate.
 type volumeRow struct {
 	ID             uint `gorm:"primaryKey"`
 	WorkspaceID    uint
@@ -121,8 +119,6 @@ func TestMeasureUsageRecordsMeasuredBytes(t *testing.T) {
 }
 
 func TestMeasureUsageLeavesPriorValueWhenNodeUnreachable(t *testing.T) {
-	// Node 1 errors on VolumeUsage; its volume must keep its prior measurement,
-	// and the sweep must not return an error to the cron.
 	prior := time.Now().Add(-2 * time.Hour)
 	nodes := fakeNodes{1: fakeClient{err: errors.New("node offline")}}
 	s, db := newUsageService(t, nodes)

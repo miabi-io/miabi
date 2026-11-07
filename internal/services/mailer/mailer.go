@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package mailer sends Miabi's own platform notification emails — password resets, workspace invitations,
-// account welcomes — over a system SMTP server. Sends are best-effort and asynchronous: with SMTP
-// unconfigured every method is a silent no-op, and a nil *Service is safe too, so callers never guard.
+// Package mailer sends platform emails best-effort and async; unconfigured SMTP or a nil Service is a silent no-op.
 package mailer
 
 import (
@@ -56,8 +54,6 @@ type Service struct {
 	templates map[string]*template.Template
 }
 
-// NewService builds a mailer from the system SMTP config, the product name, and
-// the public app URL (used to build action links in emails).
 func NewService(smtp config.SystemSMTPConfig, appName, appURL string) *Service {
 	if strings.TrimSpace(appName) == "" {
 		appName = "Miabi"
@@ -68,9 +64,7 @@ func NewService(smtp config.SystemSMTPConfig, appName, appURL string) *Service {
 		appURL:    strings.TrimRight(strings.TrimSpace(appURL), "/"),
 		templates: map[string]*template.Template{},
 	}
-	// Every template the service can send. A name missing here parses nowhere and
-	// fails only at send time, inside a goroutine — mailer_test renders all of them
-	// so that cannot ship.
+	// A missing name fails only at send time inside a goroutine; mailer_test renders all of them.
 	for _, name := range []string{
 		TemplatePasswordReset, TemplateWorkspaceInvitation, TemplateWelcome,
 		TemplateEmailVerification, TemplateWorkspaceRoleChange,
@@ -80,14 +74,10 @@ func NewService(smtp config.SystemSMTPConfig, appName, appURL string) *Service {
 	return s
 }
 
-// IsConfigured reports whether a system SMTP server is set (host + from). Safe on
-// a nil receiver.
 func (s *Service) IsConfigured() bool {
 	return s != nil && s.smtp.IsConfigured()
 }
 
-// SendPasswordReset emails a password-reset link. expiryHours is shown to the
-// user; token is appended to the reset URL.
 func (s *Service) SendPasswordReset(to, name, token string, expiryHours int) {
 	if !s.IsConfigured() {
 		return
@@ -125,9 +115,6 @@ func (s *Service) SendWelcome(to, name string) {
 	})
 }
 
-// SendEmailVerification asks a new account holder to confirm their address. Until
-// they do, the platform refuses their sign-in when verification is required, so
-// this is the only thing standing between them and a usable account.
 func (s *Service) SendEmailVerification(to, name, token string, expiryHours int) {
 	if !s.IsConfigured() {
 		return
@@ -139,9 +126,6 @@ func (s *Service) SendEmailVerification(to, name, token string, expiryHours int)
 	})
 }
 
-// SendWorkspaceRoleChanged tells a member their permissions changed. Worth an
-// email rather than a silent change: it takes effect immediately, and someone who
-// suddenly cannot deploy deserves to know why before they hit the wall.
 func (s *Service) SendWorkspaceRoleChanged(to, name, workspaceName, actorName, oldRole, newRole string) {
 	if !s.IsConfigured() {
 		return
@@ -157,8 +141,6 @@ func (s *Service) SendWorkspaceRoleChanged(to, name, workspaceName, actorName, o
 	})
 }
 
-// roleSummary says in a sentence what the new role can do, so the mail is useful
-// to someone who does not know Miabi's role names by heart.
 func roleSummary(role string) string {
 	switch strings.ToLower(role) {
 	case "owner":
@@ -174,8 +156,6 @@ func roleSummary(role string) string {
 	}
 }
 
-// dispatch renders and sends in the background, logging any failure. A no-op when
-// SMTP is not configured (or the service is nil).
 func (s *Service) dispatch(to, subject, tmpl string, data map[string]any) {
 	if !s.IsConfigured() {
 		logger.Debug("mailer: system SMTP not configured, skipping", "template", tmpl, "to", to)
@@ -214,9 +194,7 @@ func (s *Service) render(name string, data map[string]any) (string, error) {
 	return buf.String(), nil
 }
 
-// link builds an absolute URL on the app's public base. An optional key/value
-// pair is appended as a query string. When the app URL is unset the path is
-// returned as-is (a relative link is better than a broken absolute one).
+// With no app URL the path is returned as-is: a relative link beats a broken absolute one.
 func (s *Service) link(path string, kv ...string) string {
 	u := s.appURL + path
 	if len(kv) >= 2 && kv[1] != "" {

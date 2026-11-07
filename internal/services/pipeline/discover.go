@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
 )
 
-// SourcePaths lists, in priority order, the repository paths Miabi reads a
-// pipeline-as-code document from. The first one that exists wins — a repo
-// carrying several is not an error, it just has one that counts.
+// The first existing path wins; a repo carrying several is not an error.
 var SourcePaths = []string{
 	".miabi/pipeline.yaml",
 	".miabi/pipeline.yml",
@@ -42,40 +40,30 @@ var SourcePaths = []string{
 	".miabi/pipelines.yml",
 }
 
-// probeDirPrefix names the temp worktrees Discover creates, so a leaked one is
-// identifiable.
+// Prefix makes a leaked probe worktree identifiable.
 const probeDirPrefix = "mb-pipeline-probe-"
 
-// Found is the result of probing a repository for pipeline-as-code. A repo with
-// no pipeline is not an error: Path is empty and Spec is nil, and the caller
-// falls back to plain build-and-deploy.
+// A repo with no pipeline is not an error: Path is empty, Spec nil, and the caller builds normally.
 type Found struct {
 	// Ref is the ref that was probed, Commit the concrete SHA it resolved to.
 	Ref    string
 	Commit string
-	// HasDockerfile reports a Dockerfile at the repository root — what the "auto"
-	// build method keys off, so the caller can explain what happens when the repo
-	// carries no pipeline.
+	// What the "auto" build method keys off, so the caller can explain the no-pipeline fallback.
 	HasDockerfile bool
 	// Path is the repo-relative path the document was read from ("" = none found).
 	Path string
-	// Raw is the document verbatim — this is what gets stored as the definition's
-	// spec, so the stored copy is byte-identical to the file in the repo.
+	// Stored verbatim so the definition's spec is byte-identical to the repo file.
 	Raw string
 	// Spec is the parsed document, nil when none was found or it failed to parse.
 	Spec *Spec
-	// SpecError describes why a document that *was* found failed to parse. It is
-	// carried rather than returned so a broken file degrades to "build normally,
-	// tell the user why" instead of blocking app creation.
+	// Carried rather than returned so a broken file degrades to "build normally, tell the user why".
 	SpecError string
 }
 
 // HasPipeline reports whether a usable pipeline document was found.
 func (f *Found) HasPipeline() bool { return f != nil && f.Spec != nil }
 
-// DiscoverFS reads a pipeline-as-code document out of an already-checked-out tree, returning its path, bytes
-// and parsed spec. A tree with no such document returns zero values and a nil error; one that exists but
-// doesn't parse returns its path and bytes alongside the error, so callers can name the broken file.
+// DiscoverFS returns zero values when no document exists; a parse failure still returns path and bytes.
 func DiscoverFS(fsys fs.FS) (string, []byte, *Spec, error) {
 	for _, p := range SourcePaths {
 		raw, err := fs.ReadFile(fsys, p)
@@ -94,9 +82,7 @@ func DiscoverFS(fsys fs.FS) (string, []byte, *Spec, error) {
 	return "", nil, nil, nil
 }
 
-// Discover clones url at ref into a throwaway worktree and reads its pipeline-as-code document. The error
-// return covers only infrastructure failures: a repo with no pipeline, or one whose pipeline is malformed,
-// comes back as a Found describing that. auth keeps the credential out of the URL and returned errors.
+// Discover errors only on infrastructure failures; auth keeps the credential out of the URL and errors.
 func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (*Found, error) {
 	dir, commit, cleanup, err := cloneWorktree(ctx, url, ref, auth)
 	if err != nil {
@@ -125,9 +111,7 @@ func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (
 	return f, nil
 }
 
-// cloneWorktree clones url at ref into a fresh temp dir, returning the dir, the resolved commit and a cleanup
-// func the caller must always run. It tries a depth-1 single-branch clone first — the only fast path on a large
-// repo — and since that can only name a branch, a tag or SHA falls back to a full clone plus revision resolve.
+// Depth-1 single-branch is the only fast path on large repos; tags or SHAs fall back to a full clone.
 func cloneWorktree(ctx context.Context, url, ref string, auth transport.AuthMethod) (string, string, func(), error) {
 	dir, err := os.MkdirTemp("", probeDirPrefix)
 	if err != nil {

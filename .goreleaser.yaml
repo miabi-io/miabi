@@ -1,9 +1,4 @@
-# GoReleaser builds the downloadable binaries and publishes a GitHub Release on
-# every `v*` tag (see .github/workflows/release.yml).
-#
-# The web UI is embedded into the binary (internal/web) at build time, so each
-# archive is just the self-contained executable — one file serves the API and the
-# UI. Validate locally with `goreleaser check`.
+# The web UI is embedded at build time, so each archive is one self-contained binary.
 version: 2
 
 project_name: miabi
@@ -27,8 +22,7 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-    # Enterprise-capable build: the enterprise code is compiled in but stays
-    # dormant (runs as Community) until a valid license is installed.
+    # Enterprise code is compiled in but dormant until a valid license is installed.
     tags:
       - enterprise
     ldflags:

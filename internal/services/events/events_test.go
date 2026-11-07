@@ -42,8 +42,7 @@ func newService(t *testing.T) (*Service, *eventbus.Bus) {
 	return NewService(repositories.NewAppEventRepository(db), bus), bus
 }
 
-// TestRecordRoutesBySubject pins that a database event reaches the database topic, which the
-// instance detail page subscribes to, and not the application topic.
+// A database event must reach the database topic the detail page subscribes to, not the application topic.
 func TestRecordRoutesBySubject(t *testing.T) {
 	svc, bus := newService(t)
 	dbCh, stopDB := bus.Subscribe(DatabaseTopic(4))
@@ -73,8 +72,7 @@ func TestRecordRoutesBySubject(t *testing.T) {
 	}
 }
 
-// TestRecordDropsSubjectlessEvents pins that an event naming no resource is discarded rather
-// than persisted as a row no page can reach.
+// An event naming no resource would be a row no page can reach, so it is dropped.
 func TestRecordDropsSubjectlessEvents(t *testing.T) {
 	svc, _ := newService(t)
 	svc.Record(&models.AppEvent{WorkspaceID: 1, Type: models.EventDeploySucceeded})
@@ -88,8 +86,6 @@ func TestRecordDropsSubjectlessEvents(t *testing.T) {
 	}
 }
 
-// TestRecordDefaultsToAppSubject pins that a producer setting only ApplicationID still records
-// and streams as an application event.
 func TestRecordDefaultsToAppSubject(t *testing.T) {
 	svc, bus := newService(t)
 	ch, stop := bus.Subscribe(Topic(8))

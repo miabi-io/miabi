@@ -21,12 +21,7 @@ package models
 
 import "time"
 
-// VolumeBackup is a single backup run of a managed volume's contents, archived
-// (compressed) to the workspace's S3 target. Reuses BackupStatus.
-//
-// A row with a Ref is a recovery point (Enterprise): it lives under its own prefix beside a
-// cleartext info.json, may be sealed with a per-point data key, is verified after each run and
-// is subject to schedule retention. A row without one is a plain archive, as Community takes.
+// VolumeBackup rows with a Ref are Enterprise recovery points; rows without one are plain Community archives.
 type VolumeBackup struct {
 	ID          uint         `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint         `json:"workspace_id" gorm:"index;not null"`
@@ -36,18 +31,15 @@ type VolumeBackup struct {
 	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`
 	Trigger     string       `json:"trigger"` // manual | scheduled
 
-	// Ref is the stable, human-quotable name of a recovery point: "mbvol_<volume>_<UTC stamp>".
 	// Empty on a plain archive; the partial index keeps those from colliding.
 	Ref string `json:"ref,omitempty" gorm:"uniqueIndex:idx_volume_backups_ref,where:ref <> ''"`
 	// ScheduleID names the schedule that took this point, so its retention runs after it lands.
 	ScheduleID *uint `json:"schedule_id,omitempty" gorm:"index"`
-	// Consistency records how the volume was read. "hot" archives while the workload runs,
-	// which is crash-consistent only; restore UI says so rather than implying a point in time.
+	// "hot" is crash-consistent only, and the restore UI says so.
 	Consistency string `json:"consistency,omitempty"`
 	// Encrypted reports the archive is GPG-sealed, so restoring needs the workspace passphrase.
 	Encrypted bool `json:"encrypted" gorm:"not null;default:false"`
-	// Envelope seals this point's random data key under the workspace backup passphrase (see
-	// internal/dbenvelope). Never serialized, as on DatabaseBackupSet.
+	// Never serialized, as on DatabaseBackupSet.
 	Envelope string `json:"-" gorm:"type:text"`
 	// Pinned exempts the point from retention without occupying a retention slot.
 	Pinned bool `json:"pinned" gorm:"not null;default:false"`
@@ -70,15 +62,12 @@ type VolumeBackup struct {
 	FinishedAt *time.Time `json:"finished_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 
-	// Verification: presence and size in the bucket, and that the envelope still opens.
 	// An empty VerifyStatus means never checked.
 	VerifiedAt   *time.Time `json:"verified_at,omitempty"`
 	VerifyStatus string     `json:"verify_status,omitempty"` // ok | failed
 	VerifyError  string     `json:"verify_error,omitempty" gorm:"type:text"`
 }
 
-// VolumeBackupRefPrefix marks a volume recovery point, as DatabaseBackupSetRefPrefix marks a
-// database one.
 const VolumeBackupRefPrefix = "mbvol_"
 
 // VolumeConsistencyHot archives while the workload keeps running.
@@ -95,9 +84,6 @@ func NewVolumeBackupRef(volume string, at time.Time) string {
 // IsPoint reports whether this row is a recovery point rather than a plain archive.
 func (b *VolumeBackup) IsPoint() bool { return b.Ref != "" }
 
-// VolumeBackupSchedule takes recovery points of one volume on a cron, then applies retention
-// to what it produced. Retention lives here rather than on the point, as it does for
-// DatabaseBackupSetSchedule.
 type VolumeBackupSchedule struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint   `json:"workspace_id" gorm:"index;not null"`
@@ -105,8 +91,7 @@ type VolumeBackupSchedule struct {
 	Cron        string `json:"cron" gorm:"not null"`
 	Enabled     bool   `json:"enabled" gorm:"not null;default:true"`
 
-	// MaxPoints keeps at most N points and RetentionDays drops any older than N days; 0 is
-	// unbounded. Pinned points and the newest completed one always survive.
+	// 0 is unbounded; pinned points and the newest completed one always survive.
 	MaxPoints     int `json:"max_points" gorm:"not null;default:0"`
 	RetentionDays int `json:"retention_days" gorm:"not null;default:0"`
 

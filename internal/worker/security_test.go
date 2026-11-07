@@ -28,9 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// chownFake records the images RunOneShot is invoked with and lets a test force the app-image chown
-// to fail so the busybox fallback path is exercised. It embeds docker.Client so only the methods used
-// here need implementing.
 type chownFake struct {
 	docker.Client
 	oneShotImages []string
@@ -74,8 +71,6 @@ func TestPrepareVolumeOwnership(t *testing.T) {
 		t.Errorf("expected chown via the app image only, got %v", f.oneShotImages)
 	}
 
-	// Restricted, app image lacks chown: falls back to the busybox init image, which
-	// corrects ownership of the volume the app image already seeded.
 	f = &chownFake{failImage: "distroless:app"}
 	if err := b.prepareVolumeOwnership(context.Background(), f, restricted, "distroless:app", mounts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -84,8 +79,7 @@ func TestPrepareVolumeOwnership(t *testing.T) {
 		t.Errorf("expected app image then busybox fallback, got %v", f.oneShotImages)
 	}
 
-	// A custom user under the DEFAULT profile still owns its volumes: the chown
-	// follows the pinned user, not the profile.
+	// The chown follows the pinned user, not the profile.
 	f = &chownFake{}
 	if err := b.prepareVolumeOwnership(context.Background(), f, Security{User: "1000:1000"}, "app:1", mounts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,8 +125,6 @@ func TestWithRunAsUser(t *testing.T) {
 		}
 	}
 
-	// Restricted: a non-root numeric uid replaces the platform UID, and the rest of
-	// the hardening contract survives.
 	got, err := restricted.withRunAsUser("1000:1000")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -141,8 +133,7 @@ func TestWithRunAsUser(t *testing.T) {
 		t.Errorf("restricted hardening not preserved: %+v", got)
 	}
 
-	// Restricted: anything the platform can't verify as non-root is refused — root
-	// outright, and names, which the image's own /etc/passwd is free to map to uid 0.
+	// Usernames are refused because the image's /etc/passwd may map them to uid 0.
 	for _, v := range []string{"0", "0:0", "root", "appuser", "1000:group"} {
 		if _, err := restricted.withRunAsUser(v); !errors.Is(err, ErrRunAsUserForbidden) {
 			t.Errorf("%q must be refused under the restricted profile, got %v", v, err)
@@ -169,8 +160,6 @@ func TestContainerSecurityResolver(t *testing.T) {
 		t.Error("nil resolver must yield no restriction")
 	}
 
-	// A resolver keyed on workspace id is consulted. An official-template app in a
-	// workspace that exempts them keeps the image user; others are hardened.
 	b.SetSecurity(SecurityFunc(func(id uint, official bool) Security {
 		if id == 7 && !official {
 			return Security{User: "100000:0", NoNewPrivileges: true, Restricted: true}

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package mwcatalog is the single source of truth for the curated Goma middleware types Miabi
-// exposes as security policies. Each supported type has one Descriptor driving validation, secret
-// handling and the UI form; an uncatalogued type passes through to Goma without schema checks.
+// Package mwcatalog is the source of truth for curated Goma middleware types exposed as security policies.
 package mwcatalog
 
 import (
@@ -49,16 +47,11 @@ const (
 	FieldEnum     = "enum"     // one of Options
 	FieldUsers    = "users"    // basicAuth users: [{username, password}]
 	FieldMap      = "map"      // map<string,string> key/value editor (e.g. setHeaders)
-	// FieldPairs is a []string whose entries use Goma's "source: target" mapping syntax, a bare
-	// "source" meaning "keep the same name". Stored as strings because that is Goma's wire format;
-	// edited as two inputs per row, because nobody should need to know the colon convention.
+	// Stored as Goma's "source: target" strings but edited as two inputs so nobody needs the colon convention.
 	FieldPairs = "pairs"
-	// FieldObject is a nested object. With Fields it renders a structured sub-form
-	// (e.g. cors); without Fields it is a free-form map passed through unchecked.
+	// Without Fields it is a free-form map passed through unchecked.
 	FieldObject = "object"
-	// FieldList is a repeatable list of objects, each shaped by Fields (e.g. the
-	// errorInterceptor errors list, or responseHeaders setCookies).
-	FieldList = "list"
+	FieldList   = "list"
 )
 
 // Field is one key of a middleware's rule.
@@ -76,17 +69,14 @@ type Field struct {
 
 	// Placeholder is the example shown in an empty scalar or tag input.
 	Placeholder string `json:"placeholder,omitempty"`
-	// KeyLabel/ValueLabel name the two columns of a FieldMap or FieldPairs editor. They differ per
-	// middleware — a setHeaders row is "Header -> value", a JWT forwardHeaders row is "Header -> claim
-	// path" — and getting them wrong is how a form teaches the wrong mental model.
+	// Labels differ per middleware; getting them wrong teaches the wrong mental model.
 	KeyLabel         string `json:"key_label,omitempty"`
 	ValueLabel       string `json:"value_label,omitempty"`
 	KeyPlaceholder   string `json:"key_placeholder,omitempty"`
 	ValuePlaceholder string `json:"value_placeholder,omitempty"`
 	// AddLabel is the "+ Add …" button's noun.
 	AddLabel string `json:"add_label,omitempty"`
-	// ValueOptional marks a FieldPairs whose target may be left blank, meaning
-	// "pass through under the same name".
+	// A blank target means pass through under the same name.
 	ValueOptional bool `json:"value_optional,omitempty"`
 }
 
@@ -97,31 +87,19 @@ type Descriptor struct {
 	Description string   `json:"description"`
 	Category    Category `json:"category"`
 	Fields      []Field  `json:"fields"`
-	// MinGatewayVersion is the oldest Goma release that carries this middleware
-	// type. Empty means it has been there as long as Miabi has curated it.
-	//
-	// Advisory, not enforced: Miabi does not read a running gateway's version, so
-	// this is shown in the form rather than used to hide the type. A route
-	// referencing a type its gateway does not have fails at load with a message
-	// naming the type, and this is what tells someone why before they get there.
+	// Advisory only: Miabi does not read the gateway version, so this is shown in the form rather than hiding the type.
 	MinGatewayVersion string `json:"min_gateway_version,omitempty"`
-	// Validate is an optional cross-field rule run after the per-field checks pass, for constraints the
-	// field loop can't express. nil for types whose fields fully define them. Not serialized — the
-	// client can't run it, and the server enforces it on write anyway.
+	// Not serialized: the client cannot run it, and the server enforces it on write.
 	Validate func(rule map[string]any) error `json:"-"`
 }
 
-// MinGomaOIDCVersion is the first Goma release carrying the `oidc` middleware.
-// Kept beside the descriptor that needs it rather than in config, so the catalog
-// states its own requirements.
 const MinGomaOIDCVersion = "0.14.0"
 
 const MinGomaRedirectHostVersion = "1.2.0"
 
 const MinGomaCompressVersion = "1.2.0"
 
-// secretPath is a secret field and the route to it through nested objects, so a
-// key like session.secret is reachable rather than silently stored in clear.
+// Lets nested keys like session.secret be encrypted rather than silently stored in clear.
 type secretPath struct {
 	keys  []string
 	field Field
@@ -145,8 +123,7 @@ func collectSecretPaths(fields []Field, prefix []string) []secretPath {
 	return out
 }
 
-// registry is the ordered set of supported descriptors. Order is the display
-// order in the UI catalog.
+// Order is the UI catalog display order.
 var registry = []Descriptor{
 	{
 		Type:        "basicAuth",
@@ -502,8 +479,7 @@ var registry = []Descriptor{
 			{Key: "prefix", Label: "Prefix", Type: FieldString, Required: true, Help: "Must start with /, e.g. /api."},
 		},
 		Validate: func(rule map[string]any) error {
-			// Goma uses the prefix verbatim (no leading-slash enforcement), so a
-			// prefix without / silently produces a broken upstream path. Reject it.
+			// Goma uses the prefix verbatim, so one without / silently produces a broken upstream path.
 			if p, _ := rule["prefix"].(string); !strings.HasPrefix(p, "/") {
 				return fmt.Errorf("%w: %q must start with /", ErrInvalidRule, "prefix")
 			}
@@ -596,9 +572,7 @@ var registry = []Descriptor{
 			{Key: "statusCode", Label: "Status code", Type: FieldInt, Default: 403, Help: "HTTP status returned for a blocked request."},
 			{Key: "message", Label: "Message", Type: FieldString, Help: "Response body for a blocked request."},
 		},
-		// Requires a GeoIP database on the gateway. Miabi does not install one — the
-		// operator drops country.mmdb into the geoip/ directory beside goma.yml. Without it
-		// no country resolves, so every rule here falls through to allowUnknown.
+		// Requires an operator-supplied geoip/country.mmdb beside goma.yml; without it every rule falls through to allowUnknown.
 		Validate: func(rule map[string]any) error {
 			raw, _ := rule["countries"].([]any)
 			for _, c := range raw {

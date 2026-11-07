@@ -26,9 +26,7 @@ import (
 	"time"
 )
 
-// TestTarget is what the "Test connection" button runs. This drives it against a REAL store, with the settings
-// supplied rather than stored — the same shape the UI sends when an operator tests before saving, which is also
-// the path that never touches the repository. Skips unless MIABI_S3_IT_BUCKET is set.
+// Skips unless MIABI_S3_IT_BUCKET is set; mirrors the UI testing settings before saving.
 func itInput(t *testing.T) SaveInput {
 	t.Helper()
 	bucket := os.Getenv("MIABI_S3_IT_BUCKET")
@@ -50,8 +48,7 @@ func itInput(t *testing.T) SaveInput {
 }
 
 func TestTargetProbesEveryPrefix_Integration(t *testing.T) {
-	// A nil repository is deliberate: with the secret supplied, testing an unsaved
-	// target must not need a stored one — which is exactly how the UI uses it.
+	// Testing an unsaved target must not need a stored secret, as the UI uses it.
 	svc := NewService(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -78,8 +75,7 @@ func TestTargetProbesEveryPrefix_Integration(t *testing.T) {
 	}
 }
 
-// A wrong secret must come back as a per-prefix failure the operator can read,
-// not as a pass and not as an internal error.
+// A wrong secret must be a readable per-prefix failure, not a pass or internal error.
 func TestTargetReportsBadCredentials_Integration(t *testing.T) {
 	in := itInput(t)
 	wrong := "definitely-not-the-secret-key"

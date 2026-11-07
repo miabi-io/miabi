@@ -47,8 +47,7 @@ applications:
         scheme: http
 `
 
-// bundleJSON builds an export bundle with one official template, digesting the
-// manifest the way the real service would. badDigest forces a digest mismatch.
+// bundleJSON digests the manifest like the real service; badDigest forces a digest mismatch.
 func bundleJSON(t *testing.T, etag string, badDigest bool) []byte {
 	t.Helper()
 	digest := manifest.Digest([]byte(sampleManifest))
@@ -160,8 +159,7 @@ func TestStoreDisabled(t *testing.T) {
 	}
 }
 
-// memCache stores per source, like the Redis cache, so a test can prove a bundle
-// from one marketplace is never served for another.
+// Cached per source, like Redis, so a test can prove one marketplace's bundle is never served for another.
 type memCache struct {
 	mu      sync.Mutex
 	entries map[string]cacheEntry

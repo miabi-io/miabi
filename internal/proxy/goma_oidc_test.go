@@ -26,9 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// An OIDC policy has to reach Goma with its nested blocks intact: session and
-// forward are objects, and a flattened or dropped level is a policy that does
-// not do what the form said.
+// A flattened or dropped nested level is a policy that does not do what the form said.
 func TestRenderOIDCMiddlewareKeepsNestedBlocks(t *testing.T) {
 	out, err := RenderMiddleware(RenderedMiddleware{
 		ID: 7, WorkspaceID: 3, Name: "sso", Type: "oidc", Paths: []string{"/.*"},
@@ -108,8 +106,6 @@ func TestRenderOIDCMiddlewareKeepsNestedBlocks(t *testing.T) {
 	}
 }
 
-// The registry's own gateway config is rendered by the same code path, so it is
-// worth asserting it still comes out whole.
 func TestRegistryConfigStillRenders(t *testing.T) {
 	out, err := RenderMiddleware(RenderedMiddleware{
 		ID: 1, WorkspaceID: 1, Name: "registry-auth", Type: "forwardAuth", Paths: []string{"/.*"},

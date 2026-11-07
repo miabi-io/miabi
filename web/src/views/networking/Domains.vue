@@ -34,16 +34,14 @@ function emptyForm(): DomainInput {
   return { name: '', tls_mode: 'acme', wildcard: false }
 }
 
-// verifiedLabel qualifies the verified badge with how ownership was established, so an
-// admin override never looks like a DNS proof.
+// An admin override must never look like a DNS proof.
 function verifiedLabel(d: Domain): string {
   if (d.verified_via === 'admin') return 'verified · admin override'
   if (d.verified_via === 'dns_provider') return 'verified · DNS provider'
   return 'verified'
 }
 
-// proofPresent reports whether the last ownership check found the TXT record. Meaningful
-// for any domain that has ever been checked, verified or not.
+// Meaningful for any domain ever checked, verified or not.
 function proofPresent(d: Domain): boolean {
   return !!d.verification_checked_at && !d.verification_error
 }
@@ -281,8 +279,6 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDns = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <!-- Ownership state first, then the record — the panel stays a diagnostic
-               after verification, which is when people actually need to read it. -->
           <div v-if="dnsDomain.verified && dnsDomain.verified_via === 'admin'" class="gate gate-warn">
             <span class="mdi mdi-shield-account-outline"></span>
             {{ $t('domains.verifiedByAdmin') }}

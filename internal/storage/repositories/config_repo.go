@@ -58,9 +58,7 @@ func (r *ConfigRepository) ListByWorkspace(workspaceID uint) ([]models.Config, e
 	return configs, err
 }
 
-// ListByWorkspacePaged mirrors the secret repository: ownership and search are
-// filtered in SQL because the result is paged, so a caller-side filter would hide
-// rows the total count still claims.
+// Filtered in SQL because results are paged; a caller-side filter would hide rows the total still counts.
 func (r *ConfigRepository) ListByWorkspacePaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Config, int64, error) {
 	var (
 		configs []models.Config

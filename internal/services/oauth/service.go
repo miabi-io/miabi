@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package oauth implements the OAuth 2.0 / OpenID Connect authorization-code login flow against
-// admin-configured providers. It resolves provider endpoints (Google well-known or generic OIDC discovery),
-// builds authorize URLs, exchanges codes, and provisions or links users.
+// Package oauth implements the OAuth 2.0 / OIDC authorization-code login flow against admin-configured providers.
 package oauth
 
 import (
@@ -85,8 +83,7 @@ type UserInfo struct {
 	Sub   string `json:"sub"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
-	// Username is the handle the provider knows the user by. Empty when the
-	// provider sends none, in which case Miabi derives one from the email.
+	// Empty when the provider sends none; Miabi then derives one from the email.
 	Username string `json:"preferred_username"`
 	// EmailVerified is the provider's email_verified claim; false when it sends none.
 	EmailVerified bool `json:"email_verified"`
@@ -99,9 +96,7 @@ type Service struct {
 	users      *repositories.UserRepository
 	identities *repositories.UserIdentityRepository
 	workspaces *repositories.WorkspaceRepository
-	// membershipGate optionally reports whether a user may join one more workspace
-	// (the per-user membership limit). Nil-safe; when it returns an error the
-	// best-effort auto-join is skipped rather than failing the sign-in.
+	// On error the best-effort auto-join is skipped rather than failing the sign-in.
 	membershipGate func(userID uint) error
 	// groupSync applies a provider's group claim after sign-in (Enterprise); nil skips it.
 	groupSync func(p *models.OAuthProvider, user *models.User, groups []string)
@@ -120,25 +115,18 @@ func NewService(providers *repositories.OAuthProviderRepository, users *reposito
 	}
 }
 
-// TouchLastLogin stamps and persists the user's last-login time after a
-// successful OAuth sign-in.
 func (s *Service) TouchLastLogin(user *models.User) {
 	now := time.Now()
 	user.LastLoginAt = &now
 	_ = s.users.Update(user)
 }
 
-// SetWorkspaces wires the workspace repository so a newly registered SSO user can
-// be auto-joined to a provider's configured default workspace. Optional: without
-// it, auto-join is skipped (the rest of the flow is unaffected).
+// SetWorkspaces enables auto-join to a provider's default workspace; without it auto-join is skipped.
 func (s *Service) SetWorkspaces(workspaces *repositories.WorkspaceRepository) {
 	s.workspaces = workspaces
 }
 
-// SetMembershipGate wires the per-user membership-limit check so SSO auto-join
-// respects it (over-limit users are simply not auto-joined). Optional/nil-safe.
-// SetGroupSync wires the group-claim sync run after every successful sign-in through a provider that
-// names a groups claim.
+// SetGroupSync runs only for providers that name a groups claim.
 func (s *Service) SetGroupSync(f func(p *models.OAuthProvider, user *models.User, groups []string)) {
 	s.groupSync = f
 }
@@ -153,9 +141,7 @@ func (s *Service) SetMembershipGate(gate func(userID uint) error) {
 	s.membershipGate = gate
 }
 
-// ResolveEndpoints fills in AuthURL, TokenURL, UserInfoURL and Issuer for a provider based on its type,
-// called by the admin handler before persisting. For OIDC it performs discovery against the issuer's
-// well-known configuration when explicit endpoints are not supplied.
+// ResolveEndpoints runs OIDC discovery when explicit endpoints are not supplied.
 func (s *Service) ResolveEndpoints(ctx context.Context, p *models.OAuthProvider) error {
 	switch p.Type {
 	case models.OAuthProviderGoogle:
@@ -229,16 +215,12 @@ func (s *Service) Get(name string) (*models.OAuthProvider, error) {
 	return p, nil
 }
 
-// AuthCodeURL stores a fresh state token (in Redis) and returns the provider's
-// authorization URL for the redirect, with the state the caller binds to the browser.
+// AuthCodeURL stores the state token in Redis; the caller binds it to the browser.
 func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redirectURI string) (string, string, error) {
 	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "", false)
 }
 
-// AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to the state, read back in the
-// callback via ConsumeIntent. forceLogin sets prompt=login so the IdP forces a fresh authentication — the
-// re-auth property the CLI-token flows depend on, mirroring OpenShift's request-token; an intent that only
-// carries where to land after sign-in leaves an existing IdP session alone.
+// forceLogin sets prompt=login, the re-auth property CLI-token flows depend on.
 func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string, forceLogin bool) (string, string, error) {
 	state, err := randomState()
 	if err != nil {
@@ -268,8 +250,7 @@ func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProv
 	return p.AuthURL + sep + q.Encode(), state, nil
 }
 
-// ConsumeIntent reads and deletes the intent bound to a state (empty when none).
-// Safe to call after ConsumeState — the intent is stored under a separate key.
+// ConsumeIntent is safe after ConsumeState: the intent lives under a separate key.
 func (s *Service) ConsumeIntent(ctx context.Context, state string) string {
 	if strings.TrimSpace(state) == "" {
 		return ""
@@ -295,12 +276,7 @@ func (s *Service) ConsumeState(ctx context.Context, state string) (string, error
 	return slug, nil
 }
 
-// Authenticate exchanges an authorization code for user info and returns the matching local user,
-// provisioning a new one when AutoRegister permits.
-//
-// A returning user is found by the provider's subject. An existing account is linked by email only
-// when the provider asserts that email is verified, since many IdPs let users set any address, or
-// when an admin set AllowUnverifiedEmail for a directory that never sends the claim.
+// Authenticate links by email only when the IdP asserts it verified, or AllowUnverifiedEmail is set.
 func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, code, redirectURI string) (*models.User, error) {
 	info, err := s.exchange(ctx, p, code, redirectURI)
 	if err != nil {
@@ -367,9 +343,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		Active:          true,
 		EmailVerifiedAt: verifiedAt,
 		AuthSource:      models.AuthSourceOAuth,
-		// The realm the provider registers into; nil leaves the account in the default
-		// organization. Only set here, on an account being created: signing in through a provider
-		// never moves somebody who already exists between tenants.
+		// Set only on creation: signing in never moves an existing account between tenants.
 		OrganizationID: p.OrganizationID,
 	}
 	if err := s.users.Create(newUser); err != nil {
@@ -383,7 +357,6 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 	return newUser, nil
 }
 
-// linkedUser returns the account a provider subject is bound to, or nil when it is bound to none.
 // A binding left behind by a deleted account is dropped.
 func (s *Service) linkedUser(p *models.OAuthProvider, subject string) (*models.User, error) {
 	identity, err := s.identities.FindBySubject(p.ID, subject)
@@ -401,8 +374,7 @@ func (s *Service) linkedUser(p *models.OAuthProvider, subject string) (*models.U
 	return user, err
 }
 
-// link binds a provider subject to an account. An account holds one identity per provider, so a
-// second IdP account claiming the same email cannot take it over.
+// One identity per provider per account, so a second IdP account with the same email cannot take it over.
 func (s *Service) link(p *models.OAuthProvider, subject string, userID uint) error {
 	if _, err := s.identities.FindByUser(p.ID, userID); err == nil {
 		return ErrIdentityConflict
@@ -420,8 +392,6 @@ type TwoFactorChallenge struct {
 	Intent string `json:"intent,omitempty"`
 }
 
-// BeginTwoFactor parks an SSO sign-in until the user's second factor is verified and returns the
-// challenge id.
 func (s *Service) BeginTwoFactor(ctx context.Context, ch TwoFactorChallenge) (string, error) {
 	id, err := randomState()
 	if err != nil {
@@ -466,8 +436,7 @@ func (s *Service) FailTwoFactor(ctx context.Context, id string) {
 	}
 }
 
-// EndTwoFactor consumes a challenge, reporting false when it was already used or expired so two
-// concurrent submissions cannot both complete the sign-in.
+// EndTwoFactor returns false if already consumed, so two concurrent submissions cannot both sign in.
 func (s *Service) EndTwoFactor(ctx context.Context, id string) bool {
 	n, err := s.redis.Del(ctx, twoFactorPrefix+id).Result()
 	s.redis.Del(ctx, twoFactorAttemptsPrefix+id)
@@ -486,15 +455,12 @@ func (s *Service) User(id uint) (*models.User, error) {
 	return user, nil
 }
 
-// availableUsername turns the handle a provider asserted into one that can
-// actually be stored, or "" to let User.BeforeCreate derive one from the email.
+// Returns "" to let User.BeforeCreate derive one from the email.
 func (s *Service) availableUsername(claimed string) string {
 	return slug.Available(claimed, s.users.ExistsByUsername)
 }
 
-// autoJoinWorkspace adds a freshly registered SSO user to the provider's
-// configured default workspace with the configured role. Best-effort: a missing
-// workspace repo, no configured workspace, or an add failure never blocks login.
+// Best-effort: auto-join failures never block login.
 func (s *Service) autoJoinWorkspace(p *models.OAuthProvider, userID uint) {
 	if s.workspaces == nil || p.DefaultWorkspaceID == nil {
 		return
@@ -503,8 +469,7 @@ func (s *Service) autoJoinWorkspace(p *models.OAuthProvider, userID uint) {
 	if !role.Valid() {
 		role = models.WorkspaceRoleViewer
 	}
-	// Respect the per-user membership limit (a non-owner auto-join). Over-limit
-	// users just aren't auto-joined — sign-in still succeeds.
+	// Over-limit users just aren't auto-joined; sign-in still succeeds.
 	if s.membershipGate != nil && role != models.WorkspaceRoleOwner {
 		if err := s.membershipGate(userID); err != nil {
 			logger.Info("oauth: auto-join skipped (membership limit)", "workspace", *p.DefaultWorkspaceID, "user", userID)
@@ -518,12 +483,7 @@ func (s *Service) autoJoinWorkspace(p *models.OAuthProvider, userID uint) {
 	}
 }
 
-// ProvisionSSOUser finds a user by email or creates one from a SAML assertion. Mirrors the OAuth
-// auto-register policy: the first user is the platform admin, the asserted email is treated as verified, and
-// the account uses an unusable password. Returns ErrAccountDisabled for a disabled user.
-//
-// An account that already exists keeps its auth source: an email match is account linking, and a
-// local account that also signs in through SSO is still the user's own to edit.
+// ProvisionSSOUser mirrors OAuth auto-register; an existing account keeps its auth source (linking, not provisioning).
 func (s *Service) ProvisionSSOUser(ctx context.Context, email, name, username string) (*models.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -608,9 +568,7 @@ func (s *Service) exchange(ctx context.Context, p *models.OAuthProvider, code, r
 	if infoResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("userinfo endpoint returned %d", infoResp.StatusCode)
 	}
-	// Decode into a generic claim map so a provider can map non-standard OIDC
-	// claim names (EmailClaim/NameClaim) onto the user fields; standard claims
-	// remain the fallback.
+	// A generic claim map lets providers map non-standard claim names; standard claims remain the fallback.
 	var claims map[string]any
 	if err := json.NewDecoder(infoResp.Body).Decode(&claims); err != nil {
 		return nil, fmt.Errorf("userinfo decode: %w", err)
@@ -678,8 +636,7 @@ func randomState() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// unusablePassword stores a random bcrypt hash so SSO-only accounts can never be
-// signed in with a password.
+// A random bcrypt hash so SSO-only accounts can never sign in with a password.
 func unusablePassword() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
@@ -694,8 +651,7 @@ func scopesOrDefault(scopes string) string {
 	return scopes
 }
 
-// domainAllowed reports whether an email's domain is permitted. An empty
-// allow-list permits any domain.
+// An empty allow-list permits any domain.
 func domainAllowed(email, allowed string) bool {
 	allowed = strings.TrimSpace(allowed)
 	if allowed == "" {

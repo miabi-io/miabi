@@ -5,8 +5,7 @@ import { apiErrorMessage } from '@/api/client'
 import type { ProcessList } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 
-// Live process table (docker top) for an app's container. Sourced from the
-// host's ps, so it works even for images that ship no ps binary. Polls every 2s.
+// Sourced from the host's ps, so it works for images that ship no ps binary.
 const props = defineProps<{ ws: number; appId: number; appName: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 

@@ -30,9 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// AdminEventHandler surfaces the platform-wide audit-log feed (super-admin
-// only), backed by the AuditLog table with a live SSE stream. The audit log is
-// an Enterprise feature, so every endpoint is gated on the audit_log entitlement.
 type AdminEventHandler struct {
 	audit *repositories.AuditLogRepository
 	users *repositories.UserRepository
@@ -44,8 +41,6 @@ func NewAdminEventHandler(auditRepo *repositories.AuditLogRepository, users *rep
 	return &AdminEventHandler{audit: auditRepo, users: users, bus: bus, ee: ee}
 }
 
-// List returns recent platform events, paginated and filterable (page/size,
-// optional search/action filters, order=asc|desc).
 func (h *AdminEventHandler) List(c *okapi.Context) error {
 	if err := h.ee.Require(enterprise.FlagAuditLog); err != nil {
 		return entitlementAbort(c, err)

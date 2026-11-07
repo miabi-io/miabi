@@ -42,10 +42,7 @@ func hasAPIKeyScope(c *okapi.Context, want string) bool {
 	return false
 }
 
-// RequireSystemAdmin allows only platform super-admins. With a gate, a session caller also needs a
-// live console unlock (API keys are a separate credential and skip it), and an Enterprise
-// allowlist applies to every caller. A missing unlock is a 403 with ADMIN_ELEVATION_REQUIRED,
-// never a 401, which the web client would read as "signed out".
+// A missing unlock is a 403 ADMIN_ELEVATION_REQUIRED, never a 401, which the web reads as signed out.
 func RequireSystemAdmin(users *repositories.UserRepository, gate *elevation.Service) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		uid := UserID(c)
@@ -93,9 +90,7 @@ func checkElevation(c *okapi.Context, gate *elevation.Service, user *models.User
 	return nil
 }
 
-// RequireFreshElevation guards a sensitive admin action (licence, security policies, deleting an
-// organization): the unlock must be younger than the sensitive window, even inside its TTL. Runs
-// after RequireSystemAdmin.
+// The unlock must be younger than the sensitive window, even inside its TTL; runs after RequireSystemAdmin.
 func RequireFreshElevation(gate *elevation.Service) okapi.Middleware {
 	return func(c *okapi.Context) error {
 		if gate == nil || AuthMethod(c) == "api_key" || !gate.Settings().Required {
@@ -110,9 +105,7 @@ func RequireFreshElevation(gate *elevation.Service) okapi.Middleware {
 	}
 }
 
-// FreshUnlock returns nil when the caller holds an unlock younger than the sensitive window, or
-// the unlock is not in force; otherwise the coded error to answer with. For sensitive actions that
-// live outside the admin routes, such as minting an admin-scope API key.
+// For sensitive actions outside the admin routes, such as minting an admin-scope API key.
 func FreshUnlock(c *okapi.Context, gate *elevation.Service) error {
 	if gate == nil || AuthMethod(c) == "api_key" || !gate.Settings().Required {
 		return nil

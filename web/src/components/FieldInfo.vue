@@ -92,8 +92,7 @@ onBeforeUnmount(close)
 }
 .info-pop {
   position: absolute;
-  /* Anchor to the icon's left edge and extend rightward — the icon sits near
-     the left of the form, so centering would push the card off-screen. */
+  /* The icon sits near the form's left, so centering would push the card off-screen. */
   left: 0;
   z-index: 20;
   width: 300px;

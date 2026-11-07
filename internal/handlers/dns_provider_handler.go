@@ -31,8 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/dnsprovider"
 )
 
-// DNSProviderHandler exposes workspace DNS provider connections (connect/test/
-// list/delete). Credentials are write-only — never returned after create.
+// Credentials are write-only, never returned after create.
 type DNSProviderHandler struct {
 	svc   *dnsprovider.Service
 	audit *audit.Logger

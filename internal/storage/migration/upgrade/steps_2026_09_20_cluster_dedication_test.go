@@ -44,9 +44,6 @@ type dedWorkspaceRow struct {
 
 func (dedWorkspaceRow) TableName() string { return "workspaces" }
 
-// A workspace keeps the default location it last chose. Dedicating a cluster can make that a
-// location it may no longer place in — from either side — and this step clears exactly those,
-// leaving every still-valid default alone.
 func TestClusterDedicationClearsUnusableDefaults(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

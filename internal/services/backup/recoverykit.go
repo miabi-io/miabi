@@ -28,13 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// RecoveryKit renders everything needed to read a recovery point back without
-// Miabi: where the artifacts are, the sealed envelope, the exact envelope format,
-// and the commands that get from a passphrase to a restorable dump.
-//
-// The kit deliberately does NOT contain the data key — only the envelope it is
-// sealed in. A kit is therefore useless without the passphrase, which is the
-// property that makes it safe to keep beside the backups it describes.
+// RecoveryKit omits the data key, so the kit is useless without the passphrase and safe beside the backups.
 func (s *Service) RecoveryKit(set *models.DatabaseBackupSet) (string, []byte, error) {
 	if set == nil {
 		return "", nil, fmt.Errorf("no recovery point")
@@ -129,8 +123,7 @@ func renderRecoveryKit(set *models.DatabaseBackupSet, at time.Time) string {
 	return b.String()
 }
 
-// kitPythonScript is a runnable reimplementation of Open, so the kit does not
-// depend on Miabi being installed to be useful.
+// A runnable reimplementation of Open so the kit works without Miabi installed.
 func kitPythonScript(f dbenvelope.Spec) string {
 	return fmt.Sprintf(`import base64, getpass, sys
 from argon2.low_level import hash_secret_raw, Type

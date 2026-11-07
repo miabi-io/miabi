@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package middleware manages Goma Gateway middlewares owned by workspaces and
-// reconciles them into the proxy provider.
+// Package middleware manages workspace-owned Goma Gateway middlewares and reconciles them into the proxy provider.
 package middleware
 
 import (
@@ -38,14 +37,11 @@ var (
 	ErrTypeRequired = errors.New("middleware type is required")
 	ErrNameTaken    = errors.New("a middleware with this name already exists")
 	ErrNotFound     = errors.New("middleware not found")
-	// ErrInvalidRule re-exports the catalog's validation error so handlers can map
-	// it to 422 MIDDLEWARE_INVALID_RULE without importing the catalog package.
+	// Re-exported so handlers can map it to 422 without importing the catalog package.
 	ErrInvalidRule = mwcatalog.ErrInvalidRule
 )
 
-// WorkspaceSyncer re-renders a workspace's complete proxy config — its routes and middlewares — into the
-// gateway. The route service implements it; middlewares are written as part of that re-render rather than
-// on their own, so a route always sees the up-to-date definition of any middleware it references.
+// WorkspaceSyncer re-renders routes and middlewares together, so a route always sees the current middleware definition.
 type WorkspaceSyncer interface {
 	SyncWorkspaceProxy(ctx context.Context, workspaceID uint) error
 }
@@ -60,9 +56,7 @@ func NewService(repo *repositories.MiddlewareRepository, syncer WorkspaceSyncer)
 }
 
 type Input struct {
-	// Name is the unique slug handle; it must already be canonical slug form (it
-	// becomes the Goma middleware name). DisplayName is the free-text label (falls
-	// back to Name when blank).
+	// Name must already be canonical slug form (it becomes the Goma middleware name); DisplayName falls back to Name.
 	Name        string
 	DisplayName string
 	Type        string
@@ -128,8 +122,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	if err := mwcatalog.Validate(effectiveType, in.Rule); err != nil {
 		return nil, err
 	}
-	// Restore any secret the client left redacted ("***") from the stored rule
-	// before re-encrypting, so editing other fields never wipes a password.
+	// Restore redacted ("***") secrets before re-encrypting, so editing other fields never wipes a password.
 	merged := mwcatalog.MergeKeptSecrets(effectiveType, in.Rule, m.Rule)
 	rule, err := mwcatalog.EncryptSecrets(effectiveType, workspaceID, merged)
 	if err != nil {
@@ -153,9 +146,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.Middleware, error) {
 	return m, nil
 }
 
-// GetByName resolves a middleware by its workspace-unique name, which is how the
-// declarative engine addresses one: a manifest names resources, and the numeric id
-// is not portable across installs.
+// GetByName resolves a middleware by name, since numeric ids are not portable across installs.
 func (s *Service) GetByName(workspaceID uint, name string) (*models.Middleware, error) {
 	list, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -173,9 +164,7 @@ func (s *Service) List(workspaceID uint) ([]models.Middleware, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// SeedDefaults creates the workspace's default policy set in one pass, syncing the proxy once at the end
-// rather than per row. A no-op when the workspace already owns any middleware, so it is safe to call again
-// and never clobbers user edits. Best-effort per row: a seed that fails to create is skipped, not fatal.
+// SeedDefaults creates the default policy set once; a no-op if the workspace owns any middleware, so user edits survive.
 func (s *Service) SeedDefaults(ctx context.Context, workspaceID uint) error {
 	n, err := s.repo.CountByWorkspace(workspaceID)
 	if err != nil {
@@ -217,8 +206,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	return nil
 }
 
-// sync re-renders the whole workspace's proxy config so the middleware change
-// (create/update/delete) is published together with the routes that reference it.
+// Re-render the whole workspace so the middleware change is published together with the routes that reference it.
 func (s *Service) sync(ctx context.Context, workspaceID uint) {
 	if s.syncer != nil {
 		_ = s.syncer.SyncWorkspaceProxy(ctx, workspaceID)

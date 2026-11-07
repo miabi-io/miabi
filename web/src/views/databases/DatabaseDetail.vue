@@ -38,8 +38,7 @@ const apps = ref<Application[]>([])
 const selected = ref<LogicalDatabase | null>(null)
 const backups = ref<Backup[]>([])
 const sets = ref<DatabaseBackupSet[]>([])
-// Recovery points require object storage; without it the action is unavailable
-// rather than silently writing somewhere that dies with the host.
+// Without object storage the action is unavailable rather than writing somewhere that dies with the host.
 const setsS3Ready = ref(false)
 // Taking a recovery point is Enterprise; existing ones stay restorable in every edition.
 const setsEntitled = ref(false)
@@ -50,8 +49,7 @@ const setSchedules = ref<DatabaseBackupSetSchedule[]>([])
 const setCron = ref('0 3 * * *')
 const setMax = ref(7)
 const setRetentionDays = ref(0)
-// Which recovery point has its per-database items open. One at a time: the point
-// of the list is the sets, not their contents.
+// One at a time: the point of the list is the sets, not their contents.
 const openSet = ref<number | null>(null)
 const schedules = ref<BackupSchedule[]>([])
 const cron = ref('0 3 * * *')
@@ -68,8 +66,7 @@ const forwards = ref<ForwardSession[]>([])
 const forwardBusy = ref(false)
 
 const supportsLogical = computed(() => inst.value && inst.value.engine !== 'redis')
-// libSQL hosts a single auto-created database (listable + backup-able) but users
-// cannot create additional databases on it, unlike the SQL/Mongo engines.
+// libSQL hosts a single auto-created database; users cannot create more on it.
 const canCreateLogical = computed(
   () => supportsLogical.value && inst.value?.engine !== 'libsql',
 )
@@ -273,10 +270,7 @@ watch([instId, wid], async () => {
   startMetricsPoll() // live CPU/memory utilisation while running
 }, { immediate: true })
 
-// --- Live CPU/memory utilisation ---
-// The status SSE stream only carries lifecycle transitions, not stats; the
-// one-shot status endpoint returns a container stats snapshot while the instance
-// is running, so poll it on an interval (mirrors the AppDetail resource usage).
+// The status SSE carries only lifecycle transitions, so poll the one-shot status endpoint for stats.
 const metrics = ref<StatsSample | null>(null)
 let metricsPoll: ReturnType<typeof setInterval> | null = null
 
@@ -476,8 +470,7 @@ async function loadBackups() {
     schedules.value = (await backupApi.schedules(wid.value, instId.value, selected.value.id)).data.data ?? []
   } catch (e) { notify.apiError(e) }
 }
-// Recovery points span the whole instance, so they load with the tab rather than
-// with the selected database.
+// Recovery points span the whole instance, so they load with the tab, not the selected database.
 async function loadSets() {
   if (!wid.value) return
   try {
@@ -504,8 +497,7 @@ async function runSet() {
   } catch (e) { notify.apiError(e) }
   finally { runningSet.value = false }
 }
-// Reads the bucket rather than this workspace's history, so it finds recovery
-// points taken by an install that is no longer here.
+// Reads the bucket, not workspace history, so it finds points taken by an install that is gone.
 async function scanBucket() {
   if (!wid.value) return
   scanning.value = true
@@ -575,8 +567,7 @@ async function removeSetSchedule(id: number) {
   } catch (e) { notify.apiError(e) }
 }
 
-// The kit is what someone reads when Miabi is not there to read it for them, so it
-// is a file to keep, not a page to visit.
+// The kit is read when Miabi is not there, so it is a file to keep, not a page to visit.
 async function downloadRecoveryKit(set: DatabaseBackupSet) {
   if (!wid.value) return
   try {
@@ -607,8 +598,6 @@ async function removeSet(set: DatabaseBackupSet) {
   } catch (e) { notify.apiError(e) }
 }
 
-// Annotating at run time is the common case ("before the v1.3.0 rollout"), so the
-// note sits next to the button rather than behind a dialog.
 const backupComment = ref('')
 async function runBackup() {
   if (!wid.value || !selected.value) return
@@ -622,9 +611,7 @@ async function runBackup() {
   finally { running.value = false }
 }
 
-// --- Backup annotations: a note and a retention pin, both editable after the run.
-// A scheduled or pre-upgrade backup has nobody present when it happens, and what a
-// backup was for is often only clear once the change it guarded went wrong.
+// Editable after the run: scheduled backups have nobody present, and their purpose is often clear only later.
 const editingNote = ref<number | null>(null)
 const noteDraft = ref('')
 
@@ -758,8 +745,6 @@ const confirm = ref<{
   message: string
   confirmLabel: string
   variant: 'danger' | 'primary'
-  // requireName gates the action behind typing the instance name (used for the
-  // destructive instance delete, mirroring the application delete).
   requireName?: boolean
   run: () => Promise<void>
 } | null>(null)
@@ -846,9 +831,7 @@ const PHASE_LABELS: Record<string, string> = {
 }
 function phaseLabel(p: string): string { return PHASE_LABELS[p] ?? p }
 
-// The ordered phases for the current upgrade path; the dump & restore (major)
-// path adds a data-restore step. Skipped phases (e.g. no apps to stop) still
-// render as completed once the engine moves past them.
+// Skipped phases still render as completed once the engine moves past them.
 const upgradeSteps = computed<string[]>(() => {
   const base = ['queued', 'backing-up', 'stopping-apps', 'swapping']
   if (inst.value?.upgrade?.path === 'dump-restore') base.push('restoring')
@@ -923,9 +906,7 @@ async function runUpgrade() {
   }
 }
 
-// --- Live status stream (SSE) ------------------------------------------------
-// One persistent stream per open page carries provisioning progress, upgrade
-// phases and start/stop transitions — replacing the previous per-second polls.
+// One persistent stream per page carries provisioning, upgrade phases and start/stop transitions.
 let statusES: EventSource | null = null
 let primed = false // first snapshot syncs state without firing a toast
 let upgradeFailNotified = false
@@ -950,8 +931,6 @@ function startStatusStream() {
   // EventSource auto-reconnects on transient network errors; nothing to do here.
 }
 
-// applyStatus reconciles a streamed snapshot into the page and surfaces
-// success/error feedback on terminal transitions.
 function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
   const prev = inst.value?.status
   if (inst.value) { inst.value.status = s.status; inst.value.upgrade = s.upgrade }
@@ -961,8 +940,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
 
   if (!primed) { primed = true; return } // initial snapshot: sync only
 
-  // A failed upgrade can land as 'running' (rolled back) or 'failed', so check it
-  // before the status-transition cases. Notify once.
+  // A failed upgrade can land as 'running' (rolled back) or 'failed', so check it before status transitions.
   if (s.upgrade?.phase === 'failed') {
     if (!upgradeFailNotified) {
       upgradeFailNotified = true
@@ -988,9 +966,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
   }
 }
 
-// Backstop: a slow reconcile while a transition is in flight, covering the
-// split-worker deployment where worker events don't reach this process's bus.
-// Idle (running/stopped) pages make no requests at all.
+// Covers split-worker deployments, where worker events don't reach this process's bus; idle pages make no requests.
 let backstop: ReturnType<typeof setInterval> | null = null
 function ensureBackstop() {
   const transient = inst.value?.status === 'provisioning' || inst.value?.status === 'upgrading'
@@ -1918,8 +1894,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
   font-size: 12px;
 }
 
-/* The note reads as text until hovered, so an unannotated history stays quiet
-   rather than showing a row of buttons. */
+/* The note reads as text until hovered, so an unannotated history stays quiet. */
 .set-items {
   list-style: none;
   margin: 0 0 8px;

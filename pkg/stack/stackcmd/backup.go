@@ -33,8 +33,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// LabelPreRestore marks the dump a restore takes of the database it replaces. Only these are
-// pruned; a dump the operator asked for is never deleted.
+// Only these are pruned; a dump the operator asked for is never deleted.
 const LabelPreRestore = "pre-restore"
 
 // autoKeep is how many automatic dumps of each label are kept.
@@ -42,12 +41,10 @@ const autoKeep = 5
 
 const backupTimeLayout = "20060102T150405Z"
 
-// backupName is miabi-<version>-<UTC timestamp>[-<label>].dump. The version is the control plane's
-// tag at the time of the dump, which is what restore compares against the running one.
+// The version is the control plane's tag at dump time, which restore compares against the running one.
 var backupName = regexp.MustCompile(`^miabi-(.+)-(\d{8}T\d{6}Z)(?:-([a-z-]+))?\` + stack.DBBackupExt + `$`)
 
-// BackupDir is where dumps go by default: beside the manifest, which every install already has
-// writable and which the containerized installer already bind-mounts.
+// Beside the manifest, which is already writable and bind-mounted by the containerized installer.
 func BackupDir(manifestPath string) string {
 	return filepath.Join(filepath.Dir(manifestPath), "backups")
 }
@@ -68,8 +65,7 @@ type BackupOptions struct {
 	Label string
 }
 
-// Backup dumps the platform database. It covers the database only — not volumes, certificates or
-// the manifest, whose encryption key the dump is useless without.
+// Database only: not volumes, certificates or the manifest, whose encryption key the dump needs.
 func Backup(ctx context.Context, svc *stack.Service, path string, o BackupOptions, ui UI) (string, error) {
 	m, err := stack.Load(path)
 	if err != nil {
@@ -106,8 +102,7 @@ func dump(ctx context.Context, svc *stack.Service, m *stack.Manifest, path, dir,
 	return file, nil
 }
 
-// ListBackups returns the dumps in dir, newest first. Files that do not follow the naming scheme are
-// ignored rather than guessed at.
+// Files not following the naming scheme are ignored rather than guessed at.
 func ListBackups(dir string) ([]DBBackup, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -173,8 +168,7 @@ type RestoreOptions struct {
 	Force bool
 }
 
-// Restore replaces the platform database with a dump. The control plane is stopped for the swap and
-// recreated afterwards; the current database is dumped first, so a restore can itself be undone.
+// The current database is dumped first, so a restore can itself be undone.
 func Restore(ctx context.Context, svc *stack.Service, path string, o RestoreOptions, ui UI) error {
 	m, err := stack.Load(path)
 	if err != nil {
@@ -194,8 +188,7 @@ func Restore(ctx context.Context, svc *stack.Service, path string, o RestoreOpti
 	case !named:
 		ui.Warn("%s does not follow the miabi-<version>-<time>.dump naming, so its Miabi version is unknown.", filepath.Base(file))
 	case newerThan(b.Version, running) && !o.Force:
-		// The control plane only migrates forward: a schema from a newer release is one it has no
-		// code for.
+		// The control plane only migrates forward, so it has no code for a newer schema.
 		return fmt.Errorf("%s was taken by Miabi %s, but this host runs %s — an older control plane cannot "+
 			"read a newer schema.\n\n  Upgrade first:  miabi upgrade --version %s\n  Or override:    --force",
 			filepath.Base(file), b.Version, running, b.Version)
@@ -260,8 +253,7 @@ func resolveBackup(manifestPath, file string) (string, error) {
 	return "", fmt.Errorf("no dump at %s — `miabi stack backups` lists them", file)
 }
 
-// versionOf names the control plane's version for a file name: its tag, or "digest" for a pinned
-// digest, which carries no version to compare.
+// A pinned digest carries no version to compare, hence "digest".
 func versionOf(image string) string {
 	t := tagOf(image)
 	if t == "" {
@@ -270,8 +262,7 @@ func versionOf(image string) string {
 	return t
 }
 
-// newerThan reports whether version a is strictly newer than b. Anything that is not x.y.z — a
-// floating tag, a digest — compares as unknown, which is never newer.
+// Non-x.y.z versions (floating tags, digests) compare as unknown, which is never newer.
 func newerThan(a, b string) bool {
 	pa, okA := parseVersion(a)
 	pb, okB := parseVersion(b)

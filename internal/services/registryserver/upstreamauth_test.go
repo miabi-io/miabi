@@ -32,8 +32,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// The credential is what the gateway sends and what the registry checks, from one derivation — a
-// mismatch between the two locks the gateway out of the registry entirely.
+// A mismatch between the gateway's and registry's credential locks the gateway out entirely.
 func TestUpstreamCredentialRoundTrips(t *testing.T) {
 	s := &Service{}
 	header := s.upstreamAuthHeader()
@@ -71,8 +70,7 @@ func TestUpstreamCredentialRoundTrips(t *testing.T) {
 	}
 }
 
-// bcrypt truncates silently at 72 bytes, which would make a longer credential interchangeable with
-// its own prefix. Refusing is the only safe answer.
+// bcrypt truncates silently at 72 bytes, making a longer credential interchangeable with its own prefix.
 func TestHtpasswdRefusesAnOverlongPassword(t *testing.T) {
 	if _, err := htpasswdLine("u", strings.Repeat("x", 73)); err == nil {
 		t.Error("a 73-byte password was hashed; bcrypt would have truncated it")
@@ -99,8 +97,7 @@ func (a *authDocker) CopyToVolume(_ context.Context, volume, _, name string, con
 	return nil
 }
 
-// The file has to land in a volume of its own and be readable at the path the container's env
-// names, or the registry starts with auth on and no way to satisfy it.
+// Without the file at the path the env names, the registry starts with auth on and no way to satisfy it.
 func TestEnsureUpstreamAuthWritesTheHtpasswd(t *testing.T) {
 	dc := &authDocker{}
 	s := &Service{}
@@ -137,8 +134,7 @@ func TestEnsureUpstreamAuthWritesTheHtpasswd(t *testing.T) {
 	}
 }
 
-// Every call site of the client builds its own request, so the credential rides a transport rather
-// than each call — one that forgot it would fail only at run time, against a live registry.
+// The credential rides a transport so a call site that forgot it can't fail only at run time.
 func TestClientSendsTheCredentialOnEveryRequest(t *testing.T) {
 	seen := make(chan string, 4)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

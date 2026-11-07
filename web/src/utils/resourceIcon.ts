@@ -1,6 +1,3 @@
-// Logo helpers for apps and databases. Curated resources carry a brand logo URL
-// (simpleicons CDN); everything else falls back to an MDI glyph or a generated
-// initials avatar rendered by <ResourceIcon>.
 import type { DBEngine } from '@/api/types'
 
 const ENGINE_SLUG: Record<string, string> = {

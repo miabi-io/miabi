@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// nsDistributor is a Distributor whose registry lives at host and whose namespaces are the ws_<id>
-// form. It mirrors registryserver's rule; what matters here is that the deploy path consults it at
-// all and refuses the deploy when it says no.
+// Mirrors registryserver's ws_<id> rule; what matters is that the deploy path consults it and refuses on no.
 type nsDistributor struct{ host string }
 
 func (d nsDistributor) DistributionEnabled() bool             { return true }
@@ -62,9 +60,7 @@ func TestAuthorizedImageRefRefusesForeignNamespace(t *testing.T) {
 	h := &DeployHandler{distributor: nsDistributor{host: host}}
 	app := &models.Application{WorkspaceID: 7}
 
-	// The exploit: an app in workspace 7 naming workspace 8's image. The pull that would follow
-	// authenticates with the platform credential, which every namespace accepts — so it has to be
-	// refused here or not at all.
+	// The pull would use the platform credential every namespace accepts, so it must be refused here.
 	for _, ref := range []string{
 		host + "/ws_8/api:latest",
 		host + "/ws_8/api@sha256:d0dd0f1b3c9a5e6a0d8e9f2a1b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e",
@@ -81,8 +77,7 @@ func TestAuthorizedImageRefAllowsOwnAndExternal(t *testing.T) {
 	h := &DeployHandler{distributor: nsDistributor{host: host}}
 	app := &models.Application{WorkspaceID: 7}
 
-	// Own namespace passes; external images pass untouched — they are governed by
-	// the app's own registry credential, not the platform one.
+	// External images are governed by the app's own registry credential, not the platform one.
 	for _, ref := range []string{
 		host + "/ws_7/api:latest",
 		"nginx:1.27",

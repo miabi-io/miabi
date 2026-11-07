@@ -27,17 +27,13 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// AlertRepository persists workspace-level, deduplicated alerts. The active-state
-// partial unique index (migration) guarantees at most one open alert per
-// (workspace, dedup_key); this repo folds repeats into it and drives the FSM.
+// The active-state partial unique index guarantees at most one open alert per (workspace, dedup_key).
 type AlertRepository struct {
 	db *gorm.DB
 }
 
 func NewAlertRepository(db *gorm.DB) *AlertRepository { return &AlertRepository{db: db} }
 
-// ActiveByDedup returns the open (firing/acknowledged) alert for a dedup key, or
-// gorm.ErrRecordNotFound.
 func (r *AlertRepository) ActiveByDedup(workspaceID uint, dedupKey string) (*models.Alert, error) {
 	var a models.Alert
 	err := r.db.Where("workspace_id = ? AND dedup_key = ? AND state IN ?",
@@ -49,9 +45,7 @@ func (r *AlertRepository) ActiveByDedup(workspaceID uint, dedupKey string) (*mod
 	return &a, nil
 }
 
-// Fire creates a new alert or folds a repeat signal into the existing active one (bumping
-// Count/LastSeen), returning whether it was newly created so callers notify only on creation.
-// Runs in a transaction under a row lock so concurrent signals cannot create duplicates.
+// Fire runs under a row lock so concurrent signals can't create duplicates; callers notify only on creation.
 func (r *AlertRepository) Fire(in *models.Alert) (*models.Alert, bool, error) {
 	var out *models.Alert
 	created := false
@@ -91,8 +85,6 @@ func (r *AlertRepository) Fire(in *models.Alert) (*models.Alert, bool, error) {
 	return out, created, err
 }
 
-// Resolve transitions the active alert for a dedup key to resolved, returning it
-// (or gorm.ErrRecordNotFound when nothing was open — a no-op recovery signal).
 func (r *AlertRepository) Resolve(workspaceID uint, dedupKey string, at time.Time) (*models.Alert, error) {
 	var out *models.Alert
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -116,8 +108,6 @@ func (r *AlertRepository) Resolve(workspaceID uint, dedupKey string, at time.Tim
 	return out, err
 }
 
-// SetState transitions an alert by id within a workspace (ack/resolve from the
-// UI). Returns the updated alert.
 func (r *AlertRepository) SetState(workspaceID, id uint, state models.AlertState) (*models.Alert, error) {
 	var a models.Alert
 	if err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&a).Error; err != nil {
@@ -134,8 +124,6 @@ func (r *AlertRepository) SetState(workspaceID, id uint, state models.AlertState
 	return &a, nil
 }
 
-// ListByWorkspace returns alerts for a workspace, newest first, optionally
-// filtered to active only.
 func (r *AlertRepository) ListByWorkspace(workspaceID uint, activeOnly bool, limit int) ([]models.Alert, error) {
 	q := r.db.Where("workspace_id = ?", workspaceID)
 	if activeOnly {
@@ -149,9 +137,6 @@ func (r *AlertRepository) ListByWorkspace(workspaceID uint, activeOnly bool, lim
 	return alerts, err
 }
 
-// ListActiveByCategory returns every open (firing/acknowledged) alert of a
-// category across all workspaces — the scanner uses it to resolve conditions that
-// no longer hold (e.g. a cert that was renewed).
 func (r *AlertRepository) ListActiveByCategory(category models.AlertCategory) ([]models.Alert, error) {
 	var alerts []models.Alert
 	err := r.db.Where("category = ? AND state IN ?", category,

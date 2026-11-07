@@ -8,8 +8,7 @@ import { pipelineApi } from '@/api/pipelines'
 import AppModal from '@/components/AppModal.vue'
 import type { PipelineDefinition, PipelineRun, VersionBump, VersionPolicy } from '@/api/types'
 
-// Starts a run with a one-off version: a larger bump than the policy's, or an exact version. Pushes
-// and schedules never take this path; they follow the policy.
+// Pushes and schedules never take this path; they follow the policy.
 const props = defineProps<{ pipeline: PipelineDefinition | null; policy: VersionPolicy | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'started', run: PipelineRun): void }>()
 

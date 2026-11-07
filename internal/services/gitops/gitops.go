@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gitops is the declarative, pull-based half of Miabi's GitOps and CI/CD model. A GitSource binds
-// a Git repo of miabi.io/v1 manifests to a workspace; the reconciler clones at a ref, renders and diffs
-// against live state, and converges by reusing the apply engine. It adds no container plumbing.
+// Package gitops reconciles Git repos of miabi.io/v1 manifests into a workspace by reusing the apply engine.
 package gitops
 
 import (
@@ -52,8 +50,6 @@ var (
 	ErrRepoNotFound = errors.New("git repository not found")
 )
 
-// Applier is the subset of the apply engine the reconciler drives, kept as an
-// interface so the package stays testable.
 type Applier interface {
 	Apply(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options) (*apply.Result, error)
 	ApplyResource(ctx context.Context, workspaceID uint, manifests []byte, opts apply.Options, kind, name string) (*apply.Result, error)
@@ -75,21 +71,15 @@ type Service struct {
 	secrets    gitrepo.Secrets
 }
 
-// NewService wires the GitOps service.
-// SetRestriction wires the workspace-restriction check applied to every sync.
 func (s *Service) SetRestriction(f func(workspaceID uint) error) { s.restricted = f }
 
 func NewService(repo *repositories.GitSourceRepository, gitRepos *repositories.GitRepoRepository, applier Applier) *Service {
 	return &Service{repo: repo, gitRepos: gitRepos, applier: applier}
 }
 
-// SetSecrets wires the vault, so a Git credential that references a workspace
-// Secret (rather than storing its own copy of the token) can be resolved when a
-// source is fetched. nil = literal credentials only.
+// nil allows literal credentials only.
 func (s *Service) SetSecrets(v gitrepo.Secrets) { s.secrets = v }
 
-// Input is the create/update payload for a GitSource. Name is the desired unique
-// slug handle; DisplayName is the free-text label (falls back to Name when blank).
 type Input struct {
 	Name            string
 	DisplayName     string
@@ -143,16 +133,13 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitSource, error) 
 	return src, nil
 }
 
-// Update mutates an existing GitSource's configuration. The name is fixed at creation: it is the
-// handle manifests and nested projects address the source by, so in.Name is ignored.
+// Update ignores in.Name: manifests and nested projects address the source by it.
 func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitSource, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
 	in.normalize()
-	// A selected git repository supplies the URL + credentials; otherwise keep an
-	// explicitly provided URL.
 	if in.GitRepositoryID != nil {
 		gr, err := s.gitRepos.FindInWorkspace(workspaceID, *in.GitRepositoryID)
 		if err != nil {
@@ -186,9 +173,7 @@ func (s *Service) List(workspaceID uint) ([]models.GitSource, error) {
 	return s.repo.ListByWorkspace(workspaceID)
 }
 
-// Delete removes a GitOps project. With cascade, the resources the project created — those carrying its
-// gitops-source label — are torn down first in dependency-safe order. Without it they keep running,
-// orphaned from GitOps management. Returns the teardown result so callers can show what was removed.
+// Delete with cascade tears down the source's labelled resources first; without it they keep running unmanaged.
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint, cascade bool) (*apply.Result, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
@@ -207,8 +192,6 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, cascade bool
 	return res, nil
 }
 
-// Declare creates (id 0) or updates the source a manifest declares, then starts a sync: always for
-// a new source, and on an update when it reconciles automatically.
 func (s *Service) Declare(workspaceID, id uint, in apply.GitSourceInput) (*models.GitSource, error) {
 	inp := Input{
 		Name: in.Name, RepoURL: in.Repo, Ref: in.Ref, Path: in.Path, SyncPolicy: models.GitSyncPolicy(in.SyncPolicy),
@@ -242,9 +225,7 @@ func (s *Service) Declare(workspaceID, id uint, in apply.GitSourceInput) (*model
 	return src, nil
 }
 
-// SyncInBackground reconciles a source without blocking the caller, so a new project deploys
-// straight away instead of on the next sweep. Start it only once the source row is final: the
-// reconcile saves the whole row.
+// Start only once the source row is final: the reconcile saves the whole row.
 func (s *Service) SyncInBackground(id uint) {
 	go func() {
 		if err := s.SyncByID(context.Background(), id); err != nil {
@@ -276,8 +257,6 @@ func (s *Service) RepositoryNames(workspaceID uint) (map[uint]string, error) {
 	return out, nil
 }
 
-// sourceLabel is the value stored on every resource a source creates
-// (miabi.io/gitops-source), used to scope listing and teardown to one project.
 func sourceLabel(src *models.GitSource) string {
 	return strconv.FormatUint(uint64(src.ID), 10)
 }
@@ -297,8 +276,6 @@ func (s *Service) get(workspaceID, id uint) (*models.GitSource, error) {
 	return src, nil
 }
 
-// Diff clones the source and returns the desired-vs-live plan without applying
-// — the data behind the GitOps screen's diff viewer.
 func (s *Service) Diff(ctx context.Context, workspaceID, id uint) (*declarative.Plan, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
@@ -312,8 +289,6 @@ func (s *Service) Diff(ctx context.Context, workspaceID, id uint) (*declarative.
 	return plan, err
 }
 
-// Topology clones the source and returns the resource graph (nodes + dependency
-// edges) behind the project-detail topology view.
 func (s *Service) Topology(ctx context.Context, workspaceID, id uint) (*apply.Topology, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
@@ -321,16 +296,13 @@ func (s *Service) Topology(ctx context.Context, workspaceID, id uint) (*apply.To
 	}
 	manifests, _, err := s.fetch(ctx, src)
 	if err != nil {
-		// Clone/parse of the current ref failed (e.g. a broken commit pushed after
-		// a good sync). Degrade to the live state so the view still shows what is
-		// deployed plus the failure, instead of returning an error to the UI.
+		// Degrade to live state so the view still shows what's deployed plus the failure.
 		return s.applier.LiveTopology(ctx, workspaceID, fmt.Sprintf("git sync failed: %v", err))
 	}
 	return s.applier.Topology(ctx, workspaceID, manifests, apply.Options{Prune: src.Prune, OwnerSource: sourceLabel(src)})
 }
 
-// Status returns the live runtime status of managed resources, keyed by topology
-// node key. Cheap (no clone) so the detail page can poll it.
+// Cheap (no clone) so the detail page can poll it.
 func (s *Service) Status(workspaceID, id uint) (map[string]string, error) {
 	if _, err := s.get(workspaceID, id); err != nil {
 		return nil, err
@@ -347,9 +319,7 @@ func (s *Service) Sync(ctx context.Context, workspaceID, id uint) (*models.GitSo
 	return src, s.Reconcile(ctx, src)
 }
 
-// SyncResource reconciles a single resource (kind/name) of a source — the GitOps
-// "sync this resource" action — without touching the rest of the project. It does
-// not update the source's overall sync status (a partial sync isn't a project sync).
+// SyncResource does not update the source's sync status: a partial sync isn't a project sync.
 func (s *Service) SyncResource(ctx context.Context, workspaceID, id uint, kind, name string) (*apply.Result, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
@@ -362,9 +332,7 @@ func (s *Service) SyncResource(ctx context.Context, workspaceID, id uint, kind, 
 	return s.applier.ApplyResource(ctx, workspaceID, manifests, sourceOptions(src, false), kind, name)
 }
 
-// DeleteResource deletes a single live resource (kind/name) managed by a source.
-// Under auto-sync it will be recreated on the next reconcile — the handler warns
-// the user. Scoped to the source so a caller can't delete outside its project.
+// DeleteResource is recreated by the next auto-sync; scoped to the source so callers can't delete outside it.
 func (s *Service) DeleteResource(ctx context.Context, workspaceID, id uint, kind, name string) (*apply.Result, error) {
 	if _, err := s.get(workspaceID, id); err != nil {
 		return nil, err
@@ -381,8 +349,6 @@ func (s *Service) SyncByID(ctx context.Context, id uint) error {
 	return s.Reconcile(ctx, src)
 }
 
-// ReconcileAuto reconciles every auto-sync source. It is the cron sweep entry
-// point; errors on individual sources are logged, not fatal.
 func (s *Service) ReconcileAuto(ctx context.Context) error {
 	sources, err := s.repo.ListAuto()
 	if err != nil {
@@ -396,8 +362,6 @@ func (s *Service) ReconcileAuto(ctx context.Context) error {
 	return nil
 }
 
-// Reconcile clones the source at its ref, applies the manifests, and records
-// the resulting status on the source.
 func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 	if s.restricted != nil {
 		if err := s.restricted(src.WorkspaceID); err != nil {
@@ -412,8 +376,7 @@ func (s *Service) Reconcile(ctx context.Context, src *models.GitSource) error {
 	if err != nil {
 		return s.markError(src, fmt.Errorf("fetch: %w", err))
 	}
-	// Stamped before the apply, and kept on every path below: the revision was resolved, so "we looked,
-	// and this is what Git had" is true even if applying it then fails.
+	// Stamped before apply: the revision was resolved, so the check holds even if applying fails.
 	markChecked(src, commit.Hash)
 
 	res, err := s.applier.Apply(ctx, src.WorkspaceID, manifests, sourceOptions(src, false))
@@ -469,8 +432,7 @@ type commitInfo struct {
 // defaultRef is what a source saved without a ref is stored as.
 const defaultRef = "main"
 
-// checkoutRef moves a fresh clone to ref. A repository without a "main" branch keeps syncing its
-// default branch on the defaultRef, since that ref may only be the stored default for a blank one.
+// Without a "main" branch the default branch is synced, since "main" may just be the stored default for a blank ref.
 func checkoutRef(repo *git.Repository, ref string) error {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -493,9 +455,7 @@ func checkoutRef(repo *git.Repository, ref string) error {
 	return nil
 }
 
-// fetch clones the repo at the source's ref into a temp dir and parses the manifests under its path,
-// returning the rendered manifest bundle and the resolved commit (hash, author, subject). The bundle is
-// the concatenation of all manifest files; the apply engine re-parses it as one set.
+// The bundle concatenates all manifest files; the apply engine re-parses it as one set.
 func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, commitInfo, error) {
 	auth, url, err := s.auth(src)
 	if err != nil {
@@ -523,8 +483,6 @@ func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, com
 		}
 	}
 
-	// Parse all manifests under the source path into a single set, then
-	// re-serialize so the apply engine consumes one canonical bundle.
 	// os.Root, not os.DirFS: a committed symlink must not read files outside the checkout.
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -535,13 +493,10 @@ func (s *Service) fetch(ctx context.Context, src *models.GitSource) ([]byte, com
 	if err != nil {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			// A missing path is always a configuration error — never a desired
-			// state — so it must never trigger a prune.
+			// A missing path is a configuration error, never a desired state, so it must never trigger a prune.
 			return nil, commitInfo{}, fmt.Errorf("manifest path %q not found at ref %q", srcPath(src.Path), refLabel(src.Ref))
 		case errors.Is(err, declarative.ErrNoResources):
-			// The path exists but holds no manifests. By default refuse, so a wiped or wrong directory can't tear
-			// everything down. With AllowEmpty, treat it as an intentional teardown: an empty bundle prunes all
-			// managed resources (only meaningful when Prune is also on).
+			// Refuse by default so a wiped or wrong directory can't tear everything down; AllowEmpty makes it a teardown.
 			if src.AllowEmpty {
 				return []byte{}, ci, nil
 			}

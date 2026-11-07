@@ -1,9 +1,5 @@
 <script setup lang="ts">
-// A cluster or node that belongs to one organization. Renders nothing otherwise: a "shared" badge
-// on every row of an ordinary single-tenant install is noise, and absence already says it.
-//
-// `via` names the cluster a node inherits this from, so the badge cannot be read as the node having
-// been assigned to the organization by itself.
+// Renders nothing for shared resources; `via` names the cluster a node inherits it from.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 

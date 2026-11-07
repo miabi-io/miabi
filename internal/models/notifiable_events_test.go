@@ -26,15 +26,7 @@ import (
 	"testing"
 )
 
-// The console renders the webhook and notification-channel event pickers straight from its own list,
-// and nothing at build time ties that list to this one.
-//
-// The failure is quiet in the direction that matters. An event missing from the console is an event a
-// workspace cannot subscribe to — the checkbox is simply not on the page — while the backend would
-// have delivered it happily. That is how every database event, backups included, went unsubscribable:
-// the backend accepted all eight and the picker offered none.
-//
-// Adding a notifiable event means editing both files. This test is what says so.
+// The console's event picker list must match this one, or events silently become unsubscribable.
 const consoleNotifiableEvents = "../../web/src/constants/notifiableEvents.ts"
 
 var notifiableEventValue = regexp.MustCompile(`\bvalue:\s*'([a-z_.]+)'`)
@@ -56,9 +48,7 @@ func consoleEvents(t *testing.T) []string {
 	return out
 }
 
-// The two lists must hold the same events in the same order. Order matters because the console
-// renders them in it, and the grouped picker is only coherent if it reproduces the backend's
-// application-then-database sequence.
+// Same order too: the console renders them in it, and the grouped picker relies on the backend's sequence.
 func TestConsoleNotifiableEventsMatchTheBackend(t *testing.T) {
 	console := consoleEvents(t)
 
@@ -78,8 +68,7 @@ func TestConsoleNotifiableEventsMatchTheBackend(t *testing.T) {
 	}
 }
 
-// Every value the console offers has to be one the backend will actually deliver, or the checkbox
-// saves a subscription that can never fire.
+// A console value the backend never delivers saves a subscription that can never fire.
 func TestConsoleOffersNoUnnotifiableEvent(t *testing.T) {
 	for _, v := range consoleEvents(t) {
 		if !IsNotifiable(AppEventType(v)) {

@@ -42,8 +42,6 @@ func (r *AppEventRepository) FindByID(id uint) (*models.AppEvent, error) {
 	return &e, nil
 }
 
-// ListByApp returns events newest-first. When before > 0, only events with a
-// smaller ID are returned (cursor pagination).
 func (r *AppEventRepository) ListByApp(appID uint, limit int, before uint) ([]models.AppEvent, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -57,8 +55,6 @@ func (r *AppEventRepository) ListByApp(appID uint, limit int, before uint) ([]mo
 	return events, err
 }
 
-// ListByDatabase returns a database instance's events newest-first. When before > 0, only
-// events with a smaller ID are returned (cursor pagination). Mirrors ListByApp.
 func (r *AppEventRepository) ListByDatabase(databaseID uint, limit int, before uint) ([]models.AppEvent, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -72,8 +68,6 @@ func (r *AppEventRepository) ListByDatabase(databaseID uint, limit int, before u
 	return events, err
 }
 
-// ListByWorkspace returns the workspace's application events newest-first,
-// across all of its applications. Used for the dashboard activity feed.
 func (r *AppEventRepository) ListByWorkspace(workspaceID uint, limit int) ([]models.AppEvent, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 20
@@ -84,9 +78,6 @@ func (r *AppEventRepository) ListByWorkspace(workspaceID uint, limit int) ([]mod
 	return events, err
 }
 
-// ListByWorkspacePaged returns the workspace's application events with offset pagination and
-// the total count. order is "asc" or "desc" (default); severity, when non-empty, filters to a
-// single severity.
 func (r *AppEventRepository) ListByWorkspacePaged(workspaceID uint, order, severity string, limit, offset int) ([]models.AppEvent, int64, error) {
 	var (
 		events []models.AppEvent
@@ -103,8 +94,6 @@ func (r *AppEventRepository) ListByWorkspacePaged(workspaceID uint, order, sever
 	return events, total, nil
 }
 
-// ListByApps returns events newest-first across the given application ids.
-// Used for a stack's combined activity feed.
 func (r *AppEventRepository) ListByApps(appIDs []uint, limit int) ([]models.AppEvent, error) {
 	if len(appIDs) == 0 {
 		return nil, nil
@@ -133,8 +122,6 @@ func (r *AppEventRepository) TrimByDatabase(databaseID uint, keep int) error {
 		Delete(&models.AppEvent{}).Error
 }
 
-// DeleteByDatabase removes a database instance's events. Called when the instance is deleted,
-// so its timeline does not outlive it as orphaned rows.
 func (r *AppEventRepository) DeleteByDatabase(databaseID uint) error {
 	return r.db.Where("database_id = ?", databaseID).Delete(&models.AppEvent{}).Error
 }

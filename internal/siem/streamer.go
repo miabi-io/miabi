@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package siem streams the audit log to external SIEM sinks at-least-once, gated on the siem_stream
-// entitlement and entirely off the request path. Durability comes from a per-target cursor: the
-// cursor advances only on a successful ship, so an outage or restart never drops events.
+// Package siem streams the audit log at-least-once; the cursor advances only on a successful ship.
 package siem
 
 import (
@@ -37,12 +35,10 @@ const Flag = "siem_stream"
 
 const batchSize = 500
 
-// EntitlementChecker is satisfied by enterprise.EE; kept minimal so this package
-// does not import the enterprise seam.
+// Kept minimal so this package does not import the enterprise seam.
 type EntitlementChecker interface{ Has(flag string) bool }
 
-// Sink ships a batch of audit events to an external system. Returning an error
-// leaves the cursor un-advanced so the batch is retried next tick.
+// An error leaves the cursor un-advanced so the batch is retried next tick.
 type Sink interface {
 	Ship(events []models.AuditLog) error
 }
@@ -61,9 +57,7 @@ func NewStreamer(audit *repositories.AuditLogRepository, config *repositories.SI
 // Enabled reports whether streaming is licensed.
 func (s *Streamer) Enabled() bool { return s.ee != nil && s.ee.Has(Flag) }
 
-// Tick ships any new audit events to every enabled target. Safe to call on a
-// schedule and on an eventbus nudge; it is a no-op when streaming is not
-// entitled. One target's failure never affects another.
+// One target's failure never affects another.
 func (s *Streamer) Tick(ctx context.Context) error {
 	if !s.Enabled() {
 		return nil
@@ -78,8 +72,6 @@ func (s *Streamer) Tick(ctx context.Context) error {
 	return nil
 }
 
-// shipOne drains the backlog for a single target in batches until caught up or a
-// batch fails. The cursor advances only after a confirmed ship.
 func (s *Streamer) shipOne(cfg *models.SIEMConfig) {
 	sink, err := s.sinkFor(cfg)
 	if err != nil {

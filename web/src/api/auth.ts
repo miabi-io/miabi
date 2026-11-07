@@ -2,8 +2,6 @@ import api from './client'
 import type { ApiResponse, AuthResponse, AuthStatus, Passkey, PasskeyBegin, InvitationPreview, RegisterFromInvitationResult, RegisterInput, RegisterResult, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
 
 export const authApi = {
-  // Advertises which auth features are enabled (e.g. self-service password
-  // reset), so the login/forgot screens can render conditionally.
   status() {
     return api.get<ApiResponse<AuthStatus>>('/auth/status')
   },
@@ -27,8 +25,7 @@ export const authApi = {
       two_factor_code: twoFactorCode,
     })
   },
-  // Request a password-reset email. Always resolves (the API returns 200
-  // regardless of whether the address exists) to avoid leaking accounts.
+  // Always resolves, since the API returns 200 regardless, to avoid leaking accounts.
   forgotPassword(email: string) {
     return api.post<ApiResponse<{ message: string }>>('/auth/forgot-password', { email })
   },
@@ -39,10 +36,7 @@ export const authApi = {
   logout() {
     return api.post<ApiResponse<{ message: string }>>('/auth/logout')
   },
-  // Re-authenticate (credentials in the body, never the session) to mint a
-  // short-lived CLI API token. two_factor_code is required on 2FA accounts.
-  // Pass loopback (redirect_uri + state) to drive `miabi login`'s local-callback
-  // flow: the response carries a redirect_to instead of the raw token.
+  // Credentials go in the body, never the session; loopback opts return redirect_to instead of the raw token.
   loginToken(
     identifier: string,
     password: string,
@@ -60,8 +54,7 @@ export const authApi = {
       scopes: opts?.scopes?.length ? opts.scopes : undefined,
     })
   },
-  // Sign `miabi login` in with the current session: no credentials, the click on /cli/authorize is
-  // the consent. The response's redirect_to is the CLI's loopback callback with a single-use code.
+  // The click on /cli/authorize is the consent; redirect_to carries a single-use code.
   authorizeCli(opts: { redirectUri: string; state: string; scopes?: string[] }) {
     return api.post<ApiResponse<LoginTokenResponse>>('/auth/cli/authorize', {
       redirect_uri: opts.redirectUri,
@@ -69,8 +62,6 @@ export const authApi = {
       scopes: opts.scopes?.length ? opts.scopes : undefined,
     })
   },
-  // Exchange a single-use hand-off reference (from the SSO login-token flow) for
-  // the minted token.
   claimLoginToken(handoff: string) {
     return api.post<ApiResponse<LoginTokenResponse>>('/auth/login-token/claim', { handoff })
   },
@@ -109,8 +100,6 @@ export const authApi = {
       new_password: newPassword,
     })
   },
-  // Finish a forced password change: exchange the short-lived reset token from
-  // login (plus a new password) for a real session.
   completePasswordReset(resetToken: string, newPassword: string) {
     return api.post<ApiResponse<AuthResponse>>('/auth/complete-password-reset', {
       reset_token: resetToken,

@@ -34,9 +34,7 @@ const (
 	SystemRoleUser  SystemRole = "user"
 )
 
-// Auth sources name the system that owns an account's identity. Anything other than
-// local was provisioned by an external provider, which stays the source of truth for
-// the account's name and handle.
+// Non-local providers stay the source of truth for the account's name and handle.
 const (
 	AuthSourceLocal = "local"
 	AuthSourceOAuth = "oauth"
@@ -45,15 +43,13 @@ const (
 	AuthSourceSCIM  = "scim"
 )
 
-// User kinds. A service account is a non-human identity owned by a workspace: it signs in only
-// with API keys, never with a password, SSO or a console session.
+// A service account signs in only with API keys, never a password, SSO or console session.
 const (
 	UserKindHuman   = "user"
 	UserKindService = "service"
 )
 
-// ServiceAccountEmailDomain is the reserved (RFC 2606) domain of service-account emails, so no
-// identity provider or mailbox can ever claim one.
+// Reserved RFC 2606 domain so no identity provider or mailbox can ever claim one.
 const ServiceAccountEmailDomain = "service-accounts.invalid"
 
 // User is a global identity.
@@ -67,8 +63,7 @@ type User struct {
 	TwoFactorSecret  string     `json:"-" gorm:"type:text"`
 	TwoFactorEnabled bool       `json:"two_factor_enabled" gorm:"default:false;not null"`
 	Active           bool       `json:"active" gorm:"default:true;not null"`
-	// SuspendedAt marks a platform admin's suspension: the user keeps read access and sees why,
-	// but every write is refused until it is lifted or SuspendedUntil passes.
+	// The user keeps read access but every write is refused until lifted or SuspendedUntil passes.
 	SuspendedAt        *time.Time `json:"suspended_at"`
 	SuspendedReason    string     `json:"suspended_reason"`
 	SuspendedUntil     *time.Time `json:"suspended_until"`
@@ -81,8 +76,7 @@ type User struct {
 	OrganizationID           *uint `json:"organization_id,omitempty" gorm:"index"`
 	WorkspaceLimit           *int  `json:"workspace_limit,omitempty"`
 	WorkspaceMembershipLimit *int  `json:"workspace_membership_limit,omitempty"`
-	// CanCreateWorkspaces overrides the organization's workspace creation mode for this user; nil
-	// inherits it.
+	// nil inherits the organization's workspace creation mode.
 	CanCreateWorkspaces   *bool      `json:"can_create_workspaces,omitempty"`
 	SignupSource          string     `json:"signup_source" gorm:"not null;default:''"`
 	ScheduledDeletionAt   *time.Time `json:"scheduled_deletion_at" gorm:"index"`
@@ -94,35 +88,22 @@ type User struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
-// IsAdmin reports whether u is a platform admin. A service account never is, whatever its role
-// column says: its keys would otherwise carry platform-wide power outside its workspace.
+// IsAdmin is never true for a service account, whose keys would otherwise carry platform-wide power.
 func (u *User) IsAdmin() bool { return u.Role == SystemRoleAdmin && !u.IsService() }
 
-// IsService reports whether this is a service account.
-// Suspended reports whether a suspension is in force at now.
 func (u *User) Suspended(now time.Time) bool {
 	return u.SuspendedAt != nil && (u.SuspendedUntil == nil || u.SuspendedUntil.After(now))
 }
 
 func (u *User) IsService() bool { return u.Kind == UserKindService }
 
-// IsExternal reports whether an identity provider owns this account. Such a profile is
-// not the user's to edit: the provider re-asserts name and handle on every sign-in, so
-// a local edit would either be silently reverted or drift from the directory.
+// IsExternal profiles are not user-editable: the provider re-asserts name and handle on every sign-in.
 func (u *User) IsExternal() bool {
 	src := strings.ToLower(strings.TrimSpace(u.AuthSource))
 	return src != "" && src != AuthSourceLocal
 }
 
-// AfterCreate makes a user the owner of their organization when it has none.
-//
-// An organization normally gets its owner when an admin creates it; this fills the gap left when
-// nobody was named, so a realm provisioned by SSO is not left accountable to no one. It never
-// overrides a choice: the owner_user_id = 0 predicate is also what stops two users created at once
-// from both claiming it. A user in no organization claims nothing — the default organization's
-// owner is the first platform admin, assigned at seeding.
-//
-// Bookkeeping, not identity: a failure here must not fail the account it was created for.
+// AfterCreate makes the first user own an ownerless org; the owner_user_id = 0 predicate prevents a double claim.
 func (u *User) AfterCreate(tx *gorm.DB) error {
 	if u.OrganizationID == nil || *u.OrganizationID == 0 {
 		return nil

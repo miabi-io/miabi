@@ -65,8 +65,7 @@ func TestVerifyPassesOnAnIntactSet(t *testing.T) {
 	}
 }
 
-// The common real failure: a lifecycle rule removed the objects while the history
-// still lists them.
+// The common real failure: a lifecycle rule removed objects the history still lists.
 func TestVerifyNamesMissingArtifacts(t *testing.T) {
 	bucket := intactBucket()
 	delete(bucket, "billing.sql.gz.gpg")
@@ -125,8 +124,7 @@ func TestVerifyEmptySet(t *testing.T) {
 	}
 }
 
-// A PostgreSQL 17 dump does not load into 16, and the failure lands mid-restore
-// over a database a force run has already dropped.
+// A newer dump fails mid-restore over a database a force run already dropped.
 func TestCheckRestoreVersion(t *testing.T) {
 	cases := []struct {
 		name, inst, backup string

@@ -34,8 +34,7 @@ func TestConfigObjectNameIsContentAddressed(t *testing.T) {
 		t.Errorf("the key slug still contains a path separator: %s", name)
 	}
 
-	// A content change must yield a different object, which is what makes the
-	// service update swap it rather than mutate an immutable object.
+	// A content change must yield a different object, since configs are immutable.
 	changed := base
 	changed.Digest = "ffffffffffff"
 	if changed.ObjectName() == name {
@@ -43,8 +42,7 @@ func TestConfigObjectNameIsContentAddressed(t *testing.T) {
 	}
 }
 
-// Truncation must eat the middle: a name that loses its digest would collide
-// across content versions.
+// A name that loses its digest would collide across content versions.
 func TestConfigObjectNameTruncationKeepsDigest(t *testing.T) {
 	long := ConfigObject{
 		Workspace: "1234",

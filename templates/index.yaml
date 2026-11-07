@@ -1,4 +1,3 @@
-# Miabi official template catalog (registry index).
 # Digests are sha256 of each template.yaml; regenerate via `go generate ./templates`.
 apiVersion: miabi.io/v1
 kind: Index

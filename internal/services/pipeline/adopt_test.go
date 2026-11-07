@@ -37,8 +37,7 @@ func TestPickRepoOwnedIgnoresManualPipelines(t *testing.T) {
 }
 
 func TestPickRepoOwnedPrefersOldest(t *testing.T) {
-	// Binding a second repo-owned pipeline to the app must not move the deploy
-	// path onto it.
+	// A second repo-owned pipeline must not take over the deploy path.
 	defs := []models.PipelineDefinition{
 		{ID: 9, Source: models.PipelineSourceRepo},
 		{ID: 4, Source: models.PipelineSourceRepo},
@@ -50,8 +49,7 @@ func TestPickRepoOwnedPrefersOldest(t *testing.T) {
 }
 
 func TestPickRepoOwnedNoneMeansDirectBuild(t *testing.T) {
-	// An empty Source is how every pipeline created before adoption existed reads,
-	// and it must never claim an app's deploys.
+	// An empty Source (pre-adoption pipelines) must never claim an app's deploys.
 	defs := []models.PipelineDefinition{
 		{ID: 1, Source: models.PipelineSourceManual},
 		{ID: 2, Source: ""},
@@ -80,9 +78,7 @@ func TestIsRepoOwned(t *testing.T) {
 	}
 }
 
-// A repo-owned pipeline derives everything but its enabled flag, so an update
-// that changes anything else must be refused rather than silently reverted by
-// the next run's re-sync.
+// Edits beyond enabled must be refused, or the next run's re-sync would silently revert them.
 func TestRepoOwnedEditRequested(t *testing.T) {
 	appID := uint(7)
 	other := uint(8)

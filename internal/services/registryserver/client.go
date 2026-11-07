@@ -31,9 +31,7 @@ import (
 	"time"
 )
 
-// manifestAccept lists the manifest media types the registry may return, so the
-// digest lookup resolves a tag regardless of schema (docker v2 / OCI, single or
-// multi-arch index).
+// Accept every schema (docker v2 / OCI, single or index) so a tag resolves regardless.
 var manifestAccept = strings.Join([]string{
 	"application/vnd.docker.distribution.manifest.v2+json",
 	"application/vnd.docker.distribution.manifest.list.v2+json",
@@ -41,27 +39,19 @@ var manifestAccept = strings.Join([]string{
 	"application/vnd.oci.image.index.v1+json",
 }, ", ")
 
-// Client is a minimal client for the internal registry (reached over the platform's private network
-// at http://mb-registry:5000). Used for the workspace repository view and tag deletion, never
-// exposed to tenants directly.
-//
-// The registry requires Basic auth even on that network, so the control plane is a credentialed
-// client like the gateway. The credential is resolved per request rather than captured, because it
-// derives from the master key and this client is built before crypto.Init has run.
+// Client reaches the internal registry with per-request Basic auth, since the credential needs crypto.Init first.
 type Client struct {
 	base string
 	http *http.Client
 }
 
-// NewClient builds a registry client for baseURL (e.g. http://mb-registry:5000). authHeader
-// supplies the Authorization value on every request; nil or an empty result sends none.
+// A nil authHeader or empty result sends no Authorization.
 func NewClient(baseURL string, authHeader func() string) *Client {
 	return &Client{
 		base: strings.TrimRight(baseURL, "/"),
 		http: &http.Client{
 			Timeout: 30 * time.Second,
-			// A transport rather than a header set per call site: the client builds requests in a
-			// dozen places, and one that forgot the header would fail only at run time.
+			// A transport, not per-call headers: one forgotten call site would fail only at run time.
 			Transport: &basicAuthTransport{header: authHeader},
 		},
 	}
@@ -88,8 +78,6 @@ func (t *basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return rt.RoundTrip(req)
 }
 
-// Catalog returns every repository in the registry (all namespaces), following
-// the Distribution pagination Link headers.
 func (c *Client) Catalog(ctx context.Context) ([]string, error) {
 	var repos []string
 	next := "/v2/_catalog?n=200"
@@ -141,9 +129,7 @@ func (c *Client) ManifestDigest(ctx context.Context, repo, ref string) (string, 
 	return digest, nil
 }
 
-// TagManifest points tag at an existing digest in repo without re-uploading any blobs: it fetches the
-// digest's manifest and re-PUTs the identical bytes under the tag. Used to add a human-readable release
-// tag to an already-pushed build image. repo is the internal storage path (ws_<id>/<app-name>).
+// TagManifest re-PUTs the digest's manifest bytes under the tag, without re-uploading blobs.
 func (c *Client) TagManifest(ctx context.Context, repo, digest, tag string) error {
 	get, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(digest), nil)
 	if err != nil {
@@ -194,17 +180,13 @@ type manifest struct {
 	} `json:"manifests"`
 }
 
-// BlobSizes returns the (digest → size) of the blobs a tag references — the
-// config and layers — so a namespace's usage can be summed with cross-tag
-// dedup. For a multi-arch index it recurses into the child manifests.
+// BlobSizes returns per-blob sizes so namespace usage is summed with cross-tag dedup.
 func (c *Client) BlobSizes(ctx context.Context, repo, ref string) (map[string]int64, error) {
 	_, sizes, err := c.manifestBlobs(ctx, repo, ref)
 	return sizes, err
 }
 
-// ManifestInfo resolves a reference to its content digest and the total size of the blobs it references,
-// from a single manifest fetch. Listing a page of tags needs both, and the registry returns them from the
-// same request — resolving them separately would double the round trips per tag.
+// One manifest fetch yields both values, halving round trips per tag.
 func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest string, sizeBytes int64, err error) {
 	digest, sizes, err := c.manifestBlobs(ctx, repo, ref)
 	if err != nil {
@@ -216,9 +198,7 @@ func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest str
 	return digest, sizeBytes, nil
 }
 
-// manifestBlobs fetches a manifest and returns its content digest plus the
-// deduplicated sizes of every blob it references (recursing into an index's
-// child manifests, so a multi-arch image counts each shared layer once).
+// Recurses into index children so a multi-arch image counts each shared layer once.
 func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, map[string]int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(ref), nil)
 	if err != nil {
@@ -261,9 +241,7 @@ func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, m
 	return digest, sizes, nil
 }
 
-// DeleteManifest deletes a manifest by digest (the registry has no delete-by-tag;
-// requires REGISTRY_STORAGE_DELETE_ENABLED). Deleting the manifest untags every
-// tag pointing at it.
+// The registry has no delete-by-tag (needs REGISTRY_STORAGE_DELETE_ENABLED); deleting untags every tag on it.
 func (c *Client) DeleteManifest(ctx context.Context, repo, digest string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(digest), nil)
 	if err != nil {
@@ -287,8 +265,7 @@ func (c *Client) DeleteManifest(ctx context.Context, repo, digest string) error 
 	}
 }
 
-// getJSON performs a GET, decodes a 200 body into out, and returns the Link
-// header for pagination. A 404 is reported as ErrNotFound.
+// A 404 is reported as ErrNotFound.
 func (c *Client) getJSON(ctx context.Context, path string, out any) (link string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
 	if err != nil {
@@ -312,8 +289,6 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) (link string
 	return resp.Header.Get("Link"), nil
 }
 
-// nextLink extracts the next-page path from a Distribution Link header, e.g.
-// `</v2/_catalog?n=200&last=foo>; rel="next"`. Returns "" when there is no next.
 func nextLink(link string) string {
 	if !strings.Contains(link, `rel="next"`) {
 		return ""

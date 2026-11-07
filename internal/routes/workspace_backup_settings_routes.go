@@ -28,7 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// workspaceBackupSettingsRoutes registers the per-workspace S3 backup target.
 // Admin-only: the settings expose the S3 access key.
 func (r *Router) workspaceBackupSettingsRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Backup Settings", Description: "Per-workspace S3 backup target (shared by database & volume backups)."})

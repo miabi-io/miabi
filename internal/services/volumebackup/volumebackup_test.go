@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/backup"
 )
 
-// The archive name is read back off the helper's output, so the regex decides what the row points
-// at. With encryption on, the tool narrates the plain archive before the encrypted one it uploads —
-// matching the first or the shorter name records an object that was never written.
+// With encryption the tool names the plain archive first; matching it records an object never written.
 func TestArchiveNameFromHelperOutput(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -69,8 +67,7 @@ func TestArchiveNameFromHelperOutput(t *testing.T) {
 	}
 }
 
-// A helper that reports success while naming no artifact must fail the run rather than complete with
-// an empty filename, which would look restorable and never be.
+// An empty filename would look restorable and never be.
 func TestArchiveNameRefusesOutputWithNoArtifact(t *testing.T) {
 	if _, _, err := backup.ArtifactName("nothing to do\n", archiveRe); err == nil {
 		t.Fatal("expected an error when the output names no archive")
@@ -91,8 +88,7 @@ func TestArchiveKey(t *testing.T) {
 	}
 }
 
-// Two runs of the same backup must not collide on a container name: a retry otherwise fails against
-// the container its predecessor left behind.
+// A retry would otherwise fail against the container its predecessor left behind.
 func TestOneShotNameIsUniquePerRun(t *testing.T) {
 	a, b := oneShotName("mb-volbkup", 7), oneShotName("mb-volbkup", 7)
 	if a == b {

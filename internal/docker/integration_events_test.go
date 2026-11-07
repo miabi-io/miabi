@@ -29,10 +29,6 @@ import (
 	"time"
 )
 
-// TestEventsLifecycle asserts the event stream delivers a container's start and
-// die actions with the right container id and its labels as attributes, and that
-// cancelling the context unwinds the stream (returns ctx.Err()) with no leaked
-// goroutine. "Works in dev, fails at 3am" bugs live in this stream.
 func TestEventsLifecycle(t *testing.T) {
 	expectNoGoroutineLeak(t)
 	cli := newClient(t)
@@ -61,8 +57,6 @@ func TestEventsLifecycle(t *testing.T) {
 		})
 	}()
 
-	// Generate lifecycle events after the stream is subscribed. Create+start via
-	// run(), then stop to force a "die".
 	id := run(t, cli, RunSpec{
 		Image:         imgAlpine,
 		Cmd:           []string{"sleep", "3600"},

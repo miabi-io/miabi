@@ -29,9 +29,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// scopeEnforcementLegacyStep keeps an install that already issued API keys in warn mode: scopes
-// were never enforced before, so those keys may rely on access they were never granted. New
-// installs enforce from the start.
+// Scopes were never enforced before, so existing keys may rely on access they were never granted.
 func scopeEnforcementLegacyStep(ctx context.Context, db *gorm.DB) error {
 	var keys int64
 	if err := db.WithContext(ctx).Table("api_keys").Where("revoked = ? AND ephemeral = ?", false, false).Count(&keys).Error; err != nil {

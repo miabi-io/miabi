@@ -55,8 +55,6 @@ func TestPrunableKeepsMaxPoints(t *testing.T) {
 	}
 }
 
-// A pinned point survives and does not take a slot, so pinning one does not push a newer
-// unpinned point out.
 func TestPrunablePinnedTakesNoSlot(t *testing.T) {
 	now := time.Now()
 	day := 24 * time.Hour
@@ -70,8 +68,6 @@ func TestPrunablePinnedTakesNoSlot(t *testing.T) {
 	}
 }
 
-// The newest completed point survives any policy, even when newer runs failed and the
-// retention window has passed it.
 func TestPrunableNeverRemovesLastGoodPoint(t *testing.T) {
 	now := time.Now()
 	day := 24 * time.Hour

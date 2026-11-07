@@ -29,29 +29,20 @@ import (
 
 func statusTopic(instanceID uint) string { return fmt.Sprintf("db-status:%d", instanceID) }
 
-// wsStatusTopic is the per-workspace topic carrying lifecycle status changes for
-// every instance in the workspace, so the Databases list can update rows live
-// (one SSE connection) instead of polling.
+// Per-workspace topic so the Databases list updates live over one SSE connection instead of polling.
 func wsStatusTopic(workspaceID uint) string { return fmt.Sprintf("db-status-ws:%d", workspaceID) }
 
-// StatusEvent is the snapshot pushed on the "status" stream: the instance's
-// lifecycle status and any in-flight upgrade progress. The detail page replaces
-// its state from this, so a status/phase change needs no extra request.
 type StatusEvent struct {
 	Status  models.DBStatus         `json:"status"`
 	Upgrade *models.UpgradeProgress `json:"upgrade,omitempty"`
 }
 
-// WorkspaceStatusEvent is StatusEvent plus the instance id, so a workspace-wide
-// subscriber (the list page) knows which row changed.
 type WorkspaceStatusEvent struct {
 	ID      uint                    `json:"id"`
 	Status  models.DBStatus         `json:"status"`
 	Upgrade *models.UpgradeProgress `json:"upgrade,omitempty"`
 }
 
-// publishStatus fans out the instance's current lifecycle status to subscribers:
-// the per-instance topic (detail page) and the per-workspace topic (list page).
 func (s *Service) publishStatus(inst *models.DatabaseInstance) {
 	if s.bus == nil || inst == nil {
 		return
@@ -66,8 +57,7 @@ func (s *Service) publishStatus(inst *models.DatabaseInstance) {
 	})
 }
 
-// publishProgress fans out a transient, human-readable progress line (e.g. the
-// bring-up steps during provisioning). Not persisted — purely for live UX.
+// Not persisted: purely live UX.
 func (s *Service) publishProgress(inst *models.DatabaseInstance, message string) {
 	if s.bus == nil || inst == nil {
 		return
@@ -78,9 +68,7 @@ func (s *Service) publishProgress(inst *models.DatabaseInstance, message string)
 	})
 }
 
-// StreamStatus sends the instance's current status, then live updates, until the context is cancelled.
-// It backs the detail page's SSE. With no bus wired it sends the initial snapshot and holds the
-// connection open, so the client still has its REST fallback.
+// With no bus wired it sends the initial snapshot and holds the connection, leaving the client its REST fallback.
 func (s *Service) StreamStatus(ctx context.Context, inst *models.DatabaseInstance, send func(eventbus.Event) error) error {
 	if err := send(eventbus.Event{Type: "status", Data: StatusEvent{Status: inst.Status, Upgrade: inst.Upgrade}}); err != nil {
 		return err
@@ -106,9 +94,7 @@ func (s *Service) StreamStatus(ctx context.Context, inst *models.DatabaseInstanc
 	}
 }
 
-// StreamWorkspaceStatus streams lifecycle status changes for every instance in a workspace until the
-// context is cancelled, delivering {id,status} deltas to the Databases list. The list seeds its initial
-// state via REST, so no snapshot is sent. With no bus wired the client falls back to periodic reconcile.
+// No snapshot is sent: the list seeds via REST, and falls back to periodic reconcile without a bus.
 func (s *Service) StreamWorkspaceStatus(ctx context.Context, workspaceID uint, send func(eventbus.Event) error) error {
 	if s.bus == nil {
 		<-ctx.Done()

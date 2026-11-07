@@ -26,8 +26,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// DefaultClusterID stands for the default cluster wherever a cluster id is 0, the way ServerID 0
-// stands for the local node.
 const DefaultClusterID uint = 0
 
 // ClusterMode is how a cluster runs its workloads.
@@ -40,8 +38,7 @@ const (
 	ClusterModeSwarm ClusterMode = "swarm"
 )
 
-// ExternalCertificateInfo is the certificate serving a cluster's generated URLs. When Usable is false the
-// gateway falls back to a certificate per app, and Problem says why.
+// When Usable is false the gateway falls back to a certificate per app.
 type ExternalCertificateInfo struct {
 	Name     string    `json:"name"`
 	DNSNames []string  `json:"dns_names"`
@@ -54,10 +51,8 @@ type ExternalCertificateInfo struct {
 type ClusterVisibility string
 
 const (
-	ClusterVisibilityAll        ClusterVisibility = "all"
-	ClusterVisibilityRestricted ClusterVisibility = "restricted"
-	// ClusterVisibilityOrganization dedicates the cluster to OrganizationID: no other tenant sees it
-	// or may place in it, whatever their plan allows.
+	ClusterVisibilityAll          ClusterVisibility = "all"
+	ClusterVisibilityRestricted   ClusterVisibility = "restricted"
 	ClusterVisibilityOrganization ClusterVisibility = "organization"
 )
 
@@ -72,8 +67,7 @@ type ServiceEndpointMode string
 const (
 	// ServiceEndpointVIP gives each service one virtual IP that Docker balances across its tasks with IPVS.
 	ServiceEndpointVIP ServiceEndpointMode = "vip"
-	// ServiceEndpointDNSRR resolves a service's name to its tasks' own addresses, for hosts where Docker cannot
-	// program IPVS, such as LXC containers.
+	// For hosts where Docker cannot program IPVS, such as LXC containers.
 	ServiceEndpointDNSRR ServiceEndpointMode = "dnsrr"
 )
 
@@ -82,8 +76,6 @@ func ValidServiceEndpointMode(m ServiceEndpointMode) bool {
 	return m == ServiceEndpointVIP || m == ServiceEndpointDNSRR
 }
 
-// Cluster is a deploy target: nodes that share private networking and one ingress. Tenants see it
-// as a location. Every node belongs to exactly one cluster; the default one holds the control plane.
 type Cluster struct {
 	UIDModel
 	ID           uint        `json:"id" gorm:"primaryKey"`
@@ -96,23 +88,18 @@ type Cluster struct {
 	ManagerServerID uint   `json:"manager_server_id"`
 	AgentTokenHash  string `json:"-"`
 	// IngressServerID is the node running the cluster gateway; 0 is the local node.
-	IngressServerID uint `json:"ingress_server_id"`
-	// IngressIP is the IPv4 address and IngressIPv6 the IPv6 address public DNS records point at; with both, a host
-	// gets an A and an AAAA record.
+	IngressServerID uint              `json:"ingress_server_id"`
 	IngressIP       string            `json:"ingress_ip,omitempty"`
 	IngressIPv6     string            `json:"ingress_ipv6,omitempty" gorm:"column:ingress_ipv6"`
 	IngressHostname string            `json:"ingress_hostname,omitempty"`
 	Visibility      ClusterVisibility `json:"visibility" gorm:"not null;default:all"`
-	// OrganizationID dedicates the cluster to one organization. Set together with
-	// ClusterVisibilityOrganization; nil leaves the cluster shared.
+	// Set together with ClusterVisibilityOrganization; nil leaves the cluster shared.
 	OrganizationID *uint `json:"organization_id,omitempty" gorm:"index"`
 	Cordoned       bool  `json:"cordoned" gorm:"not null;default:false"`
-	// ExternalBaseDomain is the wildcard domain generated app URLs in this cluster live under, empty when one-click
-	// external access is off here; ExternalCertProvider is the gateway's certManager provider for them.
+	// Empty ExternalBaseDomain means one-click external access is off here.
 	ExternalBaseDomain   string `json:"external_base_domain,omitempty"`
 	ExternalCertProvider string `json:"external_cert_provider,omitempty"`
-	// ExternalCertificateID serves every generated URL here from one certificate kept in the system
-	// workspace, a wildcard for *.ExternalBaseDomain; nil gets a certificate per app from ExternalCertProvider.
+	// Must be a wildcard for *.ExternalBaseDomain; nil gets a certificate per app.
 	ExternalCertificateID *uint `json:"external_certificate_id,omitempty" gorm:"index"`
 	// ExternalCertificate describes that certificate for the console. Filled on read.
 	ExternalCertificate *ExternalCertificateInfo `json:"external_certificate,omitempty" gorm:"-"`
@@ -122,24 +109,18 @@ type Cluster struct {
 	ExternalApps           int64 `json:"external_apps,omitempty" gorm:"-"`
 	// ServiceEndpointMode is how service apps are reached by name; dnsrr serves hosts that cannot run IPVS.
 	ServiceEndpointMode ServiceEndpointMode `json:"service_endpoint_mode" gorm:"not null;default:vip"`
-	// LegacyIngress marks a cluster whose port-forward node became an edge gateway at upgrade, until an
-	// admin confirms that gateway or joins the node to a swarm.
-	LegacyIngress bool  `json:"legacy_ingress" gorm:"not null;default:false"`
-	NodeCount     int64 `json:"node_count" gorm:"-"`
-	// Dedicated reports that the cluster belongs to one organization and nothing outside it may be
-	// placed here. Derived from OrganizationID rather than stored, so it cannot disagree with the
-	// field placement enforces. OrganizationName labels it for the console.
+	LegacyIngress       bool                `json:"legacy_ingress" gorm:"not null;default:false"`
+	NodeCount           int64               `json:"node_count" gorm:"-"`
+	// Derived from OrganizationID, not stored, so it cannot disagree with what placement enforces.
 	Dedicated        bool   `json:"dedicated" gorm:"-"`
 	OrganizationName string `json:"organization_name,omitempty" gorm:"-"`
-	// Capacity is the sum of the cluster's nodes, derived on read rather than stored: a second copy
-	// of a figure the nodes already carry is a copy that can drift.
+	// Derived on read: a stored copy of what the nodes already carry could drift.
 	Capacity  *ClusterCapacity `json:"capacity,omitempty" gorm:"-"`
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
 }
 
-// ClusterCapacity is what a cluster's nodes add up to, and how much of that is measured. A cluster
-// with unmeasured nodes reports fewer than it has rather than counting them as empty.
+// Unmeasured nodes are reported as missing rather than counted as empty.
 type ClusterCapacity struct {
 	Nodes            int64   `json:"nodes"`
 	NodesMeasured    int64   `json:"nodes_measured"`
@@ -187,8 +168,7 @@ func (c *Cluster) IngressNode() uint {
 	return c.ManagerServerID
 }
 
-// clusterOfServer resolves the cluster of the node a new resource lands on (0 = the local node). A
-// failed lookup leaves DefaultClusterID, which resolves to the default cluster anyway.
+// A failed lookup leaves DefaultClusterID, which resolves to the default cluster anyway.
 func clusterOfServer(tx *gorm.DB, serverID uint) uint {
 	q := tx.Session(&gorm.Session{NewDB: true}).Table("servers").Select("cluster_id")
 	if serverID == 0 {

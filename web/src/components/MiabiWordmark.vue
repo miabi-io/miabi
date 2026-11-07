@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Glyphs copied from branding/miabi-wordmark-white.svg: the brand face is outlined,
-// not a shipped font, so live text cannot match it. ".io" reuses the same glyphs.
+// The brand face is outlined, not a shipped font, so live text cannot match it.
 const props = withDefaults(defineProps<{ height?: number }>(), { height: 18 })
 
 const VB_W = 3662

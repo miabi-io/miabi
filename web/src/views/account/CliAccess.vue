@@ -3,9 +3,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '@/stores/notification'
 
-// CLI onboarding: install → sign in → verify. The sign-in command is the whole
-// point of the old "Copy login command" menu item — `miabi login` opens the
-// browser and captures the token itself, so there is nothing to paste.
+// `miabi login` opens the browser and captures the token itself, so there is nothing to paste.
 const notify = useNotificationStore()
 
 const GITHUB_REPO = 'https://github.com/miabi-io/cli'
@@ -16,8 +14,7 @@ const TAP_REPO = 'https://github.com/miabi-io/homebrew-tap'
 const serverUrl = window.location.origin.replace(/\/+$/, '')
 
 type InstallTab = 'brew' | 'go' | 'binary' | 'docker'
-// Default the install method to the visitor's platform; Homebrew covers
-// macOS + Linux, Windows users get the prebuilt binary.
+// Homebrew covers macOS and Linux; Windows users get the prebuilt binary.
 const isWindows = /win/i.test(navigator.userAgent)
 const { t } = useI18n()
 const tab = ref<InstallTab>(isWindows ? 'binary' : 'brew')

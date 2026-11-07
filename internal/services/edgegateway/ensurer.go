@@ -27,8 +27,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// NodeGateways is the slice of the node service an ensurer needs: the node itself, its recoverable gateway
-// token and per-node Redis password, and somewhere to record a successful deploy. Satisfied by *node.Service.
 type NodeGateways interface {
 	Get(id uint) (*models.Server, error)
 	GatewayToken(id uint) (string, error)
@@ -41,9 +39,7 @@ type Clients interface {
 	For(serverID uint) (docker.Client, error)
 }
 
-// Ensurer puts a node's own gateway back, the same way an agent reconnect does: mint the node's recoverable
-// token, then run the idempotent Ensure. It exists so the control manager can act on a missing gateway without
-// knowing how one is minted or deployed.
+// Ensurer lets the control manager restore a missing gateway without knowing how one is minted or deployed.
 type Ensurer struct {
 	gw      *Service
 	nodes   NodeGateways
@@ -55,8 +51,7 @@ func (s *Service) Ensurer(nodes NodeGateways, clients Clients) *Ensurer {
 	return &Ensurer{gw: s, nodes: nodes, clients: clients}
 }
 
-// EnsureGateway redeploys the node's gateway. It refuses a node whose gateway Miabi did not deploy: an
-// imported one — the platform's own on the manager, or an operator's — belongs to whoever installed it.
+// EnsureGateway refuses imported gateways, which belong to whoever installed them.
 func (e *Ensurer) EnsureGateway(ctx context.Context, serverID uint) error {
 	srv, err := e.nodes.Get(serverID)
 	if err != nil {

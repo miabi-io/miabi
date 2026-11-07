@@ -50,9 +50,7 @@ const (
 	OtherBranchesRunTag = "run-tag"
 )
 
-// VersionPolicy decides the version, and so the image tag, each pipeline run builds. It belongs to one
-// image repository: the application for an app-bound pipeline, the pipeline itself otherwise, so two
-// pipelines pushing to the same repository share one sequence and can never mint the same tag.
+// Scoped to one image repository so pipelines pushing to the same repo share a sequence and never mint the same tag.
 type VersionPolicy struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -106,8 +104,7 @@ const (
 	AllocationAbandoned AllocationStatus = "abandoned"
 )
 
-// VersionAllocation is one version handed to a run. A failed run that still holds the head of its series
-// deletes its row so the next run reuses the number; the unique key stops two runs sharing one.
+// A failed run at the head of its series deletes its row so the next run reuses the number.
 type VersionAllocation struct {
 	ID         uint        `json:"id" gorm:"primaryKey"`
 	PolicyID   uint        `json:"policy_id" gorm:"uniqueIndex:idx_version_alloc_policy_version;not null"`

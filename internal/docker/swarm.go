@@ -28,22 +28,14 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// defaultSwarmListenAddr is the management-plane bind used when a caller does not specify one
-// (the standard Docker Swarm port on all interfaces).
 const defaultSwarmListenAddr = "0.0.0.0:2377"
 
-// SwarmInfo summarizes an engine's participation in a Docker Swarm, as reported
-// by `docker info`. It is available on any engine (no manager role required), so
-// it is the cheap signal Miabi uses to auto-detect cluster mode.
+// SwarmInfo needs no manager role, so it is the cheap signal for auto-detecting cluster mode.
 type SwarmInfo struct {
-	// LocalNodeState is the engine's swarm state: inactive | pending | active |
-	// error | locked. "inactive" means plain (non-swarm) Docker.
-	LocalNodeState string `json:"local_node_state"`
-	// ControlAvailable is true when this engine is a reachable swarm manager
-	// (i.e. it can drive cluster operations).
-	ControlAvailable bool `json:"control_available"`
-	// NodeID / NodeAddr identify this engine within the swarm; NodeAddr is the
-	// address it advertises to peers (used as the join remote-address).
+	// "inactive" means plain (non-swarm) Docker.
+	LocalNodeState   string `json:"local_node_state"`
+	ControlAvailable bool   `json:"control_available"`
+	// NodeAddr is advertised to peers and used as the join remote-address.
 	NodeID   string `json:"node_id"`
 	NodeAddr string `json:"node_addr"`
 	// Managers / Nodes are cluster-wide counts (manager-reported; 0 elsewhere).
@@ -66,21 +58,15 @@ type SwarmNode struct {
 	Reachability  string `json:"reachability,omitempty"` // reachable | unreachable (managers)
 	Addr          string `json:"addr,omitempty"`
 	EngineVersion string `json:"engine_version,omitempty"`
-	// Capacity as the swarm scheduler sees it — what it packs tasks against. It comes from the node's
-	// own report over the swarm control plane, so it is known even for a node Miabi has no Docker
-	// client for, where host metrics are otherwise unavailable.
+	// Reported over the swarm control plane, so known even for nodes Miabi has no Docker client for.
 	NanoCPUs    int64  `json:"nano_cpus,omitempty"`    // 1e9 == one core
 	MemoryBytes int64  `json:"memory_bytes,omitempty"` // total, not used
 	OS          string `json:"os,omitempty"`           // linux | windows
 	Arch        string `json:"arch,omitempty"`         // x86_64 | aarch64 | …
-	// Tasks is how many service tasks the scheduler currently runs here — the node's
-	// load. Populated by SwarmNodes; 0 for an idle node.
-	Tasks int `json:"tasks"`
+	Tasks       int    `json:"tasks"`
 }
 
-// SwarmTask is one task (a container the scheduler placed) of a service, as seen
-// from a manager. It is how a node's real workload is enumerated: the container
-// itself lives on the node, which Miabi may hold no Docker client for.
+// Only a manager can enumerate tasks; the containers live on nodes Miabi may hold no client for.
 type SwarmTask struct {
 	ID           string `json:"id"`
 	ServiceName  string `json:"service_name"`
@@ -102,13 +88,9 @@ type SwarmJoinTokens struct {
 
 // SwarmInitRequest configures putting an engine into swarm mode as a manager.
 type SwarmInitRequest struct {
-	// AdvertiseAddr is the address managers/workers reach this manager on
-	// (host or host:port). Required.
 	AdvertiseAddr string
 	// ListenAddr is the management-plane bind; blank defaults to 0.0.0.0:2377.
-	ListenAddr string
-	// DataPathAddr is the address for overlay (VXLAN) data-plane traffic; blank
-	// falls back to AdvertiseAddr.
+	ListenAddr   string
 	DataPathAddr string
 }
 
@@ -117,16 +99,12 @@ type SwarmJoinRequest struct {
 	// RemoteAddrs are the manager addresses to dial (host:port).
 	RemoteAddrs []string
 	// JoinToken is the worker or manager join token.
-	JoinToken string
-	// AdvertiseAddr is the address this node advertises to peers; blank lets the
-	// engine auto-detect.
+	JoinToken     string
 	AdvertiseAddr string
 	// ListenAddr is the management-plane bind; blank defaults to 0.0.0.0:2377.
 	ListenAddr string
 }
 
-// Swarm reports this engine's swarm participation, derived from `docker info`.
-// It never requires a manager role, so it is safe to call on any node.
 func (e *engineClient) Swarm(ctx context.Context) (SwarmInfo, error) {
 	res, err := e.cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
@@ -150,8 +128,6 @@ func (e *engineClient) Swarm(ctx context.Context) (SwarmInfo, error) {
 	return out, nil
 }
 
-// SwarmInit puts this engine into swarm mode as the first manager and returns
-// its swarm node ID.
 func (e *engineClient) SwarmInit(ctx context.Context, req SwarmInitRequest) (string, error) {
 	listen := req.ListenAddr
 	if listen == "" {
@@ -168,8 +144,6 @@ func (e *engineClient) SwarmInit(ctx context.Context, req SwarmInitRequest) (str
 	return res.NodeID, nil
 }
 
-// SwarmJoin joins this engine to an existing swarm using the given token and
-// manager remote address(es).
 func (e *engineClient) SwarmJoin(ctx context.Context, req SwarmJoinRequest) error {
 	listen := req.ListenAddr
 	if listen == "" {
@@ -184,15 +158,12 @@ func (e *engineClient) SwarmJoin(ctx context.Context, req SwarmJoinRequest) erro
 	return err
 }
 
-// SwarmLeave removes this engine from its swarm. Leaving as the last manager
-// requires force.
+// Leaving as the last manager requires force.
 func (e *engineClient) SwarmLeave(ctx context.Context, force bool) error {
 	_, err := e.cli.SwarmLeave(ctx, client.SwarmLeaveOptions{Force: force})
 	return err
 }
 
-// SwarmJoinTokens returns the swarm's worker and manager join tokens. Requires
-// this engine to be a reachable manager.
 func (e *engineClient) SwarmJoinTokens(ctx context.Context) (SwarmJoinTokens, error) {
 	res, err := e.cli.SwarmInspect(ctx, client.SwarmInspectOptions{})
 	if err != nil {
@@ -201,15 +172,12 @@ func (e *engineClient) SwarmJoinTokens(ctx context.Context) (SwarmJoinTokens, er
 	return SwarmJoinTokens{Worker: res.Swarm.JoinTokens.Worker, Manager: res.Swarm.JoinTokens.Manager}, nil
 }
 
-// SwarmNodes lists the swarm's nodes. Requires this engine to be a reachable
-// manager.
 func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	res, err := e.cli.NodeList(ctx, client.NodeListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	// Task load per node, in one call rather than one per node. Best-effort: a
-	// failure here leaves Tasks at 0 rather than failing the whole listing.
+	// Best-effort: a failure leaves Tasks at 0 rather than failing the listing.
 	load := e.swarmTaskCounts(ctx)
 
 	out := make([]SwarmNode, 0, len(res.Items))
@@ -242,8 +210,6 @@ func (e *engineClient) SwarmNodes(ctx context.Context) ([]SwarmNode, error) {
 	return out, nil
 }
 
-// swarmTaskCounts maps a swarm node id to the number of tasks running on it. Best-effort: an
-// error yields an empty map, so callers simply report no load.
 func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
 	tasks, err := e.cli.TaskList(ctx, client.TaskListOptions{
 		Filters: selectorFilters("desired-state", "running"),
@@ -260,17 +226,13 @@ func (e *engineClient) swarmTaskCounts(ctx context.Context) map[string]int {
 	return counts
 }
 
-// SwarmNodeRemove removes a node from the swarm's node list on the manager
-// (after the node has left). force is needed for nodes that have not gracefully
-// left. Used to keep the Nodes page free of stale "down" entries.
+// force is needed for nodes that did not leave gracefully.
 func (e *engineClient) SwarmNodeRemove(ctx context.Context, nodeID string, force bool) error {
 	_, err := e.cli.NodeRemove(ctx, nodeID, client.NodeRemoveOptions{Force: force})
 	return err
 }
 
-// SwarmNodeAvailability sets a node's scheduling availability (active / pause / drain); requires
-// a manager. Drain is what makes a node safe to reboot — without it Swarm keeps scheduling onto a
-// host about to disappear. Version-checked, so the node is re-inspected immediately before writing.
+// Version-checked, so the node is re-inspected immediately before writing.
 func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availability string) error {
 	var av swarm.NodeAvailability
 	switch availability {
@@ -293,8 +255,6 @@ func (e *engineClient) SwarmNodeAvailability(ctx context.Context, nodeID, availa
 	return err
 }
 
-// SwarmNodeSetLabel sets one label on a swarm node; requires a manager. Version-checked like
-// SwarmNodeAvailability, and a no-op when the label already holds the value.
 func (e *engineClient) SwarmNodeSetLabel(ctx context.Context, nodeID, key, value string) error {
 	res, err := e.cli.NodeInspect(ctx, nodeID, client.NodeInspectOptions{})
 	if err != nil {
@@ -312,9 +272,6 @@ func (e *engineClient) SwarmNodeSetLabel(ctx context.Context, nodeID, key, value
 	return err
 }
 
-// SwarmTasks lists the swarm's tasks, optionally filtered to one node. Requires a
-// manager. Only the manager can enumerate these: the containers live on the nodes,
-// which Miabi may hold no Docker client for.
 func (e *engineClient) SwarmTasks(ctx context.Context, nodeID string) ([]SwarmTask, error) {
 	var filterPairs []string
 	if nodeID != "" {

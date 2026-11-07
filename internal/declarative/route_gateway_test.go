@@ -37,9 +37,7 @@ func fieldNames(diffs []FieldDiff) []string {
 	return out
 }
 
-// An omitted maintenance block and an explicitly disabled one describe the same
-// route. If they compared unequal, every plan would report drift on a converged
-// route and GitOps would rewrite it forever.
+// Unequal comparison would make GitOps rewrite a converged route forever.
 func TestOmittedMaintenanceIsNotDrift(t *testing.T) {
 	live := routeRes("web", nil)
 	desired := routeRes("web", func(s *RouteSpec) {

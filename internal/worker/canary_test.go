@@ -42,8 +42,7 @@ func TestNextCanaryWeight(t *testing.T) {
 }
 
 func TestBuildHealthcheck(t *testing.T) {
-	// nil leaves Docker to the image's own HEALTHCHECK; none has to switch that off too, or a web check
-	// baked into the image kills a worker that serves no HTTP (#451).
+	// A web check baked into the image would kill a worker that serves no HTTP (#451).
 	for _, typ := range []models.HealthcheckType{models.HealthcheckImage, ""} {
 		if buildHealthcheck(&models.Application{HealthcheckType: typ}) != nil {
 			t.Errorf("%q should leave the image's own healthcheck in place", typ)
@@ -101,8 +100,6 @@ func TestCanaryTuningFallbacks(t *testing.T) {
 	}
 }
 
-// The automatic ramp must leave a manual-mode app's weight exactly where the
-// user put it, on every tick, forever — while still stepping an auto one.
 func TestCanaryRampHoldsInManualMode(t *testing.T) {
 	manual := &models.Application{CanaryMode: models.CanaryModeManual, CanaryWeight: 35, CanaryStepWeight: 20}
 	action, next := nextCanaryRamp(manual)

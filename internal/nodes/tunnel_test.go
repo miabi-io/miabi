@@ -34,9 +34,6 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// TestTunnelEndToEnd drives a Docker API call from the control plane through the
-// WebSocket+yamux tunnel to an agent that pipes each stream to a stub Docker
-// engine — exercising the whole transport in one process.
 func TestTunnelEndToEnd(t *testing.T) {
 	// Stub Docker engine (what the agent pipes to).
 	ping := func(w http.ResponseWriter, _ *http.Request) {
@@ -60,8 +57,6 @@ func TestTunnelEndToEnd(t *testing.T) {
 	defer dockerSrv.Close()
 	dockerAddr := strings.TrimPrefix(dockerSrv.URL, "http://")
 
-	// Control plane: on agent connect, become the yamux client and build a
-	// tunneled docker.Client. Hand it out for the test to call.
 	clientCh := make(chan docker.Client, 1)
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	cp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +77,6 @@ func TestTunnelEndToEnd(t *testing.T) {
 	}))
 	defer cp.Close()
 
-	// Agent: dial the control plane, become the yamux server, pipe each stream
-	// to the stub Docker engine.
 	wsURL := "ws://" + strings.TrimPrefix(cp.URL, "http://") + "/"
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {

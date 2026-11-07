@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package job runs one-off commands in an application's runtime context (a Job)
-// and the schedules that spawn them (a CronJob). This service is the request
-// side: it creates Job rows and enqueues them; the worker executes them.
+// Package job is the request side of Jobs and CronJobs: it creates rows and enqueues them for the worker.
 package job
 
 import (
@@ -66,16 +64,14 @@ type Service struct {
 	enqueuer    Enqueuer
 	scheduler   Scheduler
 	quota       *quota.Service
-	// registered is what this process has registered with the scheduler, per
-	// cronjob id, so SyncSchedules can see what changed elsewhere.
+	// Tracks what this process registered so SyncSchedules can see changes made elsewhere.
 	regMu      sync.Mutex
 	registered map[uint]string
 	// defaultTimeoutSecs caps a job's runtime when the request leaves it unset.
 	defaultTimeoutSecs int
 }
 
-// SetDeployments wires the deployment lookup a waitForDeploy run needs; nil runs
-// declared Jobs straight away.
+// nil runs declared Jobs straight away.
 func (s *Service) SetDeployments(d *repositories.DeploymentRepository) { s.deployments = d }
 
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
@@ -97,31 +93,23 @@ type RunRequest struct {
 	Command     []string
 	Entrypoint  []string
 	TimeoutSecs int
-	// Image optionally overrides the app's active-release image (a custom image
-	// run in the app's runtime context). RegistryID authenticates its pull and
-	// defaults to the app's registry when nil.
+	// RegistryID defaults to the app's registry when nil.
 	Image      string
 	RegistryID *uint
-	// RunAsUser pins this run to an account ("uid", "uid:gid", "name",
-	// "name:group"); empty inherits the app's. A one-off often needs different
-	// privileges from the long-running process — a migration writing a volume the
-	// app only reads, say.
+	// Empty inherits the app's; a one-off may need different privileges, e.g. a migration writing a volume.
 	RunAsUser   string
 	Source      string // manual | api | scheduled
 	TriggeredBy *uint  // user id (nil for scheduled)
 	CronJobID   *uint  // set when spawned by a cronjob
 	// JobDefinitionID is set for a run of a declared Job.
 	JobDefinitionID *uint
-	// WaitDeploymentID holds the run until that deployment ends; the image is
-	// then resolved from the release it activated.
+	// The image is resolved from the release that deployment activated.
 	WaitDeploymentID *uint
 	// Attempt numbers a retry of a declared Job's run; 0 means the first.
 	Attempt int
 }
 
-// Run creates a Job in the app's runtime context and enqueues it. The image is
-// snapshotted from the app's active release (or its image ref) so history shows
-// exactly what ran.
+// Run snapshots the image from the active release so history shows exactly what ran.
 func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest) (*models.Job, error) {
 	if len(req.Command) == 0 {
 		return nil, ErrNoCommand
@@ -130,9 +118,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// A custom image runs in the app's runtime context and must be pulled (it may
-	// be private/absent); default its registry to the app's. Otherwise run the
-	// app's active-release image, already present on its node.
+	// A custom image may be private or absent so it is pulled; the active-release image is already on the node.
 	var (
 		image      string
 		registryID *uint
@@ -149,8 +135,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		// A run waiting on a deploy takes its image from the release that deploy activates.
 		return nil, err
 	}
-	// Snapshot the account this run is pinned to (the request's, else the app's) so history shows
-	// what actually ran, and validate it here rather than letting the worker fail the run.
+	// Validated here rather than letting the worker fail the run.
 	runAsUser, err := s.validRunAsUser(app, req.RunAsUser)
 	if err != nil {
 		return nil, err
@@ -192,9 +177,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	return j, nil
 }
 
-// validRunAsUser resolves the account a run is pinned to — the request's choice, else the app's — and
-// checks it against the workspace's security profile. A job runs in the app's runtime context with
-// the app's data, so it cannot be the loophole that gets root where a deploy could not.
+// A job runs with the app's data, so it must not be the loophole that gets root where a deploy could not.
 func (s *Service) validRunAsUser(app *models.Application, requested string) (string, error) {
 	v, err := s.checkRunAsUser(app, requested)
 	if err != nil || v != "" {
@@ -203,8 +186,7 @@ func (s *Service) validRunAsUser(app *models.Application, requested string) (str
 	return app.RunAsUser, nil
 }
 
-// checkRunAsUser normalizes a requested run-as user and rejects one that would escape a workspace's
-// non-root mandate. Blank passes through blank, so a caller decides what "unset" inherits from.
+// Blank passes through so the caller decides what "unset" inherits from.
 func (s *Service) checkRunAsUser(app *models.Application, requested string) (string, error) {
 	v, err := models.NormalizeRunAsUser(requested)
 	if err != nil || v == "" {
@@ -216,9 +198,7 @@ func (s *Service) checkRunAsUser(app *models.Application, requested string) (str
 	return v, nil
 }
 
-// resolveImage picks the image a job should run: the app's active release image
-// when present (exactly what's deployed), else the configured image ref for
-// image-source apps. Git-source apps with no release yet cannot run a job.
+// Git-source apps with no release yet cannot run a job.
 func (s *Service) resolveImage(app *models.Application) (string, error) {
 	if rel, err := s.releases.FindActive(app.ID); err == nil && rel.Image != "" {
 		return rel.Image, nil
@@ -239,8 +219,6 @@ func (s *Service) Get(workspaceID, id uint) (*models.Job, error) {
 	return j, nil
 }
 
-// List returns the workspace's job history (optionally filtered to appID),
-// annotated with each job's application name for the workspace-level view.
 func (s *Service) List(workspaceID, appID uint, limit int) ([]models.Job, error) {
 	jobs, err := s.repo.ListByWorkspace(workspaceID, appID, limit)
 	if err != nil {
@@ -266,9 +244,7 @@ func (s *Service) appNames(workspaceID uint) map[uint]string {
 	return out
 }
 
-// Cancel stops a running job by force-removing its container; the worker, on
-// completion, sees the canceled status and leaves it. A pending (not yet
-// started) job is marked canceled directly.
+// Cancel force-removes a running job's container; the worker sees the canceled status and leaves it.
 func (s *Service) Cancel(ctx context.Context, workspaceID, id uint) error {
 	j, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -280,8 +256,7 @@ func (s *Service) Cancel(ctx context.Context, workspaceID, id uint) error {
 	return s.cancelJob(ctx, j)
 }
 
-// cancelJob marks a job canceled and force-removes its container so the worker's
-// RunOneShot unblocks; on completion the worker sees the canceled state.
+// Force-removing the container unblocks the worker's RunOneShot.
 func (s *Service) cancelJob(ctx context.Context, j *models.Job) error {
 	j.Status = models.JobCanceled
 	if err := s.repo.Update(j); err != nil {

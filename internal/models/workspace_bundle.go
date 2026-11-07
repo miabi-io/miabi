@@ -35,9 +35,7 @@ const (
 	BundleMigrationImport WorkspaceBundleKind = "migration_import"
 )
 
-// Bundle phases, in the order a run passes through them. They are display state,
-// not a state machine: a phase is recorded as work starts so a run that stalls
-// says where, which is the question asked of a long backup.
+// Display state, not a state machine: recorded as work starts so a stalled run says where.
 const (
 	BundlePhaseState     = "state"     // collecting configuration + secrets
 	BundlePhaseDatabases = "databases" // dumping / restoring managed databases
@@ -48,46 +46,34 @@ const (
 	BundlePhaseDone      = "done"
 )
 
-// WorkspaceBundle is one export or restore run of a portable workspace bundle. Separate from
-// Backup/VolumeBackup, which record one artifact each against a live resource: a bundle run
-// records a whole workspace crossing a boundary, listed in its own info file in the bucket.
+// WorkspaceBundle records a whole workspace crossing a boundary, unlike per-artifact Backup rows.
 type WorkspaceBundle struct {
 	ID          uint                `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint                `json:"workspace_id" gorm:"index;not null"`
 	Kind        WorkspaceBundleKind `json:"kind" gorm:"not null;default:export"`
-	// Ref is the bundle's name in the bucket ("mbwb_<workspace>_<timestamp>"). On
-	// a restore it is the bundle that was read.
-	Ref    string       `json:"ref" gorm:"index"`
-	Status BackupStatus `json:"status" gorm:"not null;default:pending"`
-	Phase  string       `json:"phase,omitempty"`
+	Ref         string              `json:"ref" gorm:"index"`
+	Status      BackupStatus        `json:"status" gorm:"not null;default:pending"`
+	Phase       string              `json:"phase,omitempty"`
 	// Trigger is manual for now; scheduled bundles reuse the same row.
 	Trigger string `json:"trigger,omitempty"`
 
-	// TargetWorkspaceID is where a restore puts what it reads — usually the run's own workspace,
-	// differing when a bundle lands in a fresh one (a clone or migration). Zero on an export. The
-	// run stays owned by the workspace whose bucket it read.
+	// Differs from the run's workspace when a bundle lands in a fresh one; the run stays owned by the source bucket's workspace.
 	TargetWorkspaceID uint `json:"target_workspace_id,omitempty" gorm:"index"`
-	// RestoreData pulls the dumps and archives as well as the configuration. Off
-	// restores the shape of a workspace without its contents — useful to stage a
-	// clone before committing to moving gigabytes.
+	// Off restores only the workspace's shape, useful to stage a clone before moving gigabytes.
 	RestoreData bool `json:"restore_data"`
 	// DeployApps rolls out the restored applications at the end of a restore.
 	DeployApps bool `json:"deploy_apps"`
 
 	S3Bucket string `json:"s3_bucket,omitempty"`
 	S3Prefix string `json:"s3_prefix,omitempty"`
-	// SourceWorkspace is the workspace the bundle was taken from, by name. On a
-	// restore into a differently-named workspace it is the only record of where
-	// the data came from.
+	// The only record of origin when restoring into a differently-named workspace.
 	SourceWorkspace string `json:"source_workspace,omitempty"`
 
 	// Artifacts / SizeBytes summarize what the run moved.
 	Artifacts int   `json:"artifacts"`
 	SizeBytes int64 `json:"size_bytes"`
 
-	// Report is the human-readable outcome: what was created, skipped or could not be carried. A
-	// restore's report is the deliverable — it names the manual follow-ups (DNS, certificates,
-	// unverified domains) — so it is persisted rather than logged and lost.
+	// Persisted because a restore's report names the manual follow-ups (DNS, certificates, domains).
 	Report BundleReport `json:"report,omitempty" gorm:"serializer:json"`
 
 	// Migration carries a migration run's details; nil on a bucket export or restore.
@@ -139,8 +125,6 @@ func (r *BundleReport) Failures() []BundleReportItem {
 	return out
 }
 
-// BundleMigration is what a migration run needs beyond a bucket run. The source fills the export
-// fields, the target the import fields.
 type BundleMigration struct {
 	// Export side.
 	KeyID    uint                `json:"key_id,omitempty"`

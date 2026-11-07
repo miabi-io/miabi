@@ -35,8 +35,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 )
 
-// EventsHandler serves resource timelines (application and database-instance events) and
-// runtime container logs. All are workspace-scoped; SSE endpoints accept a query-token.
+// SSE endpoints accept a query-token.
 type EventsHandler struct {
 	events     *events.Service
 	bus        *eventbus.Bus
@@ -105,17 +104,13 @@ func (h *EventsHandler) DatabaseStream(c *okapi.Context) error {
 	}
 }
 
-// WorkspaceEvent is a timeline event enriched with its subject's name so the workspace-wide
-// feed can show where each event belongs. Database events name the subject through the
-// embedded AppEvent.DatabaseName instead of these fields.
+// Database events name the subject through AppEvent.DatabaseName instead.
 type WorkspaceEvent struct {
 	models.AppEvent
 	AppName        string `json:"app_name"`         // unique slug handle
 	AppDisplayName string `json:"app_display_name"` // free-text label
 }
 
-// WorkspaceList returns the workspace's application events across all apps,
-// paginated (page/size), newest first.
 func (h *EventsHandler) WorkspaceList(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	page, size, offset := normalizePageParams(queryInt(c, "page", 0), queryInt(c, "size", 20))
@@ -151,18 +146,14 @@ func (h *EventsHandler) WorkspaceList(c *okapi.Context) error {
 	return paginated(c, out, total, page, size)
 }
 
-// WorkspaceStream pushes live events for every application in the workspace over SSE — the
-// dashboard's activity and health feed. SSEStreamWithOptions flushes headers immediately so
-// EventSource fires onopen, and emits a periodic ":ping" to hold idle connections open.
+// Headers flush immediately so EventSource fires onopen; a periodic ":ping" holds idle connections.
 func (h *EventsHandler) WorkspaceStream(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	ch, unsubscribe := h.bus.Subscribe(events.WorkspaceTopic(wsID))
 	defer unsubscribe()
 
 	ctx := c.Request().Context()
-	// Bridge bus events into the SSE channel. Empty Event field + JSON serializer
-	// reproduces the wire format the dashboard parses ({type:"event",data:{…}}
-	// delivered to EventSource.onmessage).
+	// Empty Event field plus JSON serializer reproduces the wire format the dashboard parses.
 	msgs := make(chan okapi.Message)
 	go func() {
 		for {
@@ -213,8 +204,6 @@ func (h *EventsHandler) LogsStream(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	// follow defaults to true (live tail — the web console's behaviour); pass
-	// ?follow=false for a one-shot snapshot of the last `tail` lines.
 	follow := c.Query("follow") != "false"
 	err = h.monitoring.StreamAppLogs(c.Request().Context(), app.WorkspaceID, app.ID, follow, c.Query("tail"), func(l docker.LogLine) error {
 		return c.SSESendJSON(l)

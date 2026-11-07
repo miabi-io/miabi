@@ -17,17 +17,12 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package declarative is the shared declarative resource model for Miabi: a family of miabi.io/v1
-// kinds with one parse/validate/render path and one plan/diff engine. Four consumers speak the
-// same kinds — the apply API, GitOps, the Terraform provider, and marketplace templates.
+// Package declarative is the miabi.io/v1 resource model shared by apply, GitOps, Terraform and marketplace templates.
 package declarative
 
-// APIVersion is the only accepted apiVersion. It is shared with the marketplace
-// manifest engine so the two families stay in lock-step.
+// APIVersion is shared with the marketplace manifest engine so the two stay in lock-step.
 const APIVersion = "miabi.io/v1"
 
-// Kind enumerates the declarative resource kinds. They map 1:1 to the resources
-// the platform manages and the Terraform provider exposes.
 type Kind string
 
 const (
@@ -35,51 +30,31 @@ const (
 	KindStack       Kind = "Stack"
 	KindDatabase    Kind = "Database"
 	KindVolume      Kind = "Volume"
-	// KindRoute is an HTTP routing rule (host/path -> app:port + TLS), distinct from KindDomain: a
-	// Route exposes an app on a hostname, while a Domain is the owned hostname/zone tracking DNS
-	// ownership and the default TLS policy routes under it inherit.
+	// KindRoute exposes an app on a hostname; KindDomain is the owned zone with ownership and default TLS.
 	KindRoute  Kind = "Route"
 	KindSecret Kind = "Secret"
-	// KindSealedSecret is a vault secret whose value is sealed to the workspace's public key, so the
-	// manifest is safe to commit. It lands in the same vault as a Secret, under the same name space.
+	// KindSealedSecret is sealed to the workspace public key so it is safe to commit; same vault namespace as Secret.
 	KindSealedSecret Kind = "SealedSecret"
-	// KindDomain is an owned hostname (or zone) a workspace controls: its default
-	// TLS policy and (optional) wildcard coverage. DNS-ownership verification is a
-	// runtime action, not a declarable field.
+	// KindDomain ownership verification is a runtime action, not a declarable field.
 	KindDomain Kind = "Domain"
-	// KindRegistry is a container-registry credential used to pull private images.
-	// It is deliberately not called a "secret": Miabi's Secret kind is the vault,
-	// and an Application references this one by name through spec.registry.
+	// KindRegistry is not called a secret because Secret is the vault; apps reference it via spec.registry.
 	KindRegistry Kind = "Registry"
 	// KindProject bundles a set of resources living in one repo/namespace.
 	KindProject Kind = "Project"
-	// KindConfig is a set of named configuration files projected into containers as
-	// read-only files. Secret carries one opaque value consumed as env; Config
-	// carries named text payloads consumed as files. Both are encrypted at rest.
+	// KindConfig carries named files projected read-only into containers; encrypted at rest like Secret.
 	KindConfig Kind = "Config"
-	// KindMiddleware is a gateway middleware — rate limiting, basic auth, an access
-	// policy — that Routes reference by name through spec.middlewares. It is a
-	// resource of its own rather than a block inside RouteSpec because one policy is
-	// normally shared: writing the rate limit once and naming it from five routes is
-	// the point, and inlining it would make five copies to keep in step.
+	// KindMiddleware is its own resource so one policy can be shared by many routes instead of copied.
 	KindMiddleware Kind = "Middleware"
-	// KindCronJob is a schedule that runs a command in an Application's runtime
-	// context (same image, env, networks and volumes) on a cron expression.
+	// KindCronJob runs in the Application's runtime context (same image, env, networks and volumes).
 	KindCronJob Kind = "CronJob"
-	// KindJob is a declared one-off run in an Application's runtime context. It is
-	// a run definition plus a fingerprint: a sync runs it only when its runPolicy
-	// says so, never again for an unchanged spec.
+	// KindJob runs only when its runPolicy says so, never again for an unchanged spec.
 	KindJob Kind = "Job"
-	// KindGitSource is a GitOps project: a Git path of manifests the workspace keeps reconciled.
-	// Declared from a GitOps repository it nests one project under another ("app of apps").
+	// KindGitSource declared from a GitOps repository nests one project under another ("app of apps").
 	KindGitSource Kind = "GitSource"
-	// KindGitRepository is a Git credential: a repository URL and how to authenticate to it. The
-	// token or SSH key is never in the manifest; it is read from the vault (a Secret or SealedSecret).
+	// KindGitRepository never carries the token or SSH key; it is read from the vault.
 	KindGitRepository Kind = "GitRepository"
 )
 
-// knownKinds is the set of recognized kinds, used by the parser to route a
-// document's spec into the right typed field.
 var knownKinds = map[Kind]bool{
 	KindApplication:   true,
 	KindStack:         true,
@@ -99,21 +74,16 @@ var knownKinds = map[Kind]bool{
 	KindGitRepository: true,
 }
 
-// Meta is the identity block shared by every kind. Labels are short and identifying (for selection
-// and grouping); Annotations hold descriptive data the engine stores but never queries. Custom
-// metadata belongs in one of these maps, never as ad-hoc top-level keys.
+// Custom metadata belongs in Labels or Annotations, never as ad-hoc top-level keys.
 type Meta struct {
 	Name string `yaml:"name" json:"name"`
-	// UID is the resource's portable identifier (its Miabi uid). Written on
-	// export so a restore into another install — or a rename in a manifest — keeps
-	// identity. Optional in hand-authored manifests; matched ahead of name when set.
+	// UID survives restores and renames; when set it is matched ahead of name.
 	UID         string            `yaml:"uid,omitempty" json:"uid,omitempty"`
 	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
 }
 
-// Resource is one parsed declarative object. Exactly one of the typed spec
-// pointers is set, determined by Kind.
+// Exactly one typed spec pointer is set, determined by Kind.
 type Resource struct {
 	APIVersion string `yaml:"apiVersion" json:"apiVersion"`
 	Kind       Kind   `yaml:"kind" json:"kind"`
@@ -137,88 +107,61 @@ type Resource struct {
 	GitRepository *GitRepositorySpec `yaml:"-" json:"gitRepository,omitempty"`
 }
 
-// Key is the stable identity of a resource within a workspace: "<kind>/<name>".
-// Names are unique per kind, so this keys the desired/actual comparison.
 func (r Resource) Key() string { return string(r.Kind) + "/" + r.Metadata.Name }
 
-// ApplicationSpec is a long-running container workload. CI writes the immutable
-// Digest; GitOps converges runtime to it.
+// ApplicationSpec Digest is written by CI; GitOps converges runtime to it.
 type ApplicationSpec struct {
-	// Source builds the image from a Git repository instead of pulling one. Exactly one of source and
-	// image is set: an app either builds or pulls, and a manifest declaring both would not say which
-	// wins. Image stays the plain, common case; source is what makes a build-from-git app expressible
-	// at all, so an app created in the console can be exported and re-applied as itself.
-	Source    *SourceSpec       `yaml:"source,omitempty" json:"source,omitempty"`
-	Image     string            `yaml:"image,omitempty" json:"image,omitempty"`
-	Tag       string            `yaml:"tag,omitempty" json:"tag,omitempty"`
-	Digest    string            `yaml:"digest,omitempty" json:"digest,omitempty"` // sha256:… (immutable pin)
-	Command   []string          `yaml:"command,omitempty" json:"command,omitempty"`
-	Ports     []PortSpec        `yaml:"ports,omitempty" json:"ports,omitempty"`
-	Env       map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
-	SecretEnv []string          `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; vault references need none, apply-resolved credentials are added
-	Mounts    []MountSpec       `yaml:"mounts,omitempty" json:"mounts,omitempty"`
-	Resources *ResourceSpec     `yaml:"resources,omitempty" json:"resources,omitempty"`
-	// Placement is where the app runs: the location it is created in and, for a service, the nodes Swarm
-	// may schedule it on.
+	// Source and image are mutually exclusive: an app either builds or pulls.
+	Source    *SourceSpec               `yaml:"source,omitempty" json:"source,omitempty"`
+	Image     string                    `yaml:"image,omitempty" json:"image,omitempty"`
+	Tag       string                    `yaml:"tag,omitempty" json:"tag,omitempty"`
+	Digest    string                    `yaml:"digest,omitempty" json:"digest,omitempty"` // sha256:… (immutable pin)
+	Command   []string                  `yaml:"command,omitempty" json:"command,omitempty"`
+	Ports     []PortSpec                `yaml:"ports,omitempty" json:"ports,omitempty"`
+	Env       map[string]string         `yaml:"env,omitempty" json:"env,omitempty"`
+	SecretEnv []string                  `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"` // keys stored encrypted; vault references need none, apply-resolved credentials are added
+	Mounts    []MountSpec               `yaml:"mounts,omitempty" json:"mounts,omitempty"`
+	Resources *ResourceSpec             `yaml:"resources,omitempty" json:"resources,omitempty"`
 	Placement *ApplicationPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 	// Deployment is how the app runs and how a new release replaces the running one.
 	Deployment *DeploymentSpec `yaml:"deployment,omitempty" json:"deployment,omitempty"`
-	// Security is the account the container runs as, the hardening it runs with and the kernel privileges
-	// it is granted, checked on apply the way the console checks them.
+	// Security is checked on apply the way the console checks it.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
-	// Healthcheck is how the container's health is probed. A deploy waits for it to report healthy before
-	// the new release goes live, so a broken release never replaces a working one. Omitted, the app keeps
-	// the check it has, so one configured in the console is not undone.
+	// Healthcheck gates releases so a broken one never replaces a working one; omitted keeps the current check.
 	Healthcheck *HealthcheckSpec `yaml:"healthcheck,omitempty" json:"healthcheck,omitempty"`
-	// ContainerLabels are user-defined Docker labels stamped on the app's container(s), for
-	// label-driven tools like Traefik. Reserved keys (io.miabi.*, com.docker.*) are stripped on apply
-	// — a manifest is machine-authored, so import is fail-soft rather than erroring.
+	// ContainerLabels reserved keys (io.miabi.*, com.docker.*) are stripped on apply rather than rejected.
 	ContainerLabels map[string]string `yaml:"containerLabels,omitempty" json:"containerLabels,omitempty"`
 	// Stack optionally names the owning Stack resource.
 	Stack string `yaml:"stack,omitempty" json:"stack,omitempty"`
-	// Registry names the Registry credential used to pull this image; empty means an anonymous public
-	// pull. It need not be declared in the same bundle: a name not in the manifest resolves against
-	// the workspace's existing credentials, so a token created once in the UI can be reused.
+	// Registry empty means an anonymous pull; an undeclared name resolves against existing workspace credentials.
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	// ExternalLabel pins the subdomain used for external access (`<label>.<base-domain>`). When unset
-	// Miabi generates a stable label. The label is platform-wide unique: if already claimed it is
-	// ignored and a generated one is used, so a copy-pasted manifest never fails on a clash.
+	// ExternalLabel is platform-wide unique; a claimed one is ignored for a generated label.
 	ExternalLabel string `yaml:"externalLabel,omitempty" json:"externalLabel,omitempty"`
-	// ReloadPolicy decides what a mounted config's content change does: "restart"
-	// (default) redeploys the app, "none" leaves it running for apps that watch
-	// their own config file.
+	// ReloadPolicy "restart" (default) redeploys on config change; "none" suits apps that watch their own config.
 	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
 	// Deprecated: use security.runAsUser. Still accepted; setting both is an error.
 	DeprecatedRunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
 	// Deprecated: use deployment.strategy. Still accepted; setting both is an error.
 	DeprecatedStrategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
-	// ConfigFP fingerprints every mounted config's digest, filled by the apply engine
-	// on both sides of the diff so a content change converges as an app update.
-	// Not serialized: derived state, like RegistrySpec.PasswordFP.
+	// ConfigFP is derived state filled on both sides of the diff, so a config content change converges.
 	ConfigFP string `yaml:"-" json:"-"`
 }
 
 // ApplicationPlacementSpec is where an application runs.
 type ApplicationPlacementSpec struct {
-	// Location names where the app is created. Omitted, the app follows its stack, a volume it mounts or
-	// the databases it references, else the workspace default. Fixed once created.
+	// Location defaults to the stack, a mounted volume or referenced databases, else the workspace default; fixed once created.
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
-	// Constraints narrow the nodes of the location a service is scheduled on, in Swarm syntax:
-	// node.labels.disk==ssd. An empty list clears them; omitting the field keeps them.
+	// Constraints use Swarm syntax (node.labels.disk==ssd); an empty list clears them, omitting keeps them.
 	Constraints []string `yaml:"constraints,omitempty" json:"constraints,omitempty"`
 }
 
 // DeploymentSpec is how an application runs and rolls out.
 type DeploymentSpec struct {
-	// Runtime is container (one Docker container) or service (a replicated Swarm service, which needs a
-	// location that runs a swarm). Omitted, a new app is a container and an existing one keeps its runtime.
+	// Runtime service needs a location that runs a swarm; omitted, an existing app keeps its runtime.
 	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty"`
-	// Replicas is how many tasks a service runs, 1 to 100. Omitted, a new service runs one and an
-	// existing one keeps its count, so a scale made in the console is not undone.
+	// Replicas is 1 to 100; omitted keeps the current count, so a console scale is not undone.
 	Replicas int `yaml:"replicas,omitempty" json:"replicas,omitempty"`
-	// Strategy is how a new release replaces the running one: recreate (stop then start), rolling
-	// (start the new container before retiring the old) or canary (run both and shift traffic).
-	// Omitted, the app keeps the strategy it is configured with.
+	// Strategy is recreate, rolling or canary; omitted keeps the configured strategy.
 	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
 	// Update tunes how Swarm rolls a new release of a service out.
 	Update *UpdateSpec `yaml:"update,omitempty" json:"update,omitempty"`
@@ -230,18 +173,15 @@ type UpdateSpec struct {
 	DelaySeconds int `yaml:"delaySeconds,omitempty" json:"delaySeconds,omitempty"`
 }
 
-// HealthcheckSpec is how a container's health is probed. Only the fields stated are applied; the rest keep
-// their current value (interval 30s, timeout 5s, 3 retries and no start period on a new app).
+// HealthcheckSpec applies only stated fields; the rest keep their current value.
 type HealthcheckSpec struct {
-	// Type is http (GET path on port, healthy on 2xx/3xx), command (run command in the container, healthy
-	// on exit 0), image (the image's own HEALTHCHECK, the default) or none (no check, not even the image's).
+	// Type is http, command, image (the image's HEALTHCHECK, default) or none (not even the image's).
 	Type string `yaml:"type" json:"type"`
 	// Path is the URL path an http check requests, e.g. /healthz.
 	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 	// Port is the container port an http check probes. Omitted, the app's first port.
 	Port int `yaml:"port,omitempty" json:"port,omitempty"`
-	// Command is the shell command a command check runs, e.g. pg_isready. It needs a shell in the image;
-	// an http check does not.
+	// Command needs a shell in the image; an http check does not.
 	Command            string `yaml:"command,omitempty" json:"command,omitempty"`
 	IntervalSeconds    int    `yaml:"intervalSeconds,omitempty" json:"intervalSeconds,omitempty"`
 	TimeoutSeconds     int    `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
@@ -255,8 +195,7 @@ type PlacementSpec struct {
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 }
 
-// DatabasePlacementSpec is where a database is created. It also reads the string this field held
-// before it became a block (placement: dedicated) as the old spelling of instance.
+// DatabasePlacementSpec also accepts the old string form (placement: dedicated) as instance.
 type DatabasePlacementSpec struct {
 	// Location names where the database is created; omitted, the workspace default. Fixed once created.
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
@@ -264,40 +203,30 @@ type DatabasePlacementSpec struct {
 	legacyInstance string
 }
 
-// SourceSpec builds an application's image from a Git repository. It mirrors the console's Source
-// card: where the code is, which ref to build, and how to turn it into an image.
 type SourceSpec struct {
 	// Git is the repository URL (https or ssh). Required.
 	Git string `yaml:"git" json:"git"`
 	// Ref is the branch, tag or commit to build. Empty builds the repository's default branch.
 	Ref string `yaml:"ref,omitempty" json:"ref,omitempty"`
-	// BuildMethod is auto (Dockerfile if present, else buildpacks), dockerfile or buildpack.
-	// Empty means auto.
+	// BuildMethod empty means auto: Dockerfile if present, else buildpacks.
 	BuildMethod string `yaml:"buildMethod,omitempty" json:"buildMethod,omitempty"`
-	// Builder is the Cloud Native Buildpacks builder image; Buildpacks pins the buildpacks to run.
-	// Both apply to the buildpack path only.
+	// Builder and Buildpacks apply to the buildpack path only.
 	Builder    string   `yaml:"builder,omitempty" json:"builder,omitempty"`
 	Buildpacks []string `yaml:"buildpacks,omitempty" json:"buildpacks,omitempty"`
-	// BuildEnv are variables available to the BUILD, not to the running container — a private module
-	// token, a feature flag the compiler reads. Runtime env belongs in spec.env.
+	// BuildEnv is for the build only, not the running container; runtime env belongs in spec.env.
 	BuildEnv map[string]string `yaml:"buildEnv,omitempty" json:"buildEnv,omitempty"`
-	// Repository names a Git credential for a private repo: a GitRepository in the bundle, or one
-	// that already exists in the workspace.
+	// Repository names a GitRepository in the bundle or one already in the workspace.
 	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
 }
 
-// PortSpec is a container port and how it is reached. The two exposure knobs are orthogonal:
-// externalAccess gives it a public HTTPS URL through the reverse proxy, while publish/hostPort
-// binds it to a raw port on the node, like `docker -p`.
+// PortSpec exposure knobs are orthogonal: externalAccess is a public HTTPS URL, publish binds a raw node port.
 type PortSpec struct {
 	Container int    `yaml:"container" json:"container"`
 	Protocol  string `yaml:"protocol,omitempty" json:"protocol,omitempty"` // tcp|udp (default tcp)
 	Scheme    string `yaml:"scheme,omitempty" json:"scheme,omitempty"`     // http|https (default http)
-	// ExternalAccess publishes this port on `<externalLabel>.<base-domain>` over
-	// HTTPS via the reverse proxy (the base domain must be configured platform-wide).
+	// ExternalAccess requires the base domain to be configured platform-wide.
 	ExternalAccess bool `yaml:"externalAccess,omitempty" json:"externalAccess,omitempty"`
-	// Publish binds this container port to a host port on the node (raw TCP/UDP).
-	// HostPort requests a specific host port; 0 auto-allocates from the pool.
+	// HostPort 0 auto-allocates from the pool.
 	Publish  bool `yaml:"publish,omitempty" json:"publish,omitempty"`
 	HostPort int  `yaml:"hostPort,omitempty" json:"hostPort,omitempty"`
 }
@@ -306,27 +235,20 @@ type PortSpec struct {
 type MountSpec struct {
 	Volume string `yaml:"volume,omitempty" json:"volume,omitempty"`
 	Config string `yaml:"config,omitempty" json:"config,omitempty"`
-	// Key selects one file from the config, making Path that file's exact location.
-	// Empty projects every key under Path as a directory prefix.
+	// Key makes Path that file's exact location; empty projects every key under Path as a directory.
 	Key      string `yaml:"key,omitempty" json:"key,omitempty"`
 	Path     string `yaml:"path" json:"path"`
 	Mode     string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	ReadOnly bool   `yaml:"readOnly,omitempty" json:"readOnly,omitempty"`
 }
 
-// SecuritySpec is the account a container runs as, its hardening and the kernel privileges it is
-// granted. An omitted field means the container default, so removing one from a manifest converges.
+// SecuritySpec omitted fields mean the container default, so removing one converges.
 type SecuritySpec struct {
-	// RunAsUser pins the container to an account — "1000", "1000:1000", "node", "node:node" — like
-	// `docker run --user`. Empty keeps the image's own user. A workspace under the restricted security
-	// profile must give a non-root numeric uid; anything else is refused on apply, not silently
-	// dropped, since the manifest is the source of truth for what should be running.
+	// RunAsUser empty keeps the image user; restricted workspaces must use a non-root numeric uid or apply refuses.
 	RunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
-	// ReadOnlyRootFilesystem mounts the container's root filesystem read-only. Volumes stay writable, so
-	// an image that writes elsewhere (/tmp, /var/run) needs a volume there.
+	// ReadOnlyRootFilesystem leaves volumes writable, so paths like /tmp need a volume.
 	ReadOnlyRootFilesystem bool `yaml:"readOnlyRootFilesystem,omitempty" json:"readOnlyRootFilesystem,omitempty"`
-	// NoNewPrivileges stops a process gaining privileges through setuid binaries. The restricted security
-	// profile always sets it, so false is refused there rather than silently overridden.
+	// NoNewPrivileges false is refused under the restricted profile rather than silently overridden.
 	NoNewPrivileges *bool `yaml:"noNewPrivileges,omitempty" json:"noNewPrivileges,omitempty"`
 	// Capabilities adds Linux capabilities beyond Docker's default set and drops any from it.
 	Capabilities *CapabilitiesSpec `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
@@ -338,8 +260,7 @@ type SecuritySpec struct {
 
 // CapabilitiesSpec changes the Linux capabilities a container starts with. The CAP_ prefix is optional.
 type CapabilitiesSpec struct {
-	// Add grants capabilities, e.g. ["NET_ADMIN"]. Anything off the allow-list is refused on apply, not
-	// dropped.
+	// Add refuses anything off the allow-list on apply rather than dropping it.
 	Add []string `yaml:"add,omitempty" json:"add,omitempty"`
 	// Drop removes capabilities from the default set. ALL removes every one, leaving only what add grants.
 	Drop []string `yaml:"drop,omitempty" json:"drop,omitempty"`
@@ -349,8 +270,7 @@ type CapabilitiesSpec struct {
 type ResourceSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"` // e.g. "512Mi"
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`       // e.g. "0.5"
-	// GPU is the number of whole GPU units the app requests (0 = none). GPUKind
-	// narrows the request to a vendor/model ("nvidia", "NVIDIA A100-…").
+	// GPUKind narrows the request to a vendor/model ("nvidia", "NVIDIA A100-...").
 	GPU     int    `yaml:"gpu,omitempty" json:"gpu,omitempty"`
 	GPUKind string `yaml:"gpuKind,omitempty" json:"gpuKind,omitempty"`
 }
@@ -369,24 +289,17 @@ type StackSpec struct {
 type DatabaseSpec struct {
 	Engine  string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis|mongodb|libsql
 	Version string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
-	// Instance decides which instance hosts the database: auto (default) reuses a compatible running one
-	// and provisions one when none exists, dedicated always provisions one, shared requires an existing one.
+	// Instance is auto (reuse a compatible one, else provision), dedicated (always provision) or shared (must exist).
 	Instance string `yaml:"instance,omitempty" json:"instance,omitempty"`
-	// Placement is where the database is created. The string form (placement: dedicated) is the
-	// deprecated spelling of instance.
+	// Placement's string form (placement: dedicated) is the deprecated spelling of instance.
 	Placement *DatabasePlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
-	// Resources limit the database's instance, the engine tuned to the memory. Stating them gives the database
-	// an instance of its own, since a reused one already runs with another's size. Omitted, the instance keeps
-	// its limits.
+	// Resources give the database its own instance, since a reused one runs with another's size; omitted keeps limits.
 	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
-	// ReadOnlyUser gives the database a second, read-only user (PostgreSQL): SELECT on every table, now
-	// and future, referenced as {{ .databases.<name>.readonly_user|readonly_password|readonly_uri }}.
-	// Omitted, the database keeps what it has; false removes it.
+	// ReadOnlyUser (PostgreSQL) grants SELECT on all tables; omitted keeps what it has, false removes it.
 	ReadOnlyUser *bool `yaml:"readOnlyUser,omitempty" json:"readOnlyUser,omitempty"`
 }
 
-// DatabaseResourcesSpec limits a database instance, by memory and CPU or by a named size. Memory accepts Ki/Mi/Gi;
-// CPU is a number of cores, "0.5" for half of one. "0" removes a limit.
+// DatabaseResourcesSpec memory accepts Ki/Mi/Gi, CPU is cores ("0.5"); "0" removes a limit.
 type DatabaseResourcesSpec struct {
 	Memory string `yaml:"memory,omitempty" json:"memory,omitempty"`
 	CPU    string `yaml:"cpu,omitempty" json:"cpu,omitempty"`
@@ -397,10 +310,7 @@ type DatabaseResourcesSpec struct {
 // VolumeSpec declares persistent storage.
 type VolumeSpec struct {
 	Size string `yaml:"size,omitempty" json:"size,omitempty"` // e.g. "5Gi" (0/empty = unbounded)
-	// StorageClass names the admin-registered storage the volume is created on (e.g. "ssd-fast").
-	// Omit it to take whatever this install's plan and node defaults decide, which is what keeps one
-	// manifest portable across installs with different disks. A class cannot be changed afterwards:
-	// the data is already under it, so apply refuses the edit rather than recreating the volume.
+	// StorageClass is immutable, so apply refuses an edit; omit it to keep the manifest portable across installs.
 	StorageClass string `yaml:"storageClass,omitempty" json:"storageClass,omitempty"`
 	// Placement is where the volume is created.
 	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
@@ -412,9 +322,6 @@ func (v *VolumeSpec) SizeBytes() (int64, error) {
 	return rs.MemoryBytes()
 }
 
-// RouteSpec binds one or more hostnames (and an optional path) to an
-// application's port with a TLS mode — an HTTP routing rule. List every hostname
-// the route should answer on, e.g. both example.com and www.example.com.
 type RouteSpec struct {
 	Hosts       []string `yaml:"hosts" json:"hosts"`
 	App         string   `yaml:"app" json:"app"` // target application name
@@ -429,48 +336,36 @@ type RouteSpec struct {
 	AdvancedConfig string `yaml:"advancedConfig,omitempty" json:"advancedConfig,omitempty"`
 	// Security carries the gateway's per-route switches.
 	Security *RouteSecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
-	// Maintenance parks the route at the gateway. Omitting it means "serving",
-	// so removing the block from a manifest resumes traffic.
+	// Maintenance omitted means serving, so removing the block resumes traffic.
 	Maintenance *RouteMaintenanceSpec `yaml:"maintenance,omitempty" json:"maintenance,omitempty"`
 	Middlewares []string              `yaml:"middlewares,omitempty" json:"middlewares,omitempty"`
 }
 
-// RouteSecuritySpec holds a route's gateway security switches, mirroring Goma's
-// own security block so the manifest reads like the gateway config it produces.
 type RouteSecuritySpec struct {
-	// ExploitProtection has the gateway reject requests carrying common injection
-	// and traversal signatures before the backend sees them.
 	ExploitProtection bool `yaml:"exploitProtection,omitempty" json:"exploitProtection,omitempty"`
 }
 
-// RouteMaintenanceSpec is the response a parked route answers with. An unset
-// statusCode or message leaves the gateway's defaults (503 and a short notice).
+// RouteMaintenanceSpec unset fields keep the gateway defaults (503 and a short notice).
 type RouteMaintenanceSpec struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
-	// StatusCode must be 4xx or 5xx: a parked route answering 2xx reads as
-	// healthy to uptime monitors and search engines.
+	// StatusCode must be 4xx or 5xx: a 2xx parked route reads as healthy to monitors and search engines.
 	StatusCode int    `yaml:"statusCode,omitempty" json:"statusCode,omitempty"`
 	Message    string `yaml:"message,omitempty" json:"message,omitempty"`
 }
 
-// MiddlewareSpec is one gateway middleware. Type selects the behaviour from the gateway's catalogue
-// (basicAuth, rateLimit, accessPolicy, …) and Rule carries that type's own configuration, so the
-// manifest reads like the gateway config it produces rather than a Miabi-shaped translation of it.
+// MiddlewareSpec Rule is the gateway type's own configuration, passed through untranslated.
 type MiddlewareSpec struct {
 	Type string `yaml:"type" json:"type"`
-	// Paths narrows the middleware to the request paths listed; empty applies it to
-	// everything the route serves.
+	// Paths empty applies the middleware to everything the route serves.
 	Paths []string `yaml:"paths,omitempty" json:"paths,omitempty"`
 	// Rule is the type's configuration, passed through to the gateway.
 	Rule   map[string]any `yaml:"rule,omitempty" json:"rule,omitempty"`
 	RuleFP string         `yaml:"-" json:"-"`
 }
 
-// CronJobSpec is a schedule bound to an Application. Each fire runs Command in the app's runtime
-// context, on the app's active release unless Image overrides it.
+// CronJobSpec runs on the app's active release unless Image overrides it.
 type CronJobSpec struct {
-	// App is the Application the command runs in. Immutable: moving a schedule to another app is a
-	// delete and a create.
+	// App is immutable: moving a schedule to another app is a delete and a create.
 	App string `yaml:"app" json:"app"`
 	// Schedule is a standard 5-field cron expression, evaluated in UTC.
 	Schedule string `yaml:"schedule" json:"schedule"`
@@ -484,13 +379,11 @@ type CronJobSpec struct {
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
 	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
 	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
-	// ConcurrencyPolicy decides what a fire does while the previous run is still active: allow
-	// (start another), forbid (skip this fire) or replace (cancel the running one). Default allow.
+	// ConcurrencyPolicy is allow (default), forbid (skip the fire) or replace (cancel the running one).
 	ConcurrencyPolicy string `yaml:"concurrencyPolicy,omitempty" json:"concurrencyPolicy,omitempty"`
 	// HistoryLimit is how many finished runs to keep; 0 keeps the default 20.
 	HistoryLimit int `yaml:"historyLimit,omitempty" json:"historyLimit,omitempty"`
-	// Suspend pauses the schedule. Omitted leaves the live value alone, so a pause made in the
-	// console survives a sync.
+	// Suspend omitted leaves the live value alone, so a console pause survives a sync.
 	Suspend *bool `yaml:"suspend,omitempty" json:"suspend,omitempty"`
 	// Security pins the account runs use; omitted inherits the app's when each run fires.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
@@ -498,18 +391,15 @@ type CronJobSpec struct {
 
 // Job run policies.
 const (
-	// RunOnChange runs the Job when its fingerprint (command, entrypoint, image, registry, runAsUser,
-	// timeout) changes. Edit the command to run it again.
+	// RunOnChange fingerprint covers command, entrypoint, image, registry, runAsUser and timeout.
 	RunOnChange = "onChange"
 	// RunOnce runs the Job exactly once per name; later spec edits are refused. Rename it to run again.
 	RunOnce = "once"
-	// RunOnRelease runs the Job each time a new release of its app becomes active, however that
-	// deploy started (GitOps, console, pipeline, rollback).
+	// RunOnRelease fires however the deploy started (GitOps, console, pipeline, rollback).
 	RunOnRelease = "onRelease"
 )
 
-// JobSpec is a declared one-off run in an Application's runtime context. Syncing the same commit
-// twice never runs it twice; a failed run is not retried by the next sync.
+// JobSpec never runs twice for the same commit; a failed run is not retried by the next sync.
 type JobSpec struct {
 	// App is the Application the command runs in. Immutable.
 	App string `yaml:"app" json:"app"`
@@ -522,36 +412,27 @@ type JobSpec struct {
 	// Registry names the Registry credential that pulls Image. Only valid with image.
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
 	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
-	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
-	// RunPolicy decides when the Job runs: onChange (default) when its fingerprint changes, once per
-	// name, or onRelease each time a new release of the app becomes active.
-	RunPolicy string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`
-	// WaitForDeploy (onChange only, default true) holds a run while the app has a deploy in flight,
-	// so it runs on the new release; a failed deploy marks the run skipped.
+	TimeoutSeconds int    `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
+	RunPolicy      string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`
+	// WaitForDeploy (onChange only) runs on the new release; a failed deploy marks the run skipped.
 	WaitForDeploy *bool `yaml:"waitForDeploy,omitempty" json:"waitForDeploy,omitempty"`
 	// HistoryLimit is how many finished runs to keep; 0 keeps the default 20.
 	HistoryLimit int `yaml:"historyLimit,omitempty" json:"historyLimit,omitempty"`
-	// BackoffLimit is how many times a failed run is retried before the Job counts as failed; 0
-	// (default) never retries. Retries start a new run; a sync never does.
+	// BackoffLimit 0 never retries; retries start a new run, a sync never does.
 	BackoffLimit int `yaml:"backoffLimit,omitempty" json:"backoffLimit,omitempty"`
 	// Security pins the account runs use; omitted inherits the app's.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
-	// SpecFP is the fingerprint of the spec the platform last applied, filled by the apply engine on
-	// the live side. Derived state, never serialized.
+	// SpecFP is derived state filled on the live side, never serialized.
 	SpecFP string `yaml:"-" json:"-"`
 }
 
-// DomainSpec declares an owned hostname/zone; the hostname is the resource's metadata.name (a real
-// FQDN). tls is the default certificate policy routes under it inherit, and wildcard covers
-// *.name too. Ownership verification is a runtime action.
+// DomainSpec wildcard also covers *.name; ownership verification is a runtime action.
 type DomainSpec struct {
 	TLS      string `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom (default acme)
 	Wildcard bool   `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
 }
 
-// GitSourceSpec is a GitOps project. The repository is either a public URL (repo) or a stored Git
-// credential named by repository, which supplies the URL too. The webhook secret is generated on create
-// and never declared.
+// GitSourceSpec webhook secret is generated on create and never declared.
 type GitSourceSpec struct {
 	Repo       string `yaml:"repo,omitempty" json:"repo,omitempty"`
 	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
@@ -563,13 +444,11 @@ type GitSourceSpec struct {
 	AllowEmpty bool   `yaml:"allowEmpty,omitempty" json:"allowEmpty,omitempty"`
 	// RequireSealedSecrets refuses a sync whose manifests carry a plaintext Secret value.
 	RequireSealedSecrets bool `yaml:"requireSealedSecrets,omitempty" json:"requireSealedSecrets,omitempty"`
-	// DeletePolicy decides what deleting the project does to the resources it created: orphan (the
-	// default) leaves them running, cascade tears them down. Orphan keeps a mistaken prune harmless.
+	// DeletePolicy orphan (default) keeps a mistaken prune harmless; cascade tears resources down.
 	DeletePolicy string `yaml:"deletePolicy,omitempty" json:"deletePolicy,omitempty"`
 }
 
-// GitRepositorySpec is a Git credential. SecretRef names the vault entry holding the token (auth
-// token) or private key (auth ssh), so the manifest is safe to commit when that entry is sealed.
+// GitRepositorySpec is safe to commit when the SecretRef vault entry is sealed.
 type GitRepositorySpec struct {
 	URL       string `yaml:"url" json:"url"`
 	Auth      string `yaml:"auth,omitempty" json:"auth,omitempty"` // public|token|ssh (default token with a secretRef, else public)
@@ -583,55 +462,37 @@ const (
 	DeletePolicyCascade = "cascade"
 )
 
-// RegistrySpec is a container-registry credential; an Application selects one via spec.registry.
-// Password is write-only and never appears in a plan — prefer a vault reference over an inline
-// literal. A rotation still converges via an unreadable fingerprint (see PasswordFP).
+// RegistrySpec Password is write-only and never in a plan; rotation converges via PasswordFP.
 type RegistrySpec struct {
 	Server   string `yaml:"server,omitempty" json:"server,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Password string `yaml:"password,omitempty" json:"password,omitempty"`
-	// PasswordFP is the fingerprint of the *rendered* password, filled in by the apply engine on both
-	// sides of the diff. Deliberately not serialized: it is derived state, so a Marshal->Parse round
-	// trip (how GitOps canonicalizes a bundle) simply recomputes it.
+	// PasswordFP is derived state, so a Marshal->Parse round trip (GitOps canonicalization) recomputes it.
 	PasswordFP string `yaml:"-" json:"-"`
 }
 
-// SecretSpec is a write-only secret value. Value is never read back; the diff
-// engine treats secrets as opaque (presence/absence only).
-//
-// The generation options mirror the console's generator exactly, so the same
-// policy can be expressed in a manifest and in the UI and mean the same thing.
-// Without them `generate:` could not satisfy a service that requires a symbol,
-// and the two halves of the product would disagree about what generating a
-// secret means.
+// SecretSpec generation options mirror the console generator so both mean the same thing.
 type SecretSpec struct {
 	Value    string `yaml:"value,omitempty" json:"value,omitempty"`
 	Generate bool   `yaml:"generate,omitempty" json:"generate,omitempty"`
 	Length   int    `yaml:"length,omitempty" json:"length,omitempty"`
 	Symbols  *bool  `yaml:"symbols,omitempty" json:"symbols,omitempty"`
-	// MinNumbers / MinSpecial guarantee at least this many digits / symbols
-	// appear, for policies that demand them. Asking for symbols implies them.
+	// Asking for a minimum of symbols implies symbols.
 	MinNumbers int `yaml:"minNumbers,omitempty" json:"minNumbers,omitempty"`
 	MinSpecial int `yaml:"minSpecial,omitempty" json:"minSpecial,omitempty"`
 }
 
-// SealedSecretSpec is a secret value sealed with `miabi secrets seal`. Only the workspace it was sealed
-// for can open it, and only for a SealedSecret of the same name. Unlike a Secret, it is compared by
-// fingerprint, so changing the sealed value in git updates the secret.
+// SealedSecretSpec opens only in the workspace and name it was sealed for; compared by fingerprint.
 type SealedSecretSpec struct {
 	// Value is the output of `miabi secrets seal`: sealed:v1:<keyVersion>:<data>. Never plaintext.
 	Value string `yaml:"value" json:"value"`
-	// SealedFP fingerprints Value, stamped by the apply engine on both sides of the diff. Derived
-	// state, never serialized.
+	// SealedFP is derived state stamped on both sides of the diff, never serialized.
 	SealedFP string `yaml:"-" json:"-"`
 }
 
-// IsVaultSecret reports whether a kind is stored in the workspace vault. Secret and SealedSecret share
-// one name space: a name is either, never both.
+// IsVaultSecret: Secret and SealedSecret share one name space, so a name is either, never both.
 func IsVaultSecret(k Kind) bool { return k == KindSecret || k == KindSealedSecret }
 
-// WantSymbols reports whether the generated alphabet includes punctuation:
-// explicitly requested, or implied by asking for a minimum number of them.
 func (s SecretSpec) WantSymbols() bool {
 	if s.Symbols != nil {
 		return *s.Symbols
@@ -639,27 +500,19 @@ func (s SecretSpec) WantSymbols() bool {
 	return s.MinSpecial > 0
 }
 
-// ConfigSpec is a set of named files projected into containers at mount time.
-// Values are interpolated exactly like application env, so a config can carry a
-// rendered database password without a bootstrap script.
+// ConfigSpec values are interpolated like env, so a config can carry a rendered database password.
 type ConfigSpec struct {
-	// Data maps a file key (a relative filename, "/" permitted for subdirectories)
-	// to its content.
 	Data map[string]string `yaml:"data" json:"data"`
 	// Mode is the default octal file mode applied to every key ("0644" when empty).
 	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	// Sensitive redacts content in API responses and diffs it by digest only.
 	Sensitive bool `yaml:"sensitive,omitempty" json:"sensitive,omitempty"`
-	// Delimiters overrides the interpolation delimiters for every value, so a file
-	// whose own syntax uses {{ }} is not mangled. Exactly two distinct entries.
+	// Delimiters must be exactly two distinct entries.
 	Delimiters []string `yaml:"delimiters,omitempty" json:"delimiters,omitempty"`
-	// DigestFP fingerprints the rendered data, filled by the apply engine on both
-	// sides of the diff. Not serialized: derived state, like RegistrySpec.PasswordFP.
+	// DigestFP is derived state filled on both sides of the diff, never serialized.
 	DigestFP string `yaml:"-" json:"-"`
 }
 
-// ProjectSpec bundles a set of resources authored in one place. Child resources
-// may be inlined; the parser flattens them into the document set.
 type ProjectSpec struct {
 	Description string     `yaml:"description,omitempty" json:"description,omitempty"`
 	Resources   []Resource `yaml:"-" json:"resources,omitempty"`

@@ -18,8 +18,7 @@ const { currentWorkspaceId } = storeToRefs(ws)
 
 const items = ref<Stack[]>([])
 const search = ref('')
-// Client-side filter (the list isn't paginated) over the names shown in the
-// table plus the description, so searching for what you can read works.
+// The list isn't paginated, so filter client-side on what's shown plus the description.
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return items.value
@@ -105,8 +104,7 @@ async function runImport() {
     if (reqs) parts.push(t('notify.stacks.importedPortRequests', reqs))
     if (skipped) parts.push(t('notify.stacks.importedSkipped', skipped))
     notify.success(parts.join(', '))
-    // Conflicting host ports were filed pending (not published) so the stack
-    // still imports — tell the user which ports clashed and with what.
+    // Conflicting host ports were filed pending so the stack still imports.
     if (conflicts.length) {
       const lines = conflicts.map((c) => `${c.host_port}/${c.protocol} (in use by ${c.used_by})`).join(', ')
       notify.error(t('notify.stacks.theseHostPortsAreAlready', { lines: lines }), 'Port conflicts')
@@ -175,8 +173,6 @@ async function runImport() {
               <td>
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-layers-outline" style="font-size: 14px"></span></span>
-                  <!-- Label above, permanent handle below — the same shape the
-                       applications list uses, so the two read alike. -->
                   <span class="cell-text">
                     <span class="cell-title">{{ s.display_name || s.name }}</span>
                     <span class="cell-sub">{{ s.name }}</span>

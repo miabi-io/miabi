@@ -27,8 +27,6 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// SecretResolver substitutes ${{ secrets.NAME }} across env values for a
-// workspace, erroring on an unknown reference. Implemented by secret.Service.
 type SecretResolver interface {
 	ResolveAll(workspaceID uint, env []string) ([]string, error)
 }
@@ -36,13 +34,10 @@ type SecretResolver interface {
 // secretRef matches the reference form used across the platform.
 var secretRef = regexp.MustCompile(`\$\{\{\s*secrets\.[A-Za-z][A-Za-z0-9_-]{0,62}\s*\}\}`)
 
-// ErrSecretsUnavailable is returned when a pipeline references a secret but no
-// vault is wired. Failing beats sending the literal reference to a runner.
+// Failing beats sending the literal reference to a runner.
 var ErrSecretsUnavailable = errors.New("this pipeline references workspace secrets, but the secret vault is not available")
 
-// resolveJobSecrets replaces secret references throughout a job's env and its
-// steps', returning the values to redact from the live log stream. A missing
-// secret fails the run here rather than after a build has burned its minutes.
+// A missing secret fails here rather than after a build has burned its minutes.
 func resolveJobSecrets(r SecretResolver, workspaceID uint, spec *proto.JobSpec) ([]string, error) {
 	if !specHasSecretRef(spec) {
 		return nil, nil
@@ -95,9 +90,7 @@ func hasSecretRef(env []string) bool {
 	return false
 }
 
-// changedValues returns the resolved value of every entry resolution rewrote.
-// Whatever a reference expanded to is secret by definition, so this is the set
-// the log stream must mask.
+// Whatever a reference expanded to is secret by definition, so this is the set to mask.
 func changedValues(before, after []string) []string {
 	var out []string
 	for i := range after {

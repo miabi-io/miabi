@@ -89,8 +89,7 @@ func seedCron(t *testing.T, repo *repositories.JobRepository, cj models.CronJob)
 	return &cj
 }
 
-// A tick for a CronJob deleted elsewhere (another replica, or with its app)
-// unregisters itself instead of failing on every fire.
+// A tick for a CronJob deleted elsewhere unregisters itself instead of failing every fire.
 func TestTickUnregistersDeletedCronJob(t *testing.T) {
 	s, repo, sch := newCronSvc(t)
 	cj := seedCron(t, repo, models.CronJob{WorkspaceID: 1, ApplicationID: 1, Name: "report", Schedule: "* * * * *", Enabled: true})
@@ -131,8 +130,7 @@ func TestSyncSchedules(t *testing.T) {
 	}
 }
 
-// Recording a run writes only last_run_at, so a tick holding a stale copy can't
-// revert an edit made meanwhile.
+// Writing only last_run_at stops a tick holding a stale copy from reverting a concurrent edit.
 func TestLastRunDoesNotRevertEdit(t *testing.T) {
 	_, repo, _ := newCronSvc(t)
 	cj := seedCron(t, repo, models.CronJob{WorkspaceID: 1, ApplicationID: 1, Name: "report", Schedule: "0 1 * * *", Enabled: true})

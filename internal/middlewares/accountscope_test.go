@@ -21,8 +21,6 @@ package middlewares
 
 import "testing"
 
-// The allow-list is written against the path after the API version prefix, so a route's full URL has
-// to reduce to it — including with a trailing slash or a different mount point.
 func TestAccountPathReduction(t *testing.T) {
 	cases := map[string]string{
 		"/api/v1/me":                   "/me",
@@ -41,16 +39,12 @@ func TestAccountPathReduction(t *testing.T) {
 	}
 }
 
-// Only the identity endpoints are readable by a workspace-bound key; everything else account-level
-// is refused, which is the whole point.
 func TestAccountReadableList(t *testing.T) {
 	for _, allowed := range []string{"/me", "/permissions", "/capabilities"} {
 		if !accountReadable[allowed] {
 			t.Errorf("%s should be readable by a bound key", allowed)
 		}
 	}
-	// The escapes from the finding: minting a key, session control, the cross-workspace inbox and
-	// workspace management must never be on this list.
 	for _, denied := range []string{"/api-keys", "/me/sessions", "/me/sessions/revoke-others", "/workspaces", "/inbox", "/users"} {
 		if accountReadable[denied] {
 			t.Errorf("%s must not be reachable by a workspace-bound key", denied)
@@ -58,9 +52,7 @@ func TestAccountReadableList(t *testing.T) {
 	}
 }
 
-// The escapes the finding lists, each checked against the real path and method. A workspace-bound
-// key reached every one of these before, because the binding was only ever compared on routes that
-// name a workspace — and none of these do.
+// Bound keys escaped before because the binding was only compared on routes naming a workspace.
 func TestWorkspaceBoundKeyCannotLeaveItsWorkspace(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -81,8 +73,7 @@ func TestWorkspaceBoundKeyCannotLeaveItsWorkspace(t *testing.T) {
 		{"cross-workspace inbox", "", "GET", "/api/v1/inbox", false},
 		{"update the account", "", "PUT", "/api/v1/me", false},
 
-		// What a bound key is for: anything inside the workspace it names. WorkspaceScope compares
-		// the binding there, so a mismatch is still refused — one layer down, not here.
+		// WorkspaceScope compares the binding there, so a mismatch is still refused one layer down.
 		{"its own workspace", "acme", "GET", "/api/v1/workspaces/acme/volumes", true},
 		{"a write in its workspace", "acme", "POST", "/api/v1/workspaces/acme/applications", true},
 		{"another workspace, caught by WorkspaceScope", "other", "GET", "/api/v1/workspaces/other/volumes", true},

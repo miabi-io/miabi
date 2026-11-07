@@ -32,37 +32,28 @@ import (
 
 // Tag-preview and enrichment bounds.
 const (
-	// DefaultTagPreview is how many of a repository's newest tags the browse
-	// list carries. The list exists to find a repository, not to read its
-	// history — the rest are one click away on the repository page.
+	// The list exists to find a repository, not read its history.
 	DefaultTagPreview = 4
-	// maxTagPreview caps what a client may request, so the list can't be turned
-	// back into the unbounded response this replaced.
+	// Caps requests so the list can't become the unbounded response it replaced.
 	maxTagPreview = 25
-	// manifestFetchConcurrency bounds the parallel manifest reads used to enrich
-	// a page of tags with digests and sizes. One request per tag is fine for a
-	// page; doing them all at once is not.
+	// One request per tag is fine for a page; all at once is not.
 	manifestFetchConcurrency = 8
 )
 
 // RepositorySummary is a repository as it appears in the browse list.
 type RepositorySummary struct {
 	Name string `json:"name"`
-	// TagCount is the repository's full tag count; Tags carries only the newest
-	// DefaultTagPreview of them, in display order.
+	// Tags carries only the newest DefaultTagPreview; TagCount is the full count.
 	TagCount int      `json:"tag_count"`
 	Tags     []string `json:"tags"`
 }
 
-// TagInfo is one tag on a repository's tags page, enriched with what the platform knows about it. Digest
-// and SizeBytes come from the registry; the provenance fields come from the image catalog and are absent
-// for images pushed by hand rather than built by a pipeline.
+// Provenance fields are absent for images pushed by hand rather than built by a pipeline.
 type TagInfo struct {
 	Name      string `json:"name"`
 	Digest    string `json:"digest,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
-	// InUse marks a tag whose image a live deployment or pinned release holds.
-	// Deleting it is refused, so the UI can say so before the user tries.
+	// Deleting an in-use tag is refused, so the UI can say so up front.
 	InUse         bool       `json:"in_use"`
 	BuiltAt       *time.Time `json:"built_at,omitempty"`
 	Commit        string     `json:"commit,omitempty"`
@@ -70,9 +61,7 @@ type TagInfo struct {
 	PipelineRunID *uint      `json:"pipeline_run_id,omitempty"`
 }
 
-// RepositoryOverview is the summary shown on a repository's page. It deliberately does not total the
-// repository's size: that would mean one manifest read per tag, and a repository accumulating build tags
-// has hundreds. The newest tag's size is both cheap and the number people actually mean.
+// No total size: that is one manifest read per tag; the newest tag's size is cheap and what people mean.
 type RepositoryOverview struct {
 	Name      string   `json:"name"`
 	TagCount  int      `json:"tag_count"`
@@ -96,9 +85,7 @@ func (s *Service) repoNames(ctx context.Context, workspaceID uint) ([]string, er
 	return out, nil
 }
 
-// ListRepositoriesPage returns one page of the workspace's repositories, each with its tag count and a
-// preview of its newest tags, plus the total matching q. Only the page's repositories have their tags
-// fetched — listing every repository with every tag cost one round trip per repository.
+// ListRepositoriesPage fetches tags only for the page's repositories, avoiding a round trip per repository.
 func (s *Service) ListRepositoriesPage(ctx context.Context, workspaceID uint, q string, offset, limit, tagPreview int) ([]RepositorySummary, int, error) {
 	names, err := s.repoNames(ctx, workspaceID)
 	if err != nil {
@@ -147,8 +134,6 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// Overview returns a repository's summary: its tag count, a preview of the
-// newest tags, and the newest tag enriched with digest, size, and provenance.
 func (s *Service) Overview(ctx context.Context, workspaceID uint, image string) (*RepositoryOverview, error) {
 	repo, err := repoPath(workspaceID, image)
 	if err != nil {
@@ -176,9 +161,6 @@ func (s *Service) Overview(ctx context.Context, workspaceID uint, image string) 
 	return ov, nil
 }
 
-// ListTagsPage returns one page of a repository's tags in display order,
-// enriched with digest, size, in-use state, and build provenance, plus the total
-// number of tags matching q.
 func (s *Service) ListTagsPage(ctx context.Context, workspaceID uint, image, q string, offset, limit int) ([]TagInfo, int, error) {
 	repo, err := repoPath(workspaceID, image)
 	if err != nil {
@@ -210,9 +192,7 @@ func (s *Service) ListTagsPage(ctx context.Context, workspaceID uint, image, q s
 	return enriched, total, nil
 }
 
-// enrichTags resolves each tag's digest and size from the registry, then joins the digests against the image
-// catalog for provenance and the protected set for in-use state. The registry reads are one request per tag,
-// which is why only a page is enriched. A tag whose manifest can't be read is still returned, just bare.
+// One registry request per tag, hence page-only; an unreadable manifest still returns the tag, bare.
 func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string, tags []string) ([]TagInfo, error) {
 	out := make([]TagInfo, len(tags))
 	var wg sync.WaitGroup
@@ -245,9 +225,7 @@ func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string,
 	if len(digests) == 0 {
 		return out, nil
 	}
-	// Provenance and in-use state are both best-effort: a catalog read failure
-	// leaves the tags un-annotated rather than failing the listing. Deletion is
-	// guarded server-side regardless, so a missing in-use mark can't lose data.
+	// Best-effort: deletion is guarded server-side, so a missing in-use mark can't lose data.
 	protected, _ := s.catalog.ProtectedDigests()
 	rows, _ := s.catalog.ByDigests(workspaceID, digests)
 	for i := range out {
@@ -269,9 +247,7 @@ func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string,
 	return out, nil
 }
 
-// Catalog supplies what the platform knows about the images it built: which digests must not be deleted,
-// and the build behind a digest. Implemented by image.Service. nil-safe — without it tags still list,
-// just unannotated, and tag deletion loses its in-use guard.
+// Catalog is nil-safe; without it tags list unannotated and deletion loses its in-use guard.
 type Catalog interface {
 	ProtectedDigests() (map[string]bool, error)
 	ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error)

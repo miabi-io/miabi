@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package docker is the sole adapter over the Docker Engine SDK. Services depend
-// on the Client interface (not the SDK), keeping the rest of the codebase free
-// of Docker SDK types.
+// Package docker is the sole adapter over the Docker SDK, keeping SDK types out of the rest of the codebase.
 package docker
 
 import (
@@ -31,26 +29,16 @@ import (
 	stackdocker "github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// ErrNotFound is returned when a container/image/volume does not exist.
 // ErrNotFound is owned by the stack seam so both sides compare against one value.
 var ErrNotFound = stackdocker.ErrNotFound
 
-// ErrEngineTooOld is returned when the daemon's API version is below the minimum
-// the Docker SDK client supports (MinAPIVersion). The client cannot talk to such
-// a daemon at all, so this is surfaced as a clear Miabi error rather than an
-// obscure SDK "invalid argument" deep in a deploy log.
+// ErrEngineTooOld replaces the SDK's obscure error for daemons below MinAPIVersion.
 var ErrEngineTooOld = errors.New("docker: engine too old")
 
 const (
-	// MinAPIVersion is the lowest Docker Engine API version the moby SDK client
-	// can negotiate at all; a daemon below it is refused by the client itself.
-	// This is the hard technical floor, distinct from the product minimum below.
+	// MinAPIVersion is the SDK's hard technical floor, distinct from the supported MinEngineVersion.
 	MinAPIVersion = "1.40"
-	// MinEngineVersion is the minimum Docker Engine release Miabi SUPPORTS — the
-	// number quoted by the README, installer, admin UI and changelog, and the
-	// threshold the Nodes warning badge uses. It is the floor of the tested CI
-	// engine matrix (25-29). The SDK's own floor (MinAPIVersion / Docker
-	// 19.03) is well below it, so the client never limits a supported node.
+	// MinEngineVersion is the supported floor (CI matrix 25-29), quoted by the README, installer and Nodes badge.
 	MinEngineVersion = "25.0"
 )
 
@@ -60,15 +48,10 @@ type Client interface {
 	Ping(ctx context.Context) error
 	// Info returns engine information.
 	Info(ctx context.Context) (Info, error)
-	// Capabilities reports what the connected engine supports (API/engine
-	// version, OS/arch, swarm state), derived from Ping + Info in one round-trip.
-	// Returns ErrEngineTooOld if the daemon is below MinAPIVersion.
 	Capabilities(ctx context.Context) (Capabilities, error)
 
 	ListContainers(ctx context.Context, all bool) ([]Container, error)
 	InspectContainer(ctx context.Context, id string) (Container, error)
-	// InspectContainerConfig returns the full runtime configuration of a container
-	// (env, mounts, command, limits, restart policy) for adopting it as an app.
 	InspectContainerConfig(ctx context.Context, id string) (ContainerConfig, error)
 	RunContainer(ctx context.Context, spec RunSpec) (string, error)
 	StartContainer(ctx context.Context, id string) error
@@ -76,36 +59,21 @@ type Client interface {
 	RestartContainer(ctx context.Context, id string, timeoutSeconds int) error
 	RemoveContainer(ctx context.Context, id string, force bool) error
 
-	// RunOneShot runs a container to completion and returns its exit code and
-	// combined logs, then removes it. Used for backup/restore jobs.
 	RunOneShot(ctx context.Context, spec RunSpec) (exitCode int, logs string, err error)
 
-	// RunOneShotStream runs a container to completion like RunOneShot, but streams
-	// its combined output to sink line-by-line as it runs (live logs) instead of
-	// returning the buffered logs. Used by the buildpack build provider.
 	RunOneShotStream(ctx context.Context, spec RunSpec, sink func(LogLine) error) (exitCode int, err error)
 
-	// ReadContainerFile reads a single file at path from inside a container's
-	// filesystem (size-capped). Used to copy an imported gateway's config.
 	ReadContainerFile(ctx context.Context, containerID, path string) ([]byte, error)
 
-	// CopyFileFromVolume reads a single file from a named volume by mounting it into a short-lived
-	// (never started) helper container created from image. The returned reader must be closed by the
-	// caller; closing it also removes the helper container.
+	// Closing the returned reader also removes the helper container.
 	CopyFileFromVolume(ctx context.Context, volume, image, file string) (rc io.ReadCloser, size int64, err error)
 
-	// CopyToVolume streams content (a tar-able single file of the given size) into
-	// name inside a named volume, by mounting it into a short-lived helper. Used
-	// to land an uploaded dump on a node's backup volume. image must be present.
+	// image must already be present on the node.
 	CopyToVolume(ctx context.Context, volume, image, name string, content io.Reader, size int64) error
 
-	// DialNetwork opens a raw TCP byte stream to host:port as reachable from containers on the given
-	// Docker network, via an ephemeral socat relay bridged over the engine connection — so it works
-	// the same locally and tunneled, with no published host port. Closing the conn removes the relay.
+	// DialNetwork uses an ephemeral socat relay over the engine connection, so it works tunneled without a host port.
 	DialNetwork(ctx context.Context, network, image, host string, port int) (net.Conn, error)
 
-	// RunAttached starts a container with its stdin, stdout and stderr wired to the returned stream, for
-	// piping data between engines without buffering it. Close removes the container.
 	RunAttached(ctx context.Context, spec RunSpec) (Attached, error)
 
 	// Images. auth may be nil for anonymous (public) pulls.
@@ -114,37 +82,25 @@ type Client interface {
 	TagImage(ctx context.Context, source, target string) error
 	// PushImage pushes a local image ref to its registry. auth may be nil.
 	PushImage(ctx context.Context, ref string, auth *RegistryAuth) error
-	// BuildImage builds an image from a local context directory, streaming
-	// build output to sink, and tags it.
 	BuildImage(ctx context.Context, contextDir, dockerfile, tag string, sink func(LogLine) error) error
 	// InspectImage returns a local image's identity (ID + digest) and size.
 	InspectImage(ctx context.Context, ref string) (ImageInspect, error)
 	// ImageExists reports whether ref is present locally (no pull).
 	ImageExists(ctx context.Context, ref string) (bool, error)
-	// RemoveImage deletes a local image by reference (tag or id). force removes
-	// it even if tagged/referenced; a not-found image is treated as success.
 	RemoveImage(ctx context.Context, ref string, force bool) error
 
-	// Housekeeping (reclaim & report). ListImages enumerates local images with usage signals;
-	// DiskUsage is a `docker system df`-style breakdown. The Prune* calls target only the safe set
-	// (dangling images, build cache); callers apply their own managed-resource guards on top.
+	// Prune* target only the safe set (dangling images, build cache); callers add their own managed-resource guards.
 	ListImages(ctx context.Context) ([]Image, error)
 	DiskUsage(ctx context.Context) (DiskUsage, error)
 	VolumeUsage(ctx context.Context) ([]VolumeUsage, error)
 	PruneImages(ctx context.Context, opts PruneImagesOptions) (PruneReport, error)
 	PruneBuildCache(ctx context.Context) (PruneReport, error)
 
-	// StreamEvents streams Docker daemon events for Miabi-managed
-	// containers until the context is cancelled or an error occurs.
 	StreamEvents(ctx context.Context, sink func(EngineEvent) error) error
 
-	// Exec starts an interactive command inside a running container and returns
-	// a bidirectional stream to it (used for the in-panel shell). Callers must
-	// Close the returned stream.
+	// Callers must Close the returned stream.
 	Exec(ctx context.Context, containerID string, opts ExecOptions) (ExecStream, error)
 
-	// Top lists the running processes in a container (the "docker top" view).
-	// psArgs are ps flags (e.g. "aux"); blank uses the daemon default. Read-only.
 	Top(ctx context.Context, containerID, psArgs string) (ProcessList, error)
 
 	// The sink is invoked per item; return a non-nil error to stop.
@@ -155,9 +111,7 @@ type Client interface {
 
 	EnsureNetwork(ctx context.Context, name string) (string, error)
 	CreateNetwork(ctx context.Context, name, driver string, internal bool) (string, error)
-	// CreateNetworkSpec creates a managed network with explicit options, including an optional
-	// Miabi-allocated IPAM Subnet/Gateway so creation does not draw from Docker's small built-in
-	// pools. Always creates (errors if the name exists); EnsureNetworkSpec is the create-or-reuse variant.
+	// CreateNetworkSpec errors if the name exists; EnsureNetworkSpec is the create-or-reuse variant.
 	CreateNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error)
 	EnsureNetworkSpec(ctx context.Context, spec NetworkSpec) (string, error)
 	RemoveNetwork(ctx context.Context, name string) error
@@ -166,22 +120,16 @@ type Client interface {
 	InspectNetwork(ctx context.Context, name string) (NetworkState, error)
 	// Rootless reports whether the daemon runs in rootless mode.
 	Rootless(ctx context.Context) (bool, error)
-	// NetworkConnect attaches a running container to a network with optional DNS aliases;
-	// NetworkDisconnect detaches it. Both are idempotent. Used to keep only route-exposed apps on
-	// the shared reverse-proxy network.
+	// Both are idempotent; used to keep only route-exposed apps on the shared proxy network.
 	NetworkConnect(ctx context.Context, name, containerID string, aliases []string) error
 	NetworkDisconnect(ctx context.Context, name, containerID string, force bool) error
 	CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (Volume, error)
-	// CreateVolumeWith creates a managed volume with an explicit driver and driver
-	// options (shared storage: nfs/cifs). An empty Driver uses the local default.
 	CreateVolumeWith(ctx context.Context, spec VolumeSpec) (Volume, error)
 	ListVolumes(ctx context.Context) ([]Volume, error)
 	InspectVolume(ctx context.Context, name string) (Volume, error)
 	RemoveVolume(ctx context.Context, name string, force bool) error
 
-	// Swarm. Miabi drives Docker Swarm as an internal detail of cluster mode; users never run
-	// docker swarm/service themselves. Swarm reads the engine's swarm state from `docker info`; the
-	// rest require a reachable manager and are no-ops on plain Docker.
+	// Users never run docker swarm/service themselves; all but Swarm need a reachable manager.
 	Swarm(ctx context.Context) (SwarmInfo, error)
 	SwarmInit(ctx context.Context, req SwarmInitRequest) (nodeID string, err error)
 	SwarmJoin(ctx context.Context, req SwarmJoinRequest) error
@@ -189,18 +137,12 @@ type Client interface {
 	SwarmJoinTokens(ctx context.Context) (SwarmJoinTokens, error)
 	SwarmNodes(ctx context.Context) ([]SwarmNode, error)
 	SwarmNodeRemove(ctx context.Context, nodeID string, force bool) error
-	// SwarmNodeAvailability sets a node's scheduling availability (active | pause |
-	// drain). Drain is what makes a node safe to reboot — it reschedules the node's
-	// tasks away instead of letting Swarm keep placing onto a host that is going down.
+	// Drain makes a node safe to reboot by rescheduling its tasks away.
 	SwarmNodeAvailability(ctx context.Context, nodeID, availability string) error
 	SwarmNodeSetLabel(ctx context.Context, nodeID, key, value string) error
-	// SwarmTasks lists the swarm's tasks (all, or one node's). Only the manager can:
-	// the containers live on the nodes, which Miabi may hold no Docker client for.
+	// Only the manager can list tasks: Miabi may hold no Docker client for the nodes.
 	SwarmTasks(ctx context.Context, nodeID string) ([]SwarmTask, error)
 
-	// Swarm services (cluster apps). Require a reachable manager; cluster deploys
-	// call these instead of RunContainer. CreateOverlayNetwork ensures the
-	// per-workspace overlay an app's service attaches to.
 	ServiceCreate(ctx context.Context, spec ServiceSpec) (id string, err error)
 	ServiceUpdate(ctx context.Context, idOrName string, spec ServiceSpec) error
 	ServiceRemove(ctx context.Context, idOrName string) error
@@ -216,15 +158,10 @@ type Client interface {
 	ServiceList(ctx context.Context) ([]ServiceStatus, error)
 	// ServiceRestart forces a rolling restart of a service's tasks in place.
 	ServiceRestart(ctx context.Context, idOrName string) error
-	// ServiceTaskContainerID resolves a running task container of the named
-	// service on this engine, for logs/stats/exec/top. ErrNotFound if none here.
 	ServiceTaskContainerID(ctx context.Context, serviceName string) (string, error)
-	// ServiceEnv returns a service's environment. It can carry secrets, so it is for
-	// the service layer to inspect — never to return to a client.
+	// ServiceEnv can carry secrets, so it is for the service layer to inspect, never to return to a client.
 	ServiceEnv(ctx context.Context, idOrName string) ([]string, error)
-	// StreamServiceLogs streams a swarm service's logs from the MANAGER, aggregated across every
-	// task. This is the only way to read the logs of a task on a swarm node Miabi has no Docker
-	// client for — the manager pulls them over the swarm control plane.
+	// StreamServiceLogs reads from the manager, the only way to reach tasks on nodes Miabi has no client for.
 	StreamServiceLogs(ctx context.Context, serviceName string, follow bool, tail string, sink func(LogLine) error) error
 	CreateOverlayNetwork(ctx context.Context, name string) (id string, err error)
 

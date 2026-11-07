@@ -260,8 +260,7 @@ async function runBackup() {
   }
 }
 
-// Refresh the list while a backup is still pending/running (it runs async on the
-// worker). Bounded so it can't loop forever; cleared on unmount.
+// The backup runs async on the worker; bounded so it can't loop forever.
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 function pollBackups(remaining = 20) {
   if (pollTimer) clearTimeout(pollTimer)

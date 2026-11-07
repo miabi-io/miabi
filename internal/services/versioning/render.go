@@ -154,8 +154,6 @@ func calverPrefix(format string, now time.Time) (string, error) {
 // conventionalHeader matches a Conventional Commits subject: type(scope)!: description.
 var conventionalHeader = regexp.MustCompile(`^([a-zA-Z]+)(\([^)]*\))?(!)?:`)
 
-// BumpFromCommit derives a bump from a Conventional Commits message: a breaking change is major, feat
-// is minor, anything else patch. ok is false when the message is not conventional.
 func BumpFromCommit(msg string) (models.VersionBump, bool) {
 	msg = strings.TrimSpace(msg)
 	subject, body, _ := strings.Cut(msg, "\n")

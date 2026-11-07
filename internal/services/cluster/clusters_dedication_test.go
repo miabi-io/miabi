@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Dedicating a location hides it from every other tenant, so it is refused while other
-// organizations still run workloads there — they would keep running, unreachable from the
-// workspace that owns them. Releasing it is always allowed and returns it to shared.
+// Other tenants' workloads would keep running but become unreachable from their workspaces.
 func TestDedicatingRefusesForeignWorkloads(t *testing.T) {
 	store := &memStore{
 		def:      models.Cluster{ID: 1, Name: "default", IsDefault: true, Visibility: models.ClusterVisibilityAll},

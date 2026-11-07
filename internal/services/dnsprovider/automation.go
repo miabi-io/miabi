@@ -33,23 +33,18 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// ErrConflict is returned when a managed name already holds a record Miabi did
-// not create — surfaced to the user, never silently overwritten.
+// ErrConflict is returned when a managed name holds a record Miabi did not create; never overwritten.
 var ErrConflict = errors.New("a conflicting DNS record already exists")
 
 // managedTTL is the TTL for records Miabi writes (short, so changes propagate).
 const managedTTL = 60 * time.Second
 
-// ProviderExists reports whether a provider id belongs to the workspace. Used by
-// the domain service to validate a dns_provider_id before linking it.
 func (s *Service) ProviderExists(workspaceID, providerID uint) bool {
 	_, err := s.repo.FindInWorkspace(workspaceID, providerID)
 	return err == nil
 }
 
-// RecordsSupported reports whether a provider can own ordinary DNS records. A challenge-only
-// host (acme-dns) answers for its own delegated subdomain and nothing else, so it can solve
-// DNS-01 but can neither carry the ownership TXT nor an app's A/AAAA records.
+// A challenge-only host (acme-dns) can solve DNS-01 but cannot carry ownership TXT or A/AAAA records.
 func (s *Service) RecordsSupported(workspaceID, providerID uint) bool {
 	p, err := s.repo.FindInWorkspace(workspaceID, providerID)
 	if err != nil {
@@ -59,9 +54,7 @@ func (s *Service) RecordsSupported(workspaceID, providerID uint) bool {
 	return ok && !d.ChallengeOnly
 }
 
-// EnsureVerificationRecord idempotently creates the ownership TXT for a provider-connected domain and
-// ledgers it, so Verify can succeed without a manual DNS step. A no-op for a manual domain with no
-// provider, and it refuses to clobber a conflicting record it did not create.
+// EnsureVerificationRecord refuses to clobber a conflicting record Miabi did not create.
 func (s *Service) EnsureVerificationRecord(ctx context.Context, d *models.Domain) error {
 	if d.DNSProviderID == nil {
 		return nil // manual domain — nothing to automate
@@ -85,9 +78,7 @@ func (s *Service) EnsureVerificationRecord(ctx context.Context, d *models.Domain
 	})
 }
 
-// CleanupDomain removes the records Miabi created for a domain — at the provider (best-effort) and from
-// the ledger. Called when a domain is deleted, so a managed record never outlives its domain. Only
-// ledgered, Miabi-owned records are touched.
+// CleanupDomain removes only ledgered, Miabi-owned records, so a managed record never outlives its domain.
 func (s *Service) CleanupDomain(ctx context.Context, d *models.Domain) error {
 	recs, err := s.records.ListByDomain(d.ID)
 	if err != nil {
@@ -108,9 +99,7 @@ func (s *Service) CleanupDomain(ctx context.Context, d *models.Domain) error {
 	return s.records.DeleteByDomain(d.ID)
 }
 
-// Reconcile re-asserts every ledgered record at its provider, so a record a user deleted out of band is
-// restored, and refreshes each provider's Status. Driven by a cron. Best-effort: a per-record failure is
-// logged and flips the owning provider to error, but never aborts the sweep.
+// Reconcile restores records deleted out of band; a per-record failure flips the provider to error but never aborts.
 func (s *Service) Reconcile(ctx context.Context) error {
 	recs, err := s.records.All()
 	if err != nil {
@@ -150,9 +139,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-// ReconcileAppAddresses makes an app's A/AAAA/CNAME records match its routed hosts, pointing at the
-// gateway's public address. Only hosts under a verified, provider-connected domain are managed; records
-// for this app no longer wanted are removed. Passing none removes them all. Best-effort per record.
+// ReconcileAppAddresses manages only hosts under verified, provider-connected domains; passing none removes all.
 func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID uint, hosts []string, target models.PublicAddress) error {
 	type want struct {
 		domain *models.Domain
@@ -196,8 +183,7 @@ func (s *Service) ReconcileAppAddresses(ctx context.Context, workspaceID, appID 
 		return p
 	}
 
-	// A www alias follows its bare name only when that name will point here: one held by a record Miabi did not
-	// create would carry www away with it, so www keeps address records of its own instead.
+	// A bare name held by a foreign record would carry www away, so www keeps its own address records then.
 	if target.HasIP() {
 		for _, key := range slices.Clone(order) {
 			w := desired[key]
@@ -284,8 +270,6 @@ func (s *Service) bareNameFree(ctx context.Context, prov dns.Provider, d *models
 	return true
 }
 
-// domainForHost returns the longest verified, provider-connected domain that host
-// falls under (apex or subdomain), or nil when none manages it.
 func (s *Service) domainForHost(workspaceID uint, host string) *models.Domain {
 	doms, err := s.domains.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -321,10 +305,7 @@ func ledgerKey(domainID uint, name, typ string) string {
 	return fmt.Sprintf("%d|%s|%s", domainID, strings.ToLower(name), strings.ToUpper(typ))
 }
 
-// guardConflict refuses to overwrite a record at the managed name that Miabi did not create. A ledgered
-// record (ours) or a matching value is fine; a different value with no ledger entry is a conflict, and so
-// is any record beside a CNAME, which DNS lets share its name with nothing. A provider read error does not
-// block (best-effort — SetRecord still runs).
+// Nothing may share a name with a CNAME; a provider read error does not block.
 func (s *Service) guardConflict(ctx context.Context, prov dns.Provider, domainID uint, zone string, want dns.Record) error {
 	if _, err := s.records.Find(domainID, want.Name, want.Type); err == nil {
 		return nil // we already own this record
@@ -360,8 +341,7 @@ func sameTarget(a, b string) bool {
 	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
 
-// relName reduces a possibly-FQDN name to its label relative to zone, so a
-// provider's relative names and Miabi's FQDNs compare equal.
+// Lets a provider's relative names and Miabi's FQDNs compare equal.
 func relName(name, zone string) string {
 	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
 	zone = strings.TrimSuffix(strings.TrimSpace(zone), ".")

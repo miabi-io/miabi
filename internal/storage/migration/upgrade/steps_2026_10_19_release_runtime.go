@@ -26,8 +26,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// releaseRuntimeStep records the runtime each existing release ran under. An app could not change
-// runtime cleanly before, so its current runtime is what its releases used.
+// An app couldn't change runtime cleanly before, so its current runtime is what its releases used.
 func releaseRuntimeStep(ctx context.Context, db *gorm.DB) error {
 	err := db.WithContext(ctx).Exec(`UPDATE releases SET runtime_kind = (
 		SELECT COALESCE(NULLIF(a.runtime_kind, ''), 'container') FROM applications a WHERE a.id = releases.application_id)

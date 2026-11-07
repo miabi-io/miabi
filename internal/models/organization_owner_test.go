@@ -35,8 +35,7 @@ func ownerDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&User{}); err != nil {
 		t.Fatal(err)
 	}
-	// Organization's uid column defaults to the Postgres-only gen_random_uuid(), which sqlite
-	// cannot parse, so the table the hooks write to is created by hand.
+	// The uid default gen_random_uuid() is Postgres-only, so the sqlite table is created by hand.
 	err = db.Exec(`CREATE TABLE organizations (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT, display_name TEXT,
@@ -82,8 +81,7 @@ func ownerOf(t *testing.T, db *gorm.DB, orgID uint) uint {
 	return org.OwnerUserID
 }
 
-// An organization provisioned by SSO would otherwise be accountable to nobody, so its first user
-// adopts it.
+// An SSO-provisioned organization would otherwise be accountable to nobody.
 func TestUserAfterCreate_FirstUserAdoptsTheOrganization(t *testing.T) {
 	db := ownerDB(t)
 	org := newOrg(t, db, "acme", 0)
@@ -114,8 +112,7 @@ func TestUserAfterCreate_NeverOverridesAChosenOwner(t *testing.T) {
 	}
 }
 
-// A user in no organization claims nothing: the default organization's owner is the first platform
-// admin, assigned at seeding, not whoever signs up first.
+// The default org's owner is the first platform admin assigned at seeding, not the first signup.
 func TestUserAfterCreate_NoOrganizationClaimsNothing(t *testing.T) {
 	db := ownerDB(t)
 	org := newOrg(t, db, "acme", 0)

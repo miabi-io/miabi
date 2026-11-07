@@ -17,16 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package branding owns the operator's identity: the name, logos, favicon, accent,
-// sign-in notice and links shown on the sign-in page and in the console chrome, and
-// whether accounts may pick an accent of their own.
-//
-// It is deliberately separate from a user's own appearance preference. A personal
-// accent belongs to a person and follows them between browsers; a brand belongs to
-// the install and is what everyone sees, including someone who has not signed in.
-// Conflating them produces the two bugs this split avoids — a personal accent
-// leaking onto the sign-in page, and an operator's identity being overridable by
-// anyone who fancies a different colour.
+// Package branding owns the install's identity, kept separate from personal accents so neither leaks into the other.
 package branding
 
 import (
@@ -41,8 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// Setting keys. Values live in the platform key/value store rather than a table of
-// their own: there are a handful of them and they are read on every sign-in.
+// A handful of keys read on every sign-in, so they live in the key/value store.
 const (
 	KeyName         = "brand.name"
 	KeyLogo         = "brand.logo_url"
@@ -53,8 +43,6 @@ const (
 	KeyLinks        = "brand.links"
 )
 
-// AccentPolicy decides whether the brand accent is a default accounts may override
-// or the accent every account wears.
 type AccentPolicy string
 
 const (
@@ -62,8 +50,7 @@ const (
 	AccentPolicyEnforced AccentPolicy = "enforced"
 )
 
-// Limits on the sign-in page. It is not a nav bar or a terms page, and unbounded
-// input from an admin form is a layout break waiting to happen.
+// Unbounded admin input on the sign-in page is a layout break waiting to happen.
 const (
 	MaxLinks       = 6
 	MaxLabelRunes  = 32
@@ -77,10 +64,7 @@ var (
 	ErrLabelTooLong = fmt.Errorf("a link label may be at most %d characters", MaxLabelRunes)
 	// ErrLabelRequired rejects a link with a URL and nothing to click.
 	ErrLabelRequired = errors.New("every link needs a label")
-	// ErrUnsupportedScheme is the one that matters. An admin-supplied URL is
-	// attacker-influenced input the moment an admin account is compromised, and a
-	// javascript: href on a page shown to unauthenticated visitors is stored XSS
-	// with extra steps.
+	// A javascript: href on a page shown to unauthenticated visitors is stored XSS if an admin is compromised.
 	ErrUnsupportedScheme = errors.New("a link must be an http:// or https:// URL")
 	// ErrInvalidAccent rejects a brand accent the console cannot render.
 	ErrInvalidAccent = errors.New("brand accent must be one of the accents the console ships")
@@ -96,8 +80,7 @@ type Link struct {
 	URL   string `json:"url"`
 }
 
-// Branding is the operator's identity. Empty fields mean "use Miabi's own", so a
-// Community install and an Enterprise one that has set nothing look identical.
+// Empty fields mean "use Miabi's own".
 type Branding struct {
 	Name    string `json:"name,omitempty"`
 	LogoURL string `json:"logo_url,omitempty"`
@@ -107,8 +90,7 @@ type Branding struct {
 	FaviconURL   string        `json:"favicon_url,omitempty"`
 	Accent       models.Accent `json:"accent,omitempty"`
 	AccentPolicy AccentPolicy  `json:"accent_policy,omitempty"`
-	// SigninNotice is plain text above the sign-in form, such as an authorised-use
-	// warning. Rendered escaped, with its line breaks kept.
+	// Rendered escaped, with line breaks kept.
 	SigninNotice string `json:"signin_notice,omitempty"`
 	Links        []Link `json:"links,omitempty"`
 }
@@ -125,9 +107,7 @@ func NewService(repo *repositories.SettingRepository, assets *repositories.Brand
 	return &Service{repo: repo, assets: assets}
 }
 
-// Get reads the stored branding. A missing or unreadable value is not an error:
-// the sign-in page must render whatever else happens, so anything unusable falls
-// back to Miabi's own identity rather than failing the request.
+// Unusable values fall back to Miabi's identity: the sign-in page must always render.
 func (s *Service) Get() Branding {
 	var b Branding
 	b.Name = s.value(KeyName)
@@ -147,8 +127,6 @@ func (s *Service) Get() Branding {
 	return b
 }
 
-// Public is the branding as the sign-in page and the console render it: an uploaded
-// image takes the place of the matching URL.
 func (s *Service) Public() Branding {
 	b := s.Get()
 	assets := s.Assets()
@@ -172,9 +150,7 @@ func (s *Service) value(key string) string {
 	return strings.TrimSpace(set.Value)
 }
 
-// Save validates and stores the branding. Validation happens on write, not only on
-// render: a bad value that reaches the database is a bad value some future consumer
-// renders without asking.
+// Validated on write: a bad stored value is one some future consumer renders without asking.
 func (s *Service) Save(in Branding) error {
 	if in.Accent != "" && !models.ValidAccent(in.Accent) {
 		return ErrInvalidAccent
@@ -213,8 +189,7 @@ func (s *Service) Save(in Branding) error {
 	})
 }
 
-// ParseAccentPolicy reads a stored or submitted policy. Blank is the default, so an
-// install that predates the policy keeps letting accounts choose.
+// Blank is the default so pre-policy installs keep letting accounts choose.
 func ParseAccentPolicy(raw string) (AccentPolicy, error) {
 	switch p := AccentPolicy(strings.ToLower(strings.TrimSpace(raw))); p {
 	case "", AccentPolicyDefault:
@@ -225,8 +200,7 @@ func ParseAccentPolicy(raw string) (AccentPolicy, error) {
 	return AccentPolicyDefault, ErrInvalidAccentPolicy
 }
 
-// NormalizeNotice trims the sign-in notice, unifies line endings and caps its length
-// in runes, so a notice in any script gets the same allowance.
+// Length is capped in runes so every script gets the same allowance.
 func NormalizeNotice(raw string) (string, error) {
 	notice := strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n"))
 	if utf8.RuneCountInString(notice) > MaxNoticeRunes {
@@ -235,8 +209,6 @@ func NormalizeNotice(raw string) (string, error) {
 	return notice, nil
 }
 
-// NormalizeLinks trims, validates and caps the list. Exported because the same
-// rules apply wherever a link list arrives.
 func NormalizeLinks(in []Link) ([]Link, error) {
 	out := make([]Link, 0, len(in))
 	for _, l := range in {
@@ -262,9 +234,7 @@ func NormalizeLinks(in []Link) ([]Link, error) {
 	return out, nil
 }
 
-// checkURL enforces the scheme allow-list. Parsing is not enough on its own: a
-// protocol-relative "//evil.example" parses cleanly and inherits whatever scheme
-// the page was served over, so the scheme is required to be present and known.
+// A protocol-relative "//evil.example" parses cleanly, so the scheme must be present and known.
 func checkURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {

@@ -60,9 +60,6 @@ type UpdateDomainRequest struct {
 	} `json:"body"`
 }
 
-// domainView augments a domain with its DNS challenge instructions so the UI can
-// show the exact TXT record to add. Automated reflects whether a DNS provider is
-// linked (Miabi creates the records itself).
 type domainView struct {
 	*models.Domain
 	ChallengeHost  string `json:"challenge_host"`

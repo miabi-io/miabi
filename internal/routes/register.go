@@ -28,13 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 )
 
-// register attaches the API-key scope guard to every route definition and then registers them.
-//
-// Central rather than per route: the scope a route needs is derived from its method and path (see
-// scopeFor), so a route added tomorrow is guarded without anyone remembering to guard it — the
-// failure mode that left RequireScope with no callers at all. The guard is appended last, after the
-// route's own auth and role middlewares, and is a no-op for session callers, so it is safe on
-// public routes too.
+// Central so routes added later are guarded automatically; a no-op for session callers, so safe on public routes.
 func (r *Router) register(defs ...okapi.RouteDefinition) {
 	for i := range defs {
 		path := routePath(&defs[i])
@@ -45,8 +39,7 @@ func (r *Router) register(defs ...okapi.RouteDefinition) {
 	r.app.Register(defs...)
 }
 
-// routePath is the full template path a definition registers at, mirroring okapi's own
-// group-prefix join so the scope is derived from what clients actually call.
+// Mirrors okapi's group-prefix join so the scope is derived from what clients actually call.
 func routePath(def *okapi.RouteDefinition) string {
 	prefix := ""
 	if def.Group != nil {
@@ -63,9 +56,7 @@ func routePath(def *okapi.RouteDefinition) string {
 	return p
 }
 
-// recordScopeViolation writes the violation to the audit log so an operator running in warn mode
-// can find every key that would break before switching to enforce. Best-effort by design: auditing
-// must never be what fails a request.
+// Lets warn-mode operators find breaking keys before enforcing; best-effort, auditing must never fail a request.
 func (r *Router) recordScopeViolation(v middlewares.ScopeViolation) {
 	logger.Warn("api key scope violation",
 		"user", v.UserID, "key", v.KeyID, "required", v.Required, "granted", strings.Join(v.Granted, ","),

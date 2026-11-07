@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package telemetry sends one minimal, anonymous event per startup and per day so the project can count
-// installations. It is fire-and-forget: a failure is logged at debug and never affects the platform.
+// Package telemetry sends one anonymous startup and daily event; failures never affect the platform.
 package telemetry
 
 import (
@@ -73,8 +72,7 @@ type Payload struct {
 	Arch           string `json:"arch"`
 }
 
-// Options wires the service to the platform. The funcs are read at send time so a licence install or a
-// swarm change is reflected without a restart.
+// The funcs are read at send time so a licence install or swarm change applies without a restart.
 type Options struct {
 	URL       string
 	Version   string
@@ -111,8 +109,7 @@ func InstallationID(installID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Enabled reports whether events are sent at all. Non-release builds never send so development and CI
-// don't count as installations.
+// Non-release builds never send, so development and CI don't count as installations.
 func (s *Service) Enabled() bool {
 	return s.opts.Enabled && s.opts.InstallID != "" && IsRelease(s.opts.Version)
 }
@@ -169,9 +166,7 @@ func (s *Service) Send(ctx context.Context, event string) error {
 	return nil
 }
 
-// SendStartup sends the startup event after a random 1–5 minute delay, at most once per version per hour
-// across every control plane sharing Redis. Run it in a goroutine; it returns when ctx is done or the send
-// finished.
+// SendStartup sends at most once per version per hour across control planes sharing Redis.
 func (s *Service) SendStartup(ctx context.Context) {
 	delay := time.Minute + rand.N(4*time.Minute)
 	select {

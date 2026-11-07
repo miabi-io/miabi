@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dns abstracts a managed DNS host behind one small Provider interface, backed by libdns
-// modules. It mirrors the blob.Store pattern: adding a host later is a new case in Build, not a
-// new client. Miabi manages only the records it owns — never a user's other records.
+// Package dns wraps libdns behind one Provider interface; Miabi only manages the records it owns.
 package dns
 
 import (
@@ -34,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/dnscatalog"
 )
 
-// Record is Miabi's provider-agnostic view of a DNS record. Name is a FQDN (the
-// adapter relativizes it to the zone); Value is the record data (TXT text, A/AAAA
-// IP, CNAME target).
+// Name is a FQDN; the adapter relativizes it to the zone.
 type Record struct {
 	Type  string        `json:"type"`  // TXT | A | AAAA | CNAME
 	Name  string        `json:"name"`  // FQDN, e.g. _miabi-challenge.example.com
@@ -44,12 +40,9 @@ type Record struct {
 	TTL   time.Duration `json:"-"`     // 0 = provider default
 }
 
-// Credentials is a provider's credential blob, keyed by the field names its dnscatalog
-// descriptor declares. Wire-compatible with the flat struct it replaced.
+// Credentials keys are the field names the dnscatalog descriptor declares.
 type Credentials map[string]string
 
-// Provider is Miabi's view of a DNS host. Implementations are idempotent and
-// safe for concurrent use (libdns guarantees the latter).
 type Provider interface {
 	// GetRecords lists the records in a zone (used by test + conflict checks).
 	GetRecords(ctx context.Context, zone string) ([]Record, error)
@@ -61,16 +54,12 @@ type Provider interface {
 	Test(ctx context.Context, zone string) error
 }
 
-// zoneClient is the libdns surface the adapter needs; every wired module
-// satisfies it.
 type zoneClient interface {
 	libdns.RecordGetter
 	libdns.RecordSetter
 	libdns.RecordDeleter
 }
 
-// Build returns a Provider for a connection type + its (already-decrypted) credentials.
-// Required fields are validated against the catalog before the per-type constructor runs.
 func Build(providerType string, creds Credentials) (Provider, error) {
 	d, ok := dnscatalog.Get(providerType)
 	if !ok {
@@ -105,8 +94,7 @@ func newAdapter(z zoneClient) *adapter {
 	return a
 }
 
-// resolveZone maps a domain to the provider zone that actually hosts it, caching
-// the result. A subdomain resolves to its parent zone; an apex resolves to itself.
+// A subdomain resolves to its parent zone; results are cached.
 func (a *adapter) resolveZone(ctx context.Context, domain string) (string, error) {
 	key := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
 	if key == "" {
@@ -119,8 +107,7 @@ func (a *adapter) resolveZone(ctx context.Context, domain string) (string, error
 	if ok {
 		return cached, nil
 	}
-	// Negative results are cached too: without this, every record write for a domain the
-	// provider does not host repeats the whole probe against a rate-limited API.
+	// Negative results are cached so writes for an unhosted domain don't re-probe a rate-limited API.
 	if failedBefore {
 		return "", errors.New(failure)
 	}
@@ -137,9 +124,6 @@ func (a *adapter) resolveZone(ctx context.Context, domain string) (string, error
 	return zone, nil
 }
 
-// discoverZone finds the hosting zone for domain (lowercase, no trailing dot).
-// With a ZoneLister it picks the longest account zone that is a suffix of domain;
-// otherwise it probes parent suffixes, most specific first, via GetRecords.
 func (a *adapter) discoverZone(ctx context.Context, domain string) (string, error) {
 	if a.lister != nil {
 		zones, err := a.lister.ListZones(ctx)
@@ -163,9 +147,7 @@ func (a *adapter) discoverZone(ctx context.Context, domain string) (string, erro
 		}
 		return canonicalZone(best), nil
 	}
-	// Fallback for providers without zone enumeration: probe the domain and its parents,
-	// most specific first. Bounded to probeDepth candidates so a deep subdomain does not
-	// issue one API call per label against a rate-limited host.
+	// Bounded to probeDepth candidates so a deep subdomain doesn't cost one API call per label.
 	labels := strings.Split(domain, ".")
 	empty := ""
 	tried := 0
@@ -176,9 +158,7 @@ func (a *adapter) discoverZone(ctx context.Context, domain string) (string, erro
 		if err != nil {
 			continue
 		}
-		// An empty success is not proof — some hosts answer 200 with nothing for a zone
-		// the account does not hold — but an owned zone can legitimately be empty, so
-		// keep the first as a fallback rather than rejecting it.
+		// Some hosts return 200 with nothing for unheld zones, but owned zones can be empty, so keep it as a fallback.
 		if len(recs) > 0 {
 			return cand, nil
 		}
@@ -215,9 +195,7 @@ func (a *adapter) GetRecords(ctx context.Context, zone string) ([]Record, error)
 	out := make([]Record, 0, len(recs))
 	for _, r := range recs {
 		rr := r.RR()
-		// Return the FQDN: the resolved zone may be a parent of the requested
-		// domain, so libdns's zone-relative name is relativized to the wrong root
-		// for callers that compare against the domain. AbsoluteName re-anchors it.
+		// The resolved zone may be a parent of the domain, so re-anchor names with AbsoluteName.
 		out = append(out, Record{Type: rr.Type, Name: libdns.AbsoluteName(rr.Name, cz), Value: rr.Data, TTL: rr.TTL})
 	}
 	return out, nil
@@ -250,9 +228,6 @@ func (a *adapter) Test(ctx context.Context, zone string) error {
 	return err
 }
 
-// toRR builds a libdns record relative to the zone. RR implements libdns.Record;
-// providers accept it for set/delete (only the specific RR-types are required on
-// the *return* path, which we don't use here).
 func (a *adapter) toRR(zone string, rec Record) libdns.RR {
 	return libdns.RR{
 		Type: rec.Type,

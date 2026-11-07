@@ -15,8 +15,6 @@ import (
 	"testing"
 )
 
-// Storage classes and recovery points are sold from the lowest paid tier up: they are what a
-// bare-metal or dedicated-host operator buys a license for.
 func TestStorageAndRecoveryEntitlements(t *testing.T) {
 	for _, flag := range []string{FlagStorageClasses, FlagRecoveryPoints} {
 		if !IsKnownFlag(flag) {
@@ -34,8 +32,7 @@ func TestStorageAndRecoveryEntitlements(t *testing.T) {
 	}
 }
 
-// Community is capped at CommunityNodeLimit nodes, and every paid tier must lift that cap rather
-// than lower it: a license that shrank the fleet would be a downgrade.
+// A paid tier that lowered the Community node cap would be a downgrade.
 func TestPaidTiersLiftTheCommunityNodeCap(t *testing.T) {
 	for _, tier := range []string{TierProfessional, TierBusiness, TierEnterprise} {
 		p, ok := TierByName(tier)
@@ -49,8 +46,6 @@ func TestPaidTiersLiftTheCommunityNodeCap(t *testing.T) {
 	}
 }
 
-// Community may hold CommunityStorageClassLimit classes, the seeded built-in one included, and the
-// storage_classes entitlement lifts the cap outright rather than raising it by a number.
 func TestStorageClassLimitResolution(t *testing.T) {
 	cases := []struct {
 		name string
@@ -75,8 +70,7 @@ func TestStorageClassLimitResolution(t *testing.T) {
 	}
 }
 
-// The Community cap must leave room for a disk of the operator's own beside the seeded class,
-// otherwise registering one is impossible and the feature reads as absent.
+// Without room for one operator disk beside the seeded class, the feature reads as absent.
 func TestCommunityStorageClassCapLeavesRoomForOneDisk(t *testing.T) {
 	if CommunityStorageClassLimit < 2 {
 		t.Errorf("CommunityStorageClassLimit = %d, leaves no room beside the built-in class", CommunityStorageClassLimit)
@@ -105,8 +99,6 @@ func TestSharedRunnerLimitResolution(t *testing.T) {
 	}
 }
 
-// A plan may narrow which platform runners it offers, so the flag that gates the pool must be
-// grantable and must reach the tiers that sell it.
 func TestPlatformRunnersEntitlement(t *testing.T) {
 	if !IsKnownFlag(FlagPlatformRunners) {
 		t.Fatalf("%s is missing from AllFlags, so no license can grant it", FlagPlatformRunners)

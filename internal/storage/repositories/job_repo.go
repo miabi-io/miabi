@@ -35,9 +35,7 @@ func NewJobRepository(db *gorm.DB) *JobRepository { return &JobRepository{db: db
 
 func (r *JobRepository) Create(j *models.Job) error { return r.db.Create(j).Error }
 
-// Update saves a job WITHOUT its log columns: those are managed out-of-band by
-// AppendLog (raw append during the run) and externalizeLog, so the in-memory
-// j.Logs is a stale "" here — a plain Save would wipe the accumulated output.
+// Omits log columns: they're managed by AppendLog/externalizeLog, and j.Logs here is a stale "".
 func (r *JobRepository) Update(j *models.Job) error {
 	return r.db.Omit("logs", "log_ref", "log_bytes", "log_lines", "log_truncated").Save(j).Error
 }
@@ -70,8 +68,6 @@ func (r *JobRepository) ListByApp(workspaceID, appID uint, limit int) ([]models.
 	return jobs, err
 }
 
-// ListByWorkspace returns the whole workspace's job history, newest first. When
-// appID is non-zero it filters to that app.
 func (r *JobRepository) ListByWorkspace(workspaceID, appID uint, limit int) ([]models.Job, error) {
 	var jobs []models.Job
 	q := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC")
@@ -85,8 +81,6 @@ func (r *JobRepository) ListByWorkspace(workspaceID, appID uint, limit int) ([]m
 	return jobs, err
 }
 
-// ActiveByCronJob returns the still-running (pending/running) jobs spawned by a
-// cronjob — used to enforce its concurrency policy.
 func (r *JobRepository) ActiveByCronJob(cronJobID uint) ([]models.Job, error) {
 	var jobs []models.Job
 	err := r.db.Where("cron_job_id = ? AND status IN ?", cronJobID,
@@ -104,9 +98,7 @@ func (r *JobRepository) AppendLog(id uint, line string) error {
 		Update("logs", gorm.Expr("COALESCE(logs, '') || ?", line+"\n")).Error
 }
 
-// SetLogMeta records the log-store reference + counters for a job and replaces
-// the DB column with the bounded tail (the full log lives in the store). A zero
-// ref is ignored so a store failure leaves the full DB tail intact.
+// A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *JobRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {
 	if ref == "" {
 		return nil
@@ -121,8 +113,7 @@ func (r *JobRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines
 		}).Error
 }
 
-// PruneCronJobHistory deletes the oldest spawned jobs of a cronjob beyond keep,
-// counting only terminal runs (never removes an active run).
+// Counts only terminal runs, so an active run is never removed.
 func (r *JobRepository) PruneCronJobHistory(cronJobID uint, keep int) error {
 	if keep <= 0 {
 		return nil
@@ -142,8 +133,7 @@ func (r *JobRepository) PruneCronJobHistory(cronJobID uint, keep int) error {
 func (r *JobRepository) CreateCronJob(c *models.CronJob) error { return r.db.Create(c).Error }
 func (r *JobRepository) UpdateCronJob(c *models.CronJob) error { return r.db.Save(c).Error }
 
-// UpdateCronJobLastRun writes only last_run_at, so a tick can't revert a
-// concurrent edit to the rest of the row.
+// Writes only last_run_at so a tick can't revert a concurrent edit to the rest of the row.
 func (r *JobRepository) UpdateCronJobLastRun(id uint, at time.Time) error {
 	return r.db.Model(&models.CronJob{}).Where("id = ?", id).Update("last_run_at", at).Error
 }
@@ -248,9 +238,7 @@ func (r *JobRepository) DeleteJobDefinition(id uint) error {
 	})
 }
 
-// ClaimRelease records that an onRelease definition runs against releaseID, and
-// reports whether this caller won: one release triggers one run even when two
-// processes see the activation.
+// Reports whether this caller won, so one release triggers one run even when two processes see it.
 func (r *JobRepository) ClaimRelease(defID, releaseID uint) (bool, error) {
 	res := r.db.Model(&models.JobDefinition{}).
 		Where("id = ? AND (last_release_id IS NULL OR last_release_id <> ?)", defID, releaseID).

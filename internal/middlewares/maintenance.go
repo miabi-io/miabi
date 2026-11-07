@@ -30,15 +30,11 @@ import (
 	"github.com/miabi-io/miabi/internal/services/settings"
 )
 
-// maintenanceAllow lists path fragments that stay reachable during maintenance
-// so admins can still authenticate and operate the platform.
 var maintenanceAllow = []string{
 	"/auth/", "/healthz", "/readyz", "/info", "/metrics", "/admin/", "/system/",
 }
 
-// Maintenance is a group-level middleware that returns 503 for non-admins while maintenance mode
-// is enabled. It reads the caller's role straight from the JWT so it can run ahead of the
-// per-route auth middleware. Admins, unauthenticated requests and allow-listed paths pass through.
+// Reads the role straight from the JWT so it can run ahead of the per-route auth middleware.
 func Maintenance(cfg *config.Config, provider *settings.Provider) okapi.Middleware {
 	secret := []byte(cfg.JWTSecret)
 	return func(c *okapi.Context) error {
@@ -58,8 +54,6 @@ func Maintenance(cfg *config.Config, provider *settings.Provider) okapi.Middlewa
 	}
 }
 
-// roleFromBearer extracts the role claim from the Authorization bearer token,
-// returning "" when absent or invalid (treated as non-admin).
 func roleFromBearer(c *okapi.Context, secret []byte) string {
 	raw := strings.TrimSpace(strings.TrimPrefix(c.Header("Authorization"), "Bearer "))
 	if raw == "" {
@@ -68,9 +62,7 @@ func roleFromBearer(c *okapi.Context, secret []byte) string {
 	if raw == "" || strings.HasPrefix(raw, "mb_") {
 		return ""
 	}
-	// Pin the algorithm to HMAC: the platform signs with a symmetric secret, so
-	// rejecting any other alg closes the classic alg-confusion attack (a token
-	// forged with alg:none or an asymmetric alg must never validate here).
+	// Pin HMAC to close the alg-confusion attack (alg:none or an asymmetric alg).
 	token, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])

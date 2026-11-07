@@ -2,7 +2,7 @@
   "$defs": {
     "ACME": {
       "additionalProperties": false,
-      "description": "ACME is the certificate authority used for every acme-managed host on this install. Email is the contact Let's Encrypt sends expiry notices to, and doubles as the admin login when none is given.",
+      "description": "Email doubles as the admin login when none is given.",
       "properties": {
         "directoryUrl": {
           "type": "string"
@@ -15,7 +15,7 @@
     },
     "AdminSpec": {
       "additionalProperties": false,
-      "description": "AdminSpec is the first admin account. Only the address: the password is generated into spec.secrets, because this is an identity and that is a credential.",
+      "description": "Only the address: the password is a credential and is generated into spec.secrets.",
       "properties": {
         "email": {
           "type": "string"
@@ -25,7 +25,7 @@
     },
     "BackupDestination": {
       "additionalProperties": false,
-      "description": "BackupDestination is the S3-compatible target. Bucket, accessKey and secretKey are all-or-nothing: with any one missing the control plane ignores the whole block and leaves the console in charge.",
+      "description": "All-or-nothing: with bucket, accessKey or secretKey missing the control plane ignores the block.",
       "properties": {
         "accessKey": {
           "type": "string"
@@ -62,7 +62,7 @@
     },
     "BackupEncryption": {
       "additionalProperties": false,
-      "description": "BackupEncryption seals the recovery point. The passphrase is NOT the platform's master key and must never be set to it: it protects the database that would otherwise be the only place it lived, and a real disaster is exactly when the in-platform copy is unreachable. includeIdentity seals the master key in, which is what a restore onto fresh hardware needs.",
+      "description": "Never set the passphrase to the master key; includeIdentity seals the master key in for fresh-hardware restores.",
       "properties": {
         "encrypt": {
           "type": "boolean"
@@ -91,7 +91,7 @@
     },
     "BackupSpec": {
       "additionalProperties": false,
-      "description": "BackupSpec is the platform's own backup (Enterprise). Stating any of it pins the console's corresponding fields, which is the point on an install described by infrastructure-as-code.",
+      "description": "Stating any field pins the console's corresponding field.",
       "properties": {
         "destination": {
           "$ref": "#/$defs/BackupDestination"
@@ -123,7 +123,6 @@
     },
     "DocumentMeta": {
       "additionalProperties": false,
-      "description": "DocumentMeta identifies the install. There is one per host, so the name is decoration: it labels `miabi stack status` output and nothing else. Renaming it renames nothing.",
       "properties": {
         "name": {
           "type": "string"
@@ -133,7 +132,7 @@
     },
     "Endpoints": {
       "additionalProperties": false,
-      "description": "Endpoints are the URLs the platform answers on. Control is where nodes, agents and runners dial back, and is separate from Web because a node on a private network may reach the control plane at an address the public panel URL never resolves to.",
+      "description": "Control is separate from Web because a private-network node may reach the control plane at another address.",
       "properties": {
         "control": {
           "type": "string"
@@ -146,7 +145,7 @@
     },
     "ExternalSpec": {
       "additionalProperties": false,
-      "description": "ExternalSpec is the wildcard domain one-click application URLs are published under on the default cluster. Setting it here pins it; leave it empty to manage it from Clusters.",
+      "description": "Setting it here pins it; leave it empty to manage it from Clusters.",
       "properties": {
         "baseDomain": {
           "type": "string"
@@ -159,17 +158,16 @@
     },
     "GatewaySpec": {
       "additionalProperties": false,
-      "description": "GatewaySpec is Goma Gateway: the image, the config file bind-mounted read-only from beside this manifest, and anything that config interpolates.",
       "properties": {
         "config": {
           "type": "string"
         },
         "configSha": {
-          "description": "ConfigSha is written by Miabi, never by the operator: it records the digest of the DEFAULT config last written, which is what keeps a customized goma.yml from being overwritten.",
+          "description": "Written by Miabi only: the digest of the default config, which keeps a customized goma.yml from being overwritten.",
           "type": "string"
         },
         "countryHeader": {
-          "description": "CountryHeader sends each client's ISO country code to every app in the X-Goma-Country request header. It needs a GeoIP database beside goma.yml; without one the header is simply never set.",
+          "description": "Needs a GeoIP database beside goma.yml; without one the header is never set.",
           "type": "boolean"
         },
         "env": {
@@ -182,7 +180,7 @@
           "type": "string"
         },
         "trustedProxies": {
-          "description": "TrustedProxies are the IPs or CIDRs of the proxies in front of the gateway — a CDN such as Cloudflare, or a TLS-terminating load balancer. Only connections from these may set the client IP through forwarded headers; leave it unset when the gateway faces the internet directly.",
+          "description": "Only connections from these may set the client IP via forwarded headers; unset when facing the internet directly.",
           "items": {
             "type": "string"
           },
@@ -216,7 +214,7 @@
     },
     "LicenseSpec": {
       "additionalProperties": false,
-      "description": "LicenseSpec points at a signed Enterprise license on disk. It is installed only when the database holds none: a license added through the console takes precedence.",
+      "description": "Installed only when the database holds none: a console-added license takes precedence.",
       "properties": {
         "file": {
           "type": "string"
@@ -245,7 +243,6 @@
     },
     "NetworkingSpec": {
       "additionalProperties": false,
-      "description": "NetworkingSpec covers the two Docker fabrics and the address policy around them: the shared proxy network routed apps join, the private one the platform talks over, and the pools and ranges Miabi allocates from. Named as a topic rather than a plural because only two of its fields are networks.",
       "properties": {
         "dns": {
           "$ref": "#/$defs/DNSSpec"
@@ -270,7 +267,7 @@
     },
     "PoolSpec": {
       "additionalProperties": false,
-      "description": "PoolSpec is the CIDR Miabi carves every managed network out of, handed to Docker as explicit IPAM so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or a VPN.",
+      "description": "Explicit IPAM so Docker's small default pools cannot exhaust; must not overlap the proxy network, LAN or VPN.",
       "properties": {
         "cidr": {
           "type": "string"
@@ -286,7 +283,7 @@
     },
     "RegistrySpec": {
       "additionalProperties": false,
-      "description": "RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has recorded and decides which workspace owns an image, which is why the console shows it read-only.",
+      "description": "The host anchors every recorded image ref and decides workspace ownership, hence read-only in the console.",
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -309,7 +306,7 @@
     },
     "SecretsSpec": {
       "additionalProperties": false,
-      "description": "SecretsSpec holds the install's secrets in plaintext, as the flat schema always has. The file is mode 0600 on a root-owned host, and anyone who can read it already holds the Docker socket.",
+      "description": "Plaintext, but the file is 0600 and anyone who can read it already holds the Docker socket.",
       "properties": {
         "adminPassword": {
           "type": "string"
@@ -321,7 +318,7 @@
           "type": "string"
         },
         "gomaConfigEncryptionKey": {
-          "description": "GomaConfigEncryptionKey is the one secret here that is safe to lose: the gateway config it protects is rendered from the database on every sync, so rotating it costs a converge.",
+          "description": "Safe to lose: the gateway config is re-rendered from the database on every sync.",
           "type": "string"
         },
         "jwtSecret": {
@@ -338,7 +335,6 @@
     },
     "ServerSpec": {
       "additionalProperties": false,
-      "description": "ServerSpec is the control plane's own container: the image it runs, the read-only host /proc bind that lets the Nodes page report real host CPU and memory, and any variable Miabi reads that this document does not already model.",
       "properties": {
         "dockerGid": {
           "type": "string"
@@ -357,7 +353,7 @@
           "type": "string"
         },
         "trustedProxies": {
-          "description": "TrustedProxies are the IPs or CIDRs the control plane believes X-Forwarded-For and X-Real-IP from. Defaults to the private network, the only one the gateway reaches it on; change it with that network's subnet.",
+          "description": "Defaults to the private network, the only one the gateway reaches it on.",
           "items": {
             "type": "string"
           },
@@ -368,7 +364,7 @@
     },
     "Spec": {
       "additionalProperties": false,
-      "description": "Spec is the ControlPlane's desired state. Optional scalars that pin a console-owned setting are pointers: an emitted environment variable locks the field in the UI, so \"unset\" and \"set to the zero value\" have to stay distinguishable.",
+      "description": "Pointers because an emitted env var locks the field in the UI, so \"unset\" and \"zero\" must differ.",
       "properties": {
         "acme": {
           "$ref": "#/$defs/ACME"

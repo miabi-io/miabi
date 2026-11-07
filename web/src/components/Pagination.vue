@@ -8,8 +8,6 @@ const emit = defineEmits<{ (e: 'page', page: number): void }>()
 const currentPage = computed(() => props.pageable.current_page)
 const totalPages = computed(() => props.pageable.total_pages)
 
-// First page, last page, and a window around the current page, with nulls for
-// ellipsis gaps.
 const visiblePages = computed<(number | null)[]>(() => {
   const total = totalPages.value
   const current = currentPage.value

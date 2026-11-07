@@ -31,8 +31,7 @@ const appLink = computed(() => {
 })
 const loading = ref(false)
 
-// Logs: `liveLines` is the SSE stream (running run); `historySteps` is the
-// stored per-step output of a finished run, which unlocks per-step filtering.
+// History mode unlocks per-step filtering.
 const liveLines = ref<string[]>([])
 const historySteps = ref<PipelineStepLogHistory[]>([])
 const mode = ref<'live' | 'history'>('live')
@@ -49,9 +48,6 @@ let ticker: ReturnType<typeof setInterval> | undefined
 
 const steps = computed(() => run.value?.steps ?? [])
 
-// The lines actually rendered — a single step when one is selected (history
-// mode), otherwise the whole run (with per-step separators when there's more
-// than one step).
 const displayLines = computed<string[]>(() => {
   if (mode.value === 'history') {
     const all = historySteps.value
@@ -136,8 +132,7 @@ function openStream() {
         if (e.data === 'succeeded' || e.data === 'failed' || e.data === 'canceled') {
           es?.close()
           streaming.value = false
-          // Swap to the stored per-step logs so step filtering works even for a
-          // run we watched live from start to finish.
+          // Swap to stored per-step logs so step filtering works even for a run watched live.
           loadHistory()
         }
       }
@@ -216,8 +211,7 @@ async function copyVal(v?: string | null) {
 
 const rerunning = ref(false)
 
-// Re-run builds the same commit again. noCache is the common case: the run to repeat is usually one
-// that succeeded against a stale cached layer.
+// noCache is the common case: a repeated run usually succeeded against a stale cached layer.
 async function rerun(noCache = false) {
   const wid = currentWorkspaceId.value
   if (!wid || !run.value) return

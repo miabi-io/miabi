@@ -83,8 +83,7 @@ type PlanBody struct {
 	AllowGPU                  bool `json:"allow_gpu"`
 	// AllowServiceRuntime omitted keeps the stored value, or allowed on create, so older clients leave it alone.
 	AllowServiceRuntime *bool `json:"allow_service_runtime"`
-	// Defaults for an app's unset CPU and memory, and whether every app must end up with both. Omitted
-	// keeps the stored value (none and off on create).
+	// Omitted keeps the stored value (none and off on create).
 	DefaultCPUMillicores   *int   `json:"default_cpu_millicores" min:"0"`
 	DefaultMemoryMB        *int   `json:"default_memory_mb" min:"0"`
 	RequireResourceLimits  *bool  `json:"require_resource_limits"`
@@ -92,16 +91,12 @@ type PlanBody struct {
 	AllowOfficialImageUser bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
 	Placement models.PlanPlacement `json:"placement"`
-	// DatabaseSizes are the database sizes the plan offers, the first its default (Enterprise database_sizes).
-	// Omitted keeps the stored list.
+	// The first size is the default; omitted keeps the stored list.
 	DatabaseSizes *[]uint `json:"database_sizes"`
-	// StorageClasses are the storage classes, by name, the plan may create volumes on; empty offers
-	// every class. DefaultStorageClass is the one a volume naming none gets. Omitted keeps the
-	// stored values.
+	// Empty offers every class; omitted keeps the stored values.
 	StorageClasses      *[]string `json:"storage_classes"`
 	DefaultStorageClass *string   `json:"default_storage_class"`
-	// PlatformRunners are the shared runners, by name, the plan may build on; empty offers the whole
-	// pool (Enterprise platform_runners). Omitted keeps the stored list.
+	// Empty offers the whole pool; omitted keeps the stored list.
 	PlatformRunners *[]string `json:"platform_runners"`
 }
 
@@ -124,9 +119,7 @@ type AssignWorkspacePlanRequest struct {
 	} `json:"body"`
 }
 
-// Refusals protecting the platform's own plan. 409 rather than 403: the request
-// is well-formed and the caller is authorized — this row is simply not theirs to
-// change that way.
+// 409 rather than 403: the caller is authorized, but this row is not theirs to change that way.
 var (
 	errSystemPlanDelete  = errors.New("the platform's system plan cannot be deleted; it is pinned to the system workspace")
 	errSystemPlanRename  = errors.New("the platform's system plan cannot be renamed; it is resolved by name")
@@ -134,13 +127,7 @@ var (
 	errSystemPlanAssign  = errors.New("the platform's system plan cannot be assigned to a workspace; it grants unlimited resources and every capability")
 )
 
-// systemPlanEdit reports why an edit to the platform's own plan is refused, or
-// nil when it is allowed.
-//
-// Its limits stay editable — an operator may reasonably want the system
-// workspace bounded. Its identity does not: the name is how
-// workspace.pinUnlimitedPlan finds it, and making it the default would put every
-// unassigned workspace on unlimited resources.
+// Limits stay editable; the name is how pinUnlimitedPlan finds it, and as default it would grant unlimited.
 func systemPlanEdit(p *models.Plan, newName string, makeDefault bool) error {
 	if p == nil || !p.System {
 		return nil
@@ -154,9 +141,7 @@ func systemPlanEdit(p *models.Plan, newName string, makeDefault bool) error {
 	return nil
 }
 
-// guardSecurityProfile enforces that the Enterprise-only restricted security profile may be
-// selected only with the security_profile entitlement; the default profile is always free. Uses
-// RequireMutable so a degraded license keeps an existing value read-only. nil when not restricted.
+// Uses RequireMutable so a degraded license keeps an existing value read-only.
 func (h *PlanHandler) guardSecurityProfile(securityProfile string) error {
 	if models.NormalizeSecurityProfile(securityProfile) == models.SecurityProfileRestricted {
 		return h.ee.RequireMutable(enterprise.FlagSecurityProfile)
@@ -226,12 +211,10 @@ func (b PlanBody) apply(p *models.Plan) {
 	}
 }
 
-// minDefaultMemoryMB keeps a default memory limit above what a container can start in; Docker itself refuses
-// anything under 6 MB, and a few MB more is still an instant OOM kill.
+// Docker refuses anything under 6 MB, and a few MB more is still an instant OOM kill.
 const minDefaultMemoryMB = 32
 
-// resourceDefaultsError reports why a plan's app resource defaults can't work, or nil. A default above the
-// plan's own CPU or memory total could never be granted to a single app.
+// A default above the plan's own CPU or memory total could never be granted to a single app.
 func resourceDefaultsError(p *models.Plan) error {
 	switch {
 	case p.DefaultMemoryMB > 0 && p.DefaultMemoryMB < minDefaultMemoryMB:
@@ -246,8 +229,7 @@ func resourceDefaultsError(p *models.Plan) error {
 
 var errUnknownDatabaseSize = errors.New("the list names a database size that does not exist")
 
-// checkDatabaseSizes refuses unknown sizes, and offering sizes without database_sizes. Clearing or resending an
-// unchanged list is always allowed, so a lapsed license never strands one.
+// Clearing or resending an unchanged list is always allowed, so a lapsed license never strands one.
 func (h *PlanHandler) checkDatabaseSizes(c *okapi.Context, prev []uint, next *[]uint) error {
 	if next == nil || len(*next) == 0 || slices.Equal(prev, *next) {
 		return nil
@@ -265,9 +247,7 @@ func (h *PlanHandler) checkDatabaseSizes(c *okapi.Context, prev []uint, next *[]
 
 var errUnknownPlatformRunner = errors.New("the list names a platform runner that does not exist")
 
-// checkPlatformRunners refuses unknown or workspace-owned runners, and narrowing the pool without
-// platform_runners. Clearing or resending an unchanged list is always allowed, so a lapsed license
-// never strands one.
+// Clearing or resending an unchanged list is always allowed, so a lapsed license never strands one.
 func (h *PlanHandler) checkPlatformRunners(c *okapi.Context, prev []string, next *[]string) error {
 	if next == nil || len(*next) == 0 || slices.Equal(prev, *next) {
 		return nil
@@ -289,7 +269,6 @@ func (h *PlanHandler) checkPlatformRunners(c *okapi.Context, prev []string, next
 
 var errInvalidPlanPool = errors.New("a pool name is lowercase letters, digits and hyphens (max 32), e.g. pro")
 
-// checkPlacement refuses an invalid pool, and binding to locations or a pool without placement_policy.
 // Clearing or resending an unchanged binding is always allowed, so a lapsed license never strands one.
 func (h *PlanHandler) checkPlacement(c *okapi.Context, prev, next models.PlanPlacement) error {
 	if next.Pool != "" && !models.ValidPoolName(next.Pool) {
@@ -323,9 +302,7 @@ func (h *PlanHandler) Get(c *okapi.Context) error {
 }
 
 func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
-	// Edition plan-catalog cap. System plans (the platform's own Unlimited) do not
-	// count, and an install that predates the cap being lowered keeps its old one —
-	// see planLimit. A licence raises or lifts it.
+	// System plans do not count, and an install predating a lowered cap keeps its old one; see planLimit.
 	if lim := h.ee.Entitlements().PlanLimit(); lim >= 0 {
 		if n, err := h.repo.Count(); err == nil && n >= int64(lim) {
 			return entitlementAbort(c, enterprise.ErrPlanLimitReached)
@@ -388,8 +365,7 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 	system := p.System
 	before := *p
 	req.Body.PlanBody.apply(p)
-	// apply() writes every settable field. System is not one of them and must not
-	// become one: it is the platform's own bookkeeping, not an operator's choice.
+	// System is platform bookkeeping, not an operator's choice, and must never become a settable field.
 	p.System = system
 	if before.ConsoleManaged() {
 		p.ManagedBy, p.ExternalKey = before.ManagedBy, before.ExternalKey
@@ -409,9 +385,7 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 
 func (h *PlanHandler) Delete(c *okapi.Context) error {
 	id := h.id(c)
-	// workspace.pinUnlimitedPlan resolves the system plan by name and fails soft, so
-	// deleting it would not error anywhere — the system workspace would quietly drop
-	// onto the default plan's limits and stay there.
+	// pinUnlimitedPlan fails soft, so a deleted system plan would silently drop onto default limits.
 	if p, err := h.repo.FindByID(id); err == nil && p.System {
 		return c.AbortWithError(409, errSystemPlanDelete)
 	} else if err == nil && p.ConsoleManaged() {
@@ -439,8 +413,7 @@ func (h *PlanHandler) SetDefault(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("plan not found")
 	}
-	// Same rule as the update path: the console hides the button, but the endpoint
-	// is reachable on its own and a guard in only one of them is not a guard.
+	// The endpoint is reachable on its own, so the guard must live here too, not only in the console.
 	if p.System {
 		return c.AbortWithError(409, errSystemPlanDefault)
 	}
@@ -480,8 +453,7 @@ func (h *PlanHandler) AssignWorkspace(c *okapi.Context, req *AssignWorkspacePlan
 	return message(c, "plan assigned")
 }
 
-// SetWorkspaceQuotaRequest carries per-workspace limit/capability overrides.
-// Each field is nullable: nil inherits the plan, a value overrides it.
+// nil inherits the plan, a value overrides it.
 type SetWorkspaceQuotaRequest struct {
 	Body models.WorkspaceQuota `json:"body"`
 }
@@ -499,9 +471,7 @@ func (h *PlanHandler) GetWorkspaceQuota(c *okapi.Context) error {
 	return ok(c, o)
 }
 
-// SetWorkspaceQuota upserts a workspace's overrides. Per-workspace overrides are an Enterprise
-// capability (gated quota_override → 402 in Community); plans themselves stay free. Reading and
-// clearing are ungated, so a license lapse never strands a workspace with an override it can't remove.
+// Reading and clearing are ungated, so a lapsed license never strands an override.
 func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuotaRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagQuotaOverride); err != nil {
 		return entitlementAbort(c, err)
@@ -513,9 +483,7 @@ func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuota
 	if _, err := h.workspaces.FindByID(wsID); err != nil {
 		return c.AbortNotFound("workspace not found")
 	}
-	// A restricted security-profile override needs the security_profile
-	// entitlement, independent of quota_override above (which only unlocks
-	// overrides at all).
+	// Needs security_profile independently of quota_override, which only unlocks overrides at all.
 	if req.Body.SecurityProfile != nil && models.NormalizeSecurityProfile(*req.Body.SecurityProfile) == models.SecurityProfileRestricted {
 		if err := h.ee.RequireMutable(enterprise.FlagSecurityProfile); err != nil {
 			return entitlementAbort(c, err)

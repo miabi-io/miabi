@@ -66,8 +66,6 @@ func TestRenderConfig(t *testing.T) {
 }
 
 func TestRenderConfigManagerUsesFileProvider(t *testing.T) {
-	// A stack install: Miabi created the volume behind its route directory, so it
-	// can hand the manager's gateway the same one to watch.
 	s := NewService(nil, "https://miabi.example.com/", "img", "miabi", "ops@example.com")
 	s.SetProvidersVolume("mb-platform-gateway-providers")
 	got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
@@ -128,8 +126,7 @@ func TestGatewayEnvConfigEncryptionKey(t *testing.T) {
 		}
 	}
 
-	// Key configured: a NODE's gateway gets its own derived key, never the central passphrase —
-	// that is what stops one compromised edge host reading every other node's config.
+	// A node must never get the central passphrase, or one compromised edge host could read every node's config.
 	s.SetConfigEncryptionKey("  s3cr3t-key  ") // trimmed
 	got := envValue(s.gatewayEnv(srv, "tok", ""), "GOMA_CONFIG_ENCRYPTION_KEY")
 	if got == "" {

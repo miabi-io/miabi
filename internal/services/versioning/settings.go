@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Settings is a policy's configuration as the API and a pipeline's `versioning:` block write it. An
-// empty field takes its default, so `versioning: {scheme: semver}` is a complete policy.
+// An empty field takes its default, so `versioning: {scheme: semver}` is a complete policy.
 type Settings struct {
 	Scheme       models.VersionScheme `json:"scheme" yaml:"scheme"`
 	Template     string               `json:"template,omitempty" yaml:"template,omitempty"`

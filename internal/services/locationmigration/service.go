@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package locationmigration moves an application, with its volumes and databases, to another location while
-// it keeps serving: the data is pre-copied live, the app stops only for a final delta and a deploy, and the
-// source copy is kept until the move is finalized so it can be rolled back.
+// Package locationmigration moves an app with its data to another location live, keeping the source until finalized.
 package locationmigration
 
 import (
@@ -71,8 +69,7 @@ type Enqueuer interface {
 	EnqueueLocationMigration(migrationID uint) error
 }
 
-// Deps are the services a migration drives. They are the platform's own paths, so a move gets the same
-// guards and bookkeeping a create or a deploy does.
+// Deps are the platform's own services, so a move gets the same guards as a create or deploy.
 type Deps struct {
 	Repo        *repositories.LocationMigrationRepository
 	Apps        *repositories.ApplicationRepository
@@ -109,9 +106,7 @@ type StartRequest struct {
 	StartedBy     *uint
 }
 
-// Start re-plans against the current state and, when nothing blocks, records the migration and queues it.
-// Planning again is deliberate: the page may be minutes old, and a volume attached to another app since is
-// exactly what must stop a move.
+// Start re-plans deliberately: the page may be stale, and a volume newly attached elsewhere must block the move.
 func (s *Service) Start(ctx context.Context, workspaceID, appID uint, req StartRequest) (*models.LocationMigration, error) {
 	if m, err := s.Repo.ActiveForApp(appID); err == nil && m != nil {
 		return nil, ErrActive
@@ -211,8 +206,7 @@ func (s *Service) Cutover(workspaceID, id uint) (*models.LocationMigration, erro
 	return m, s.enqueue(m.ID)
 }
 
-// Cancel stops a migration before the app goes down. What the run created at the target is removed; the
-// app never stopped, so nothing else changes.
+// Cancel works only before the app goes down, so removing target leftovers changes nothing else.
 func (s *Service) Cancel(workspaceID, id uint) (*models.LocationMigration, error) {
 	m, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -235,8 +229,7 @@ func (s *Service) Cancel(workspaceID, id uint) (*models.LocationMigration, error
 	return nil, ErrWrongState
 }
 
-// Rollback puts the app back where it was, on the data it left there. Writes made at the target since
-// cutover are lost: this is a return to the pre-cutover state, not a migration back.
+// Rollback loses writes made at the target since cutover: it returns to pre-cutover state.
 func (s *Service) Rollback(workspaceID, id uint) (*models.LocationMigration, error) {
 	m, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -255,8 +248,7 @@ func (s *Service) Rollback(workspaceID, id uint) (*models.LocationMigration, err
 	return m, s.enqueue(m.ID)
 }
 
-// Finalize deletes the source copy now instead of at the end of the grace period. After it, the move can
-// no longer be rolled back.
+// After Finalize the move can no longer be rolled back.
 func (s *Service) Finalize(workspaceID, id uint) (*models.LocationMigration, error) {
 	m, err := s.Get(workspaceID, id)
 	if err != nil {
@@ -274,8 +266,6 @@ func (s *Service) Finalize(workspaceID, id uint) (*models.LocationMigration, err
 	return m, s.enqueue(m.ID)
 }
 
-// Sweep resumes runs whose worker died and finalizes migrations whose grace period ended. Called on a timer
-// by the control plane.
 func (s *Service) Sweep(ctx context.Context) {
 	now := time.Now()
 	if due, err := s.Repo.ListDueForFinalize(now); err == nil {

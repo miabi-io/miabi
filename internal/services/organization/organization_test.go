@@ -30,8 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// orgRow is the organizations stand-in: the real model's uid column defaults to the Postgres-only
-// gen_random_uuid(), which sqlite cannot parse.
+// Stand-in because the real model's gen_random_uuid() default cannot be parsed by sqlite.
 type orgRow struct {
 	ID            uint `gorm:"primaryKey"`
 	UID           string
@@ -84,9 +83,7 @@ func newOrgService(t *testing.T) (*Service, *gorm.DB) {
 	return NewService(repositories.NewOrganizationRepository(db)), db
 }
 
-// A new organization takes a slugged handle, defaults to unlimited workspaces, and refuses a handle
-// that is taken or reserved — unlike a workspace it is never auto-suffixed, because an admin naming
-// an org means that name.
+// Unlike a workspace, an org handle is never auto-suffixed: an admin naming an org means that name.
 func TestCreateOrganization(t *testing.T) {
 	s, _ := newOrgService(t)
 
@@ -120,8 +117,7 @@ func TestCreateOrganization(t *testing.T) {
 	}
 }
 
-// The workspace cap counts the org's workspaces, treats -1 as unlimited, and fails open so a read
-// error never blocks a create.
+// -1 is unlimited, and a read error fails open so it never blocks a create.
 func TestCapReached(t *testing.T) {
 	s, db := newOrgService(t)
 	two := 2
@@ -150,8 +146,7 @@ func TestCapReached(t *testing.T) {
 	}
 }
 
-// The default organization is the fallback every nullable organization_id resolves to, so it cannot
-// be deleted; promoting another one moves the flag rather than duplicating it.
+// The default org is every nullable organization_id's fallback, so it cannot be deleted.
 func TestDefaultOrganizationIsProtected(t *testing.T) {
 	s, _ := newOrgService(t)
 	org, err := s.Create(CreateInput{DisplayName: "Acme"})
@@ -245,8 +240,7 @@ func (w wsStub) FindByID(id uint) (*models.Workspace, error) {
 	return &models.Workspace{ID: id, OrganizationID: org}, nil
 }
 
-// The placement engine asks the organization service three questions. Unwired dependencies answer
-// "no organization" rather than failing, so placement keeps working before organizations are set up.
+// Unwired deps answer "no organization" so placement works before organizations are set up.
 func TestPlacementQuestions(t *testing.T) {
 	s, _ := newOrgService(t)
 	acme, err := s.Create(CreateInput{DisplayName: "Acme"})
@@ -291,8 +285,7 @@ func TestPlacementQuestions(t *testing.T) {
 	}
 }
 
-// The platform's own workspace belongs to no tenant, so a dedicated default organization must not
-// confine it — platform infrastructure has to be placeable anywhere.
+// Platform infrastructure must be placeable anywhere, even with a dedicated default org.
 func TestSystemWorkspaceIsNeverConfined(t *testing.T) {
 	s, _ := newOrgService(t)
 	acme, err := s.Create(CreateInput{DisplayName: "Acme"})
@@ -320,8 +313,7 @@ func (w systemWS) FindByID(id uint) (*models.Workspace, error) {
 	return &models.Workspace{ID: id, OrganizationID: &w.orgID}, nil
 }
 
-// An organization's default location has to be one it can actually place in, or every workspace it
-// creates starts with a default that placement silently skips.
+// Otherwise every new workspace starts with a default that placement silently skips.
 func TestDefaultClusterMustBeUsable(t *testing.T) {
 	s, _ := newOrgService(t)
 	acme, err := s.Create(CreateInput{DisplayName: "Acme"})

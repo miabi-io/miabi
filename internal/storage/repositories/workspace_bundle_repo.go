@@ -63,9 +63,7 @@ func (r *WorkspaceBundleRepository) FindInWorkspace(workspaceID, id uint) (*mode
 	return &b, nil
 }
 
-// HasActive reports whether a run is pending or in flight for the workspace.
-// Asked before starting one: two concurrent restores would race on every
-// resource they create.
+// Two concurrent restores would race on every resource they create.
 func (r *WorkspaceBundleRepository) HasActive(workspaceID uint) (bool, error) {
 	var n int64
 	err := r.db.Model(&models.WorkspaceBundle{}).
@@ -85,8 +83,7 @@ func (r *WorkspaceBundleRepository) ListByWorkspace(workspaceID uint, limit int)
 	return out, q.Find(&out).Error
 }
 
-// ListExpiredMigrationExports returns migration exports past their expiry whose staged data is still
-// held. Purged ones are filtered after loading: the flag lives in a JSON column.
+// The purged flag lives in a JSON column, so purged exports are filtered after loading.
 func (r *WorkspaceBundleRepository) ListExpiredMigrationExports(now time.Time) ([]models.WorkspaceBundle, error) {
 	var rows []models.WorkspaceBundle
 	if err := r.db.Where("kind = ? AND expires_at IS NOT NULL AND expires_at < ?", models.BundleMigrationExport, now).

@@ -16,16 +16,14 @@ export interface TemplateInput {
   length?: number
 }
 
-// TemplateAuthor credits whoever packaged the template (distinct from the
-// upstream project's homepage).
+// Credits whoever packaged the template, distinct from the upstream project's homepage.
 export interface TemplateAuthor {
   name: string
   email?: string
   website?: string
 }
 
-// CatalogEntry is the listing view of a template (latest version). `name` is the
-// stable template handle (formerly `slug`); `display_name` is the catalog label.
+// `name` is the stable template handle (formerly `slug`); `display_name` is the catalog label.
 export interface CatalogEntry {
   name: string
   display_name: string
@@ -55,8 +53,7 @@ export interface ManifestDatabase {
   resources?: { memory?: string; cpu?: string }
 }
 
-// ManifestConfig is a set of configuration files a template ships and mounts
-// into its applications. Content is rendered at install time.
+// Content is rendered at install time.
 export interface ManifestConfig {
   name: string
   files: Record<string, string>
@@ -146,8 +143,6 @@ export interface InstallAppRef {
   status: string
 }
 
-// TemplateInstallView is an install annotated with the apps it created and
-// upgrade availability.
 export interface TemplateInstallView {
   id: number
   workspace_id: number
@@ -166,16 +161,13 @@ export interface TemplateInstallView {
   update_available: boolean
 }
 
-// RemovedResource is one resource an uninstall attempted to delete; error is set
-// (non-fatal) when removal failed.
+// error is set (non-fatal) when removal failed.
 export interface RemovedResource {
   kind: string
   name: string
   error?: string
 }
 
-// UninstallResult is the teardown follow-up: every resource touched and how many
-// failed.
 export interface UninstallResult {
   removed: RemovedResource[] | null
   failed: number

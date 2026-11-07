@@ -38,17 +38,7 @@ type advancedRouteRow struct {
 	AdvancedConfig string
 }
 
-// routeAdvancedHostsStep closes the hostname hijack (C1) on routes that already exist.
-//
-// An advanced route used to carry its hosts and path inside the raw YAML, where nothing checked them
-// against the workspace's verified domains or against hostnames another tenant already served. A
-// route could therefore claim any hostname on the platform — including the console's, by declaring a
-// longer path on the platform domain and outranking it.
-//
-// Validation now refuses those keys, but stored configs predate it. Every affected route is DISABLED
-// rather than rewritten: its hosts were never checked against any domain the workspace owns, so
-// lifting them into the structured field would bless exactly the claim this fixes. An admin re-enters
-// the hostname, which sends it through the normal gate.
+// Affected advanced routes are disabled, not rewritten: lifting unchecked hosts would bless the hijack (C1).
 func routeAdvancedHostsStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable("routes") || !db.Migrator().HasColumn("routes", "advanced_config") {
 		return nil
@@ -82,9 +72,7 @@ func routeAdvancedHostsStep(ctx context.Context, db *gorm.DB) error {
 	})
 }
 
-// advancedClaimsRouting reports whether a stored config sets a field that decides which requests the
-// route receives. Unparseable YAML counts as claiming: it cannot be cleared, and Goma would reject
-// the whole bundle over it anyway.
+// Unparseable YAML counts as claiming: it can't be cleared, and Goma would reject the bundle anyway.
 func advancedClaimsRouting(cfg string) bool {
 	if strings.TrimSpace(cfg) == "" {
 		return false

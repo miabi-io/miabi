@@ -7,11 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 
 const notify = useNotificationStore()
 
-// Neither of these is a stored setting: both are fixed at boot from the
-// environment because they gate who can become a principal at all, and neither
-// should be flippable from a session. They are shown here anyway, read-only,
-// because an admin looking for "can people sign themselves up" looks in this card
-// — and finding nothing is worse than finding it and learning where it lives.
+// Fixed at boot from env since they gate who can become a principal; shown read-only so admins find them.
 const authAccess = ref<AuthAccessStatus | null>(null)
 
 const ENV_ACCESS: { key: keyof AuthAccessStatus; label: string; env: string }[] = [
@@ -41,8 +37,7 @@ const telemetry = ref<TelemetryStatus | null>(null)
 // Edited values, keyed by setting key.
 const values = ref<Record<string, string>>({})
 const types = ref<Record<string, PlatformSetting['type']>>({})
-// Keys an environment variable supplies. They are re-forced on every boot, so the
-// console shows them rather than offering an edit that reverts on restart.
+// Re-forced on every boot, so an edit would revert on restart.
 const pinned = ref<Set<string>>(new Set())
 // Originally-loaded values, for dirty comparison.
 const original = ref<Record<string, string>>({})
@@ -91,8 +86,7 @@ const SECTIONS: SectionDef[] = [
       max_workspace_memberships_per_user: 'Default max workspaces per user — joined as member (−1 = unlimited, 0 = none)',
       audit_log_retention_days: 'Audit log retention (days)',
     },
-    // Say which policy is in force, because an operator who changes a limit and sees no effect
-    // would otherwise assume it is broken.
+    // An operator who changes a limit and sees no effect would otherwise assume it is broken.
     note: 'The workspace limits apply install-wide. With an Enterprise licence each organization can carry its own instead, set on the organization —',
   },
   {
@@ -150,16 +144,14 @@ function sectionDirty(sectionKeys: string[]): boolean {
   return sectionKeys.some((k) => values.value[k] !== original.value[k])
 }
 
-// A half-typed number ("" or "-") is held back rather than saved, since the server
-// treats an empty limit as "use the default".
+// The server treats an empty limit as "use the default", so a half-typed number is held back.
 function savable(key: string): boolean {
   if (READONLY_KEYS.has(key) || pinned.value.has(key)) return false
   if (values.value[key] === original.value[key]) return false
   return types.value[key] !== 'int' || /^-?\d+$/.test(values.value[key].trim())
 }
 
-// keepEdits holds the values sent with a save: a key edited again since then keeps
-// its local value instead of being overwritten by the server's response.
+// A key edited again since the save keeps its local value instead of the server's response.
 function applySettings(settings: PlatformSetting[], keepEdits?: Record<string, string>) {
   const nextValues: Record<string, string> = {}
   const nextOriginal: Record<string, string> = {}

@@ -33,8 +33,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// stubIdP stands in for the provider's token and userinfo endpoints. Its asserted claims can be
-// changed between sign-ins.
 type stubIdP struct {
 	*httptest.Server
 	mu     sync.Mutex
@@ -88,7 +86,6 @@ func registerService(t *testing.T, email string) (*Service, *gorm.DB, *stubIdP) 
 	}, db, idp
 }
 
-// providerFor builds an enabled auto-registering provider pointed at the stub identity provider.
 // The client secret is stored in the clear, which crypto.Decrypt passes through without a key.
 func providerFor(idp *stubIdP, org *uint) *models.OAuthProvider {
 	return &models.OAuthProvider{
@@ -100,8 +97,7 @@ func providerFor(idp *stubIdP, org *uint) *models.OAuthProvider {
 	}
 }
 
-// A provider registers the accounts it creates into its own organization; unattached, they stay in
-// the default one, which is how every install behaved before providers could be attached at all.
+// Unattached providers register into the default organization, as before providers could be attached.
 func TestAuthenticate_RegistersIntoTheProvidersOrganization(t *testing.T) {
 	acme := uint(7)
 	for _, tc := range []struct {
@@ -125,8 +121,7 @@ func TestAuthenticate_RegistersIntoTheProvidersOrganization(t *testing.T) {
 	}
 }
 
-// The guarantee that matters: signing in through a provider attached to one organization must never
-// move an account that already belongs to another. Only a registration decides a realm.
+// Signing in through a provider must never move an existing account to another organization.
 func TestAuthenticate_NeverMovesAnExistingAccount(t *testing.T) {
 	globex := uint(8)
 	acme := uint(7)

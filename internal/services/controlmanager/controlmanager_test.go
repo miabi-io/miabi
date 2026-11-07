@@ -114,8 +114,7 @@ type fakeDeploys struct {
 
 func (f *fakeDeploys) InProgressAppIDs() ([]uint, error) { return f.inProgress, nil }
 
-// FindByID answers pending for a deployment it was never told about, which is what a redeploy the control
-// manager just started looks like.
+// Unknown ids read as pending, which is what a just-started redeploy looks like.
 func (f *fakeDeploys) FindByID(id uint) (*models.Deployment, error) {
 	if d, ok := f.byID[id]; ok {
 		return d, nil
@@ -445,8 +444,7 @@ func TestMissingVolumeBlocksTheAppsThatMountIt(t *testing.T) {
 	}
 }
 
-// A volume deleted and recreated by hand keeps its name and its row: only the engine's creation
-// timestamp gives it away.
+// A hand-recreated volume keeps its name and row; only the engine's creation timestamp gives it away.
 func TestRecreatedVolumeReadsAsReplaced(t *testing.T) {
 	h := newHarness()
 	appVolume(h, 7, 3, "mb-vol-1-data", "2026-09-01T10:00:00Z")
@@ -511,8 +509,6 @@ func TestVolumeOnAnOfflineNodeDoesNotBlockAnything(t *testing.T) {
 	}
 }
 
-// A lost volume is never restored by Miabi: the report names the backup to restore, and the app that
-// mounts it is told it needs a manual restore rather than a redeploy.
 func TestLostVolumeSuggestsTheLatestBackupAndNeverRedeploys(t *testing.T) {
 	h := newHarness()
 	appVolume(h, 7, 3, "mb-vol-1-data", "2026-09-01T10:00:00Z")

@@ -33,9 +33,6 @@ type ServerRepository struct {
 
 func NewServerRepository(db *gorm.DB) *ServerRepository { return &ServerRepository{db: db} }
 
-// CountWorkloads returns how many applications and database instances are placed
-// on the node — the workloads a reachability change could disrupt. Soft-deleted
-// rows are excluded by GORM's default scope.
 func (r *ServerRepository) CountWorkloads(serverID uint) (apps int64, databases int64, err error) {
 	if err = r.db.Model(&models.Application{}).Where("server_id = ?", serverID).Count(&apps).Error; err != nil {
 		return 0, 0, err
@@ -64,8 +61,6 @@ func (r *ServerRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Server{}, id).Error
 }
 
-// FindByName resolves a node by its unique handle — the value
-// /api/v1/provider/{name} is built from.
 func (r *ServerRepository) FindByName(name string) (*models.Server, error) {
 	var s models.Server
 	if err := r.db.Where("name = ?", name).First(&s).Error; err != nil {
@@ -89,8 +84,7 @@ func (r *ServerRepository) List() ([]models.Server, error) {
 	return servers, err
 }
 
-// CountLicensed counts the nodes that count toward the edition node limit: every node except the
-// control plane's own host, which is always included.
+// CountLicensed counts nodes toward the edition limit, excluding the control plane's own host.
 func (r *ServerRepository) CountLicensed() (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Server{}).Where("is_local = ?", false).Count(&n).Error
@@ -105,9 +99,7 @@ func (r *ServerRepository) FindByID(id uint) (*models.Server, error) {
 	return &s, nil
 }
 
-// FindBySwarmNodeID resolves the Miabi node backing a swarm node id. It is how a self-registering
-// agent is matched to an existing record instead of creating a duplicate: the agent reports a
-// stable identity the control plane can verify against its own `docker node ls`.
+// FindBySwarmNodeID matches a self-registering agent to an existing record instead of creating a duplicate.
 func (r *ServerRepository) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) {
 	var s models.Server
 	if err := r.db.Where("swarm_node_id = ?", swarmNodeID).First(&s).Error; err != nil {
@@ -116,19 +108,14 @@ func (r *ServerRepository) FindBySwarmNodeID(swarmNodeID string) (*models.Server
 	return &s, nil
 }
 
-// UpdateSwarmNodeID writes just that column. Deliberately not a full Save: a node's row is
-// written from several places on a single agent connect and by the cluster refresh loop, and a
-// read-modify-write of the whole row can silently clobber a field another just set.
+// Not a full Save: several writers touch this row on agent connect, and a whole-row write can clobber their fields.
 func (r *ServerRepository) UpdateSwarmNodeID(id uint, swarmNodeID string) error {
 	return r.db.Model(&models.Server{}).
 		Where("id = ?", id).
 		Update("swarm_node_id", swarmNodeID).Error
 }
 
-// UpdateEngineVersionBySwarmNodeID writes just the engine_version column for the
-// node with the given swarm node id. Column-scoped for the same reason as
-// UpdateSwarmNodeID: the cluster refresh loop and the agent-connect path both
-// write this row, and a full Save would race them.
+// Column-scoped like UpdateSwarmNodeID: a full Save would race the cluster refresh loop and agent connect.
 func (r *ServerRepository) UpdateEngineVersionBySwarmNodeID(swarmNodeID, version string) error {
 	return r.db.Model(&models.Server{}).
 		Where("swarm_node_id = ?", swarmNodeID).
@@ -152,8 +139,7 @@ func (r *ServerRepository) EnsureLocal(name, endpoint string) (*models.Server, e
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	// Control-plane node defaults to manager + edge-gateway so it can run its own
-	// Goma gateway for public ingress + TLS. Admin can switch it to cluster (the central gateway).
+	// Control-plane node defaults to edge-gateway so it can run its own Goma gateway for ingress and TLS.
 	s = &models.Server{
 		Name: name, DisplayName: name, DockerEndpoint: endpoint, IsLocal: true,
 		Role: models.RoleManager, Connectivity: models.ConnectivityEdgeGateway,
@@ -173,8 +159,7 @@ func (r *ServerRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Server](r.db, uid)
 }
 
-// SetCapacity records what Docker reports a node has. Targeted columns, not a full Save: the sweep
-// runs alongside edits from the console and must not write back a stale copy of the rest of the row.
+// Targeted columns, not a full Save: the sweep must not write back a stale copy of a concurrently edited row.
 func (r *ServerRepository) SetCapacity(id uint, cores int, memory, storage, storageFree int64, at time.Time) error {
 	return r.db.Model(&models.Server{}).Where("id = ?", id).Updates(map[string]any{
 		"cpu_cores":            cores,
@@ -194,9 +179,7 @@ func (r *ServerRepository) SetUsage(id uint, cpuPercent float64, memUsed int64, 
 	}).Error
 }
 
-// Capacity is the summed capacity of a set of nodes, with the usage of those measured recently.
-// Nodes never measured are skipped rather than counted as empty, so the totals describe the fleet
-// Miabi can actually see — and NodesMeasured says how much of it that is.
+// Capacity skips never-measured nodes rather than counting them empty; NodesMeasured says how much was seen.
 type Capacity struct {
 	Nodes            int64   `json:"nodes"`
 	NodesMeasured    int64   `json:"nodes_measured"`
@@ -209,9 +192,7 @@ type Capacity struct {
 	MemUsedBytes     int64   `json:"mem_used_bytes"`
 }
 
-// SumCapacity aggregates nodes, optionally scoped to one cluster (0 = every cluster). usageMaxAge
-// bounds how old a usage reading may be before it stops counting, so a node that stopped reporting
-// fades out of the figures instead of freezing them.
+// usageMaxAge lets a node that stopped reporting fade out of the figures instead of freezing them.
 func (r *ServerRepository) SumCapacity(clusterID uint, usageMaxAge time.Duration) (Capacity, error) {
 	var servers []models.Server
 	q := r.db.Model(&models.Server{})
@@ -270,8 +251,7 @@ func sumCapacity(servers []models.Server, usageMaxAge time.Duration) Capacity {
 	return out
 }
 
-// ImageRefs returns the edge-gateway image pinned on each node, so housekeeping never reclaims the
-// image a node's gateway is deployed from.
+// ImageRefs returns each node's pinned edge-gateway image so housekeeping never reclaims it.
 func (r *ServerRepository) ImageRefs() ([]string, error) {
 	var refs []string
 	err := r.db.Model(&models.Server{}).

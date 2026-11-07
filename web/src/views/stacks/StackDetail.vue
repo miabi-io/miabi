@@ -34,8 +34,6 @@ const busyAction = ref('')
 const deleteWithApps = ref(false)
 const selectedAppId = ref<number | null>(null)
 const editForm = ref({ displayName: '', description: '' })
-// Add/update env var modal — the same component the app Environment tab uses.
-// editingEnvKey is set while updating an existing variable (null when adding).
 const showEnvModal = ref(false)
 const editingEnvKey = ref<string | null>(null)
 const envForm = ref({ key: '', value: '', secret: false })
@@ -64,8 +62,7 @@ function aggregateClass() {
   return 'badge-warning'
 }
 
-// silent is used by the live reconcile: a background refresh must not blank the
-// page behind a spinner.
+// A background refresh must not blank the page behind a spinner.
 async function load(silent = false) {
   if (!wid.value) return
   if (!silent) loading.value = true
@@ -82,9 +79,7 @@ async function load(silent = false) {
   }
 }
 
-// Deploys are enqueued, not applied inline: the worker clears redeploy_required
-// long after the request returns, so without the event stream the page stays
-// stale until a manual refresh. Only a member's activity earns a refetch.
+// Deploys are enqueued and the worker clears redeploy_required later, so refetch on member activity.
 let memberActivity = false
 const { open: openStream } = useWorkspaceStream(() => {
   if (!memberActivity) return
@@ -129,8 +124,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart', rolling = false) 
   }
 }
 
-// A shared env var only reaches a container at deploy time, so a member deployed
-// before the change is running stale configuration until it is redeployed.
+// A shared env var reaches a container only at deploy time, so earlier deploys run stale configuration.
 const outdated = computed(() => (stack.value?.apps ?? []).filter((a) => a.redeploy_required))
 
 async function deployOutdated() {
@@ -224,8 +218,7 @@ async function confirmRemoveApp() {
   }
 }
 
-// openEnvModal opens the modal to create a new variable; openEnvEdit loads an
-// existing one for update (secret values aren't returned, so they're re-entered).
+// Secret values aren't returned, so they're re-entered on edit.
 function openEnvModal() {
   editingEnvKey.value = null
   envForm.value = { key: '', value: '', secret: false }
@@ -344,8 +337,6 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
       <div>
         <button class="btn btn-ghost btn-sm" @click="router.push('/stacks')">
           <span class="mdi mdi-arrow-left"></span>{{ $t('stacks.stacks') }}</button>
-        <!-- The display name is the editable label; the handle is permanent, so
-             both are shown rather than only the one that can change. -->
         <h1 style="margin-top: 8px">
           {{ stack.display_name || stack.name }}
           <span class="badge" :class="aggregateClass()" style="margin-left: 8px; vertical-align: middle">
@@ -387,8 +378,6 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="openAdd" :disabled="available.length === 0">
           <span class="mdi mdi-plus"></span>{{ $t('stacks.addApplication') }}</button>
       </div>
-      <!-- A shared env var reaches a container only at deploy time, so say plainly
-           which members are still running the old values and offer the fix. -->
       <div v-if="outdated.length" class="stale-banner">
         <span class="mdi mdi-alert-outline"></span>
         <span class="stale-text">
@@ -465,8 +454,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
                 {{ v.key }}
                 <span v-if="v.is_secret" class="badge badge-neutral env-tag" :title="$t('stacks.encryptedAtRest')">
                   <span class="mdi mdi-lock-outline"></span>{{ $t('stacks.secret') }}</span>
-                <!-- An app's own variable wins, so a shared value can be set here
-                     and never reach the app it was meant for. -->
+                <!-- An app's own variable wins, so a shared value may never reach the app it was meant for. -->
                 <span
                   v-if="v.overridden_by?.length"
                   class="badge badge-warning env-tag"
@@ -574,10 +562,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
               <input v-model="editForm.displayName" class="form-input" :aria-label="$t('oauth.displayName')" autofocus />
               <p class="form-hint">{{ $t('stacks.displayNameHint') }}</p>
             </div>
-            <!-- The name is the stack's identity, not a label: its Compose project
-                 name, its Docker network and the key GitOps matches it by are all
-                 derived from it. Shown read-only so it is visible without looking
-                 editable. -->
+            <!-- The name derives the Compose project, Docker network and GitOps match key, so it is shown read-only. -->
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input :value="stack.name" class="form-input" :aria-label="$t('apps.form.name')" readonly disabled

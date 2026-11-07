@@ -38,8 +38,6 @@ func (s *Service) SetSizeCatalog(c SizeCatalog) { s.sizes = c }
 // ErrSizesUnavailable refuses a named size where database sizes are not licensed.
 var ErrSizesUnavailable = errors.New("database sizes need an Enterprise license with database sizes")
 
-// SizeOffer is what a workspace may give a database: the sizes offered to it, the default among them, and whether
-// its plan binds it to them.
 type SizeOffer struct {
 	Sizes     []models.DatabaseSize `json:"sizes"`
 	DefaultID uint                  `json:"default_id,omitempty"`
@@ -59,9 +57,7 @@ func (s *Service) SizesFor(workspaceID uint) (SizeOffer, error) {
 	return offerFrom(all, allowed, enforced), nil
 }
 
-// offerFrom narrows the catalog to a plan's sizes, in the plan's order so its first is the default. An unenforced
-// or empty binding offers the whole catalog with no default, and so does a plan whose sizes were all deleted:
-// binding it to none would refuse every database.
+// An unenforced, empty, or fully-deleted binding offers the whole catalog: binding to none would refuse every database.
 func offerFrom(all []models.DatabaseSize, allowed []uint, enforced bool) SizeOffer {
 	if !enforced || len(allowed) == 0 {
 		return SizeOffer{Sizes: all}
@@ -83,8 +79,7 @@ func offerFrom(all []models.DatabaseSize, allowed []uint, enforced bool) SizeOff
 	return offer
 }
 
-// resolveSize turns a request into the limits it lands on. resize marks a change to an existing instance, where
-// asking for no limits in a bound workspace is refused rather than read as "the default".
+// On resize, a bound workspace asking for no limits is refused rather than read as the default.
 func (s *Service) resolveSize(workspaceID uint, spec engineSpec, req Resources, resize bool) (Resources, error) {
 	licensed := s.sizes != nil && s.quota.DatabaseSizesLicensed()
 	switch {
@@ -100,9 +95,7 @@ func (s *Service) resolveSize(workspaceID uint, spec engineSpec, req Resources, 
 	return pickSize(offer, spec, req, resize)
 }
 
-// pickSize applies a workspace's size offer to a request. A named size must be offered. A workspace its plan binds
-// to sizes gets one either way: the default when the request names nothing, else the smallest offered size
-// covering the requested memory and CPU, so a template or manifest stating plain numbers keeps working.
+// A bound workspace gets the smallest size covering the requested numbers, so plain-number manifests keep working.
 func pickSize(offer SizeOffer, spec engineSpec, req Resources, resize bool) (Resources, error) {
 	if req.Size != "" {
 		if req.MemoryBytes != 0 || req.NanoCPUs != 0 {

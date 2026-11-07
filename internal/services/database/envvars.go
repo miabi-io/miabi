@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Connection fields a linked database is injected into an app as. An env map
-// keys on these to rename a field's variable, or blank it to skip the field.
+// An env map keys on these to rename a field's variable, or blanks one to skip the field.
 const (
 	EnvFieldURL      = "url"
 	EnvFieldLegacy   = "database_url" // deprecated alias of url
@@ -45,9 +44,7 @@ var envFieldOrder = []string{EnvFieldURL, EnvFieldLegacy, EnvFieldHost, EnvField
 
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// DefaultEnvNames returns the variable each connection field is injected as
-// for an engine, before any prefix. Redis has no user or database name, and
-// takes REDIS_* so it can sit next to an unprefixed SQL database.
+// Redis uses REDIS_* so it can sit next to an unprefixed SQL database.
 func DefaultEnvNames(engine models.DBEngine) map[string]string {
 	if engine == models.DBEngineRedis {
 		return map[string]string{
@@ -68,9 +65,6 @@ func DefaultEnvNames(engine models.DBEngine) map[string]string {
 	}
 }
 
-// NormalizeEnvMap validates a user-supplied env map for an engine: every key
-// must be a field the engine injects, every non-empty value a valid variable
-// name, and no two fields may resolve to the same variable.
 func NormalizeEnvMap(engine models.DBEngine, prefix string, m map[string]string) (map[string]string, error) {
 	if len(m) == 0 {
 		return nil, nil
@@ -108,8 +102,6 @@ func EnvKeys(engine models.DBEngine, prefix string, m map[string]string) []strin
 	return out
 }
 
-// resolveEnvNames maps each field the engine injects to its final variable
-// name; skipped fields are absent.
 func resolveEnvNames(engine models.DBEngine, prefix string, m map[string]string) map[string]string {
 	out := map[string]string{}
 	for field, def := range DefaultEnvNames(engine) {
@@ -134,10 +126,7 @@ type EnvVar struct {
 	Secret bool
 }
 
-// AppEnv builds the variables that inject a database's connection into an app:
-// the logical database's scoped connection when d is set, else the instance's
-// own (Redis). Password and URL are Vault references when secrets are wired, so
-// the app env never holds plaintext; otherwise they are stored as secret vars.
+// Password and URL are Vault references when secrets are wired, so the app env never holds plaintext.
 func (s *Service) AppEnv(inst *models.DatabaseInstance, d *models.Database, prefix string, m map[string]string) ([]EnvVar, error) {
 	var conn ConnectionInfo
 	var err error
@@ -185,8 +174,7 @@ func (s *Service) AppEnv(inst *models.DatabaseInstance, d *models.Database, pref
 	return out, nil
 }
 
-// InjectedKeys returns the variables a link put on its app: the recorded set,
-// or, for links made before keys were recorded, the set its prefix implies.
+// InjectedKeys falls back to the prefix-implied set for links made before keys were recorded.
 func InjectedKeys(engine models.DBEngine, prefix string, m map[string]string, recorded []string) []string {
 	if len(recorded) > 0 {
 		return recorded

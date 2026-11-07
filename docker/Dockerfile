@@ -1,14 +1,7 @@
 # syntax=docker/dockerfile:1
-#
-# Single image: builds the web UI (static export), embeds it into the Go binary
-# (internal/web), and ships one self-contained executable that serves both the
-# API and the UI — no static files at runtime.
+# Single image: the web UI is embedded in the Go binary, so no static files at runtime.
 
-# Build the UI on a glibc image, not alpine: Vite 8's rolldown bundler needs a
-# native binding, and `npm ci` on musl trips the npm optional-deps bug
-# (npm/cli#4828), failing to install @rolldown/binding-linux-x64-musl. glibc
-# uses the well-supported -gnu binding. This is a throwaway builder stage (only
-# /web/dist is embedded below), so the base has no effect on the final image.
+# glibc builder: on musl `npm ci` fails to install the rolldown binding (npm/cli#4828); throwaway stage.
 FROM node:26-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
@@ -23,8 +16,6 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Stage the built UI where the embed directive (internal/web) picks it up, so the
-# binary is self-contained.
 COPY --from=web /web/dist ./internal/web/dist
 # The HTTP healthcheck probe copied into app containers (internal/healthprobe).
 RUN for arch in amd64 arm64; do \

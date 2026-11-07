@@ -21,14 +21,10 @@ package mwcatalog
 
 import "github.com/miabi-io/miabi/internal/services/crypto"
 
-// RedactedSentinel is the placeholder returned in place of a secret value in API
-// responses. On update, a secret still equal to the sentinel means "keep the
-// stored value", so editing a policy without retyping its password preserves it.
+// On update, a value equal to the sentinel means keep the stored secret.
 const RedactedSentinel = "***"
 
-// EncryptSecrets returns a copy of rule with every secret field encrypted at rest under the
-// per-workspace key. Already-encrypted values are left untouched (idempotent, so kept secrets
-// aren't double-encrypted); with encryption disabled the plaintext is stored as-is.
+// Idempotent: already-encrypted values are untouched; with encryption disabled plaintext is stored as-is.
 func EncryptSecrets(mwType string, workspaceID uint, rule map[string]any) (map[string]any, error) {
 	return transformSecrets(mwType, rule, func(v string) (string, error) {
 		if v == "" || crypto.LooksEncrypted(v) || !crypto.Enabled() {
@@ -38,9 +34,7 @@ func EncryptSecrets(mwType string, workspaceID uint, rule map[string]any) (map[s
 	})
 }
 
-// DecryptSecrets returns a copy of rule with every secret field decrypted, for
-// the render path. Only values carrying an encryption envelope are decrypted;
-// legacy plaintext (pre-feature, not yet re-saved) is passed through untouched.
+// Legacy plaintext not yet re-saved is passed through untouched.
 func DecryptSecrets(mwType string, rule map[string]any) (map[string]any, error) {
 	return transformSecrets(mwType, rule, func(v string) (string, error) {
 		if !crypto.LooksEncrypted(v) {
@@ -50,8 +44,7 @@ func DecryptSecrets(mwType string, rule map[string]any) (map[string]any, error) 
 	})
 }
 
-// ReencryptSecrets returns a copy of rule with every encrypted secret rewritten under the workspace's
-// active key, and whether any changed. Legacy plaintext is left alone: crypto.Reencrypt would mangle it.
+// Legacy plaintext is left alone: crypto.Reencrypt would mangle it.
 func ReencryptSecrets(mwType string, workspaceID uint, rule map[string]any) (map[string]any, bool, error) {
 	changed := false
 	out, err := transformSecrets(mwType, rule, func(v string) (string, error) {
@@ -71,8 +64,7 @@ func ReencryptSecrets(mwType string, workspaceID uint, rule map[string]any) (map
 	return out, changed, nil
 }
 
-// Redact returns a copy of rule with every secret value replaced by the redaction
-// sentinel, for API responses (never expose ciphertext or plaintext).
+// Never expose ciphertext or plaintext in API responses.
 func Redact(mwType string, rule map[string]any) map[string]any {
 	out, _ := transformSecrets(mwType, rule, func(string) (string, error) {
 		return RedactedSentinel, nil
@@ -80,9 +72,7 @@ func Redact(mwType string, rule map[string]any) map[string]any {
 	return out
 }
 
-// MergeKeptSecrets returns a copy of incoming where every secret still equal to the redaction
-// sentinel is restored from existing, so a client that received a redacted rule and edited other
-// fields doesn't wipe the stored secret. basicAuth users are matched by username.
+// Keeps a client editing a redacted rule from wiping stored secrets; basicAuth users match by username.
 func MergeKeptSecrets(mwType string, incoming, existing map[string]any) map[string]any {
 	d, ok := Get(mwType)
 	if !ok || existing == nil {
@@ -104,9 +94,6 @@ func MergeKeptSecrets(mwType string, incoming, existing map[string]any) map[stri
 	return out
 }
 
-// transformSecrets applies fn to each secret string value of a rule, returning a
-// copy. It handles both simple secret string fields and the basicAuth users list
-// (each user's password). Non-secret fields are copied unchanged.
 func transformSecrets(mwType string, rule map[string]any, fn func(string) (string, error)) (map[string]any, error) {
 	d, ok := Get(mwType)
 	if !ok || rule == nil {
@@ -131,8 +118,7 @@ func transformSecrets(mwType string, rule map[string]any, fn func(string) (strin
 	return out, nil
 }
 
-// updateAt applies fn to the value at keys, copying every level it walks so the
-// stored rule is never mutated in place. A path that does not exist is skipped.
+// Copies every level it walks so the stored rule is never mutated in place.
 func updateAt(root map[string]any, keys []string, fn func(any) (any, error)) error {
 	node := root
 	for _, k := range keys[:len(keys)-1] {
@@ -171,8 +157,7 @@ func valueAt(root map[string]any, keys []string) (any, bool) {
 	return v, ok
 }
 
-// transformUsers applies fn to each user's password, returning a fresh list so
-// the stored rule is never mutated in place.
+// Returns a fresh list so the stored rule is never mutated in place.
 func transformUsers(v any, fn func(string) (string, error)) (any, error) {
 	list, ok := v.([]any)
 	if !ok {
@@ -198,8 +183,6 @@ func transformUsers(v any, fn func(string) (string, error)) (any, error) {
 	return out, nil
 }
 
-// mergeKeptUsers restores each incoming user's password from the existing list
-// (matched by username) when it is still the redaction sentinel.
 func mergeKeptUsers(incoming, existing any) any {
 	inList, ok := incoming.([]any)
 	if !ok {

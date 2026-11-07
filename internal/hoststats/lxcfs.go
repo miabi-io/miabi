@@ -27,9 +27,7 @@ import (
 	"strings"
 )
 
-// ServedByLXCFS reports whether procPath's stat or meminfo is an lxcfs mount, as on an LXC guest.
-// lxcfs answers for the cgroup of the process reading the file, so from inside a container it
-// reports that container's own usage rather than the host's.
+// lxcfs answers for the reader's cgroup, so inside a container it reports that container, not the host.
 func ServedByLXCFS(procPath string) bool {
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {

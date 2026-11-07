@@ -21,8 +21,7 @@ package models
 
 import "testing"
 
-// Accounts written before auth_source existed carry an empty string, and they are
-// local — reading them as externally managed would freeze every legacy profile.
+// Legacy accounts with an empty auth_source are local; reading them as external would freeze their profiles.
 func TestUserIsExternal(t *testing.T) {
 	for _, tc := range []struct {
 		source string

@@ -6,10 +6,7 @@ import type { InboxNotification } from '@/api/inbox'
 import { followNotificationLink } from '@/utils/notificationLink'
 import AnnouncementBannerItem from './AnnouncementBannerItem.vue'
 
-// Renders the pinned notices an administrator broadcast. They sit above the page
-// rather than behind the bell because they change what the reader should do right
-// now; dismissal is per-user and permanent. A notice marked undismissable has no
-// close control and stays until it expires or is retracted.
+// Shown above the page, not behind the bell, because they change what to do now; dismissal is per-user and permanent.
 const store = useInboxStore()
 const { banners } = storeToRefs(store)
 const router = useRouter()

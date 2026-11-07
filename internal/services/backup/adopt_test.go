@@ -36,9 +36,7 @@ func newAdoptService(t *testing.T) (*Service, *repositories.DatabaseBackupSetRep
 	if err != nil {
 		t.Fatal(err)
 	}
-	// models.Database embeds UIDModel, whose uid column defaults to
-	// gen_random_uuid() — Postgres-only. A minimal shadow of the table keeps the
-	// repository's own queries working under sqlite, as the other service tests do.
+	// UIDModel's uid default is Postgres-only, so a minimal shadow table keeps queries working under sqlite.
 	if err := db.AutoMigrate(&models.DatabaseBackupSet{}, &models.Backup{}, &databaseRow{}); err != nil {
 		t.Fatal(err)
 	}
@@ -120,9 +118,7 @@ func TestAdoptMatchesArtifactsToDatabasesByName(t *testing.T) {
 	}
 }
 
-// An artifact whose database no longer exists is reported, never invented. A
-// placeholder database would produce a row that looks restorable and restores into
-// something nobody asked for.
+// A placeholder database would produce a row that looks restorable and restores into nothing asked for.
 func TestAdoptSkipsArtifactsWithNoLocalDatabase(t *testing.T) {
 	svc, _, db := newAdoptService(t)
 	seedDatabases(t, db, "orders") // billing is gone
@@ -149,8 +145,7 @@ func TestAdoptSkipsArtifactsWithNoLocalDatabase(t *testing.T) {
 	}
 }
 
-// A PostgreSQL dump is not a MySQL one, and discovering that at restore time is
-// discovering it too late.
+// A PostgreSQL dump is not a MySQL one; finding out at restore time is too late.
 func TestAdoptRefusesAnEngineMismatch(t *testing.T) {
 	svc, _, db := newAdoptService(t)
 	seedDatabases(t, db, "orders", "billing")
@@ -168,8 +163,7 @@ func TestAdoptRefusesAnEngineMismatch(t *testing.T) {
 	}
 }
 
-// Adopting twice must not duplicate the history: a partial failure has to be safe
-// to retry.
+// A partial failure must be safe to retry.
 func TestAdoptIsIdempotentOnRef(t *testing.T) {
 	svc, sets, db := newAdoptService(t)
 	seedDatabases(t, db, "orders", "billing")

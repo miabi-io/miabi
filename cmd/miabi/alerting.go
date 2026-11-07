@@ -149,8 +149,7 @@ func pluralDatabases(n int) string {
 	return fmt.Sprintf("%d databases", n)
 }
 
-// humanBytes renders a size for an inbox line. Deliberately coarse: the exact byte count belongs on
-// the backup row, not in a sentence.
+// Deliberately coarse: the exact byte count belongs on the backup row, not in a sentence.
 func humanBytes(b int64) string {
 	const unit = 1024
 	if b < unit {

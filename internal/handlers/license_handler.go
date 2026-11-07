@@ -29,13 +29,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 )
 
-// nearingExpiryWindow is how far before NotAfter a "nearing_expiry" warning is
-// raised so admins renew before the grace/degrade transition.
 const nearingExpiryWindow = 30 * 24 * time.Hour
 
-// LicenseHandler exposes the commercial license: install, view, remove, and the health summary
-// driving the web banner. It works in both editions — in Community the injected enterprise.EE
-// is the deny-all stub, so install returns 402 and the view reports edition "community".
+// In Community the injected EE is the deny-all stub, so install returns 402.
 type LicenseHandler struct {
 	ee                enterprise.EE
 	nodeCount         func() int64
@@ -65,28 +61,20 @@ type PlanUsage struct {
 	Limit int   `json:"limit"`
 }
 
-// StorageClassUsage reports the class catalog, built-in included, against the edition cap
-// (-1 = unlimited).
 type StorageClassUsage struct {
 	Used  int64 `json:"used"`
 	Limit int   `json:"limit"`
 }
 
-// SharedRunnerUsage reports the platform-shared runner pool against the edition cap
-// (-1 = unlimited). Workspace-owned runners are bounded by the workspace plan, not here.
+// Workspace-owned runners are bounded by the workspace plan, not here.
 type SharedRunnerUsage struct {
 	Used  int64 `json:"used"`
 	Limit int   `json:"limit"`
 }
 
-// LicenseView is the API representation of the current license: the resolved
-// entitlements plus node/plan usage, this instance's Install ID, and any operator
-// warnings.
 type LicenseView struct {
 	enterprise.Entitlements
-	// InstanceInstallID is THIS deployment's stable Install ID ("Your Install ID"),
-	// shown so a customer can copy it when purchasing a license. Distinct from the
-	// embedded Entitlements.InstallID (the id a license is bound to).
+	// Distinct from Entitlements.InstallID, which is the id a license is bound to.
 	InstanceInstallID string            `json:"instance_install_id"`
 	NodeUsage         NodeUsage         `json:"node_usage"`
 	PlanUsage         PlanUsage         `json:"plan_usage"`
@@ -175,8 +163,6 @@ func (h *LicenseHandler) Health(c *okapi.Context) error {
 	return ok(c, map[string]any{"state": ent.State, "edition": ent.Edition, "warnings": warnings(ent, used)})
 }
 
-// Install verifies and persists a signed license token. In Community the stub
-// returns ErrCommunityEdition → 402; a bad/forged token → 400.
 func (h *LicenseHandler) Install(c *okapi.Context, req *InstallLicenseRequest) error {
 	token := strings.TrimSpace(req.Body.Token)
 	if token == "" {
@@ -197,9 +183,7 @@ func (h *LicenseHandler) Install(c *okapi.Context, req *InstallLicenseRequest) e
 	return h.Get(c)
 }
 
-// requestHost returns the host the request was made to — the live deployment identity used to
-// validate a URL-bound license at install. It honors X-Forwarded-Host and takes the first value
-// of a comma-separated list; normalization to a bare hostname happens downstream.
+// Honors X-Forwarded-Host (first value); normalization to a bare hostname happens downstream.
 func requestHost(c *okapi.Context) string {
 	r := c.Request()
 	host := r.Host

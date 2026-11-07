@@ -130,8 +130,7 @@ func checkLimit(tx *gorm.DB, a *models.BillingAccount) error {
 	return nil
 }
 
-// refuseLast keeps an active account from losing its last workspace; the platform cancels the
-// subscription instead.
+// The platform cancels the subscription instead.
 func refuseLast(tx *gorm.DB, a *models.BillingAccount) error {
 	if a.Status == models.BillingAccountCanceled {
 		return nil
@@ -177,9 +176,7 @@ func (s *Service) AddWorkspace(ctx context.Context, externalID string, in Worksp
 	return s.render(acct)
 }
 
-// createLocked makes a workspace for the account owner and bills it, under the account's lock so
-// max_workspaces holds. A same-named workspace already billed to the account is the answer to a
-// retry; one the owner holds unbilled is what an earlier attempt left and is taken over.
+// Under the account lock so max_workspaces holds; an existing same-named workspace answers a retry.
 func (s *Service) createLocked(tx *gorm.DB, a *models.BillingAccount, in CreateWorkspace) (uint, error) {
 	handle := strings.TrimSpace(in.Name)
 	existing, err := findWorkspace(tx, handle)
@@ -245,7 +242,6 @@ func (s *Service) attachLocked(tx *gorm.DB, a *models.BillingAccount, ref string
 	return ws.ID, s.bindWorkspace(tx, a, ws.ID, ws.PlanID)
 }
 
-// bindWorkspace bills a workspace to the account and gives it the account's plan and add-ons;
 // prevPlan is restored when it is detached.
 func (s *Service) bindWorkspace(tx *gorm.DB, a *models.BillingAccount, wsID uint, prevPlan *uint) error {
 	updates := map[string]any{"billing_account_id": a.ID, "billing_prev_plan_id": prevPlan}
@@ -265,8 +261,6 @@ func (s *Service) bindWorkspace(tx *gorm.DB, a *models.BillingAccount, wsID uint
 	return applyLimits(tx, wsID, plan, nil, a.Limits)
 }
 
-// DetachWorkspace stops billing a workspace: its earlier plan comes back, and billing's add-ons
-// and restriction are removed. The workspace and its owner are untouched.
 func (s *Service) DetachWorkspace(ctx context.Context, externalID, ref string) (*Account, error) {
 	var acct *models.BillingAccount
 	var ws *models.Workspace
@@ -326,9 +320,7 @@ func (s *Service) RenameWorkspace(externalID, ref string, in WorkspaceRename) (*
 	return s.render(acct)
 }
 
-// DeleteWorkspace deletes a workspace at once, with everything in it. confirm must repeat its
-// handle. The account's lock is held throughout, so two deletes cannot both pass the last-workspace
-// check.
+// The account lock is held so two deletes cannot both pass the last-workspace check.
 func (s *Service) DeleteWorkspace(ctx context.Context, externalID, ref string, in WorkspaceDelete) (*Account, *models.Workspace, error) {
 	if s.deps.Deleter == nil {
 		return nil, nil, errors.New("workspace deletion is not wired")
@@ -384,9 +376,7 @@ func (s *Service) AccountUsage(externalID string) (*Usage, error) {
 	return out, nil
 }
 
-// MigrationAccount resolves what a migration call of the Billing API acts for: the account's owner, who
-// holds the key or owns the imported workspace, and, when ref is given, one of the account's workspaces.
-// Without ref it checks the account may take one more workspace, before an import creates it.
+// Without ref it checks the account may take one more workspace before an import creates it.
 func (s *Service) MigrationAccount(externalID, ref string) (ownerID, wsID uint, err error) {
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		a, err := lockAccount(tx, externalID)

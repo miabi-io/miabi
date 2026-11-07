@@ -4,8 +4,7 @@ import AppModal from '@/components/AppModal.vue'
 import { copyText } from '@/utils/clipboard'
 import { useNotificationStore } from '@/stores/notification'
 
-// Shows a server-generated password exactly once. It is not stored in clear, so the admin copies it now
-// and hands it over out-of-band.
+// Not stored in clear, so the admin copies it now and hands it over out-of-band.
 defineProps<{ title: string; password: string }>()
 const emit = defineEmits<{ close: [] }>()
 

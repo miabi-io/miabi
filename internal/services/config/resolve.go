@@ -26,12 +26,8 @@ import (
 	"strings"
 )
 
-// refRe matches `${{ secrets.NAME }}` and `${{ env.NAME }}`, the spelling env
-// values already use for secrets.
 var refRe = regexp.MustCompile(`\$\{\{\s*(secrets|env)\.([A-Za-z0-9_.\-]+)\s*\}\}`)
 
-// Resolver supplies the values a config's references stand for, scoped to the
-// app the config is mounted into.
 type Resolver interface {
 	Secret(name string) (string, bool)
 	Env(name string) (string, bool)
@@ -60,8 +56,6 @@ func (r ResolverFunc) Env(name string) (string, bool) {
 // HasReferences reports whether content carries any reference.
 func HasReferences(content string) bool { return refRe.MatchString(content) }
 
-// SecretRefNames lists the secrets a config's files reference, so rotating one
-// can find the apps mounting it.
 func SecretRefNames(data map[string]string) []string {
 	seen := map[string]bool{}
 	for _, content := range data {
@@ -79,12 +73,7 @@ func SecretRefNames(data map[string]string) []string {
 	return out
 }
 
-// Resolve substitutes every reference in content. A secret of that name wins
-// over an env var of the same name, whichever namespace was written, so a value
-// promoted from env to the vault needs no edit here.
-//
-// An unresolvable reference fails: a file mounted with the placeholder still in
-// it is worse than a deploy that stops.
+// A secret wins over a same-named env var; an unresolvable reference fails rather than mounting a placeholder.
 func Resolve(content string, r Resolver) (string, error) {
 	if r == nil || !refRe.MatchString(content) {
 		return content, nil

@@ -33,16 +33,13 @@ func newPipelineDB(t *testing.T) *PipelineRepository {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	// Only the run tables are needed here; PipelineDefinition's UIDModel carries a
-	// Postgres-only gen_random_uuid() default that SQLite AutoMigrate rejects.
+	// PipelineDefinition's UIDModel has a Postgres-only gen_random_uuid() default SQLite AutoMigrate rejects.
 	if err := db.AutoMigrate(&models.PipelineRun{}, &models.PipelineStepRun{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewPipelineRepository(db)
 }
 
-// TestLatestRunByPipeline verifies the list-enrichment query returns the
-// highest-numbered run for each pipeline and omits pipelines with no runs.
 func TestLatestRunByPipeline(t *testing.T) {
 	repo := newPipelineDB(t)
 

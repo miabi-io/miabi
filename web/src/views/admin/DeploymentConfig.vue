@@ -7,8 +7,7 @@ const notify = useNotificationStore()
 
 const images = ref<ImageCatalogItem[]>([])
 const mirror = ref('')
-// The mirror is Enterprise (private_registry); the per-image overrides below are
-// not. A mirror already set stays in effect either way — only editing is gated.
+// Only the mirror is Enterprise (private_registry); an existing mirror stays in effect, only editing is gated.
 const mirrorEditable = ref(true)
 const overrides = ref<Record<string, string>>({})
 const loading = ref(false)

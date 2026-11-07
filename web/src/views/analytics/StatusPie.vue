@@ -1,14 +1,5 @@
 <script setup lang="ts">
-// Status-code split as a pie, with the counts beside it.
-//
-// The pie answers "is this workspace healthy at a glance"; it cannot answer
-// "how many 4xx" — a real distribution is something like 460/9/1/0, where the
-// last two classes are sub-degree slivers. So the legend beside it is not
-// decoration: it is where the numbers actually live, and every slice is named
-// there whether or not it is visible in the ring.
-//
-// `hole` is the inner radius as a fraction of the outer one; 0 draws a solid
-// pie instead of a ring.
+// Tiny classes are sub-degree slivers, so the legend is where the numbers live; `hole` 0 draws a solid pie.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AnalyticsStatus } from '@/api/analytics'
@@ -16,9 +7,7 @@ import { fmtNum } from './format'
 
 const { t } = useI18n()
 
-// The legend is a column of percentages, so they all carry the same precision —
-// the shared fmtPct switches decimals below 10% and would set 97.9% next to
-// 1.91%. A class with traffic never rounds away to "0.0%".
+// Fixed precision so the column aligns; a class with traffic never rounds to "0.0%".
 function pct(frac: number): string {
   if (frac > 0 && frac < 0.001) return '<0.1%'
   return (frac * 100).toFixed(1) + '%'
@@ -76,9 +65,7 @@ function arc(a0: number, a1: number): string {
   )
 }
 
-// A 2px gap of surface between neighbours, in radians at the outer edge. Slices
-// too thin to survive the padding keep their full angle — a sliver that would
-// vanish is worse than one that touches its neighbour.
+// Slices too thin to survive the padding keep their full angle rather than vanishing.
 const PAD = 2 / R
 
 const wedges = computed(() => {
@@ -93,8 +80,7 @@ const wedges = computed(() => {
   return out
 })
 
-// One class holding everything is a full circle: an arc whose ends coincide
-// draws nothing, so it needs the circle primitive instead.
+// An arc whose ends coincide draws nothing, so a single class needs the circle primitive.
 const solo = computed(() => (drawn.value.length === 1 ? drawn.value[0] : null))
 const ringWidth = computed(() => R - R * props.hole)
 const ringRadius = computed(() => (R + R * props.hole) / 2)
@@ -139,8 +125,7 @@ const summary = computed(
         />
       </svg>
 
-      <!-- The hole doubles as the readout: hovering a slice swaps the total for
-           that class, which beats a floating tooltip over a 0.8° sliver. -->
+      <!-- Hovering swaps the center total for that class, which beats a tooltip over a 0.8 degree sliver. -->
       <div v-if="hole > 0" class="sp-center">
         <template v-if="active">
           <div class="sp-c-value">{{ pct(active.frac) }}</div>
@@ -176,14 +161,10 @@ const summary = computed(
 .sp-chart { position: relative; flex: 0 0 auto; }
 .sp-svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
-/* The class carries the hue via `color`; the shape decides whether that lands on
-   the fill or the stroke. Setting both would put a 1-unit outline on every wedge,
-   which swallows the 2px gaps between them. */
+/* Setting both fill and stroke would outline every wedge and swallow the 2px gaps. */
 .w { fill: currentColor; stroke: none; transition: opacity 0.15s, transform 0.15s; cursor: default; }
 .w.ring { fill: none; stroke: currentColor; }
 .w.dim { opacity: 0.4; }
-/* The hovered wedge lifts out of the ring, so the highlight reads as "this one"
-   rather than "everything else faded". */
 .w.on { transform: scale(1.04); transform-origin: 50px 50px; transform-box: view-box; }
 .w-2xx { color: var(--chart-2xx); }
 .w-3xx { color: var(--chart-3xx); }

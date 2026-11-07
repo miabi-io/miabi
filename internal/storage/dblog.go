@@ -34,15 +34,12 @@ import (
 // slowQueryThreshold is how long a query runs before the warn level reports it.
 const slowQueryThreshold = time.Second
 
-// dbLogger sends GORM's output through Miabi's own logger, so it shares the JSON format and level of
-// every other log line instead of printing plain text beside them.
 type dbLogger struct {
 	level gormlogger.LogLevel
 	emit  func(level gormlogger.LogLevel, msg string, args ...any)
 }
 
-// NewDBLogger returns a GORM logger at the given level. It never logs bound values, which can carry
-// passwords and secrets, and never reports "record not found", which Miabi uses as control flow.
+// Never logs bound values (they may carry secrets) nor "record not found", which Miabi uses as control flow.
 func NewDBLogger(level gormlogger.LogLevel) gormlogger.Interface {
 	return dbLogger{level: level, emit: emitToLogger}
 }

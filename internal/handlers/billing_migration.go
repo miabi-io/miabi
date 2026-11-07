@@ -39,8 +39,6 @@ type BillingMigrationStartRequest struct {
 	} `json:"body"`
 }
 
-// MigrationStart opens a migration of an account's workspace, held by the account's owner, and returns
-// the code the target install imports with.
 func (h *BillingHandler) MigrationStart(c *okapi.Context, req *BillingMigrationStartRequest) error {
 	return h.write(c, req.Body, func() (any, error) {
 		if h.migration == nil || !h.migration.enabled {
@@ -71,8 +69,7 @@ type BillingMigrationImport struct {
 	Account *billing.Account        `json:"account"`
 }
 
-// MigrationImport creates a workspace owned by the account's owner, attaches it to the account, and pulls
-// the source workspace into it. Refused past max_workspaces before anything is created.
+// Refused past max_workspaces before anything is created.
 func (h *BillingHandler) MigrationImport(c *okapi.Context, req *BillingMigrationImportRequest) error {
 	return h.write(c, req.Body, func() (any, error) {
 		if h.migration == nil || !h.migration.enabled {
@@ -133,8 +130,7 @@ type BillingWorkspaceMigrationRef struct {
 	Workspace  string `path:"workspace" required:"true" doc:"Workspace uid or handle"`
 }
 
-// MigrationUnfreeze rolls a move back on the source: the workspace's apps start again and it accepts
-// changes. A workspace that is not frozen by a migration is left as it is.
+// A workspace not frozen by a migration is left as it is.
 func (h *BillingHandler) MigrationUnfreeze(c *okapi.Context, req *BillingWorkspaceMigrationRef) error {
 	return h.write(c, struct{}{}, func() (any, error) {
 		if h.migration == nil || !h.migration.enabled {

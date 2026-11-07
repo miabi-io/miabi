@@ -26,10 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A repository-bound pipeline's images are namespaced apart from application
-// images, so a pipeline and an unrelated app of the same name can never push
-// into the same image repository — which would be a silent overwrite, not an
-// error.
+// A same-named pipeline and app pushing to one repository would silently overwrite, not error.
 func TestPipelineImageNameIsNamespacedApartFromApps(t *testing.T) {
 	const name = "api"
 	got := pipelineImageName(name)
@@ -39,8 +36,7 @@ func TestPipelineImageNameIsNamespacedApartFromApps(t *testing.T) {
 	if !strings.HasPrefix(got, pipelineImagePrefix) {
 		t.Errorf("pipeline image name %q is missing the %q prefix", got, pipelineImagePrefix)
 	}
-	// The prefix must stay a path-safe repository component: the registry resolves
-	// the first segment to a workspace and takes the rest as the repository path.
+	// The registry resolves the first segment to a workspace and takes the rest as the repository path.
 	if strings.ContainsAny(got, "/: ") {
 		t.Errorf("pipeline image name %q is not a single path component", got)
 	}
@@ -49,8 +45,6 @@ func TestPipelineImageNameIsNamespacedApartFromApps(t *testing.T) {
 	}
 }
 
-// Checkout() is what jobInputs switches on to decide what to clone; these are the
-// cases it has to distinguish.
 func TestJobInputsCheckoutSelection(t *testing.T) {
 	appID, repoID := uint(1), uint(2)
 	cases := []struct {

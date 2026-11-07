@@ -17,13 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package secpolicy is the Security Center: platform rules written once and enforced at every
-// point a tenant could get around them. A rule is scoped (platform, plan, organization,
-// workspace), the most specific scope wins but may only tighten the platform rule, and every
-// rule can run in audit mode first, recording what it would have blocked without blocking it.
-//
-// Without the security_policies entitlement, or with MIABI_SECURITY_POLICIES=off, every
-// evaluation returns Community behaviour; stored rules are kept, not applied.
+// Package secpolicy enforces scoped platform security rules; specific scopes may only tighten the platform rule.
 package secpolicy
 
 import (

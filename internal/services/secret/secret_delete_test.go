@@ -28,16 +28,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestDeleteRefusesManagedSecret verifies a managed secret cannot be hand-deleted
-// (its lifecycle follows its owning resource), while a plain secret with no
-// referencing apps deletes normally.
 func TestDeleteRefusesManagedSecret(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:secretdel?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	// The Secret model's UIDModel carries a Postgres `gen_random_uuid()` default
-	// that sqlite's AutoMigrate can't parse, so create a compatible table by hand.
+	// The UIDModel's Postgres gen_random_uuid() default breaks sqlite AutoMigrate, so the table is created by hand.
 	if err := db.Exec(`CREATE TABLE secrets (
 		uid text, id integer PRIMARY KEY AUTOINCREMENT, workspace_id integer,
 		name text, display_name text, value_enc text, description text,

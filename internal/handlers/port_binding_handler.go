@@ -67,8 +67,6 @@ func (h *PortBindingHandler) Request(c *okapi.Context, req *RequestPortBindingRe
 	return created(c, b)
 }
 
-// Suggest returns a free host port on the app's node, to pre-fill the form when
-// a chosen port conflicts. Query: application_id (required), protocol, preferred.
 func (h *PortBindingHandler) Suggest(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	appID, _ := strconv.Atoi(c.Query("application_id"))
@@ -128,8 +126,6 @@ func (h *PortBindingHandler) AdminList(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// AdminOverview reports every external port the platform knows about, per node,
-// reconciled against what each node actually has published.
 func (h *PortBindingHandler) AdminOverview(c *okapi.Context) error {
 	ov, err := h.svc.Overview()
 	if err != nil {

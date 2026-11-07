@@ -30,8 +30,7 @@ type fakeStackEnv map[uint][]models.StackEnvVar
 
 func (f fakeStackEnv) ListByStack(id uint) ([]models.StackEnvVar, error) { return f[id], nil }
 
-// A secret reaches an app through its stack's shared env as much as its own, and a manifest may mark a
-// pure reference secret; missing either leaves rotation and the delete guard blind to it.
+// Missing stack env or secret-flagged refs leaves rotation and the delete guard blind.
 func TestAppReferencesSecretCoversStackAndSecretEnv(t *testing.T) {
 	crypto.Init("test-master-key-for-secret-refs")
 	t.Cleanup(func() { crypto.Init("") })

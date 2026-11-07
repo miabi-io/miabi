@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 )
 
-// runnerStatusTopic carries every runner's connect/disconnect; each stream filters it down to the
-// runners its viewer may see.
+// Each stream filters it down to the runners its viewer may see.
 const runnerStatusTopic = "runners:status"
 
 // SetEventBus wires the bus runner status events travel on (nil disables live status).
@@ -36,9 +35,7 @@ func (h *RunnerHandler) SetEventBus(bus *eventbus.Bus) { h.bus = bus }
 // SetEventBus wires the bus the shared pool's status stream subscribes to.
 func (h *AdminRunnerHandler) SetEventBus(bus *eventbus.Bus) { h.base.SetEventBus(bus) }
 
-// PublishStatus fans a runner's connect/disconnect out to the console. Registered as a listener
-// on the runner connection manager. The event carries the whole runner, so a row that has just
-// connected also shows the version and platform it reported.
+// Carries the whole runner, so a just-connected row also shows its version and platform.
 func (h *RunnerHandler) PublishStatus(id uint, online bool) {
 	if h.bus == nil {
 		return
@@ -65,8 +62,7 @@ func (h *AdminRunnerHandler) StatusEvents(c *okapi.Context) error {
 	return h.base.streamStatus(c, h.svc.ListShared, func(r *models.Runner) bool { return r.WorkspaceID == nil })
 }
 
-// streamStatus opens with a snapshot of the runners list returns, so a page that connects late or
-// reconnects is correct without refetching, then forwards the transitions visible accepts.
+// Opens with a snapshot so a page that connects late or reconnects needs no refetch.
 func (h *RunnerHandler) streamStatus(c *okapi.Context, list func() ([]models.Runner, error), visible func(*models.Runner) bool) error {
 	var (
 		ch          <-chan eventbus.Event

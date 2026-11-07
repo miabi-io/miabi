@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package restriction holds a platform admin's restriction on a workspace (read-only or
-// suspended) and the gate every entry point that changes or runs workloads consults.
+// Package restriction holds admin workspace restrictions and the gate every workload-changing entry point consults.
 package restriction
 
 import (
@@ -115,8 +114,7 @@ type Workloads interface {
 	StartWorkspace(ctx context.Context, wsID uint, only *models.FrozenResources) (account.StartResult, error)
 }
 
-// cacheTTL bounds how stale another replica's view of a restriction can be; local changes
-// invalidate at once.
+// Bounds how stale another replica's view can be; local changes invalidate at once.
 const cacheTTL = 15 * time.Second
 
 type entry struct {
@@ -132,10 +130,8 @@ type Service struct {
 	workloads Workloads
 	now       func() time.Time
 
-	mu    sync.Mutex
-	cache map[uint]entry
-	// changed runs after a restriction is set or lifted (re-rendering the workspace's routes);
-	// nil skips it.
+	mu      sync.Mutex
+	cache   map[uint]entry
 	changed func(ctx context.Context, wsID uint)
 	// billingActor returns the billing service user's id (0 when there is none).
 	billingActor func() uint
@@ -144,8 +140,6 @@ type Service struct {
 // SetBillingActor tells restrictions set by the billing service user apart from an admin's.
 func (s *Service) SetBillingActor(f func() uint) { s.billingActor = f }
 
-// SetOnChange wires what must follow a restriction change, such as re-syncing the gateway routes
-// that serve the suspended notice.
 func (s *Service) SetOnChange(f func(ctx context.Context, wsID uint)) { s.changed = f }
 
 func (s *Service) notify(ctx context.Context, wsID uint) {
@@ -212,8 +206,7 @@ type SetInput struct {
 	Until  *time.Time                  `json:"until"`
 }
 
-// Set restricts a workspace. Suspending stops its running workloads and remembers them; moving
-// from suspended to read-only starts them again.
+// Set restricts a workspace; suspending stops and remembers workloads, moving to read-only restarts them.
 func (s *Service) Set(ctx context.Context, wsID, actorID uint, in SetInput) (*models.Workspace, error) {
 	if !in.State.Valid() {
 		return nil, ErrInvalidState
@@ -283,8 +276,7 @@ func (s *Service) Lift(ctx context.Context, wsID uint) (*models.Workspace, error
 	return s.repo.FindByID(wsID)
 }
 
-// Freeze stops a workspace's apps and refuses changes for the duration of a migration, keeping its
-// databases up so they can be exported. Freezing a frozen workspace only updates the reason.
+// Freeze stops a workspace's apps for a migration, keeping databases up so they can be exported.
 func (s *Service) Freeze(ctx context.Context, wsID, actorID uint, reason string) error {
 	ws, err := s.repo.FindByID(wsID)
 	if err != nil {
@@ -329,8 +321,7 @@ func (s *Service) SetFrozenReason(wsID uint, reason string) error {
 	return nil
 }
 
-// Unfreeze lifts a migration freeze and restarts the apps it stopped. A workspace that is not frozen
-// is left as it is, so a restriction set by an administrator is never lifted this way.
+// Unfreeze only lifts a migration freeze, so an administrator's restriction is never lifted this way.
 func (s *Service) Unfreeze(ctx context.Context, wsID uint) error {
 	ws, err := s.repo.FindByID(wsID)
 	if err != nil {

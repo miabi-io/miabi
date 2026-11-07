@@ -44,9 +44,7 @@ func desiredApp(t *testing.T, labels string) *d.ResourceSet {
 	return set
 }
 
-// An app exposed through a label-reading proxy is configured entirely by its
-// labels, so editing a routing rule must redeploy the container. Before this was
-// diffed, such an edit planned as nothing at all.
+// An app behind a label-reading proxy is configured by labels, so a label edit must redeploy.
 func TestContainerLabelChangeConverges(t *testing.T) {
 	desired := desiredApp(t, "  containerLabels:\n    traefik.enable: \"true\"\n    traefik.http.routers.web.rule: \"Host(`new.example.com`)\"\n")
 	live := liveApp(map[string]string{
@@ -92,9 +90,7 @@ func TestRemovedContainerLabelConverges(t *testing.T) {
 	}
 }
 
-// A platform-reserved key is stripped when the app is written, so it can never
-// come back in live state. Diffing it would report drift the apply can never
-// resolve — an apply loop that redeploys on every sync.
+// Reserved labels are stripped on write, so diffing them would cause an endless redeploy loop.
 func TestReservedContainerLabelDoesNotDrift(t *testing.T) {
 	desired := desiredApp(t, "  containerLabels:\n    traefik.enable: \"true\"\n    io.miabi.app: \"999\"\n    com.docker.compose.project: \"mine\"\n")
 	live := liveApp(map[string]string{"traefik.enable": "true"})

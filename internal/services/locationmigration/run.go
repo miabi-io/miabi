@@ -35,8 +35,7 @@ import (
 const (
 	leaseFor   = 2 * time.Minute
 	renewEvery = 30 * time.Second
-	// maxPasses bounds the live pre-copy: a volume written faster than it can be copied never converges,
-	// and the final pass has to take what is left.
+	// A volume written faster than it can be copied never converges; the final pass takes what is left.
 	maxPasses = 5
 	// smallDelta is where another live pass stops paying for itself.
 	smallDelta = 64 << 20
@@ -55,8 +54,7 @@ type step struct {
 	fn    func(context.Context, *models.LocationMigration) error
 }
 
-// Run executes a migration from the phase it recorded, so a run interrupted by a restart resumes. It is the
-// worker entry point and always returns nil: failures are recorded on the row, never retried blindly.
+// Run resumes from the recorded phase and always returns nil: failures go on the row, never retried blindly.
 func (s *Service) Run(ctx context.Context, id uint) error {
 	m, err := s.Repo.FindByID(id)
 	if err != nil || m.Status != models.MigrationRunning {
@@ -148,9 +146,7 @@ func (s *Service) forward(ctx context.Context, m *models.LocationMigration) {
 	logger.Info("location migration cut over", "migration", m.ID, "app", m.AppName, "to", m.Plan.Location)
 }
 
-// fail records a failure and undoes what it can. Before the app stopped nothing is lost, so the target is
-// cleaned up. After, the app is brought back where it was: at the source it never left, or through a full
-// rollback when placement had already switched.
+// Before the app stops the target is just cleaned up; after, the app returns to the source or is fully rolled back.
 func (s *Service) fail(ctx context.Context, m *models.LocationMigration, cause error) {
 	logger.Error("location migration failed", "migration", m.ID, "app", m.AppName, "phase", m.Phase, "error", cause)
 	switch {
@@ -196,8 +192,6 @@ func (s *Service) app(m *models.LocationMigration) (*models.Application, error) 
 	return s.Apps.FindByID(m.ApplicationID)
 }
 
-// prepare creates everything the app needs at the target while it keeps serving: its volumes, the data
-// volumes of the instances that move whole, and the instances databases are restored into.
 func (s *Service) prepare(ctx context.Context, m *models.LocationMigration) error {
 	app, err := s.app(m)
 	if err != nil {
@@ -282,8 +276,7 @@ func (s *Service) prepare(ctx context.Context, m *models.LocationMigration) erro
 	return nil
 }
 
-// provisionTarget creates an instance at the target like the source one, owned by the app, and waits until
-// it runs. Its logical databases are created later, at cutover, right before their data is loaded.
+// Its logical databases are created at cutover, right before their data is loaded.
 func (s *Service) provisionTarget(ctx context.Context, m *models.LocationMigration, app *models.Application, src *models.DatabaseInstance) (*models.DatabaseInstance, error) {
 	meta := models.SetOwner(models.Metadata{}, models.OwnerApp, app.ID, app.Name)
 	dst, err := s.Databases.Provision(ctx, m.WorkspaceID, m.TargetServerID, firstNonEmpty(src.DisplayName, src.Name),
@@ -318,8 +311,7 @@ func (s *Service) provisionTarget(ctx context.Context, m *models.LocationMigrati
 	}
 }
 
-// prePull fetches the app's image on the target ahead of the downtime. Best-effort: a private image without
-// credentials here is simply pulled by the deploy.
+// Best-effort: a private image without credentials here is simply pulled by the deploy.
 func (s *Service) prePull(ctx context.Context, app *models.Application, serverID uint) {
 	rel, err := s.App.ActiveRelease(app.ID)
 	if err != nil || rel.Image == "" {
@@ -366,8 +358,7 @@ func (s *Service) copyJobs(m *models.LocationMigration) []copyJob {
 	return jobs
 }
 
-// presync copies the data while the app serves, pass after pass, until what is left to send stops
-// shrinking. The last pass's delta is roughly what the final pass will face, which is the downtime.
+// The last live pass's delta approximates the final pass, which is the downtime.
 func (s *Service) presync(ctx context.Context, m *models.LocationMigration) error {
 	jobs := s.copyJobs(m)
 	passes := maxPasses
@@ -450,8 +441,7 @@ func (s *Service) syncOne(ctx context.Context, m *models.LocationMigration, j co
 	return st, nil
 }
 
-// stop takes the app down at the source, and the instances that move whole with it. From here the move
-// either completes or puts the app back.
+// From here the move either completes or puts the app back.
 func (s *Service) stop(ctx context.Context, m *models.LocationMigration) error {
 	app, err := s.app(m)
 	if err != nil {
@@ -481,8 +471,6 @@ func (s *Service) stop(ctx context.Context, m *models.LocationMigration) error {
 	return nil
 }
 
-// finalSync copies what changed since the last live pass, with every writer stopped, and restores the
-// databases that do not move whole. After it, the target holds exactly what the source did.
 func (s *Service) finalSync(ctx context.Context, m *models.LocationMigration) error {
 	for _, j := range s.copyJobs(m) {
 		if _, err := s.syncOne(ctx, m, j, true); err != nil {
@@ -552,8 +540,7 @@ func (s *Service) restoreOne(ctx context.Context, m *models.LocationMigration, r
 	if err != nil {
 		return err
 	}
-	// The stream carries no ACLs: a source with a read-only user gets one on the destination, its
-	// grants applied to the data just loaded.
+	// The dump stream carries no ACLs, so the read-only user is recreated on the destination.
 	if srcDB.ReadOnlyUsername != "" {
 		if err := s.Databases.EnableReadOnly(ctx, dstDB); err != nil {
 			return fmt.Errorf("read-only user for %s on %s: %w", r.Name, dst.Name, err)
@@ -565,9 +552,7 @@ func (s *Service) restoreOne(ctx context.Context, m *models.LocationMigration, r
 	return nil
 }
 
-// switchOver repoints the app, its volumes and the moved instances at the target in one transaction, then
-// brings the instances up there and rewires the restored databases' connections. The source rows' former
-// values stay in the migration state for a rollback.
+// The source rows' former values stay in the migration state for a rollback.
 func (s *Service) switchOver(ctx context.Context, m *models.LocationMigration) error {
 	if !m.State.Switched {
 		err := s.Repo.DB().Transaction(func(tx *gorm.DB) error {
@@ -638,8 +623,6 @@ func (s *Service) switchOver(ctx context.Context, m *models.LocationMigration) e
 	return nil
 }
 
-// swapOwner hands an app's database from one logical database to another: from the source to its restored
-// copy on a switch, and back on a rollback.
 func swapOwner(tx *gorm.DB, fromID, toID, appID uint, prefix string) error {
 	var from models.Database
 	if err := tx.Select("id", "env_map", "env_vars").First(&from, fromID).Error; err != nil {
@@ -695,8 +678,6 @@ func (s *Service) awaitDeployment(ctx context.Context, id uint) error {
 	}
 }
 
-// reroute points the app's routes, DNS and generated URLs at the target's gateway, and tells the gateway it
-// left to drop it.
 func (s *Service) reroute(ctx context.Context, m *models.LocationMigration) error {
 	app, err := s.app(m)
 	if err != nil {
@@ -740,7 +721,6 @@ func (s *Service) writeReport(m *models.LocationMigration, app *models.Applicati
 		time.Now().Add(s.grace).Format("2006-01-02 15:04 MST")))
 }
 
-// inject writes a logical database's connection into the app's environment, the way attaching it does.
 // The database row carries the env mapping, so it must already be the app's (swapOwner runs first).
 func (s *Service) inject(app *models.Application, instanceID, databaseID uint, prefix string) error {
 	inst, err := s.Databases.FindInstance(instanceID)

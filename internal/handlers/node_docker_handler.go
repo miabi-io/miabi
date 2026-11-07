@@ -39,9 +39,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// Node-scoped Docker operations. Every action resolves the target node's Docker client via the
-// registry, so the control-plane node is managed exactly like any agent node. Removal of
-// platform-managed resources is blocked — they go through their owning app or volume.
+// Platform-managed resources cannot be removed here; they go through their owning app or volume.
 
 type RunContainerRequest struct {
 	Body struct {
@@ -81,8 +79,7 @@ type RunContainerResponse struct {
 	ID string `json:"id"`
 }
 
-// dc resolves the Docker client for the {nodeID} path param. A node with no live
-// client (offline agent) returns 503 so the UI can show an offline state.
+// An offline agent returns 503 so the UI can show an offline state.
 func (h *NodeHandler) dc(c *okapi.Context) (docker.Client, error) {
 	id, err := h.id(c)
 	if err != nil {
@@ -95,15 +92,11 @@ func (h *NodeHandler) dc(c *okapi.Context) (docker.Client, error) {
 	return dc, nil
 }
 
-// isManaged reports whether a Docker resource is owned by Miabi (any platform
-// label, io.miabi.* or legacy). Such resources are protected from direct removal.
 func isManaged(labels map[string]string) bool {
 	return docker.IsManaged(labels)
 }
 
-// isNodeGateway reports whether cont is the given node's edge (Goma) gateway — the managed one
-// (io.miabi.role=node-gateway) or an imported one tracked by container name. The imported
-// gateway carries no platform label, so it would otherwise slip past isManaged and be deletable.
+// An imported gateway carries no platform label, so it would otherwise slip past isManaged.
 func (h *NodeHandler) isNodeGateway(nodeID uint, cont docker.Container) bool {
 	if role, _ := docker.LabelValue(cont.Labels, docker.LabelRole); role == "node-gateway" {
 		return true
@@ -121,9 +114,7 @@ func (h *NodeHandler) isNodeGateway(nodeID uint, cont docker.Container) bool {
 	return false
 }
 
-// guardContainerOp blocks destructive container operations on platform-critical containers with
-// no owning resource: the control plane, this node's agent, and its edge gateway. With
-// blockManaged it writes a 409 and returns true — the caller MUST then return without acting.
+// With blockManaged it writes a 409 and returns true; the caller MUST then return without acting.
 func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeID uint, cid string, blockManaged bool) bool {
 	cont, err := dc.InspectContainer(c.Request().Context(), cid)
 	if err != nil {
@@ -133,9 +124,7 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	case h.manager.Clients().IsSelfContainer(nodeID, cont.ID):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the Miabi control-plane/agent container and cannot be modified from the containers list"))
 	case docker.IsProtected(cont.Labels):
-		// The Miabi stack itself: its Postgres, its Redis, the central gateway. The self-check above
-		// covers only ONE container (the one this process runs in) and protects nothing on a node the
-		// control plane does not run on. Stopping miabi-postgres from the list took the platform down.
+		// The self-check covers only this process's container; stopping miabi-postgres took the platform down.
 		_ = c.AbortWithError(http.StatusConflict, errors.New(protectedMessage(cont.Labels)))
 	case h.isNodeGateway(nodeID, cont):
 		_ = c.AbortWithError(http.StatusConflict, errors.New("this is the node's edge gateway; manage it from the node's gateway page"))
@@ -147,11 +136,7 @@ func (h *NodeHandler) guardContainerOp(c *okapi.Context, dc docker.Client, nodeI
 	return true
 }
 
-// isPlatformInternalNetwork reports whether ref — a network name OR id — is one of Miabi's own. The
-// LABELS are the test, not the name: the network's name is the operator's to choose in the stack
-// manifest, and a renamed one must stay just as closed. A network the engine cannot list is treated
-// as ordinary — this guard exists to stop a mistake, and the platform stack is protected at the
-// container level too.
+// Labels, not names, are the test: the operator may rename the network in the stack manifest.
 func (h *NodeHandler) isPlatformInternalNetwork(ctx context.Context, dc docker.Client, ref string) bool {
 	nets, err := dc.ListNetworks(ctx)
 	if err != nil {
@@ -166,8 +151,6 @@ func (h *NodeHandler) isPlatformInternalNetwork(ctx context.Context, dc docker.C
 	return false
 }
 
-// protectedMessage names the component being protected, so the 409 tells the admin
-// what they just tried to break rather than only that they may not.
 func protectedMessage(labels map[string]string) string {
 	role, _ := docker.LabelValue(labels, docker.LabelRole)
 	what := map[string]string{
@@ -200,9 +183,7 @@ func (h *NodeHandler) ContainersList(c *okapi.Context) error {
 	return ok(c, list)
 }
 
-// foreignWorkspaceContainer reports whether a container belongs to a workspace the viewer is NOT
-// a member of. Unowned containers and platform infrastructure are not foreign. Used to keep a
-// platform admin from reading another workspace's container logs.
+// Keeps a platform admin from reading another workspace's container logs.
 func foreignWorkspaceContainer(labels map[string]string, member map[uint]bool) bool {
 	if docker.IsPlatformInfra(labels) {
 		return false
@@ -214,9 +195,7 @@ func foreignWorkspaceContainer(labels map[string]string, member map[uint]bool) b
 	return !member[wsID]
 }
 
-// blockForeignLogs writes a 403 and returns true when the viewer may not read a container's logs
-// because it is owned by a workspace they are not in. A no-op with no membership source wired or
-// for unowned/infra containers. A failed inspect is ignored so the stream surfaces its own 404.
+// A failed inspect is ignored so the stream surfaces its own 404.
 func (h *NodeHandler) blockForeignLogs(c *okapi.Context, dc docker.Client, cid string) bool {
 	if h.members == nil {
 		return false
@@ -244,9 +223,7 @@ func (h *NodeHandler) memberWorkspaces(c *okapi.Context) map[uint]bool {
 	return member
 }
 
-// NodePortUsage is one host port published on the node, with its owner. Built
-// from live Docker so it includes containers deployed outside Miabi — the
-// missing piece that let imports auto-bind a port already taken externally.
+// Built from live Docker so it includes containers deployed outside Miabi.
 type NodePortUsage struct {
 	HostPort    int    `json:"host_port"`
 	PrivatePort int    `json:"private_port"`
@@ -256,9 +233,6 @@ type NodePortUsage struct {
 	Managed     bool   `json:"managed"` // owned by Miabi (miabi.* label)
 }
 
-// NodePorts lists every host port currently published on the node (across all
-// running containers, platform-managed or not), so admins can see what's taken
-// before binding a new one.
 func (h *NodeHandler) NodePorts(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -294,9 +268,7 @@ type ContainerStat struct {
 	docker.StatsSample
 }
 
-// ContainersStats returns a one-shot resource sample for each running container
-// on the node (CPU/memory/cumulative net), for the live containers table. The
-// UI polls this and derives net rate from successive samples.
+// The UI derives net rate from successive samples.
 func (h *NodeHandler) ContainersStats(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -351,9 +323,7 @@ func (h *NodeHandler) RunContainer(c *okapi.Context, req *RunContainerRequest) e
 	}
 	networks := []string{node.AppNetwork}
 	if req.Body.Network != "" {
-		// The one place an arbitrary Docker network name reaches a container create. Workspace networks
-		// are always mb-ws<id>-<rand>, so a tenant cannot mint the platform's private network by name —
-		// but an admin could type it, and a container on it can dial Postgres and Redis directly.
+		// An admin could type the platform network name, and a container on it can dial Postgres and Redis.
 		if h.isPlatformInternalNetwork(c.Request().Context(), dc, req.Body.Network) {
 			return c.AbortWithError(http.StatusConflict, fmt.Errorf(
 				"%q is the platform's private network — the control plane, its database and its cache live "+
@@ -379,8 +349,6 @@ func (h *NodeHandler) StopContainer(c *okapi.Context) error {
 		return err
 	}
 	id, _ := h.id(c)
-	// With security enforcement on, a managed container can't be stopped from the
-	// raw containers list — stop it from its owning app/database instead.
 	if h.guardContainerOp(c, dc, id, c.Param("cid"), h.secEnforce) {
 		return nil // 409 already written by the guard
 	}
@@ -414,9 +382,7 @@ func (h *NodeHandler) RemoveContainer(c *okapi.Context) error {
 	}
 	cid := c.Param("cid")
 	id, _ := h.id(c)
-	// Guard: the control plane, agent and edge gateway are always protected. With security
-	// enforcement on (default), platform-managed containers are too — they are removed via their
-	// owning resource. Disabling enforcement is a break-glass escape hatch.
+	// Disabling security enforcement is a break-glass escape hatch.
 	if h.guardContainerOp(c, dc, id, cid, h.secEnforce) {
 		return nil // 409 already written by the guard
 	}
@@ -427,9 +393,7 @@ func (h *NodeHandler) RemoveContainer(c *okapi.Context) error {
 	return message(c, "container removed")
 }
 
-// ContainerLogs streams container logs as Server-Sent Events. A platform admin may list and
-// operate a node's containers but must not read the logs of one owned by a workspace they don't
-// belong to — those can leak another tenant's secrets. Unowned and infra containers are exempt.
+// Another tenant's logs can leak secrets; unowned and infra containers are exempt.
 func (h *NodeHandler) ContainerLogs(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -505,8 +469,6 @@ func (h *NodeHandler) RemoveNetwork(c *okapi.Context) error {
 		return err
 	}
 	name := c.Param("name")
-	// Guard: managed networks (workspace/stack/gateway) are removed via their
-	// owning resource. Look the network up to read its labels.
 	if nets, lerr := dc.ListNetworks(c.Request().Context()); lerr == nil {
 		for _, n := range nets {
 			if (n.Name == name || n.ID == name) && isManaged(n.Labels) {
@@ -575,23 +537,16 @@ type GatewayStatus struct {
 	ImageOverride  string `json:"image_override,omitempty"`
 	Health         string `json:"health,omitempty"`
 	Status         string `json:"status,omitempty"`
-	// RedisEnabled: the gateway has Redis wired (shared cache + distributed rate
-	// limiting). RedisShared: it reuses the platform Redis (the manager) rather
-	// than a per-node Redis (remote edge nodes).
+	// RedisShared means it reuses the platform Redis rather than a per-node one.
 	RedisEnabled bool `json:"redis_enabled"`
 	RedisShared  bool `json:"redis_shared"`
-	// ConfigEncrypted: the gateway's config — middleware rules and inline TLS material — is
-	// encrypted rather than served in the clear. ConfigKeyScope says under WHICH key: "node" is
-	// this node's own, "shared" the central passphrase the control plane's gateway uses, which an
-	// imported gateway also falls back to because Miabi never redeploys it.
+	// "shared" is the central passphrase, which an imported gateway also falls back to since Miabi never redeploys it.
 	ConfigEncrypted bool   `json:"config_encrypted"`
 	ConfigKeyScope  string `json:"config_key_scope,omitempty"` // node | shared
 	// Update is the in-flight safe-update progress, if any.
 	Update *models.GatewayUpdateProgress `json:"update,omitempty"`
 }
 
-// GatewayUpdateEvent is the SSE payload carrying a node gateway's live
-// safe-update progress.
 type GatewayUpdateEvent struct {
 	Update *models.GatewayUpdateProgress `json:"update,omitempty"`
 }
@@ -602,8 +557,6 @@ func gatewayUpdateActive(p *models.GatewayUpdateProgress) bool {
 	return p != nil && p.Phase != "" && p.Phase != "done" && p.Phase != "failed"
 }
 
-// gatewayRedisPassword returns the per-node gateway Redis password for a remote
-// edge node, or "" for the manager (which reuses the platform Redis).
 func (h *NodeHandler) gatewayRedisPassword(srv *models.Server) string {
 	if srv.IsLocal {
 		return ""
@@ -656,8 +609,6 @@ func (h *NodeHandler) GatewayState(c *okapi.Context) error {
 	return ok(c, out)
 }
 
-// GatewayDeploy (re)deploys the node's Goma gateway. Requires edge-gateway
-// connectivity and a reachable node.
 func (h *NodeHandler) GatewayDeploy(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -686,9 +637,7 @@ func (h *NodeHandler) GatewayDeploy(c *okapi.Context) error {
 	return message(c, "gateway deployed")
 }
 
-// GatewayUpdate starts a safe, observed update of the node's gateway to its resolved image: a
-// test container runs with the same config and volumes, is observed for a grace window, then
-// promoted. It runs in the background; progress streams over GatewayEvents and is persisted.
+// A test container with the same config is observed for a grace window, then promoted.
 func (h *NodeHandler) GatewayUpdate(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -730,9 +679,7 @@ func (h *NodeHandler) GatewayUpdate(c *okapi.Context) error {
 	return ok(c, prog)
 }
 
-// runGatewayUpdate drives a safe gateway update to completion in the background,
-// persisting + publishing each phase. The request context is gone by now, so it
-// uses a fresh bounded context.
+// The request context is gone by now, so it uses a fresh bounded context.
 func (h *NodeHandler) runGatewayUpdate(id uint, dc docker.Client, srv *models.Server, token, redisPassword, from, to string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -748,8 +695,6 @@ func (h *NodeHandler) runGatewayUpdate(id uint, dc docker.Client, srv *models.Se
 		return // failure already persisted + published by onPhase
 	}
 	h.nodes.MarkGatewayDeployed(id)
-	// Clear the persisted progress so the page returns to idle; the live "done"
-	// event already told open streams the update finished.
 	_ = h.nodes.SetGatewayUpdate(id, nil)
 }
 
@@ -795,9 +740,7 @@ func (h *NodeHandler) publishGatewayUpdate(id uint, p *models.GatewayUpdateProgr
 	h.bus.Publish(gwTopic(id), eventbus.Event{Type: "status", Data: GatewayUpdateEvent{Update: p}})
 }
 
-// GatewayTeardown removes the node's managed gateway container (certs volume is
-// kept). For an imported gateway it only stops tracking — the admin's own
-// container is left running untouched.
+// For an imported gateway it only stops tracking; the admin's own container keeps running.
 func (h *NodeHandler) GatewayTeardown(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -823,8 +766,6 @@ func (h *NodeHandler) GatewayTeardown(c *okapi.Context) error {
 	return message(c, "gateway removed")
 }
 
-// GatewayCandidates lists running containers on the node that look like a Goma
-// gateway, so the admin can import an existing one instead of installing fresh.
 func (h *NodeHandler) GatewayCandidates(c *okapi.Context) error {
 	dc, err := h.dc(c)
 	if err != nil {
@@ -857,15 +798,12 @@ func (h *NodeHandler) GatewayCandidates(c *okapi.Context) error {
 // ImportGatewayRequest selects an existing gateway container to adopt.
 type ImportGatewayRequest struct {
 	Body struct {
-		// Container is the name or ID of the gateway container to adopt. If empty
-		// and exactly one candidate exists on the node, that one is adopted.
+		// If empty and exactly one candidate exists on the node, that one is adopted.
 		Container string `json:"container"`
 	} `json:"body"`
 }
 
-// GatewayImport adopts an existing (already-running) gateway container as this
-// node's gateway — no recreate, zero downtime. Useful on the manager, which
-// often already runs a Goma gateway for the platform.
+// No recreate, zero downtime.
 func (h *NodeHandler) GatewayImport(c *okapi.Context, req *ImportGatewayRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -905,9 +843,7 @@ func (h *NodeHandler) GatewayImport(c *okapi.Context, req *ImportGatewayRequest)
 	if cfg.Name != "" {
 		name = strings.TrimPrefix(cfg.Name, "/")
 	}
-	// Best-effort: copy the running gateway's goma.yml so the imported gateway keeps its existing config.
-	// Resolve the path the way Goma does (--config/-c, then GOMA_CONFIG_FILE, then the default). A read
-	// failure doesn't block the import — the node just falls back to the rendered default config.
+	// Best-effort: a read failure falls back to the rendered default config.
 	configPath := edgegateway.ConfigFilePath(cfg.Entrypoint, cfg.Command, cfg.Env)
 	var configYAML string
 	if data, rerr := dc.ReadContainerFile(ctx, target, configPath); rerr == nil {
@@ -920,8 +856,6 @@ func (h *NodeHandler) GatewayImport(c *okapi.Context, req *ImportGatewayRequest)
 	return h.GatewayState(c)
 }
 
-// GatewayConfig returns the node's edge-gateway config (custom or the rendered
-// default) plus the default (for reset) and whether the default is in use.
 func (h *NodeHandler) GatewayConfig(c *okapi.Context) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -948,8 +882,6 @@ type UpdateNodeGatewayConfigRequest struct {
 	} `json:"body"`
 }
 
-// UpdateGatewayConfig validates and stores a node's custom gateway config (empty
-// resets to default). Apply it by redeploying the gateway.
 func (h *NodeHandler) UpdateGatewayConfig(c *okapi.Context, req *UpdateNodeGatewayConfigRequest) error {
 	id, err := h.id(c)
 	if err != nil {
@@ -976,8 +908,6 @@ type UpdateNodeGatewayImageRequest struct {
 	} `json:"body"`
 }
 
-// UpdateGatewayImage sets a node's edge-gateway image override (empty resets to
-// the default). Apply it by redeploying the gateway.
 func (h *NodeHandler) UpdateGatewayImage(c *okapi.Context, req *UpdateNodeGatewayImageRequest) error {
 	id, err := h.id(c)
 	if err != nil {

@@ -24,9 +24,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// enrichEvent populates the non-persisted display fields on an event so downstream renderers can
-// name the resource instead of showing a bare id. It fails soft: a deleted resource or nil
-// repository leaves the fields empty and renderers fall back to "#id".
+// Fails soft: a deleted resource or nil repository leaves the fields empty and renderers fall back to "#id".
 func enrichEvent(e *models.AppEvent, apps *repositories.ApplicationRepository, dbs *repositories.DatabaseRepository) {
 	if e == nil {
 		return

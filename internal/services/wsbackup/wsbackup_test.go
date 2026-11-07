@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/wsbundle"
 )
 
-// Each subject writes under its own path, and pointing one at a path must never
-// mutate the shared config the next one reads — an aliased S3 config is how
-// volume archives end up in the database prefix.
+// An aliased S3 config is how volume archives end up in the database prefix.
 func TestWithPathDoesNotMutateTheSharedConfig(t *testing.T) {
 	cfg := &backup.S3Config{Bucket: "acme", Path: "original"}
 	dbs := withPath(cfg, "bundles/ref/databases")
@@ -50,8 +48,7 @@ func TestWithPathDoesNotMutateTheSharedConfig(t *testing.T) {
 	}
 }
 
-// Two helper runs must not collide on a container name, or a retry fails on the
-// corpse of its predecessor rather than on the work.
+// A retry would otherwise fail on its predecessor's leftover container rather than on the work.
 func TestOneShotNamesAreUnique(t *testing.T) {
 	a := oneShotName("mb-wsb-volbkup", 7)
 	b := oneShotName("mb-wsb-volbkup", 7)
@@ -63,8 +60,6 @@ func TestOneShotNamesAreUnique(t *testing.T) {
 	}
 }
 
-// A run that could not carry everything must report it: the report is what an
-// operator reads to learn a database did not come back.
 func TestReportFailuresAreVisible(t *testing.T) {
 	var r models.BundleReport
 	r.Add("app", "api", "created", "")
@@ -81,9 +76,7 @@ func TestReportFailuresAreVisible(t *testing.T) {
 	}
 }
 
-// A variable that points at the vault must cross as the pointer. Resolving it would write a second copy
-// of a secret that already travels in the same bundle, and would cut the link that makes rotating it on
-// the target reach every consumer.
+// Resolving would duplicate a secret that already travels and cut the link that makes rotation reach consumers.
 func TestEnvReferencesTravelAsReferences(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -129,9 +122,7 @@ func TestEnvReferencesTravelAsReferences(t *testing.T) {
 	}
 }
 
-// A value that merely mentions a reference among other text is not a pointer:
-// the rest of it may be sensitive, so it keeps its secret flag — and is still
-// never resolved.
+// The rest of the value may be sensitive, so it keeps its secret flag and is never resolved.
 func TestPartialReferenceKeepsItsSecretFlag(t *testing.T) {
 	got, err := envEntry("DSN", "postgres://u:${{ secrets.PW }}@db/app", false)
 	if err != nil {
@@ -145,9 +136,7 @@ func TestPartialReferenceKeepsItsSecretFlag(t *testing.T) {
 	}
 }
 
-// The restore order is a dependency graph, and getting it wrong does not fail
-// loudly — it produces a workspace quietly missing a piece. Each constraint here
-// stands for a way that has already gone wrong, or would.
+// A wrong order doesn't fail loudly: it produces a workspace quietly missing a piece.
 func TestRestoreStepsRunInDependencyOrder(t *testing.T) {
 	r := &restoreRun{}
 	at := map[string]int{}
@@ -208,8 +197,7 @@ func (f fakeLister) List(_ context.Context, prefix string) ([]blob.Object, error
 	return f[prefix], nil
 }
 
-// volume-bkup prints only the archive's name, so a volume's size has to come from the bucket, or a run
-// that moved gigabytes reports the size of its state file.
+// volume-bkup prints only the archive name, so the size must come from the bucket.
 func TestSizeArtifactsFillsWhatHelpersDidNotReport(t *testing.T) {
 	store := fakeLister{"b/vols": {
 		{Key: "b/vols/data_1.tar.gz.meta.json", Size: 5},
@@ -233,8 +221,7 @@ func TestSizeArtifactsFillsWhatHelpersDidNotReport(t *testing.T) {
 	}
 }
 
-// A value apply rendered from {{ .databases.x.* }} carries the source's host, user and password. Left as is, a
-// migrated app points at a database on the old install.
+// Left as is, a migrated app points at a database on the old install.
 func TestConnectionRewritePointsValuesAtTheTarget(t *testing.T) {
 	src := wsbundle.Connection{
 		Host: "mb-db-old-72", User: "u_ebf59e9f", Password: "oldpassword123",

@@ -21,9 +21,6 @@ package declarative
 
 import "sort"
 
-// ResourceSet is an ordered, key-indexed collection of resources. It is the
-// shape both desired state (parsed manifests) and actual state (a workspace
-// snapshot) take so the plan engine can diff them generically.
 type ResourceSet struct {
 	list  []Resource
 	index map[string]int // Key() -> position in list

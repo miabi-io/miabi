@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// runnerRoutes registers workspace-scoped build/pipeline runner management. Reads are open to
-// viewers; mutations require workspace admin, since this registers build infrastructure.
+// Mutations need workspace admin since they register build infrastructure.
 func (r *Router) runnerRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Runners", Description: "Dedicated build & pipeline execution machines."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
@@ -116,9 +115,7 @@ func (r *Router) runnerRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// runnerGatewayRoutes registers the runner tunnel endpoint. A runner dials in over an outbound
-// WebSocket authenticated by its registration token, not the user JWT, so it is registered
-// directly on the app to bypass the v1 auth/maintenance middleware and uses the agent limiter.
+// Token-authenticated outbound WebSocket, registered on the app to bypass v1 auth; uses the agent limiter.
 func (r *Router) runnerGatewayRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
@@ -132,8 +129,6 @@ func (r *Router) runnerGatewayRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// adminRunnerRoutes registers platform-admin management of the shared runner pool
-// (WorkspaceID = nil): runners any capable workspace may use.
 func (r *Router) adminRunnerRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin/runners").WithTagInfo(okapi.GroupTag{Name: "Runners", Description: "Platform-shared build & pipeline runners."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}

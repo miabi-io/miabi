@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// A Docker engine inside a VM cannot carry the overlay data plane to another host: VXLAN is never
-// delivered to the host interface, and ESP cannot be forwarded at all — it is not a port. The swarm
-// still forms and DNS resolves, so the failure surfaces later as an app that times out.
+// A VM-backed engine never delivers VXLAN or ESP to the host, so failures surface later as timeouts.
 func TestVMBackedEngineIsDetected(t *testing.T) {
 	tests := []struct {
 		os   string
@@ -38,8 +36,7 @@ func TestVMBackedEngineIsDetected(t *testing.T) {
 		{"Docker Desktop 4.30.0 (149282)", "Docker Desktop"},
 		{"OrbStack", "OrbStack"},
 		{"Rancher Desktop WSL Distribution", "Rancher Desktop"},
-		// Native Linux engines report their distro — these must NOT be flagged, or we
-		// would warn every real production install.
+		// Flagging these would warn every real production install.
 		{"Ubuntu 22.04.4 LTS", ""},
 		{"Alpine Linux v3.20", ""},
 		{"Debian GNU/Linux 12 (bookworm)", ""},
@@ -58,9 +55,7 @@ func TestVMBackedEngineIsDetected(t *testing.T) {
 	}
 }
 
-// ESP is the requirement everyone misses: it is an IP protocol, not a port, so a firewall that
-// cheerfully opens 4789/udp still drops every packet. The symptom is identical to a blocked VXLAN, so
-// omitting it from the list leaves the operator no way to reach the right answer.
+// ESP is an IP protocol, not a port, and its symptom is identical to blocked VXLAN.
 func TestFirewallRulesNameESPAndVXLAN(t *testing.T) {
 	var joined string
 	for _, r := range firewallRules() {
@@ -77,8 +72,7 @@ func TestFirewallRulesNameESPAndVXLAN(t *testing.T) {
 	}
 }
 
-// The verdict is the whole product of a net check: three booleans mean nothing to an
-// operator, and each failure has a different fix.
+// Each failure has a different fix, so the verdict must name it.
 func TestNetCheckVerdicts(t *testing.T) {
 	tests := []struct {
 		name string
@@ -98,8 +92,7 @@ func TestNetCheckVerdicts(t *testing.T) {
 			}
 		})
 	}
-	// The MTU case is the one that must never be reported as healthy: the connection
-	// completes, so every naive check passes, and only the payload reveals it.
+	// The connection completes, so every naive check passes; only the payload reveals MTU trouble.
 	if v := verdict(NetCheckResult{DNS: true, TCP: true}); v == "ok" {
 		t.Fatal("a connection that completes but drops a 1400-byte payload was reported as ok")
 	}

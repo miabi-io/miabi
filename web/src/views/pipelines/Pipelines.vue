@@ -38,8 +38,7 @@ const items = ref<PipelineDefinition[]>([])
 const apps = ref<Application[]>([])
 const repos = ref<GitRepository[]>([])
 const policies = ref<VersionPolicy[]>([])
-// Which kind of source the form is binding to. The two are mutually exclusive —
-// each supplies the checkout, so together there is no answer to what a run clones.
+// Mutually exclusive: each supplies the checkout, so together there is no answer to what a run clones.
 type SourceKind = 'none' | 'application' | 'repository'
 const sourceKind = ref<SourceKind>('none')
 const loading = ref(false)
@@ -73,8 +72,7 @@ async function loadApps(id: number | null) {
   try {
     repos.value = (await gitRepositoryApi.list(id)).data.data ?? []
   } catch {
-    // A workspace with no repositories, or no permission to list them, simply
-    // offers no repository option — it must not break the app picker.
+    // No repositories or no permission to list them must not break the app picker.
     repos.value = []
   }
   try {
@@ -150,8 +148,7 @@ function emptyForm(): PipelineInput {
   return { name: '', application_id: null, git_repository: null, branch: '', spec: sampleSpec, enabled: true, versioning: defaultSettings() }
 }
 
-// An application's images share one version sequence across all its pipelines, so a second pipeline
-// on the same app joins the existing policy instead of starting another.
+// An app's images share one version sequence, so a second pipeline joins the existing policy.
 const sharedPolicy = computed(() =>
   sourceKind.value === 'application' && form.value.application_id
     ? policies.value.find((p) => p.application_id === form.value.application_id) ?? null
@@ -180,27 +177,21 @@ function openEdit(p: PipelineDefinition) {
   showModal.value = true
 }
 
-// Switching kind clears the other binding, so the payload can never carry both —
-// which the API refuses, and which has no meaning anyway.
+// Clearing the other binding ensures the payload never carries both, which the API refuses.
 watch(sourceKind, (kind) => {
   if (kind !== 'application') form.value.application_id = null
   if (kind !== 'repository') form.value.git_repository = null
 })
 
-// Mirrors the worker's naming (ws_<id>/pl_<name>) so the form says where the
-// image lands before the first run does.
+// Mirrors the worker's naming (ws_<id>/pl_<name>).
 const pipelineImageHint = computed(() => `ws_${currentWorkspaceId.value ?? 0}/pl_${form.value.name || 'name'}`)
 
-// The definition carries the repository's name; show its friendlier display name
-// when the workspace's repositories are loaded, and the name itself otherwise.
 function repoLabel(name?: string | null) {
   if (!name) return null
   return repos.value.find((x) => x.name === name)?.display_name || name
 }
 
-// The push webhook is setup information, not configuration — it gets its own
-// dialog rather than a corner of the edit form, which a repo-owned pipeline
-// can't open anyway.
+// Setup information, not configuration, and a repo-owned pipeline can't open the edit form anyway.
 const webhookFor = ref<PipelineDefinition | null>(null)
 
 /** A repo-owned pipeline mirrors a file in git; its spec is read-only here. */
@@ -213,9 +204,7 @@ async function save() {
   saving.value = true
   try {
     if (editing.value) {
-      // A repo-owned pipeline only accepts its enabled flag; everything else is
-      // derived from the repository and the app, and the backend rejects a change
-      // to it. Send just that, so the one editable control still works.
+      // The backend rejects changes to a repo-owned pipeline except enabled, so send only that.
       const payload: PipelineInput = editingRepoOwned.value
         ? { name: editing.value.name, spec: '', enabled: form.value.enabled }
         : form.value
@@ -327,8 +316,6 @@ function openLastRun(p: PipelineDefinition) {
                   </div>
                 </td>
                 <td>
-                  <!-- Which source the pipeline clones: an application, a
-                       repository, or nothing (commands only). -->
                   <span v-if="appName(p.application_id)" class="target-chip" :title="$t('pipelines.appSourceNote')">
                     <span class="mdi mdi-application-outline"></span> {{ appName(p.application_id) }}
                   </span>
@@ -417,9 +404,7 @@ function openLastRun(p: PipelineDefinition) {
               </div>
             </div>
 
-            <!-- One binding or the other. An application supplies the checkout,
-                 the image repository and the deploy target; a repository supplies
-                 the checkout and the image only. -->
+            <!-- An application supplies checkout, image repository and deploy target; a repository only checkout and image. -->
             <div v-if="sourceKind === 'application'" class="form-group">
               <label class="form-label">{{ $t('pipelines.application') }} <span class="text-muted">{{ $t('pipelines.appHint') }}</span></label>
               <select v-model="form.application_id" class="form-select" :aria-label="$t('pipelines.application')" :disabled="editingRepoOwned">
@@ -432,9 +417,7 @@ function openLastRun(p: PipelineDefinition) {
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">{{ $t('pipelines.repository') }}</label>
-                  <!-- Bound by name: the name is immutable and unique per
-                       workspace, and it is the form a manifest or a CLI would
-                       use — an id means nothing on another install. -->
+                  <!-- Bound by name: immutable, unique per workspace, and portable to manifests, the CLI and other installs. -->
                   <select v-model="form.git_repository" class="form-select" :aria-label="$t('pipelines.repository')" :disabled="editingRepoOwned">
                     <option :value="null">{{ $t('gitops.selectARepository') }}</option>
                     <option v-for="r in repos" :key="r.id" :value="r.name">{{ r.display_name || r.name }}</option>

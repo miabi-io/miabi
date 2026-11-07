@@ -4,12 +4,7 @@ import { storeToRefs } from 'pinia'
 import { locationApi, type LocationNode } from '@/api/locations'
 import { useWorkspaceStore } from '@/stores/workspace'
 
-// A container app is placed by `server_id`. A *service* app is placed by the
-// Swarm scheduler, which ignores `server_id` entirely — so offering a node picker
-// there would silently discard the choice. Pinning a service to a node instead
-// means emitting a Swarm placement constraint, which is what this v-models:
-// [] (let the scheduler decide) or ["node.id==<swarm node id>"]. Only the nodes of `location` (the
-// workspace default when empty) are offered: a pin to another location's node would never schedule.
+// Swarm ignores server_id for services, so pinning means a placement constraint; only `location`'s nodes are offered.
 const props = defineProps<{ modelValue: string[]; replicas?: number; location?: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string[]): void }>()
 
@@ -32,15 +27,13 @@ watch([currentWorkspaceId, () => props.location], async ([ws, loc]) => {
   if (pinned.value && !list.some((n) => n.swarm_node_id === pinned.value)) pinned.value = ''
 }, { immediate: true })
 
-// Only swarm members can be pinned: a node outside the swarm has no node.id for a
-// constraint to name, and the scheduler would never place a task there anyway.
+// A node outside the swarm has no node.id to constrain on, and the scheduler would never place there.
 const pinnable = computed(() => nodes.value.filter((n) => !!n.swarm_node_id && (n.is_local || (n.online && !n.cordoned))))
 
 // Nothing to choose between until the cluster actually has more than one member.
 const hasChoice = computed(() => pinnable.value.length > 1)
 
-// The picker's value is the pinned node's swarm id ('' = any node). It is derived
-// from the constraints so the control stays correct if they're set elsewhere.
+// Derived from the constraints so the control stays correct if they're set elsewhere.
 const pinned = computed({
   get: () => {
     const c = props.modelValue.find((x) => x.startsWith('node.id=='))

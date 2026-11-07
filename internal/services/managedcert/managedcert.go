@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package managedcert issues and renews TLS certificates via ACME DNS-01 using a workspace's connected DNS
-// provider, storing the result in the workspace Certificates. It orchestrates the platform ACME account,
-// the DNS-01 solver and the certificate row lifecycle; Goma still serves the cert as a custom cert.
+// Package managedcert issues and renews certificates via ACME DNS-01; Goma still serves them as custom certs.
 package managedcert
 
 import (
@@ -84,9 +82,7 @@ func NewService(
 
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// Request begins issuing a managed certificate for a verified, provider-connected domain, and optionally
-// its wildcard. It creates the certificate row in the "issuing" state and runs issuance in the background,
-// returning the row immediately; callers poll the row's status.
+// Request returns the "issuing" row immediately and issues in the background; callers poll its status.
 func (s *Service) Request(workspaceID, domainID uint, name string, includeWildcard, autoRenew bool) (*models.Certificate, error) {
 	if s.quota.Enabled() {
 		if err := s.quota.Require(workspaceID, quota.CapDNSProviders); err != nil {
@@ -118,8 +114,7 @@ func (s *Service) Request(workspaceID, domainID uint, name string, includeWildca
 	return cert, nil
 }
 
-// RenewDue re-issues every ACME auto-renew certificate within the renew window.
-// Driven by a cron; runs issuances sequentially (there are few).
+// Sequential since there are few.
 func (s *Service) RenewDue() {
 	due, err := s.certs.ListManagedDue(s.renewWithin)
 	if err != nil {
@@ -140,8 +135,6 @@ func (s *Service) RenewDue() {
 	}
 }
 
-// issue runs the full DNS-01 issuance for a managed cert row and records the
-// result on the row. Synchronous; callers wrap it in a goroutine when needed.
 func (s *Service) issue(workspaceID, certID uint, names []string, providerID *uint) {
 	ctx, cancel := context.WithTimeout(context.Background(), issueTimeout)
 	defer cancel()
@@ -181,8 +174,6 @@ func (s *Service) fail(workspaceID, certID uint, cause error) {
 	_ = s.certs.FailManaged(workspaceID, certID, cause.Error())
 }
 
-// resolveZoneAndProvider finds the registrable zone the names fall under (the
-// longest matching verified domain) and the dns.Provider to solve with.
 func (s *Service) resolveZoneAndProvider(workspaceID uint, names []string, providerID *uint) (string, dns.Provider, time.Duration, error) {
 	if len(names) == 0 {
 		return "", nil, 0, ErrDomainNotFound
@@ -218,8 +209,7 @@ func (s *Service) resolveZoneAndProvider(workspaceID uint, names []string, provi
 	return zone.Name, prov, s.dnsProviders.PropagationTimeout(workspaceID, *pid), nil
 }
 
-// account loads the platform ACME account for the configured CA, registering and
-// persisting a new one on first use. The account key is encrypted at rest.
+// The account key is encrypted at rest.
 func (s *Service) account() (*acme.Account, error) {
 	if a, err := s.accounts.FindByCA(s.caDirURL); err == nil {
 		keyPEM, derr := crypto.Decrypt(a.KeyEnc)

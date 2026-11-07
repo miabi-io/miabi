@@ -1,7 +1,5 @@
 # shellcheck shell=bash
-# Shared helpers for the end-to-end scripts. Sourced, never run.
-#
-# State crosses scripts through $E2E_STATE (a KEY=value file), since each CI step is its own shell.
+# Sourced, never run; state crosses scripts through $E2E_STATE since each CI step is its own shell.
 
 set -euo pipefail
 
@@ -23,8 +21,7 @@ load() {
   return 0
 }
 
-# wait_until DESCRIPTION TIMEOUT_SECONDS COMMAND... polls until COMMAND succeeds. A fixed sleep either
-# wastes minutes or flakes; the gateway, for one, needs a variable few seconds to load a new route.
+# A fixed sleep either wastes minutes or flakes.
 wait_until() {
   local what=$1 timeout=$2
   shift 2

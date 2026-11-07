@@ -34,8 +34,6 @@ type hcAppFixture struct {
 
 func (hcAppFixture) TableName() string { return "applications" }
 
-// "none" used to keep the image's own HEALTHCHECK, so existing apps move to "image" to run exactly as
-// before; an app that chose a real check keeps it.
 func TestHealthcheckImageStepPreservesBehaviour(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

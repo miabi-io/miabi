@@ -20,8 +20,6 @@ export function fmtDate(ts?: string): string {
     : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-// relTime keeps recent activity readable ("2m ago") and falls back to an
-// absolute timestamp once "N hours ago" stops being useful.
 export function relTime(ts: string): string {
   const d = new Date(ts).getTime()
   const s = Math.round((Date.now() - d) / 1000)

@@ -60,8 +60,7 @@ func TestNormalizeScopes(t *testing.T) {
 	}
 }
 
-// TestTokenFormat asserts the wire format the auth middleware keys off: a
-// mb_-prefixed token whose stored lookup prefix is the first 11 characters.
+// The auth middleware keys off this wire format.
 func TestTokenFormat(t *testing.T) {
 	raw, _ := generateToken()
 	plaintext := keyPrefix + raw
@@ -69,8 +68,7 @@ func TestTokenFormat(t *testing.T) {
 	if plaintext[:prefixLen] != keyPrefix+raw[:8] {
 		t.Errorf("prefix = %q, want %q", plaintext[:prefixLen], keyPrefix+raw[:8])
 	}
-	// The full token must hash deterministically and differently from the secret
-	// alone (the legacy scheme), guarding against a silent format regression.
+	// Must differ from the legacy secret-only hash, guarding against a silent format regression.
 	if hashToken(plaintext) == hashToken(raw) {
 		t.Error("full-token hash must differ from secret-only hash")
 	}

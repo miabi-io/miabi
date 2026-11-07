@@ -65,8 +65,7 @@ func (r *DatabaseSizeRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DatabaseSize{}, id).Error
 }
 
-// OfferedBy names the plans, and the workspaces overriding their plan, that offer a size. The lists are JSON
-// columns, so they are matched here rather than in SQL.
+// The lists are JSON columns, so they're matched here rather than in SQL.
 func (r *DatabaseSizeRepository) OfferedBy(id uint) (plans []string, workspaceIDs []uint, err error) {
 	var ps []models.Plan
 	if err := r.db.Select("id", "name", "database_sizes").Find(&ps).Error; err != nil {

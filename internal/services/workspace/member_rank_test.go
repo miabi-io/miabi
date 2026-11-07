@@ -31,9 +31,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// memberRankRow carries the columns UpdateMemberRole actually writes
-// (custom_role_id, updated_at), which the leaner memberRow in limit_test.go
-// omits — that fixture only ever reads.
+// The leaner memberRow in limit_test.go omits the columns UpdateMemberRole writes.
 type memberRankRow struct {
 	ID           uint `gorm:"primaryKey"`
 	WorkspaceID  uint
@@ -46,9 +44,7 @@ type memberRankRow struct {
 
 func (memberRankRow) TableName() string { return "workspace_members" }
 
-// seedMembers builds a service over a workspace (id 1) populated with the given
-// user→role members, plus a second owner (user 99) so guardLastOwner never
-// masks a rank failure with ErrLastOwner.
+// A second owner (user 99) keeps guardLastOwner from masking a rank failure with ErrLastOwner.
 func seedMembers(t *testing.T, members map[uint]models.WorkspaceRole) *Service {
 	t.Helper()
 	seedN++

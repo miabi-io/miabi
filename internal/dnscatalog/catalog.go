@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dnscatalog is the single source of truth for the DNS hosts Miabi can connect to. Each
-// type has one Descriptor driving validation, secret handling, the API enum and the UI form.
+// Package dnscatalog is the single source of truth for supported DNS hosts: validation, secrets, API enum and UI form.
 package dnscatalog
 
 import (
@@ -55,8 +54,7 @@ type Descriptor struct {
 	DocsURL string  `json:"docs_url,omitempty"`
 	// ChallengeOnly marks a host that solves DNS-01 but cannot own A/AAAA records.
 	ChallengeOnly bool `json:"challenge_only,omitempty"`
-	// PropagationTimeout raises the DNS-01 propagation cap for slow hosts. Zero uses the ACME
-	// client's default; it is a ceiling, not a wait.
+	// PropagationTimeout is a ceiling, not a wait; zero uses the ACME client's default.
 	PropagationTimeout time.Duration `json:"-"`
 	// Managed marks a type only the billing console creates; it is never offered to connect by hand.
 	Managed bool `json:"-"`

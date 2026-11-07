@@ -17,8 +17,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package metrics exposes Prometheus collectors and the /metrics handler.
-// Feature packages increment counters via OnX callback hooks.
 package metrics
 
 import (
@@ -38,9 +36,7 @@ var buildInfo = prometheus.NewGaugeVec(
 	[]string{"version", "commit"},
 )
 
-// Network subnet pool utilization: how many pool subnets are allocated/reserved
-// vs the pool's total capacity. Lets operators alert before exhaustion (enlarge
-// MIABI_NETWORK_POOL_CIDR).
+// Lets operators alert before exhaustion (enlarge MIABI_NETWORK_POOL_CIDR).
 var (
 	subnetPoolUsed = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "miabi_network_subnet_pool_used",
@@ -52,9 +48,6 @@ var (
 	})
 )
 
-// GPU inventory + allocation: how many devices are discovered vs enabled for
-// workloads, and how many GPU units running apps currently hold. Lets operators
-// see fleet GPU capacity and utilization.
 var (
 	gpuDevicesTotal = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "miabi_gpu_devices_total",
@@ -70,8 +63,7 @@ var (
 	})
 )
 
-// Control-plane leadership, so a second control plane started by mistake shows as a standby
-// rather than a process that silently runs no scheduled jobs.
+// So a mistaken second control plane shows as a standby, not a process silently running no jobs.
 var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Name: "miabi_leader",
 	Help: "1 while this process holds the named leader lease, 0 while it stands by.",
@@ -93,8 +85,7 @@ func SetLeader(lease string, held bool) {
 	leaderHeld.WithLabelValues(lease).Set(v)
 }
 
-// Control manager sweeps: how long they take, the drift they confirm, and what they could not observe. These
-// are what tell whether observe mode is quiet enough to act on its findings.
+// These tell whether observe mode is quiet enough to act on its findings.
 var (
 	controlManagerSweep = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "miabi_control_manager_sweep_duration_seconds",
@@ -119,9 +110,7 @@ var (
 	}, []string{"action", "result"})
 )
 
-// ControlManagerAction counts what enforcement did: a redeploy started, deferred by a budget, blocked
-// because the app is not whole, failed, or a breaker opening. This is how an operator sees whether the
-// control manager is helping or thrashing.
+// Shows whether the control manager is helping or thrashing.
 func ControlManagerAction(action, result string) {
 	controlManagerActions.WithLabelValues(action, result).Inc()
 }
@@ -131,8 +120,6 @@ func ObserveControlManagerSweep(d time.Duration) {
 	controlManagerSweep.Observe(d.Seconds())
 }
 
-// ControlManagerDrift is one sweep's outcome: what it confirmed missing or replaced, how many apps it
-// would refuse to redeploy because their data is gone, and what it could not observe.
 type ControlManagerDrift struct {
 	MissingContainers  int
 	MissingServices    int
@@ -167,17 +154,13 @@ func SetSubnetPoolUsage(used, total int) {
 	subnetPoolTotal.Set(float64(total))
 }
 
-// SetGPUStats records fleet GPU inventory and live allocation for the /metrics
-// scrape: total discovered devices, admin-enabled devices, and GPU units held by
-// running apps.
 func SetGPUStats(total, enabled, allocated int) {
 	gpuDevicesTotal.Set(float64(total))
 	gpuDevicesEnabled.Set(float64(enabled))
 	gpuAllocated.Set(float64(allocated))
 }
 
-// Analytics ingest from edge nodes. A node reporting routes it does not serve is
-// a compromise signal, so rejects are counted per node rather than only logged.
+// A node reporting routes it does not serve is a compromise signal, so rejects are counted per node.
 var (
 	analyticsIngested = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "miabi_analytics_ingested_events_total",

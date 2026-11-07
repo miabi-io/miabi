@@ -35,8 +35,7 @@ const (
 	TemplateSourceCustom  TemplateSourceType = "custom"  // per-workspace user imports
 )
 
-// TemplateSource is where templates come from. Global sources (WorkspaceID nil)
-// are admin-managed; a custom source is per-workspace.
+// Global sources (WorkspaceID nil) are admin-managed.
 type TemplateSource struct {
 	ID          uint               `json:"id" gorm:"primaryKey"`
 	WorkspaceID *uint              `json:"workspace_id,omitempty" gorm:"index"`
@@ -55,8 +54,7 @@ type TemplateSource struct {
 	DeletedAt   gorm.DeletedAt     `json:"-" gorm:"index"`
 }
 
-// Template is one version of a catalog entry, synced from a source. RawYAML is
-// the manifest as authored; the parsed form is re-derived on demand.
+// The parsed form is re-derived on demand from RawYAML.
 type Template struct {
 	ID       uint `json:"id" gorm:"primaryKey"`
 	SourceID uint `json:"source_id" gorm:"index:idx_template_src_name_ver,unique;not null"`
@@ -75,9 +73,6 @@ type Template struct {
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-// TemplateInstall records that a stack/app(s) were installed from a template, so
-// the UI can show provenance ("installed from Ghost 1.2.0") and later offer
-// upgrade/uninstall.
 type TemplateInstall struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint   `json:"workspace_id" gorm:"index;not null"`
@@ -86,19 +81,14 @@ type TemplateInstall struct {
 	TemplateName string `json:"template_name" gorm:"index;not null"`
 	// TemplateDisplayName is the catalog label snapshot at install time.
 	TemplateDisplayName string `json:"template_display_name"`
-	// DisplayName is the label the user gave *this install*, which every resource
-	// it creates is named after. Recorded so an upgrade can name a resource the
-	// new version adds the same way the install named the rest.
+	// Recorded so an upgrade names resources the new version adds the same way the install named the rest.
 	DisplayName string `json:"display_name,omitempty"`
 	Version     string `json:"version"`
 	StackID     *uint  `json:"stack_id,omitempty" gorm:"index"`
 	AppIDs      []uint `json:"app_ids,omitempty" gorm:"serializer:json"`
 	DatabaseIDs []uint `json:"database_ids,omitempty" gorm:"serializer:json"`
 	VolumeIDs   []uint `json:"volume_ids,omitempty" gorm:"serializer:json"`
-	// ConfigIDs maps a template-local config name to the workspace config created
-	// for it. A map rather than a list of ids because an upgrade has to resolve
-	// "the config this version calls X" — and the workspace name it was given may
-	// carry a uniqueness suffix that cannot be recomputed.
+	// A map because the workspace name may carry a uniqueness suffix that an upgrade cannot recompute.
 	ConfigIDs map[string]uint `json:"config_ids,omitempty" gorm:"serializer:json"`
 	// Inputs holds the non-secret install answers, for re-install/upgrade prompts.
 	Inputs    map[string]string `json:"inputs,omitempty" gorm:"serializer:json"`

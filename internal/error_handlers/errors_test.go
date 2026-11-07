@@ -30,8 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/dto"
 )
 
-// invoke runs the CustomErrorHandler against a fresh context and decodes the
-// resulting envelope.
 func invoke(t *testing.T, code int, message string, err error) dto.ErrorInfo {
 	t.Helper()
 	o := okapi.New()
@@ -55,8 +53,6 @@ func invoke(t *testing.T, code int, message string, err error) dto.ErrorInfo {
 }
 
 func TestErrorHandler_PromotesErrWhenMessageGeneric(t *testing.T) {
-	// AbortWithError(code, err) passes http.StatusText(code) as message; the real
-	// reason (in err) must surface as the human message.
 	const reason = "this is the Miabi control-plane/agent container and cannot be modified from the containers list"
 	got := invoke(t, http.StatusConflict, http.StatusText(http.StatusConflict), errors.New(reason))
 	if got.StatusCode != http.StatusConflict {
@@ -74,8 +70,6 @@ func TestErrorHandler_PromotesErrWhenMessageGeneric(t *testing.T) {
 }
 
 func TestErrorHandler_KeepsSpecificMessage(t *testing.T) {
-	// Structured helpers (AbortBadRequest("...")) pass a specific message that must
-	// be preserved, with the raw err kept as supplementary detail.
 	got := invoke(t, http.StatusInternalServerError, "failed to list containers", errors.New("dial unix /var/run/docker.sock: connect: no such file"))
 	if got.Message != "failed to list containers" {
 		t.Errorf("message = %q, want the specific message", got.Message)
@@ -85,8 +79,6 @@ func TestErrorHandler_KeepsSpecificMessage(t *testing.T) {
 	}
 }
 
-// codedMsgErr is a domain error exposing both a stable Code() and a curated
-// user-facing Message() distinct from its raw Error() string.
 type codedMsgErr struct{}
 
 func (codedMsgErr) Error() string {
@@ -96,8 +88,6 @@ func (codedMsgErr) Code() string    { return "CONFLICT" }
 func (codedMsgErr) Message() string { return "a workspace with that slug already exists" }
 
 func TestErrorHandler_PrefersDomainMessage(t *testing.T) {
-	// When the err exposes Message(), it becomes the human message while the raw
-	// Error() string stays in `error`; Code() drives the machine code.
 	got := invoke(t, http.StatusConflict, http.StatusText(http.StatusConflict), codedMsgErr{})
 	if got.Code != "CONFLICT" {
 		t.Errorf("code = %q, want CONFLICT", got.Code)

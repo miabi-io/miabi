@@ -18,10 +18,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Footer under the sign-in card, matching the console's. The attribution earns its
-// place on a white-labelled install, where nothing else on the page says what the
-// platform is; on an unbranded one it sits under a Miabi logo, so it is quiet
-// enough to read as a footer rather than a second wordmark.
+// The attribution matters on white-labelled installs, where nothing else says what the platform is.
 const HOME = 'https://miabi.io'
 const currentYear = new Date().getFullYear()
 </script>

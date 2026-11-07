@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
-// Reencrypt re-encrypts this workspace's config content under its active DEK.
-// Registered with the keyring like every other ciphertext owner; skipping it
-// would orphan config files on rotation.
+// Skipping it would orphan config files on key rotation.
 func (s *Service) Reencrypt(ctx context.Context, workspaceID uint) (int, error) {
 	rows, err := s.repo.ListByWorkspace(workspaceID)
 	if err != nil {

@@ -24,8 +24,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// OrganizationRepository accesses tenant realms: the workspaces they own, their limits, and the
-// identity configuration (SSO/enforced-login/SCIM) scoped to them.
 type OrganizationRepository struct{ db *gorm.DB }
 
 func NewOrganizationRepository(db *gorm.DB) *OrganizationRepository {
@@ -66,13 +64,7 @@ func (r *OrganizationRepository) IDByUID(uid string) (uint, error) {
 	return org.ID, nil
 }
 
-// Create inserts an organization.
-//
-// MaxWorkspaces carries a column default of -1 (unlimited), which existing rows need at migration.
-// GORM fills a zero-valued field from that default on insert, so an explicit "no workspaces allowed"
-// (0) would silently become unlimited — the one value where the cap must not be guessed. Writing the
-// column back afterwards is the least surprising fix; dropping the tag would give pre-existing
-// organizations a cap of zero instead.
+// GORM fills a zero field from the -1 column default on insert, so an explicit 0 is written back afterwards.
 func (r *OrganizationRepository) Create(org *models.Organization) error {
 	max := org.MaxWorkspaces
 	if err := r.db.Create(org).Error; err != nil {
@@ -101,8 +93,7 @@ func (r *OrganizationRepository) ExistsByName(name string) (bool, error) {
 	return count > 0, nil
 }
 
-// List returns every organization, the default first, each annotated with how many workspaces it
-// holds so the admin list does not need a query per row.
+// Annotated with workspace counts so the admin list needs no query per row.
 func (r *OrganizationRepository) List() ([]models.Organization, error) {
 	var orgs []models.Organization
 	if err := r.db.Order("is_default DESC, name ASC").Find(&orgs).Error; err != nil {
@@ -118,8 +109,6 @@ func (r *OrganizationRepository) List() ([]models.Organization, error) {
 	return orgs, nil
 }
 
-// Labels names the given organizations, display name first, in one query. Used where a list is
-// annotated with the organization each row belongs to.
 func (r *OrganizationRepository) Labels(ids []uint) (map[uint]string, error) {
 	out := map[uint]string{}
 	if len(ids) == 0 {
@@ -175,8 +164,7 @@ func (r *OrganizationRepository) CountUsers(orgID uint) (int64, error) {
 	return n, err
 }
 
-// SetDefault promotes one organization and demotes the rest in a single transaction, so no window
-// exists in which two rows — or none — carry the flag that every nullable organization_id resolves to.
+// Single transaction, so there is never a window where two rows, or none, carry the default flag.
 func (r *OrganizationRepository) SetDefault(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&models.Organization{}).Where("id <> ?", id).
@@ -188,8 +176,6 @@ func (r *OrganizationRepository) SetDefault(id uint) error {
 	})
 }
 
-// ReassignWorkspaces moves every workspace of one organization to another. Used when an org is
-// deleted, so its workspaces land back on the default rather than pointing at a row that is gone.
 func (r *OrganizationRepository) ReassignWorkspaces(from, to uint) error {
 	return r.db.Model(&models.Workspace{}).Where("organization_id = ?", from).
 		Update("organization_id", to).Error

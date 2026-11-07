@@ -44,14 +44,12 @@ var (
 	ErrTemplateNotFound = errors.New("template not found")
 	ErrMissingInput     = errors.New("missing required input")
 	ErrInvalidInput     = errors.New("invalid input value")
-	// ErrNoSharedInstance aliases the database package's sentinel (where placement
-	// resolution lives) so errors.Is checks keep matching.
+	// Aliased so errors.Is checks keep matching.
 	ErrNoSharedInstance = database.ErrNoSharedInstance
 	ErrInvalidTemplate  = errors.New("invalid template")
 )
 
-// TemplateStore is the DB-backed catalog of user-imported templates. The
-// embedded official catalog is served separately from memory.
+// The embedded official catalog is served separately from memory.
 type TemplateStore interface {
 	EnsureCustomSource(workspaceID uint) (*models.TemplateSource, error)
 	UpsertTemplate(t *models.Template) error
@@ -60,8 +58,6 @@ type TemplateStore interface {
 	DeleteCustom(workspaceID uint, slug string) (int64, error)
 }
 
-// Service installs marketplace templates by orchestrating the application,
-// database, storage and stack services.
 type Service struct {
 	apps      *application.Service
 	dbs       *database.Service
@@ -70,16 +66,13 @@ type Service struct {
 	installs  *repositories.TemplateInstallRepository
 	templates TemplateStore
 
-	// configs creates the template's configuration files; nil leaves a template
-	// declaring configs to fail validation rather than install half of itself.
+	// nil makes a template declaring configs fail validation rather than install half of itself.
 	configs *configsvc.Service
 
-	// remote is the synced official+community registry (the marketplace service
-	// export bundle), merged into the catalog. nil = embedded-only (no sync).
+	// nil = embedded-only catalog (no sync).
 	remote RemoteCatalog
 
-	// Live install-progress jobs (single-node, in-process), streamed over the
-	// event bus to the install UI. bus may be nil in tests / when unwired.
+	// Single-node, in-process; bus may be nil in tests.
 	bus    *eventbus.Bus
 	placer Placer
 	routes RouteCreator
@@ -87,29 +80,21 @@ type Service struct {
 	jobs   map[string]*InstallJob
 }
 
-// NewService wires the install collaborators. volumes, stacks, installs and
-// templates may be nil in tests that only exercise the embedded catalog.
-// SetConfigs wires the config service used to materialize a template's files.
 func (s *Service) SetConfigs(c *configsvc.Service) { s.configs = c }
 
 func NewService(apps *application.Service, dbs *database.Service, volumes *storage.Service, stacks *stack.Service, installs *repositories.TemplateInstallRepository, templates TemplateStore) *Service {
 	return &Service{apps: apps, dbs: dbs, volumes: volumes, stacks: stacks, installs: installs, templates: templates, jobs: map[string]*InstallJob{}}
 }
 
-// SetEventBus wires the in-process bus used to stream live install progress over
-// SSE. Optional: without it, installs still run, just without live progress.
+// Optional: without it installs run without live progress.
 func (s *Service) SetEventBus(b *eventbus.Bus) { s.bus = b }
 
-// Import validates a user-supplied manifest and stores it as a custom template
-// in the workspace (a re-import of the same version replaces it). The new
-// catalog entry is returned.
+// A re-import of the same version replaces it.
 func (s *Service) Import(workspaceID uint, rawYAML string) (CatalogEntry, error) {
 	return s.storeCustom(workspaceID, rawYAML)
 }
 
-// UpdateCustom replaces an existing custom template (identified by slug) with a
-// new manifest. The slug must not change — editing is in-place per template;
-// changing the version simply adds/replaces that version, matching Import.
+// The slug must not change; a new version adds or replaces that version, matching Import.
 func (s *Service) UpdateCustom(workspaceID uint, slug, rawYAML string) (CatalogEntry, error) {
 	if s.templates == nil {
 		return CatalogEntry{}, ErrInvalidTemplate
@@ -128,9 +113,7 @@ func (s *Service) UpdateCustom(workspaceID uint, slug, rawYAML string) (CatalogE
 	return s.storeCustom(workspaceID, rawYAML)
 }
 
-// GetCustomYAML returns the stored manifest of a custom template for editing
-// (empty version = highest). Official templates are not editable, so only the
-// workspace's custom source is consulted.
+// Official templates are not editable, so only the workspace's custom source is consulted.
 func (s *Service) GetCustomYAML(workspaceID uint, slug, version string) (string, bool) {
 	if s.templates == nil {
 		return "", false
@@ -180,9 +163,7 @@ func (s *Service) storeCustom(workspaceID uint, rawYAML string) (CatalogEntry, e
 	return entryFromManifest(m, SourceCustom, nil), nil
 }
 
-// ListForWorkspace returns the merged catalog visible to the workspace: the embedded official floor
-// unioned with the synced official+community registry, plus the workspace's imported custom templates.
-// The Source field on each entry (official | community | custom) drives the UI's three tabs.
+// The Source field (official, community, custom) drives the UI's three tabs.
 func (s *Service) ListForWorkspace(workspaceID uint) ([]CatalogEntry, error) {
 	out := s.officialAndCommunity()
 	if s.templates == nil {
@@ -197,9 +178,7 @@ func (s *Service) ListForWorkspace(workspaceID uint) ([]CatalogEntry, error) {
 	return out, nil
 }
 
-// GetEntryForWorkspace returns one catalog entry visible to the workspace. When
-// the same slug appears in several sources, the most specific wins:
-// custom (workspace) > official > community.
+// On slug collisions the most specific wins: custom > official > community.
 func (s *Service) GetEntryForWorkspace(workspaceID uint, slug string) (CatalogEntry, bool) {
 	list, _ := s.ListForWorkspace(workspaceID)
 	rank := map[string]int{SourceCustom: 3, SourceOfficial: 2, SourceCommunity: 1}
@@ -224,9 +203,6 @@ func (s *Service) GetManifestForWorkspace(workspaceID uint, slug, version string
 	return m, ok
 }
 
-// resolveManifest finds a template manifest, preferring a workspace custom
-// import, then the synced/embedded official+community catalog. It also reports
-// the source label.
 func (s *Service) resolveManifest(workspaceID uint, slug, version string) (*manifest.Manifest, string, bool) {
 	if s.templates != nil {
 		if t, _ := s.templates.FindCustom(workspaceID, slug, version); t != nil {
@@ -238,8 +214,7 @@ func (s *Service) resolveManifest(workspaceID uint, slug, version string) (*mani
 	return s.resolveOfficialOrCommunity(slug, version)
 }
 
-// customEntries builds listing entries from stored custom templates, grouping by
-// slug and surfacing the highest version (rows arrive ordered slug, version DESC).
+// Rows arrive ordered slug, version DESC.
 func customEntries(rows []models.Template) []CatalogEntry {
 	versions := map[string][]string{}
 	for _, t := range rows {
@@ -267,13 +242,9 @@ type InstallInput struct {
 	Version     string            `json:"version,omitempty"`      // empty = latest
 	DisplayName string            `json:"display_name,omitempty"` // optional display-name override
 	Inputs      map[string]string `json:"inputs,omitempty"`
-	// Placements optionally pins a database dependency (by manifest db name) to
-	// an existing instance ID, overriding the manifest's placement. 0 = use the
-	// manifest default.
+	// 0 uses the manifest default.
 	Placements map[string]uint `json:"placements,omitempty"`
-	// PlacementModes optionally overrides a database dependency's placement mode (auto | dedicated |
-	// shared) when no instance is pinned. Empty uses the placement declared by the template, letting a user
-	// fall back to Automatic for a template that defaults to a dedicated instance.
+	// Empty uses the template's placement, letting a user fall back to auto for a dedicated-default template.
 	PlacementModes map[string]string `json:"placement_modes,omitempty"`
 	// Location is where the install runs; empty uses the workspace's default location.
 	Location string `json:"location,omitempty"`
@@ -297,16 +268,11 @@ type InstallResult struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// Install instantiates a template version in a workspace: it validates inputs, provisions volumes,
-// resolves each database dependency by placement, renders application env against those connections,
-// creates the apps (grouped into a Stack when there is more than one) and deploys them.
 func (s *Service) Install(ctx context.Context, workspaceID uint, in InstallInput) (*InstallResult, error) {
 	return s.install(ctx, workspaceID, in, nil)
 }
 
-// install is the shared implementation behind both the synchronous Install and
-// the asynchronous, progress-streaming StartInstall. report records phase
-// transitions for the live UI and is nil on the synchronous path.
+// report is nil on the synchronous path.
 func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput, report *reporter) (*InstallResult, error) {
 	m, source, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
 	if !ok {
@@ -320,16 +286,14 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 
 	result := &InstallResult{Template: m.Metadata.Name, DisplayName: displayName(m, in.DisplayName), Version: m.Metadata.Version}
 
-	// Every resource of an install lands on one node: apps reach their databases over a Docker network, which
-	// cannot span nodes. Decided before the volumes, which would otherwise land on the local node.
+	// One node for everything: apps reach their databases over a Docker network that cannot span nodes.
 	target, err := s.installTarget(workspaceID, m, in)
 	if err != nil {
 		return nil, err
 	}
 	targetNode := target.ServerID
 
-	// Volumes carry the same marketplace provenance as the install's apps and
-	// databases so the detail page attributes them to the template.
+	// Same marketplace provenance so the detail page attributes volumes to the template.
 	if len(m.Volumes) > 0 {
 		report.phase(PhaseVolumes, PhaseActive)
 	}
@@ -351,14 +315,12 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		report.phase(PhaseVolumes, PhaseDone)
 	}
 
-	// The database is named after the install — the user-chosen name, defaulting to the
-	// template name — and a multi-database template disambiguates with the dependency name.
+	// A multi-database template disambiguates with the dependency name.
 	if len(m.Databases) > 0 {
 		report.phase(PhaseDatabases, PhaseActive)
 	}
 	dbViews := map[string]manifest.ConnView{}
-	// Logical databases created for the install, keyed by dependency name, so each
-	// can be linked to the application that consumes it once the apps exist.
+	// Keyed by dependency name so each can be linked to its consuming app once apps exist.
 	dbModels := map[string]*models.Database{}
 	for _, d := range m.Databases {
 		report.note("Provisioning " + d.Engine + " database (" + d.Name + ")…")
@@ -366,13 +328,11 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		if len(m.Databases) > 1 {
 			base = result.DisplayName + " " + d.Name
 		}
-		// A user-chosen placement mode overrides the template's default (ignored
-		// when an instance is pinned; d is a copy, so the manifest is untouched).
+		// d is a copy, so the manifest is untouched; ignored when an instance is pinned.
 		if mode := manifest.Placement(strings.TrimSpace(in.PlacementModes[d.Name])); mode.Valid() {
 			d.Placement = mode
 		}
-		// Provenance for a freshly provisioned instance (fresh per dependency to
-		// avoid aliasing the same map across instances).
+		// Fresh per dependency to avoid aliasing the same map across instances.
 		dbMeta := models.SetBuiltin(models.Metadata{},
 			models.MetaManagedBy, models.ManagedByMarketplace,
 			models.MetaTemplate, m.Metadata.Name,
@@ -390,9 +350,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 	if len(m.Databases) > 0 {
-		// On the async (progress-streamed) path, hold the provisioning phase open until the freshly provisioned
-		// instances are online, so dependent apps deploy against a ready database. The synchronous path keeps its
-		// existing non-blocking behavior (report is nil).
+		// The synchronous path stays non-blocking (report is nil).
 		if report != nil && len(result.Databases) > 0 {
 			s.waitForDatabases(ctx, workspaceID, result.Databases, report)
 		}
@@ -405,9 +363,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		return result, nil
 	}
 
-	// A stack is created when grouping more than one application, or whenever the template
-	// declares a stack block. Its shared env is rendered and attached further down, once the
-	// render context exists.
+	// Shared env is attached later, once the render context exists.
 	var stackID *uint
 	if m.WantsStack() && s.stacks != nil {
 		in := stack.Input{
@@ -430,8 +386,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		result.Stack = st
 	}
 
-	// Create all apps first so every application's network alias is known before env is
-	// rendered — apps can reference each other by alias.
+	// Create all apps first so every network alias is known before env renders; apps reference each other by alias.
 	report.phase(PhaseApps, PhaseActive)
 	created := make([]*models.Application, 0, len(m.Applications))
 	appViews := map[string]manifest.AppView{}
@@ -484,9 +439,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	// Link each created logical database to the application that consumes it, so it appears under the app's
-	// Databases and its scoped connection is revealable there — the same link a user would make manually
-	// post-install. Best-effort; the install already succeeded.
+	// Best-effort; the install already succeeded.
 	for depName, db := range dbModels {
 		if app := consumerApp(m, created, depName); app != nil {
 			_, _ = s.dbs.AttachToApp(workspaceID, db.ID, app.ID, database.EnvLink{})
@@ -496,8 +449,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	report.phase(PhaseConfig, PhaseActive)
 	r := manifest.NewRenderer(manifest.Context{Inputs: inputs, Databases: dbViews, Applications: appViews})
 
-	// Shared stack env: declared once on the stack and injected into every member
-	// app's containers at deploy time (an app-level var with the same key wins).
+	// An app-level var with the same key wins.
 	if result.Stack != nil && m.Stack != nil && len(m.Stack.Env) > 0 {
 		stackEnv, err := r.RenderEnv("stack", m.Stack.Env)
 		if err != nil {
@@ -511,9 +463,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	// Configs are created here, after the app records exist, because a config file
-	// may reference both {{ .databases.* }} and {{ .applications.*.alias }}. They
-	// still land before any deploy, so the first container start sees its files.
+	// After app records exist because configs may reference both databases and app aliases; still before any deploy.
 	cfgIDs := map[string]uint{}
 	if len(m.Configs) > 0 && s.configs != nil {
 		report.phase(PhaseConfigs, PhaseActive)
@@ -583,8 +533,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 		}
 	}
 
-	// The deploy phase stays active until the containers come online — StartInstall
-	// waits and completes it.
+	// StartInstall waits for the containers and completes this phase.
 	report.phase(PhaseDeploy, PhaseActive)
 	for i, spec := range m.Applications {
 		app := created[i]
@@ -599,13 +548,10 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	}
 
 	result.InstallID = s.record(workspaceID, source, m, result, kept, cfgIDs)
-	// Back-link each app to the install (best-effort; the install already
-	// succeeded). Powers "installed from <template>" on the app page.
+	// Best-effort; powers "installed from <template>" on the app page.
 	if result.InstallID != 0 {
 		id := result.InstallID
-		// Trust boundary: only an official-source install may exempt its apps from
-		// the restricted security profile (see Plan.AllowOfficialImageUser). Set
-		// server-side here so user input can never claim official status.
+		// Trust boundary: set server-side so user input can never claim official status and its security exemption.
 		official := source == SourceOfficial
 		for _, app := range created {
 			app.TemplateInstallID = &id
@@ -616,8 +562,6 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	return result, nil
 }
 
-// ListInstalls returns the workspace's template installs, annotated with whether
-// a newer version of each template is available.
 func (s *Service) ListInstalls(workspaceID uint) ([]InstallView, error) {
 	if s.installs == nil {
 		return nil, nil
@@ -697,9 +641,7 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 	return s.apps.Create(workspaceID, in)
 }
 
-// resolveDatabase satisfies a database dependency per its placement, delegating to the shared placement
-// resolver so marketplace installs and GitOps apply behave identically. declName is empty here: an install
-// materializes the app's env immediately rather than via a reconcile, so its databases carry no declarative name.
+// declName is empty: an install materializes env immediately, not via a reconcile.
 func (s *Service) resolveDatabase(ctx context.Context, workspaceID uint, base string, d manifest.Database, pinInstance, serverID uint, meta models.Metadata) (*models.DatabaseInstance, *models.Database, database.ConnectionInfo, bool, error) {
 	return s.dbs.ResolveDependency(ctx, workspaceID, serverID, pinInstance, base, "",
 		models.DBEngine(d.Engine), d.Version, database.Placement(d.Placement), databaseResources(d), meta)
@@ -714,9 +656,7 @@ func databaseResources(d manifest.Database) database.Resources {
 	return database.Resources{MemoryBytes: mb, NanoCPUs: nc}
 }
 
-// consumerApp returns the created application consuming the database dependency depName — the app referencing
-// it in env, preferring one marked primary. A logical database is owned by at most one app, so the primary
-// (else the first) wins. Falls back to the sole app; nil when the consumer is ambiguous.
+// A logical database has at most one owner, so the primary (else first) wins; nil when ambiguous.
 func consumerApp(m *manifest.Manifest, created []*models.Application, depName string) *models.Application {
 	token := ".databases." + depName + "."
 	var match *models.Application
@@ -734,9 +674,7 @@ func consumerApp(m *manifest.Manifest, created []*models.Application, depName st
 			match = created[i]
 		}
 	}
-	// Connection details declared once on the stack are shared by every member, so
-	// no single app's env names the dependency. The primary owns the link then —
-	// otherwise moving them onto the stack would silently unlink the database.
+	// With connection details only on the stack, the primary owns the link, or moving them there would unlink the DB.
 	if match == nil && m.Stack != nil && referencesDep(m.Stack.Env, token) {
 		for i, spec := range m.Applications {
 			if i < len(created) && spec.Primary {
@@ -763,10 +701,7 @@ func referencesDep(env map[string]string, token string) bool {
 	return false
 }
 
-// installNode decides the single node every resource in an install must land on, so each app can share a Docker
-// network with the databases it uses — a network cannot span nodes. A dependency binding to an existing
-// instance in the install's cluster (any cluster when 0) makes that instance's node authoritative; the first
-// such binding wins. Otherwise 0, the local node.
+// A binding to an existing instance in the cluster (any when 0) pins the node; first wins, else 0 (local).
 func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in InstallInput, clusterID uint) (uint, error) {
 	for _, d := range m.Databases {
 		// A pinned instance dictates the node outright.
@@ -785,9 +720,7 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 			placement = mode
 		}
 		engine := models.DBEngine(d.Engine)
-		// Shared always reuses an existing instance; auto reuses one when the engine
-		// has logical databases, the template names no size and a running instance exists.
-		// Dedicated never does.
+		// Dedicated never reuses an instance.
 		reuses := placement == manifest.PlacementShared ||
 			(placement == manifest.PlacementAuto && models.EngineSupportsLogicalDatabases(engine) &&
 				databaseResources(d) == (database.Resources{}))
@@ -800,8 +733,7 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 	return 0, nil
 }
 
-// record persists provenance (best-effort; a failure here never fails an install
-// that already succeeded).
+// Best-effort: a failure here never fails an install that already succeeded.
 func (s *Service) record(workspaceID uint, source string, m *manifest.Manifest, r *InstallResult, inputs map[string]string, cfgIDs map[string]uint) uint {
 	if s.installs == nil {
 		return 0
@@ -836,8 +768,7 @@ func stackIDOf(r *InstallResult) *uint {
 	return nil
 }
 
-// resolveInputs validates and fills install inputs. It returns the full input
-// map for rendering and a "kept" subset (non-secret) for provenance.
+// kept is the non-secret subset saved for provenance.
 func resolveInputs(m *manifest.Manifest, given map[string]string) (all, kept map[string]string, err error) {
 	all = map[string]string{}
 	kept = map[string]string{}

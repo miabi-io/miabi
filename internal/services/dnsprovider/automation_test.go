@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// relName must reduce both a Miabi FQDN and a provider's already-relative name to
-// the same label, so conflict detection compares like for like.
+// Both forms must reduce to the same label so conflict detection compares like for like.
 func TestRelName(t *testing.T) {
 	cases := []struct{ name, zone, want string }{
 		{"_miabi-challenge.example.com", "example.com", "_miabi-challenge"},
@@ -52,8 +51,7 @@ func recordSet(recs []dns.Record) string {
 	return strings.Join(parts, "; ")
 }
 
-// addressRecords writes an A and an AAAA for each IP family, falls back to a CNAME to the hostname, never puts a
-// CNAME at the zone apex, and aliases a www host to its bare name when that name is routed too.
+// Never a CNAME at the zone apex; www aliases its bare name only when that name is routed too.
 func TestAddressRecords(t *testing.T) {
 	dual := models.PublicAddress{IPv4: "203.0.113.1", IPv6: "2001:db8::1", Hostname: "gw.example.net"}
 	cases := []struct {

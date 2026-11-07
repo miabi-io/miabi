@@ -142,8 +142,6 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 
 func (m *memStore) CountExternalApps(uint) (int64, error) { return 0, nil }
 
-// cleared counts calls to ClearUnusableWorkspaceDefaults, so a test can assert that dedicating a
-// location tidies the defaults it invalidated.
 func (m *memStore) ClearUnusableWorkspaceDefaults() (int64, error) {
 	m.cleared++
 	return 0, nil

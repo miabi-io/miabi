@@ -47,9 +47,7 @@ func (r *ApplicationRepository) Update(app *models.Application) error {
 	return r.db.Save(app).Error
 }
 
-// Delete hard-deletes an application and its child rows in one transaction: the rows holding a
-// foreign key to it (env vars, ports, network joins), plus its history rows (deployments,
-// releases, events, metric samples), which have no FK and would otherwise orphan.
+// History rows (deployments, releases, events, metrics) have no FK and would otherwise orphan.
 func (r *ApplicationRepository) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		app := &models.Application{ID: id}
@@ -76,8 +74,7 @@ func (r *ApplicationRepository) Delete(id uint) error {
 	})
 }
 
-// FindByID loads an application by id (with env vars), regardless of workspace.
-// Used by the deploy worker, which already holds a trusted deployment.
+// Unscoped by workspace: the deploy worker already holds a trusted deployment.
 func (r *ApplicationRepository) FindByID(id uint) (*models.Application, error) {
 	var app models.Application
 	if err := r.db.Preload("EnvVars").Preload("Networks").Preload("Ports").Preload("Stack").First(&app, id).Error; err != nil {
@@ -134,25 +131,19 @@ func (r *ApplicationRepository) CountNetworks(appID uint) (int64, error) {
 	return count, err
 }
 
-// All returns every application across every workspace, for platform-wide passes —
-// disaster recovery reconciles the whole install, not one tenant at a time.
 func (r *ApplicationRepository) All() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Order("workspace_id ASC, id ASC").Find(&apps).Error
 	return apps, err
 }
 
-// ListRunning returns all applications currently in the running state, across workspaces,
-// for the metrics scraper.
 func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("status = ?", models.AppStatusRunning).Find(&apps).Error
 	return apps, err
 }
 
-// ListReconcilable returns the apps expected to be running, across workspaces, for the control manager: those
-// with a release that are neither created, deploying nor stopped. Failed stays in, because the event subscriber
-// marks an app failed when its container is killed on the way to being removed.
+// Failed stays in: the event subscriber marks an app failed when its container is killed on removal.
 func (r *ApplicationRepository) ListReconcilable() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("current_release_id IS NOT NULL AND status NOT IN ?",
@@ -161,8 +152,7 @@ func (r *ApplicationRepository) ListReconcilable() ([]models.Application, error)
 	return apps, err
 }
 
-// ListWithGrants returns every application holding a grant. Both columns are JSON,
-// so "no grant" is NULL or one of two empty encodings depending on the writer.
+// Both columns are JSON, so "no grant" is NULL or one of two empty encodings depending on the writer.
 func (r *ApplicationRepository) ListWithGrants() ([]models.Application, error) {
 	var apps []models.Application
 	empty := []string{"", "[]", "null"}
@@ -179,16 +169,12 @@ func (r *ApplicationRepository) ListByWorkspace(workspaceID uint) ([]models.Appl
 	return apps, err
 }
 
-// ListByWorkspaceWithEnv lists workspace apps with their env vars preloaded, for
-// scanning secret references.
 func (r *ApplicationRepository) ListByWorkspaceWithEnv(workspaceID uint) ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Preload("EnvVars").Where("workspace_id = ?", workspaceID).Find(&apps).Error
 	return apps, err
 }
 
-// ListByServer returns all applications placed on a node (across workspaces),
-// for rendering that node's Goma routes.
 func (r *ApplicationRepository) ListByServer(serverID uint) ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Preload("Ports").Where("server_id = ?", serverID).Find(&apps).Error
@@ -209,12 +195,9 @@ func (r *ApplicationRepository) ExistsByName(workspaceID uint, name string) (boo
 	return count > 0, err
 }
 
-// ExternalLabelTaken reports whether a non-deleted application other than exceptAppID already
-// owns this external-access label. The label maps to a platform-wide host,
-// `<label>.<base-domain>`, so it must be unique across all workspaces.
+// The label maps to the platform-wide host <label>.<base-domain>, so it's unique across workspaces.
 func (r *ApplicationRepository) ExternalLabelTaken(label string, exceptAppID uint) (bool, error) {
-	// An empty label is the "unassigned" sentinel, not a claimable host, so it is
-	// never taken (and must not collide with other unlabeled apps).
+	// An empty label is the "unassigned" sentinel, not a claimable host.
 	if label == "" {
 		return false, nil
 	}
@@ -224,9 +207,7 @@ func (r *ApplicationRepository) ExternalLabelTaken(label string, exceptAppID uin
 	return count > 0, err
 }
 
-// ExistsByID reports whether a non-deleted application exists. A soft-deleted
-// app reads as absent — the housekeeping "orphan" condition (deleted in Miabi
-// but whose containers still run).
+// A soft-deleted app reads as absent: the housekeeping orphan condition.
 func (r *ApplicationRepository) ExistsByID(id uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Application{}).Where("id = ?", id).Count(&count).Error
@@ -242,9 +223,7 @@ func (r *ApplicationRepository) SetStatus(id uint, status models.AppStatus) erro
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("status", status).Error
 }
 
-// SetLastLifecycle records the most recent start/stop/restart and who asked for it. A targeted
-// UPDATE rather than a read-modify-write on the row, so two people acting at once cannot lose each
-// other's action — last writer wins, which for "most recent" is the right answer anyway.
+// A targeted UPDATE so concurrent actions can't lose each other; last writer wins, which is right here.
 func (r *ApplicationRepository) SetLastLifecycle(id uint, action string, at time.Time, by *uint) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(map[string]any{
 		"last_lifecycle_at":     at,
@@ -253,9 +232,7 @@ func (r *ApplicationRepository) SetLastLifecycle(id uint, action string, at time
 	}).Error
 }
 
-// LifecycleActorName resolves the display name of whoever performed the app's last lifecycle
-// action. Empty when nobody did, or when that user has since been deleted — the action and its
-// time still stand on their own.
+// Empty when nobody acted or the user was deleted; the action and time still stand.
 func (r *ApplicationRepository) LifecycleActorName(appID uint) (string, error) {
 	var name string
 	err := r.db.Model(&models.Application{}).
@@ -270,8 +247,7 @@ func (r *ApplicationRepository) SetRedeployRequired(id uint, v bool) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("redeploy_required", v).Error
 }
 
-// BumpCacheGeneration invalidates an app's build cache by naming a new one. Nothing is deleted:
-// the old ref simply stops being read, and the registry's retention reclaims it.
+// Nothing is deleted: the old ref stops being read and registry retention reclaims it.
 func (r *ApplicationRepository) BumpCacheGeneration(id uint) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
 		UpdateColumn("cache_generation", gorm.Expr("cache_generation + 1")).Error
@@ -283,9 +259,7 @@ func (r *ApplicationRepository) MarkCacheBuilt(id, generation uint) error {
 		UpdateColumn("cache_built_generation", generation).Error
 }
 
-// SetContainerLabels replaces an app's user-defined Docker labels. A targeted Update bypasses
-// the field serializer (pgx can't encode a Go map into the text column), so the JSON is
-// marshalled here to match what the serializer writes. nil/empty clears them (stored NULL).
+// A targeted Update bypasses the serializer (pgx can't encode a Go map to text), so JSON is marshalled here.
 func (r *ApplicationRepository) SetContainerLabels(id uint, labels map[string]string) error {
 	var val any
 	if len(labels) > 0 {
@@ -304,9 +278,7 @@ func (r *ApplicationRepository) SetCurrentRelease(id, releaseID uint, status mod
 		Updates(map[string]any{"current_release_id": releaseID, "status": status, "redeploy_required": false}).Error
 }
 
-// SetCurrentReleaseImage is SetCurrentRelease plus persisting the deployed
-// image/tag, so the app's stored Image/Tag reflect the now-active version (used
-// by image-source apps; git apps build their own image and use SetCurrentRelease).
+// Git apps build their own image and use SetCurrentRelease instead.
 func (r *ApplicationRepository) SetCurrentReleaseImage(id, releaseID uint, status models.AppStatus, image, tag string) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
 		Updates(map[string]any{
@@ -315,13 +287,7 @@ func (r *ApplicationRepository) SetCurrentReleaseImage(id, releaseID uint, statu
 		}).Error
 }
 
-// SetCanary records (or clears) the in-progress canary release and its traffic
-// weight. Pass releaseID=nil and weight=0 to clear the canary.
-//
-// Clearing also drops the rollout's routing rules. Every promote/abort/supersede
-// path goes through here, so doing it in one place is what guarantees a stale
-// `match` can never survive to target the next canary. The mode is a user
-// preference and is deliberately kept.
+// Clearing also drops the match rules, so a stale match can never target the next canary; mode is kept.
 func (r *ApplicationRepository) SetCanary(id uint, releaseID *uint, weight int) error {
 	fields := map[string]any{"canary_release_id": releaseID, "canary_weight": weight}
 	if releaseID == nil {
@@ -338,12 +304,9 @@ func (r *ApplicationRepository) SetCanaryPaused(id uint, at *time.Time) error {
 		Update("canary_paused_at", at).Error
 }
 
-// SetCanaryRouting stores the app's canary steering: the mode, and (for manual
-// mode) the match rules the gateway routes on. Weight is untouched — it moves
-// through SetCanary — so saving rules never shifts traffic as a side effect.
+// Weight moves only through SetCanary, so saving rules never shifts traffic as a side effect.
 func (r *ApplicationRepository) SetCanaryRouting(id uint, mode models.CanaryMode, exclusive bool, priority int, match []models.CanaryMatchRule) error {
-	// Select names every column so the zero values (no rules, not exclusive,
-	// priority 0) are written rather than skipped as a struct update's defaults.
+	// Select names every column so zero values are written rather than skipped by a struct update.
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
 		Select("canary_mode", "canary_exclusive", "canary_priority", "canary_match").
 		Updates(models.Application{
@@ -375,9 +338,7 @@ func (r *ApplicationRepository) ListEnvVars(appID uint) ([]models.AppEnvVar, err
 	return vars, err
 }
 
-// EnvKeyOwners maps each env-var key defined by the given applications to the ids
-// of the applications defining it. One query, so showing which stack variables a
-// member shadows does not cost a round trip per app.
+// One query, so showing shadowed stack variables doesn't cost a round trip per app.
 func (r *ApplicationRepository) EnvKeyOwners(appIDs []uint) (map[string][]uint, error) {
 	out := map[string][]uint{}
 	if len(appIDs) == 0 {
@@ -399,9 +360,7 @@ func (r *ApplicationRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Application](r.db, uid)
 }
 
-// IDByRef resolves an app reference within a workspace: a numeric id, a uid, or the app's name.
-// Digits are tried as an id first and, when no app of the workspace has that id, as a name (names
-// may be all digits).
+// Digits are tried as an id first, then as a name, since names may be all digits.
 func (r *ApplicationRepository) IDByRef(workspaceID uint, ref string) (uint, error) {
 	ref = strings.TrimSpace(ref)
 	var id uint
@@ -427,8 +386,7 @@ func (r *ApplicationRepository) IDByRef(workspaceID uint, ref string) (uint, err
 	return id, nil
 }
 
-// ImageRefs returns the image reference every application names, whatever its state. Housekeeping's
-// unused-image reclaim treats these as referenced: a stopped app must still be able to start.
+// A stopped app must still be able to start, so its image counts as referenced.
 func (r *ApplicationRepository) ImageRefs() ([]string, error) {
 	var rows []struct{ Image, Tag string }
 	if err := r.db.Model(&models.Application{}).

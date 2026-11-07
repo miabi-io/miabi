@@ -31,9 +31,7 @@ var externalAccessSettingKeys = map[string]string{
 	"external_base_provider": "external_cert_provider",
 }
 
-// externalAccessStep moves one-click external access from platform settings onto the default cluster, now that
-// every cluster keeps its own domain. Generated URLs keep their hosts. A field the cluster already has is kept, so
-// the step is safe to re-run.
+// A field the cluster already has is kept, so the step is safe to re-run.
 func externalAccessStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable("clusters") || !db.Migrator().HasColumn("clusters", "external_base_domain") {
 		return nil

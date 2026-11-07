@@ -41,31 +41,21 @@ type Finding struct {
 	Detail   string `json:"detail"`
 }
 
-// FirewallRule is one port (or IP protocol) that must be open between every pair of swarm nodes. These
-// are not advisory: with any blocked, the swarm forms and DNS resolves while the data plane silently
-// drops every packet — apps resolve each other and then time out, the most confusing cluster failure.
+// With any blocked, the swarm forms and DNS resolves while the data plane silently drops every packet.
 type FirewallRule struct {
 	Port    string `json:"port"`    // "2377/tcp", "esp (ip protocol 50)", …
 	Purpose string `json:"purpose"` // what breaks without it
 }
 
-// Preflight is what we can tell an operator about this host before they turn
-// cluster mode on.
 type Preflight struct {
-	// EngineOS is the Docker daemon's reported operating system ("Ubuntu 22.04",
-	// "Docker Desktop", "OrbStack", …).
 	EngineOS string `json:"engine_os"`
-	// MultiNodeCapable is false when this engine cannot carry the overlay data plane
-	// to other hosts, whatever the firewall says. Single-node cluster mode still
-	// works — this is specifically about spanning nodes.
+	// Single-node cluster mode still works; this is about spanning nodes.
 	MultiNodeCapable bool           `json:"multi_node_capable"`
 	Findings         []Finding      `json:"findings"`
 	Firewall         []FirewallRule `json:"firewall"`
 }
 
-// firewallRules are the ports a swarm needs open between every pair of nodes. ESP is the one people miss, and it
-// is Miabi's own doing: the workspace overlay is created encrypted, so its data plane is IPSec. ESP is IP
-// protocol 50, not a port, so a security group that happily opens 4789/udp still drops every packet.
+// The workspace overlay is encrypted, so ESP (IP protocol 50, not a port) must be allowed too.
 func firewallRules() []FirewallRule {
 	return []FirewallRule{
 		{Port: "2377/tcp", Purpose: "Cluster management (managers only). Without it, nodes cannot join."},
@@ -75,8 +65,7 @@ func firewallRules() []FirewallRule {
 	}
 }
 
-// Preflight inspects a cluster's manager engine and reports what an operator needs to know before
-// enabling Swarm there. It never mutates anything, and it works whether or not Swarm is already on.
+// Preflight never mutates anything.
 func (s *Service) Preflight(ctx context.Context, clusterID uint) (Preflight, error) {
 	mgr, err := s.Manager(ctx, clusterID)
 	if err != nil {
@@ -105,8 +94,7 @@ func (s *Service) Preflight(ctx context.Context, clusterID uint) (Preflight, err
 		})
 	}
 
-	// A swarm advertises on one address; a host with no routable one cannot be
-	// joined. Worth saying before the operator tries and gets a cryptic timeout.
+	// A host with no routable address cannot be joined; warn before a cryptic timeout.
 	p.Findings = append(p.Findings, Finding{
 		Severity: SeverityWarning,
 		Title:    "Every swarm node must reach every other node",
@@ -118,9 +106,7 @@ func (s *Service) Preflight(ctx context.Context, clusterID uint) (Preflight, err
 	return p, nil
 }
 
-// vmBackedEngine names the Docker distribution when the daemon runs inside a Linux VM (macOS or Windows), and
-// "" for a native Linux engine. Detection is on the daemon's reported OperatingSystem string, which these
-// products set to "Docker Desktop", "OrbStack" or "Rancher Desktop"; a native engine reports its distro.
+// These products report "Docker Desktop", "OrbStack" or "Rancher Desktop"; native engines report their distro.
 func vmBackedEngine(info docker.Info) string {
 	os := strings.ToLower(info.OS)
 	switch {

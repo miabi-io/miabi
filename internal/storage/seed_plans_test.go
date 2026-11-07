@@ -88,8 +88,7 @@ func TestSeededUnlimitedPlanIsASystemPlan(t *testing.T) {
 	}
 }
 
-// Every workspace with no plan lands on the default, so exactly one plan must
-// carry the flag — and it must not be the system one.
+// Workspaces without a plan land on the default, so exactly one non-system plan must carry the flag.
 func TestSeededCatalogHasExactlyOneDefault(t *testing.T) {
 	db := seedDB(t)
 	if err := SeedPlans(db); err != nil {
@@ -109,8 +108,6 @@ func TestSeededCatalogHasExactlyOneDefault(t *testing.T) {
 	}
 }
 
-// Seeding is a first-boot action: it must never touch a catalog an operator has
-// since edited.
 func TestSeedPlansIsIdempotent(t *testing.T) {
 	db := seedDB(t)
 	if err := SeedPlans(db); err != nil {

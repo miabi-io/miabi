@@ -63,8 +63,7 @@ func TestAliasBackendsExclusiveCarriesPriority(t *testing.T) {
 	}
 }
 
-// An exclusive canary serves the traffic its rules select whatever its weight,
-// so it must stay in the route at 0 rather than disappearing.
+// An exclusive canary serves its rule-selected traffic whatever its weight, so it must stay at 0.
 func TestAliasBackendsExclusiveSurvivesZeroWeight(t *testing.T) {
 	b := aliasBackends(canaryApp(0, true, headerRule), 80, "http")
 	if len(b) != 2 {
@@ -78,9 +77,7 @@ func TestAliasBackendsExclusiveSurvivesZeroWeight(t *testing.T) {
 	}
 }
 
-// Exclusive without rules would hand the canary every request. Validation
-// rejects it at save; the renderer refuses to emit it as a second line of
-// defence for a row that predates the check or was written out of band.
+// The renderer refuses exclusive-without-rules as a second defence for rows that predate validation.
 func TestAliasBackendsExclusiveWithoutRulesIsNotExclusive(t *testing.T) {
 	b := aliasBackends(canaryApp(20, true), 80, "http")
 	if len(b) != 2 {

@@ -20,8 +20,7 @@ export interface NavSection {
   defaultOpen?: boolean
 }
 
-// The workspace console's navigation. Platform administration is a separate
-// console with its own shell and its own sections — see adminNavSections.
+// Platform administration has its own shell and sections; see adminNavSections.
 export const navSections: NavSection[] = [
   {
     id: 'overview',

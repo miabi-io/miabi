@@ -86,8 +86,7 @@ export interface NodeGatewayConfig {
   is_default: boolean
 }
 
-// NodeStatusEvent is a node's live reachability, pushed as it changes. `online` is what the status
-// badge renders; the rest fills in the row beside it without a refetch.
+// `online` drives the status badge; the rest fills the row without a refetch.
 export interface NodeStatusEvent {
   id: number
   name: string
@@ -120,9 +119,7 @@ export interface ReclaimCategoryStat {
   bytes: number
 }
 
-// DriftItem is one resource that diverges from what Miabi recorded. Shared by node housekeeping (which
-// reports orphans, missing workloads and untracked resources on one node) and the platform-wide
-// reconciliation report, which adds replaced volumes and node gateways.
+// Shared by node housekeeping and the platform-wide reconciliation report, which adds replaced volumes and gateways.
 export interface DriftItem {
   class: 'orphan' | 'missing' | 'untracked' | 'replaced'
   kind: 'container' | 'volume' | 'service' | 'config' | 'gateway'
@@ -142,8 +139,7 @@ export interface HousekeepingReport {
   reclaim: {
     dangling_images: ReclaimCategoryStat
     build_cache: ReclaimCategoryStat
-    // Guarded categories: what housekeeping may actually reclaim, which is less than the
-    // "reclaimable" of `docker system df` — anything a Miabi record still names is excluded.
+    // Less than `docker system df` "reclaimable": anything a Miabi record still names is excluded.
     unused_images: ReclaimCategoryStat
     unused_volumes: ReclaimCategoryStat
   }
@@ -211,10 +207,7 @@ export interface JoinCommand {
 export type ServerAccessMode = 'socket' | 'agent' | 'api'
 
 export interface CreateNodePayload {
-  /**
-   * The node's free-text label and the only name a caller supplies. The URL-safe
-   * handle is derived from it at creation and is not settable.
-   */
+  /** The URL-safe handle is derived from it at creation and is not settable. */
   display_name: string
   address?: string
   connectivity: ServerConnectivity
@@ -223,8 +216,7 @@ export interface CreateNodePayload {
   tls_ca_cert?: string
   tls_cert?: string
   tls_key?: string
-  // acknowledge confirms the caller accepts a reachability change may briefly
-  // interrupt the node's running workloads (required by the API on such a change).
+  // Required by the API on a reachability change, which may briefly interrupt the node's workloads.
   acknowledge?: boolean
 }
 
@@ -239,8 +231,7 @@ export interface NodeCreated {
   token: string
 }
 
-// A physical GPU discovered on a node. Admin policy (enabled, shared) is applied
-// per device; UUID/model/memory are read-only hardware facts.
+// Admin policy (enabled, shared) is per device; UUID/model/memory are read-only hardware facts.
 export interface GPUDevice {
   id: number
   server_id: number
@@ -254,8 +245,6 @@ export interface GPUDevice {
   last_seen_at?: string | null
 }
 
-// GET /admin/nodes/{id}/gpus response: platform + node GPU capability plus the
-// discovered devices.
 export interface NodeGPUList {
   enabled: boolean          // platform GPU support on (MIABI_GPU_ENABLED)
   toolkit_present: boolean  // node has the NVIDIA Container Toolkit
@@ -326,8 +315,7 @@ export const nodesApi = {
   gateway: (id: number) => api.get<ApiResponse<GatewayStatus>>(`/admin/nodes/${id}/gateway`),
   deployGateway: (id: number) => api.post<ApiResponse<{ message: string }>>(`/admin/nodes/${id}/gateway/deploy`),
   updateGateway: (id: number) => api.post<ApiResponse<GatewayUpdateProgress>>(`/admin/nodes/${id}/gateway/update`),
-  // Every node's connect/disconnect on one stream: the list watches all of them, a detail page
-  // filters by id.
+  // One stream for every node: the list watches all, a detail page filters by id.
   statusEventsUrl: () => sseUrl('/admin/nodes/events'),
   gatewayEventsUrl: (id: number) => sseUrl(`/admin/nodes/${id}/gateway/events`),
   gatewayCandidates: (id: number) => api.get<ApiResponse<GatewayCandidate[]>>(`/admin/nodes/${id}/gateway/candidates`),

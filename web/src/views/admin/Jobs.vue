@@ -52,11 +52,7 @@ function jobState(j: JobStatus): JobState {
   return j.last_error ? 'failed' : 'ok'
 }
 
-// --- Filtering ------------------------------------------------------------
-// Both filters are CLIENT-SIDE and therefore scoped to the loaded page: /admin/jobs takes only
-// page and size. The stat cards count every job, so a filter that silently searched one page while
-// the card said "3 failed" would read as a bug. The toolbar states the scope instead, and the
-// cards stay as counters rather than becoming filters that could not honour them.
+// Filters are client-side and page-scoped (/admin/jobs only takes page/size), so stat cards stay counters.
 const search = ref('')
 const state = ref<JobState | 'all'>('all')
 
@@ -72,8 +68,7 @@ const filtered = computed(() => {
       humanCron(j.schedule).toLowerCase().includes(q)
     )
   })
-  // Problems first: this is a monitoring view, and a failure buried under twenty healthy jobs is
-  // the one thing it exists to surface.
+  // Failures first: surfacing a failure among healthy jobs is what this monitoring view is for.
   const rank: Record<JobState, number> = { failed: 0, running: 1, ok: 2 }
   return out.sort((a, b) => rank[jobState(a)] - rank[jobState(b)] || a.name.localeCompare(b.name))
 })
@@ -147,10 +142,7 @@ function humanCron(expr: string): string {
   return expr
 }
 
-// --- Auto-refresh ---------------------------------------------------------
-// The page polls, so it can move under the reader. Pausing is offered because the most likely
-// reason to be staring at this page is reading a failure, and that is exactly when a reload that
-// reorders the grid is least welcome.
+// Pausable because reading a failure is exactly when a reload that reorders the grid hurts.
 const autoRefresh = ref(true)
 const POLL_MS = 30000
 
@@ -189,8 +181,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Summary across ALL jobs, not just this page. Counters, not filters: the list is
-         paginated server-side, so a card that filtered could not honour its own number. -->
+    <!-- Counters, not filters: the list is paginated server-side, so a filtering card couldn't honour its number. -->
     <div v-if="stats" class="stats-grid stats-compact">
       <div class="stat-card">
         <div class="stat-header">
@@ -287,8 +278,6 @@ onBeforeUnmount(() => {
           <div class="job-head">
             <div class="job-title">
               <span class="job-name" :title="job.name">{{ job.name }}</span>
-              <!-- Kind lives here now rather than as a breakdown under the total: it describes
-                   the job, and this is where you are already looking at one. -->
               <span v-if="job.kind" class="kind-chip">{{ job.kind }}</span>
             </div>
             <span v-if="job.running" class="badge badge-dot badge-warning">Running</span>
@@ -314,8 +303,7 @@ onBeforeUnmount(() => {
             </dd>
           </dl>
 
-          <!-- The error is the reason an admin opened this page. It wraps instead of being
-               truncated to a tooltip nobody hovers. -->
+          <!-- The error wraps instead of hiding in a tooltip nobody hovers. -->
           <div v-if="job.last_error" class="job-error">
             <span class="mdi mdi-alert-circle-outline"></span>
             <span class="job-error-text">{{ job.last_error }}</span>
@@ -540,8 +528,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   line-height: 1.5;
 }
-/* Wrap rather than truncate: this is the sentence the page exists to show. Bounded so one
-   pathological stack trace cannot push every other card off the screen. */
+/* Bounded so one pathological stack trace cannot push every other card off screen. */
 .job-error-text {
   overflow-wrap: anywhere;
   max-height: 7.5em;

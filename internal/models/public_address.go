@@ -21,8 +21,7 @@ package models
 
 import "strings"
 
-// PublicAddress is where a cluster's public DNS records point: its gateway, or a load balancer in front of it.
-// The hostname is a CNAME target, used only when there is no IP.
+// PublicAddress is where a cluster's DNS records point; the hostname is a CNAME target used only when there is no IP.
 type PublicAddress struct {
 	IPv4     string `json:"ipv4,omitempty"`
 	IPv6     string `json:"ipv6,omitempty"`
@@ -53,9 +52,7 @@ type AddressRecord struct {
 	Value string `json:"value"`
 }
 
-// AddressRecords plans the records that send host to a: an A and an AAAA for each IP family it has, or a CNAME to
-// its hostname. A www host whose bare name is also routed gets a CNAME to that name instead, so the pair can never
-// drift apart. apex marks the zone apex, where DNS forbids a CNAME: such a host gets nothing from a hostname alone.
+// AddressRecords CNAMEs a routed www host to its bare name so the pair cannot drift; apex hosts never get a CNAME.
 func (a PublicAddress) AddressRecords(host string, routed []string, apex bool) []AddressRecord {
 	host = NormalizeHost(host)
 	if host == "" || strings.HasPrefix(host, "*") {

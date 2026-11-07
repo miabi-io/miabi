@@ -100,9 +100,7 @@ func TestValidateAgainstDomains(t *testing.T) {
 	}
 }
 
-// The hijack: registering a domain proves nothing — anyone can register "console.example.com" — and
-// Goma loads every inline cert into one global map where an exact match beats ACME. A certificate on
-// an unverified name therefore takes that hostname's TLS from whoever really serves it.
+// Goma serves inline certs from one global map where exact beats ACME, so an unverified name hijacks TLS.
 func TestValidateAgainstDomainsRequiresAVerifiedDomain(t *testing.T) {
 	meta := &certMeta{commonName: "console.example.com", dnsNames: []string{"console.example.com"}}
 	unverified := []models.Domain{{Name: "example.com"}}
@@ -112,8 +110,7 @@ func TestValidateAgainstDomainsRequiresAVerifiedDomain(t *testing.T) {
 		t.Fatalf("unverified domain: got %v, want ErrDomainUnverified", err)
 	}
 
-	// A privileged workspace may SERVE an unverified domain (routeServeState says so), so it may
-	// hold a certificate for one too — the two rules have to agree.
+	// A privileged workspace may serve an unverified domain, so it may hold a cert for one; the rules must agree.
 	s = &Service{domains: fakeDomains{list: unverified}, workspaces: fakeWorkspaces{privileged: true}}
 	if err := s.validateAgainstDomains(1, meta); err != nil {
 		t.Fatalf("privileged workspace should be allowed, got %v", err)

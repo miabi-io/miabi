@@ -26,28 +26,20 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A cluster with an owning organization is dedicated to it: nothing outside that organization may
-// be placed there, not even by a platform admin (see placement's access.allows, which checks
-// ownership before the admin bypass). The console says so, and reads it from here rather than from
-// a stored flag, which would be a third copy of what OrganizationID and Visibility already carry.
+// Dedication is derived from OrganizationID and Visibility rather than a third stored copy.
 
 // OrgLabels names organizations in bulk. Satisfied by the organization service.
 type OrgLabels func(ids []uint) map[uint]string
 
-// SetOrgLabels wires how a dedicated cluster's organization is named. Without it a cluster still
-// reports as dedicated, just unnamed.
+// Without it a cluster still reports as dedicated, just unnamed.
 func (s *Service) SetOrgLabels(fn OrgLabels) { s.orgLabels = fn }
 
-// OrgDefaultAligner repoints an organization's default location after its clusters changed.
-// Satisfied by the organization service's AlignDefaultCluster.
 type OrgDefaultAligner func(orgID, prefer uint) error
 
-// SetOrgDefaultAligner wires that realignment. Without it a newly dedicated organization keeps a
-// default location it can no longer place in.
+// Without it a newly dedicated organization keeps a default it can no longer place in.
 func (s *Service) SetOrgDefaultAligner(fn OrgDefaultAligner) { s.orgAligner = fn }
 
-// alignOrgDefaults realigns the organizations on either side of a cluster changing hands: the one
-// it just went to, and the one it came from, whose default may have been this very cluster.
+// The previous owner's default may have been this very cluster.
 func (s *Service) alignOrgDefaults(clusterID, from, to uint) {
 	if s.orgAligner == nil {
 		return
@@ -66,14 +58,11 @@ func (s *Service) alignOrgDefaults(clusterID, from, to uint) {
 	}
 }
 
-// DedicationImpact is what a cluster currently holds, broken down by the organization that owns it.
-// The console shows it before an admin changes who the location belongs to: a change of owner
-// decides who may see and place here, and strands whatever the new owner does not own.
+// Shown before an ownership change, which strands whatever the new owner does not own.
 type DedicationImpact struct {
 	ClusterID uint  `json:"cluster_id"`
 	Workloads int64 `json:"workloads"`
-	// Tenants are the organizations with workloads here, largest first. Name is empty for the
-	// workspaces that belong to no organization.
+	// Name is empty for workspaces in no organization.
 	Tenants []TenantWorkloads `json:"tenants"`
 }
 
@@ -141,8 +130,7 @@ func (s *Service) markDedication(list []models.Cluster) {
 	}
 }
 
-// markNodeDedication gives each node the dedication of the cluster it belongs to. A node holds no
-// organization of its own: it would go stale the moment the node moved cluster.
+// A node holds no organization of its own: it would go stale when the node moved cluster.
 func (s *Service) markNodeDedication(servers []models.Server) {
 	if len(servers) == 0 {
 		return

@@ -30,16 +30,12 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Selection is what an admin chose to reclaim and/or reconcile. It is always
-// re-validated against a fresh analysis before anything is removed — the client
-// cannot smuggle in a managed/infra resource by crafting a ref.
+// Always re-validated against a fresh analysis so a crafted ref can't smuggle in a managed or infra resource.
 type Selection struct {
 	Reclaim ReclaimSelection `json:"reclaim"`
-	// Orphans are the drift items to remove, identified by kind+ref. Only refs
-	// that re-confirm as orphans in a fresh analysis are acted on.
+	// Only refs that re-confirm as orphans in a fresh analysis are acted on.
 	Orphans []ResourceRef `json:"orphans"`
-	// Missing are the workloads to redeploy, identified by kind+ref. Same contract as Orphans: only refs that
-	// re-confirm as missing are acted on, so a selection can never start something that is already running.
+	// Only refs that re-confirm as missing are acted on, so a selection never starts something already running.
 	Missing []ResourceRef `json:"missing"`
 }
 
@@ -57,16 +53,14 @@ type ResourceRef struct {
 	Ref  string `json:"ref"`  // container ID, service name, volume name or config ID
 }
 
-// Plan is the dry-run preview of a Selection: exactly what would be reclaimed
-// and removed, after the safety contract is applied. preview == applied.
+// Plan is the dry run after the safety contract is applied; preview equals what is applied.
 type Plan struct {
 	Reclaim        ReclaimSelection `json:"reclaim"`
 	DanglingImages CategoryStat     `json:"dangling_images"`
 	BuildCache     CategoryStat     `json:"build_cache"`
 	UnusedImages   CategoryStat     `json:"unused_images"`
 	UnusedVolumes  CategoryStat     `json:"unused_volumes"`
-	// UnusedImageRefs and UnusedVolumeNames name every guarded resource the apply would remove, so
-	// the preview can be checked item by item rather than trusted as a count.
+	// Itemized so the preview can be checked item by item rather than trusted as a count.
 	UnusedImageRefs   []string     `json:"unused_image_refs,omitempty"`
 	UnusedVolumeNames []string     `json:"unused_volume_names,omitempty"`
 	Orphans           []drift.Item `json:"orphans"`
@@ -75,8 +69,6 @@ type Plan struct {
 	EstimatedBytes int64        `json:"estimated_bytes"`
 }
 
-// Result is the outcome of an Apply: bytes freed per category and the orphans
-// removed. The caller audits each removal from this.
 type Result struct {
 	ImagesDeleted   int          `json:"images_deleted"`
 	ImagesBytes     int64        `json:"images_reclaimed_bytes"`
@@ -89,9 +81,7 @@ type Result struct {
 	Errors     []string     `json:"errors,omitempty"`
 }
 
-// Redeployer queues a deploy for an app that should be running but is not. Satisfied by
-// *application.Service: the ordinary deploy path, so the data guard there still refuses an app whose volume
-// is gone, and nothing here has to know about that.
+// Uses the ordinary deploy path, so its data guard still refuses an app whose volume is gone.
 type Redeployer interface {
 	ReconcileRedeploy(app *models.Application, reason string) (*models.Deployment, error)
 }
@@ -106,8 +96,6 @@ func (s *Service) SetRedeployer(r Redeployer, apps appFinder) {
 	s.redeployer, s.appsByID = r, apps
 }
 
-// Plan re-analyzes the node and intersects the selection with what is actually
-// present and safe, returning the itemized dry-run. Nothing is mutated.
 func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, error) {
 	rep, unusedImgs, unusedVols, err := s.analyze(ctx, nodeID)
 	if err != nil {
@@ -149,9 +137,7 @@ func (s *Service) Plan(ctx context.Context, nodeID uint, sel Selection) (*Plan, 
 	return p, nil
 }
 
-// Apply executes the selection. Reclaim runs the safe prunes; reconcile removes only resources that
-// re-confirm as orphans in a fresh analysis, so managed, infra and self resources never survive that
-// filter. Each removal is reported for auditing, and a single failure does not abort the batch.
+// Apply removes only fresh-confirmed orphans; a single failure does not abort the batch.
 func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Result, error) {
 	dc, err := s.clients.For(nodeID)
 	if err != nil {
@@ -183,8 +169,7 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 	}
 
 	if len(sel.Orphans) > 0 {
-		// Re-confirm orphan status against fresh state so a selection can never
-		// remove a resource that is no longer (or never was) an orphan.
+		// Re-confirm against fresh state so a selection can never remove a non-orphan.
 		summary, derr := s.analyzeDrift(ctx, dc, nodeID)
 		if derr != nil {
 			return nil, derr
@@ -196,8 +181,7 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 				items = append(items, item) // anything else is no longer an orphan: silently skip
 			}
 		}
-		// A volume Docker still considers in use cannot be removed, so whatever holds it has to go
-		// first: the service, then the container it scheduled, then the volume and its config.
+		// Docker can't remove an in-use volume, so remove the service, then its container, then the volume.
 		sort.SliceStable(items, func(i, j int) bool { return removalOrder(items[i].Kind) < removalOrder(items[j].Kind) })
 		for _, item := range items {
 			if rmErr := s.removeOrphan(ctx, dc, nodeID, item); rmErr != nil {
@@ -210,9 +194,7 @@ func (s *Service) Apply(ctx context.Context, nodeID uint, sel Selection) (*Resul
 	return res, nil
 }
 
-// reclaimUnused re-resolves the guarded sets against fresh state and removes them one by one. It
-// never hands the category to the daemon's prune: the guard, not Docker's idea of "unused", is what
-// decides, and a failure on one resource does not take the rest of the batch with it.
+// Never uses the daemon's prune: the guard, not Docker's idea of unused, decides.
 func (s *Service) reclaimUnused(ctx context.Context, dc docker.Client, sel ReclaimSelection, res *Result) {
 	du, err := dc.DiskUsage(ctx)
 	if err != nil {
@@ -229,8 +211,7 @@ func (s *Service) reclaimUnused(ctx context.Context, dc docker.Client, sel Recla
 			res.Errors = append(res.Errors, "reclaiming unused images is not available on this build")
 		}
 		for _, im := range images {
-			// Never force: an image Docker finds a reference for between the guard and here is one
-			// the guard would have kept, so let Docker refuse it rather than override.
+			// Never force: an image Docker finds a reference for since the guard ran is one the guard would have kept.
 			if rmErr := dc.RemoveImage(ctx, im.ID, false); rmErr != nil {
 				res.Errors = append(res.Errors, "image "+imageName(im)+": "+rmErr.Error())
 				continue
@@ -268,9 +249,7 @@ func imageName(im docker.Image) string {
 	return im.ID
 }
 
-// redeployMissing queues a deploy for each selected workload that re-confirms as missing. It goes through the
-// ordinary deploy path, so an app whose data volume is gone is refused there rather than started on an empty
-// one — the queue, the per-app lock and every guard are the same as a deploy a user asks for.
+// Uses the ordinary deploy path, so an app whose data volume is gone is refused rather than started empty.
 func (s *Service) redeployMissing(ctx context.Context, dc docker.Client, nodeID uint, sel Selection, res *Result) {
 	if s.redeployer == nil || s.appsByID == nil {
 		res.Errors = append(res.Errors, "redeploying a missing workload is not available on this build")
@@ -300,15 +279,13 @@ func (s *Service) redeployMissing(ctx context.Context, dc docker.Client, nodeID 
 	}
 }
 
-// removeOrphan deletes a confirmed orphan. Force is used because an orphan's DB
-// record is already gone, so the admin's reclaim is the authoritative intent.
+// Force because the orphan's DB record is already gone, so the admin's reclaim is authoritative.
 func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, nodeID uint, item drift.Item) error {
 	switch item.Kind {
 	case "container":
 		return dc.RemoveContainer(ctx, item.Ref, true)
 	case "service":
-		// Only a manager can act on a service, and removing it is what actually stops the
-		// workload — Swarm reschedules a task whose container is removed under it.
+		// Swarm reschedules a task whose container is removed, so only removing the service on a manager stops it.
 		mgr, err := s.swarmManagerFor(ctx, nodeID)
 		if err != nil {
 			return err
@@ -317,8 +294,7 @@ func (s *Service) removeOrphan(ctx context.Context, dc docker.Client, nodeID uin
 	case "volume":
 		return dc.RemoveVolume(ctx, item.Ref, true)
 	case "config":
-		// Docker refuses to remove a config a service still references, so a stale
-		// classification cannot pull one out from under a running task.
+		// Docker refuses to remove a config a service still references, so a stale classification is harmless.
 		return dc.RemoveConfig(ctx, item.Ref)
 	default:
 		return fmt.Errorf("unsupported orphan kind %q", item.Kind)

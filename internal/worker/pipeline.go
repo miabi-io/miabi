@@ -61,9 +61,6 @@ type RunEvent struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 }
 
-// PipelineHandler is the internal runner: it clones the source once into a per-run workspace, then
-// executes the run's steps in order over that shared filesystem — container steps in one-shot
-// containers, plus the built-in `build` and `deploy` steps. Remote runners lease the same steps.
 type PipelineHandler struct {
 	pipelines   *repositories.PipelineRepository
 	apps        *repositories.ApplicationRepository
@@ -76,8 +73,7 @@ type PipelineHandler struct {
 	logs        *logstore.Store
 	secrets     SecretResolver
 
-	// Runner dispatch (wired in the process that holds the runner tunnels). Every
-	// pipeline build runs on a registered runner; there is no on-node fallback.
+	// Every pipeline build runs on a registered runner; there is no on-node fallback.
 	dispatcher        RunnerDispatcher
 	workspaces        *repositories.WorkspaceRepository
 	registry          string               // fallback registry host (raw MIABI_REGISTRY_HOST)
@@ -86,8 +82,7 @@ type PipelineHandler struct {
 	versions          VersionKeeper
 }
 
-// SetVersions wires version policies: a run's version tag is checked free before dispatch and given back
-// when the run fails here, before a runner ever reports.
+// The version tag is checked free before dispatch and given back if the run fails before a runner reports.
 func (h *PipelineHandler) SetVersions(v VersionKeeper) { h.versions = v }
 
 // VersionKeeper checks and settles a run's reserved version. Satisfied by *versioning.Service.
@@ -96,15 +91,11 @@ type VersionKeeper interface {
 	Settle(ctx context.Context, run *models.PipelineRun, digest, repository string, log func(string))
 }
 
-// RegistryHostResolver resolves the live registry host a runner logs into and
-// pushes to. It tracks a UI-set or domain-derived host rather than a static env
-// value, so the login host and push host stay identical (a mismatch → "denied").
+// Tracks the live host so the login and push hosts stay identical; a mismatch yields "denied".
 type RegistryHostResolver interface{ RegistryHost() string }
 
 const builderHandoffTimeout = 10 * time.Minute
 
-// registryHost is the effective host runners use: the live resolved host when
-// available, else the raw env fallback.
 func (h *PipelineHandler) registryHost() string {
 	if h.registryHosts != nil {
 		if host := h.registryHosts.RegistryHost(); host != "" {
@@ -114,20 +105,13 @@ func (h *PipelineHandler) registryHost() string {
 	return h.registry
 }
 
-// RunnerDispatcher runs a pipeline on a dedicated runner over the machine API.
-// Implemented by runners.Dispatcher. Kept as an interface so the handler stays
-// testable.
 type RunnerDispatcher interface {
-	// Dispatch runs the pipeline on a runner and drives it to a terminal status,
-	// or returns runners.ErrNoRunner / ErrRunnerOffline when none can take it now.
 	Dispatch(ctx context.Context, in runners.JobInputs, requiredLabels []string, subjectUserID uint) error
 	// WaitReason explains why no runner can take the run now, or "".
 	WaitReason(in runners.JobInputs) string
 }
 
-// SetRunnerDispatch wires runner dispatch: every pipeline build runs on a
-// registered runner, and a run with no available runner waits (up to
-// runnerWaitTimeout) rather than building on a node.
+// A run with no available runner waits up to runnerWaitTimeout rather than building on a node.
 func (h *PipelineHandler) SetRunnerDispatch(d RunnerDispatcher, workspaces *repositories.WorkspaceRepository, registry string, hosts RegistryHostResolver, runnerWaitTimeout time.Duration) {
 	h.dispatcher = d
 	h.workspaces = workspaces
@@ -136,14 +120,10 @@ func (h *PipelineHandler) SetRunnerDispatch(d RunnerDispatcher, workspaces *repo
 	h.runnerWaitTimeout = runnerWaitTimeout
 }
 
-// SetLogStore wires the shared execution-log store. When set, a pipeline step's
-// full log is externalized to the store on terminal state and the DB row keeps
-// only a bounded tail + a reference. nil keeps DB-tail-only.
+// When set, full step logs go to the store on terminal state and the DB row keeps a bounded tail.
 func (h *PipelineHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
-// SetSecrets wires the vault, so a Git credential that references a workspace
-// Secret (rather than storing its own copy of the token) can be resolved when
-// the runner clones. nil = literal credentials only.
+// Lets a Git credential that references a workspace Secret be resolved; nil = literal credentials only.
 func (h *PipelineHandler) SetSecrets(s SecretResolver) { h.secrets = s }
 
 // NewPipelineHandler builds the internal runner handler.
@@ -185,9 +165,7 @@ func (h *PipelineHandler) ProcessTask(ctx context.Context, task *asynq.Task) err
 		return h.failRun(run, fmt.Errorf("invalid pipeline spec: %w", perr))
 	}
 
-	// Every build runs on a registered runner — there is no on-node fallback. This worker may simply not
-	// be the process holding the runner tunnels (a standalone `miabi worker`), which is a routing problem:
-	// hand the run to the control-plane worker. Checked before the run is marked running.
+	// A standalone worker without runner tunnels hands the run to the control-plane worker; checked before marking running.
 	if h.dispatcher == nil {
 		return h.handOffToBuilder(run)
 	}
@@ -215,9 +193,6 @@ func (h *PipelineHandler) handOffToBuilder(run *models.PipelineRun) error {
 	return h.producer.EnqueuePipelineRunToBuilder(run.ID, runnerWaitInterval)
 }
 
-// runOnRunner dispatches the run to a runner and drives it to completion. When no
-// runner can take it right now (none registered, or all busy/offline) the run
-// waits and is retried, up to runnerWaitTimeout.
 func (h *PipelineHandler) runOnRunner(ctx context.Context, run *models.PipelineRun, def *models.PipelineDefinition) error {
 	in, err := h.jobInputs(run, def)
 	if err != nil {
@@ -252,9 +227,7 @@ func (h *PipelineHandler) markCacheBuilt(run *models.PipelineRun, in runners.Job
 // runnerWaitInterval is how long a run waits before re-checking for a free runner.
 const runnerWaitInterval = 15 * time.Second
 
-// waitForRunner parks a run back in pending and re-enqueues it shortly, so it never builds on a node
-// while it waits. If no runner has become available within runnerWaitTimeout, measured from when the
-// run was created, the run fails rather than waiting forever — pointing the user at Runners.
+// Fails after runnerWaitTimeout from creation rather than waiting forever.
 func (h *PipelineHandler) waitForRunner(run *models.PipelineRun, reason string) error {
 	if h.runnerWaitTimeout > 0 && time.Since(run.CreatedAt) > h.runnerWaitTimeout {
 		if reason == "" {
@@ -275,13 +248,10 @@ func (h *PipelineHandler) waitForRunner(run *models.PipelineRun, reason string) 
 }
 
 func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.PipelineDefinition) (runners.JobInputs, error) {
-	// The runner logs into Registry and pushes to Repository, so both must carry
-	// the same resolved host (login-host ≠ push-host → "denied").
+	// Login and push hosts must match, or the registry answers "denied".
 	reg := h.registryHost()
 	var in runners.JobInputs
-	// The push namespace is the immutable ws_<id> form, not the workspace name a user types. Both
-	// authorize identically, but the pushed reference is recorded on the deployment and re-pulled later
-	// — a rename in between would leave it pointing at nothing. The name is still the docker-login user.
+	// Push under the immutable ws_<id> namespace: the recorded ref is re-pulled later and a rename would orphan it.
 	ns := registryserver.Namespace(run.WorkspaceID)
 	if h.workspaces != nil {
 		if ws, err := h.workspaces.FindByID(run.WorkspaceID); err == nil && ws.Name != "" {
@@ -313,8 +283,7 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 		in.CacheTrunk = app.GitRef
 		in.CacheCold = app.CacheBuiltGeneration != app.CacheGeneration
 		if reg != "" {
-			// Push under <host>/ws_<id>/<app-name> so the deploy path recognizes it as a build ref, and the
-			// ownership check on the pull resolves the namespace back to this workspace.
+			// The deploy path recognizes <host>/ws_<id>/<app> as a build ref and resolves ownership from it.
 			in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, app.Name)
 		}
 
@@ -328,12 +297,9 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 			return runners.JobInputs{}, err
 		}
 		in.SourceURL = su
-		// No app means no shared cache generation to key off; a repository-bound
-		// build is uncached until the definition carries its own generation.
+		// No app means no shared cache generation; a repository-bound build is uncached until the definition has one.
 		if reg != "" {
-			// Namespaced apart from application images (pl_<name>) so a pipeline and an
-			// unrelated app of the same name never share an image repository. The first
-			// path segment still resolves to this workspace, so authorization is unchanged.
+			// The pl_ prefix keeps a pipeline and an unrelated same-named app from sharing an image repository.
 			in.Repository = fmt.Sprintf("%s/%s/%s", strings.TrimRight(reg, "/"), ns, pipelineImageName(def.Name))
 		}
 	}
@@ -343,13 +309,9 @@ func (h *PipelineHandler) jobInputs(run *models.PipelineRun, def *models.Pipelin
 // pipelineImagePrefix keeps a pipeline's images out of the application namespace.
 const pipelineImagePrefix = "pl_"
 
-// pipelineImageName is the repository path a repository-bound pipeline pushes to,
-// within the workspace namespace.
 func pipelineImageName(name string) string { return pipelineImagePrefix + name }
 
-// sourceURL resolves the app's git clone URL for the runner, embedding the linked HTTPS credential so
-// a private repo clones on the runner. An empty result (no app URL) is a command-only pipeline;
-// SSH-key credentials aren't supported for runner builds.
+// An empty result is a command-only pipeline; SSH-key credentials aren't supported for runner builds.
 func (h *PipelineHandler) sourceURL(app *models.Application) (string, error) {
 	rawURL := app.GitRepo
 	var gr *models.GitRepository
@@ -369,9 +331,6 @@ func (h *PipelineHandler) sourceURL(app *models.Application) (string, error) {
 	return gitrepo.CredentialURL(rawURL, gr, h.secrets)
 }
 
-// PipelineDeployer performs the deploy-by-digest a runner build triggers: it creates a deployment of
-// the pushed image and enqueues it to the app's node, which pulls and runs it. Implements
-// runners.Deployer.
 type PipelineDeployer struct {
 	apps        *repositories.ApplicationRepository
 	deployments *repositories.DeploymentRepository
@@ -382,9 +341,7 @@ func NewPipelineDeployer(apps *repositories.ApplicationRepository, deployments *
 	return &PipelineDeployer{apps: apps, deployments: deployments, producer: producer}
 }
 
-// DeployByDigest creates and enqueues a deploy of imageRef (repo@digest) for the
-// run's app. The deploy worker recognizes an internal-registry ref and pulls it
-// (no rebuild), pinned to the run's commit and image for provenance.
+// The deploy worker pulls an internal-registry ref without rebuilding.
 func (d *PipelineDeployer) DeployByDigest(run *models.PipelineRun, appID uint, imageRef string) error {
 	app, err := d.apps.FindByID(appID)
 	if err != nil {
@@ -403,9 +360,7 @@ func (d *PipelineDeployer) DeployByDigest(run *models.PipelineRun, appID uint, i
 		PipelineRunID: &run.ID,
 		RunnerID:      run.RunnerID,
 		Commit:        run.Commit,
-		// The app's configured strategy, not the column default. Leaving it unset meant an app set to
-		// canary in its settings rolled straight out when the deploy came from a pipeline — the same
-		// app, the same setting, a different answer depending on what triggered it.
+		// Use the app's configured strategy so a pipeline deploy behaves like any other trigger.
 		Strategy: models.EffectiveDeployStrategy(app, ""),
 	}
 	if err := d.deployments.Create(dep); err != nil {
@@ -433,8 +388,7 @@ func (h *PipelineHandler) failRun(run *models.PipelineRun, err error) error {
 		h.versions.Settle(context.Background(), run, "", "", func(line string) { h.log(run.ID, line) })
 	}
 	h.publishStatus(run.ID, models.PipelineRunFailed)
-	// Returning nil: the failure is recorded on the run; asynq must not retry
-	// (runs are not idempotent and MaxRetry is 0 anyway).
+	// The failure is recorded on the run; asynq must not retry since runs are not idempotent.
 	return nil
 }
 

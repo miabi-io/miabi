@@ -25,9 +25,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 )
 
-// The regression this guards: a one-off Job had its security profile computed, applied to the spec,
-// and then dropped on the floor by createOneShot — so it ran as the image's root, with default
-// capabilities, on the app's own volumes and networks.
+// createOneShot used to drop the computed security profile, so a Job ran as root with default capabilities.
 func TestApplyContainerSecurityHardensBothCreatePaths(t *testing.T) {
 	spec := RunSpec{
 		User:            "100000:0",
@@ -67,8 +65,7 @@ func TestApplyContainerSecurityHardensBothCreatePaths(t *testing.T) {
 	}
 }
 
-// A platform helper (backup, DDL, netcheck, the storage-class and host-stats probes) passes none of
-// these, and must keep running as the image's own user.
+// Platform helpers pass none of these and must keep running as the image's own user.
 func TestApplyContainerSecurityLeavesPlatformHelpersAlone(t *testing.T) {
 	cfg := &container.Config{}
 	hostCfg := &container.HostConfig{}

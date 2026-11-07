@@ -32,9 +32,7 @@ type portBindingRow struct {
 
 func (portBindingRow) TableName() string { return "port_bindings" }
 
-// portForwardStep retires port-forward connectivity. The control-plane node
-// and swarm members are served by their cluster's gateway; any other port-forward node becomes an edge
-// gateway, flagged on its cluster so the console offers to confirm that or join it to a swarm. Safe to re-run.
+// Other port-forward nodes become edge gateways, flagged so the console can confirm or join them to a swarm.
 func portForwardStep(ctx context.Context, db *gorm.DB) error {
 	if !db.Migrator().HasTable(&clusterRow{}) || !db.Migrator().HasTable(&clusterServerRow{}) {
 		return nil

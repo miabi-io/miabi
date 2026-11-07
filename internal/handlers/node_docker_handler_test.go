@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 )
 
-// guardContainerOp refuses destructive operations on protected containers. Before platform labels
-// it protected only the self-container and the edge gateway, so miabi-postgres and miabi-redis
-// were stoppable from the list. The 409 must name the component an admin nearly broke.
+// The 409 must name the component an admin nearly broke.
 func TestProtectedMessageNamesTheComponent(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -70,23 +68,20 @@ func TestProtectedMessageNamesTheComponent(t *testing.T) {
 	}
 }
 
-// A compose-owned component gets the extra hint, because "you may not stop this"
-// is only half an answer — the admin still needs to know how to restart it.
+// A compose-owned component also needs to say how to restart it.
 func TestProtectedMessageMentionsComposeForComposeOwnedComponents(t *testing.T) {
 	compose := protectedMessage(docker.PlatformLabels(docker.RolePlatformDB, docker.ManagedByCompose, nil))
 	if !strings.Contains(compose, "docker compose up -d") {
 		t.Errorf("compose-managed message gives the admin no way forward: %q", compose)
 	}
-	// Miabi-provisioned infra is managed through its own page, not compose — so the
-	// compose hint would be actively misleading there.
+	// Miabi-provisioned infra is managed through its own page, so the compose hint would mislead.
 	own := protectedMessage(docker.PlatformLabels(docker.RoleNodeGateway, docker.ManagedByMiabi, nil))
 	if strings.Contains(own, "docker compose") {
 		t.Errorf("miabi-managed component wrongly told to use compose: %q", own)
 	}
 }
 
-// A user's own container must stay fully controllable — the guard exists to stop
-// accidents, not to take the containers page away.
+// The guard exists to stop accidents, not to take the containers page away.
 func TestUserContainersAreNotProtected(t *testing.T) {
 	for _, labels := range []map[string]string{
 		{},
@@ -100,8 +95,6 @@ func TestUserContainersAreNotProtected(t *testing.T) {
 	}
 }
 
-// foreignWorkspaceContainer gates whether a platform admin may read a
-// container's logs: true (foreign) means blocked.
 func TestForeignWorkspaceContainer(t *testing.T) {
 	member := map[uint]bool{1: true, 2: true}
 	cases := []struct {

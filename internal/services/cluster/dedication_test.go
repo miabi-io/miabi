@@ -28,8 +28,6 @@ import (
 
 func orgID(n uint) *uint { return &n }
 
-// dedicationService builds a service over a default cluster plus the given ones, with an
-// organization label resolver that names 7 and 8.
 func dedicationService(others map[uint]models.Cluster) *Service {
 	store := &memStore{
 		def:      models.Cluster{ID: 1, Name: "default", IsDefault: true, Visibility: models.ClusterVisibilityAll},
@@ -61,8 +59,7 @@ func findCluster(list []models.Cluster, id uint) *models.Cluster {
 	return nil
 }
 
-// A cluster is dedicated exactly when it names an owning organization. The flag is derived here
-// rather than stored, so listing is where it has to be right.
+// Dedication is derived rather than stored, so listing is where it has to be right.
 func TestClusters_MarksDedication(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{
 		2: {ID: 2, Name: "gpu", Visibility: models.ClusterVisibilityOrganization, OrganizationID: orgID(7)},
@@ -82,8 +79,7 @@ func TestClusters_MarksDedication(t *testing.T) {
 	}
 }
 
-// Restricted means admin-only placement, not organization ownership. Reading dedication off
-// visibility instead of the owner would label it as belonging to an organization it does not.
+// Restricted means admin-only placement, not organization ownership.
 func TestClusters_RestrictedIsNotDedicated(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{
 		2: {ID: 2, Name: "staging", Visibility: models.ClusterVisibilityRestricted},
@@ -98,8 +94,7 @@ func TestClusters_RestrictedIsNotDedicated(t *testing.T) {
 	}
 }
 
-// Without a label resolver a cluster is still dedicated, just unnamed: the fact is the owner id,
-// and the name is decoration.
+// The fact is the owner id; the name is decoration.
 func TestClusters_DedicatedWithoutLabels(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{
 		2: {ID: 2, Name: "gpu", Visibility: models.ClusterVisibilityOrganization, OrganizationID: orgID(7)},
@@ -116,8 +111,7 @@ func TestClusters_DedicatedWithoutLabels(t *testing.T) {
 	}
 }
 
-// A node inherits its cluster's dedication. It holds no organization of its own, so moving it to a
-// shared cluster has to stop reporting it as dedicated.
+// A node holds no organization of its own, so moving it to a shared cluster must clear dedication.
 func TestEnrich_NodesInheritClusterDedication(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{
 		2: {ID: 2, Name: "gpu", Visibility: models.ClusterVisibilityOrganization, OrganizationID: orgID(8)},
@@ -141,8 +135,6 @@ func TestEnrich_NodesInheritClusterDedication(t *testing.T) {
 	}
 }
 
-// A node recorded against the default cluster by its sentinel id resolves to the same cluster as
-// one recorded by its real id, so dedicating the default cluster reaches both.
 func TestEnrich_DefaultClusterSentinel(t *testing.T) {
 	s := dedicationService(nil)
 	store := s.store.(*memStore)
@@ -159,9 +151,7 @@ func TestEnrich_DefaultClusterSentinel(t *testing.T) {
 	}
 }
 
-// A cluster changing hands has to reach the organizations on both sides: the one it went to, whose
-// default may still name shared hardware, and the one it came from, whose default may have been
-// this very cluster.
+// The previous owner's default may have been this very cluster.
 func TestUpdateCluster_RealignsOrganizationDefaults(t *testing.T) {
 	type call struct{ org, prefer uint }
 	var calls []call
@@ -216,8 +206,7 @@ func TestUpdateCluster_NoRealignWithoutAnOwnershipChange(t *testing.T) {
 	}
 }
 
-// Who a location belongs to decides who may see and place in it, so it does not change as a side
-// effect of saving the form it sits in: the caller has to say it meant to.
+// Ownership decides who may see and place, so it must not change as a form side effect.
 func TestUpdateCluster_DedicationNeedsAcknowledgement(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{
 		2: {ID: 2, Name: "gpu", Visibility: models.ClusterVisibilityAll},
@@ -239,8 +228,6 @@ func TestUpdateCluster_DedicationNeedsAcknowledgement(t *testing.T) {
 	}
 }
 
-// Re-sending the owner it already has is not a change, so it needs no acknowledgement and does not
-// re-run the side effects.
 func TestUpdateCluster_SameOwnerIsNotAChange(t *testing.T) {
 	acme := uint(7)
 	s := dedicationService(map[uint]models.Cluster{
@@ -257,8 +244,7 @@ func TestUpdateCluster_SameOwnerIsNotAChange(t *testing.T) {
 	}
 }
 
-// Regression: the stranding check ran only for a location nobody owned yet, so moving one from one
-// organization to another walked straight past it and stranded the first organization's workloads.
+// Regression: the stranding check only ran for unowned locations, so reassignment bypassed it.
 func TestUpdateCluster_ReassignmentChecksForeignWorkloads(t *testing.T) {
 	acme := uint(7)
 	s := dedicationService(map[uint]models.Cluster{
@@ -273,8 +259,6 @@ func TestUpdateCluster_ReassignmentChecksForeignWorkloads(t *testing.T) {
 	}
 }
 
-// The impact read names each organization holding something here, largest share first, so the
-// warning can say whose workloads a change would strand.
 func TestDedication_BreaksDownByOrganization(t *testing.T) {
 	s := dedicationService(map[uint]models.Cluster{2: {ID: 2, Name: "gpu"}})
 	s.store.(*memStore).byOrg = map[uint]int64{7: 2, 8: 9, 0: 1}

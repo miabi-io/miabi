@@ -41,9 +41,7 @@ AGENT_IMAGE="${MIABI_AGENT_IMAGE:-}"
 AGENT_NAME="${MIABI_AGENT_NAME:-miabi-agent}"
 INSECURE="${MIABI_AGENT_INSECURE_SKIP_VERIFY:-false}"
 
-# A flag whose value is missing must say so. Without this, `shift 2` with nothing
-# left to shift returns non-zero, `set -e` kills the script, and the operator gets
-# exit 1 and a completely empty terminal.
+# Without this, `shift 2` with nothing left trips `set -e` and exits silently.
 need_value() { # <flag> <value>
   [ -n "${2:-}" ] || die "$1 needs a value (e.g. $1 <value>)."
 }
@@ -60,8 +58,7 @@ while [ $# -gt 0 ]; do
     --name=*) AGENT_NAME="${1#*=}"; shift ;;
     --insecure) INSECURE="true"; shift ;;
     -h|--help)
-      # $0 is "bash" when piped from curl, so there is no file to read the header
-      # out of; only print it when we are running from one.
+      # $0 is "bash" when piped from curl, so there is no header to print.
       if [ -r "$0" ]; then sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
       else echo "See https://miabi.io/docs — run this script from a file for the full help."; fi
       exit 0 ;;
@@ -83,10 +80,7 @@ fi
 [ -n "$CONTROL_URL" ] || die "MIABI_CONTROL_URL is required (pass it as an env var or --control-url)."
 [ -n "$NODE_TOKEN" ]  || die "MIABI_NODE_TOKEN is required (pass it as an env var or --token). Get it from the node page in the console."
 
-# ========== agent version ==========================================
-# The agent releases on its own cadence (0.x while the panel is 1.x), so it takes its own newest
-# stable release from versions.miabi.io rather than the panel's version. Resolved before Docker is
-# installed, so a failed lookup changes nothing on the host. Docker tags carry no leading "v".
+# The agent releases on its own cadence; resolved before Docker install so a failed lookup changes nothing.
 if [ -z "$AGENT_IMAGE" ]; then
   [ "${AGENT_VERSION:-}" = "latest" ] && AGENT_VERSION=""
   if [ -z "${AGENT_VERSION:-}" ]; then
@@ -108,8 +102,7 @@ if [ -z "$AGENT_IMAGE" ]; then
 fi
 log "agent image ${AGENT_IMAGE}"
 
-# ==== Docker: installed when missing, and running =================================
-# Installing Docker needs root. Without it Docker must already be usable by this user.
+# Installing Docker needs root; without it Docker must already be usable by this user.
 SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 if [ "$(id -u)" -ne 0 ]; then
   command -v docker >/dev/null 2>&1 ||
@@ -119,20 +112,15 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # >>> shared: docker-install — identical in install.sh and install-agent.sh (scripts/check-installers.sh)
-# Read one field out of /etc/os-release without leaking its vars into our shell.
 os_release() { # <field>
   # shellcheck disable=SC1091
   ( . /etc/os-release 2>/dev/null && eval "printf '%s' \"\${$1:-}\"" ) || true
 }
 distro_id()    { printf '%s %s' "$(os_release ID)" "$(os_release VERSION_ID)"; }
-# EL major version: VERSION_ID is "10.2" on AlmaLinux, "9" on Rocky. dnf's
-# $releasever must be the major only, or the Docker repo URL 404s.
+# dnf's $releasever must be the major only, or the Docker repo URL 404s.
 el_major()     { local v; v="$(os_release VERSION_ID)"; printf '%s' "${v%%.*}"; }
 
-# EL rebuilds that Docker's centos/ repo serves but get.docker.com rejects,
-# because it matches ID exactly. Deliberately an allowlist and NOT an ID_LIKE
-# sniff: Amazon Linux and Fedora both set ID_LIKE=fedora, yet their VERSION_IDs
-# (2023, 42) have no matching centos/<major>/ tree.
+# An allowlist, not an ID_LIKE sniff: Amazon Linux and Fedora set ID_LIKE=fedora but have no centos/<major>/ tree.
 is_el_rebuild() {
   case "$(os_release ID)" in
     almalinux|rocky|ol|centos|rhel) return 0 ;;
@@ -142,9 +130,7 @@ is_el_rebuild() {
 
 DOCKER_LOG="/var/log/miabi-docker-install.log"
 
-# `podman-docker` installs a /usr/bin/docker shim that execs podman. It satisfies
-# `command -v docker` but is not the Docker Engine API Miabi builds its stack
-# against, so check what the binary actually *is* rather than that it exists.
+# The podman-docker shim satisfies `command -v docker` but is not the Docker Engine API.
 docker_is_podman_shim() {
   command -v docker >/dev/null 2>&1 && docker --version 2>&1 | grep -qi podman
 }
@@ -152,8 +138,7 @@ have_real_docker() {
   command -v docker >/dev/null 2>&1 && ! docker_is_podman_shim
 }
 
-# Exact, copy-pasteable commands for the detected distro. Printed on every path
-# that gives up, so the user is never left with a bare docs link.
+# Printed on every path that gives up, so the user is never left with a bare docs link.
 docker_install_instructions() {
   local id major
   id="$(os_release ID)"; major="$(el_major)"
@@ -199,8 +184,7 @@ docker_install_instructions() {
   printf "\n" >&2
 }
 
-# Docker CE from the official EL repo. Written as a plain .repo file rather than
-# via `dnf config-manager --add-repo`: EL10 ships dnf5, which dropped that flag.
+# A plain .repo file, not `dnf config-manager --add-repo`: EL10's dnf5 dropped that flag.
 install_docker_el() {
   local major arch pm
   major="$(el_major)"
@@ -225,11 +209,7 @@ install_docker_el() {
     -o /etc/yum.repos.d/docker-ce.repo \
     || die "could not download Docker's EL repository definition."
 
-  # No compose plugin: Miabi drives the Docker API directly and never shells out
-  # to `docker compose`. Anyone who wants to run examples/compose/compose.yaml
-  # themselves can add docker-compose-plugin after the fact.
-  #
-  # Pin $releasever: on AlmaLinux 10.2 it can expand to the full "10.2".
+  # No compose plugin: Miabi never shells out to it. Pin $releasever: AlmaLinux 10.2 can expand it to "10.2".
   if ! "$pm" -y --releasever="$major" install \
         docker-ce docker-ce-cli containerd.io \
         docker-buildx-plugin >>"$DOCKER_LOG" 2>&1; then
@@ -249,16 +229,14 @@ install_docker() {
   curl -fsSL https://get.docker.com -o "$script" \
     || die "could not download https://get.docker.com (network or DNS problem?)."
 
-  # get.docker.com prints its fatal "Unsupported distribution" error on stdout,
-  # not stderr — capture *both* streams or the failure is invisible.
+  # get.docker.com prints its fatal error on stdout, so capture both streams.
   if sh "$script" </dev/null >>"$DOCKER_LOG" 2>&1; then
     rm -f "$script"
     return 0
   fi
   rm -f "$script"
 
-  # It only knows ubuntu/debian/raspbian/centos/fedora/rhel/rocky/sles. Cover
-  # the rest of the RHEL family (AlmaLinux, Oracle Linux, …) ourselves.
+  # get.docker.com rejects the rest of the RHEL family (AlmaLinux, Oracle Linux), so cover it ourselves.
   if is_el_rebuild; then
     warn "get.docker.com does not support '$(os_release ID)' — using Docker's EL repo instead"
     install_docker_el
@@ -275,8 +253,7 @@ install_docker() {
 if have_real_docker; then
   ok "Docker present ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ','))"
 else
-  # Name the podman shim explicitly — otherwise this surfaces later as a
-  # baffling failure deep inside the install, against an API that is not Docker's.
+  # Otherwise this surfaces later as a baffling failure against an API that is not Docker's.
   if docker_is_podman_shim; then
     warn "the 'docker' on this host is the podman-docker shim, not Docker Engine."
     warn "Miabi needs Docker Engine; remove podman-docker or install Docker alongside it."
@@ -293,8 +270,7 @@ else
   ok "Docker installed"
 fi
 
-# Make sure the daemon is actually running (a fresh install often leaves it
-# stopped/disabled).
+# A fresh install often leaves the daemon stopped or disabled.
 if ! docker info >/dev/null 2>&1; then
   if command -v systemctl >/dev/null 2>&1; then
     log "Starting the Docker daemon"
@@ -306,12 +282,7 @@ fi
 ok "Docker daemon is running"
 # <<< shared: docker-install
 
-# ======= resolve the Docker endpoint the agent must reach =========================
-# The agent reads DOCKER_HOST itself (agent/main.go), so honour it here rather
-# than hardcoding the default socket. Binding /var/run/docker.sock on a host whose
-# daemon lives elsewhere — rootless Docker at $XDG_RUNTIME_DIR, a custom path —
-# makes Docker CREATE A DIRECTORY at that path and the agent then fails to dial
-# it, which this script would have reported as a bad token or a network problem.
+# Honour DOCKER_HOST: binding a missing docker.sock makes Docker create a directory there and the agent fails to dial.
 DOCKER_ENDPOINT="${DOCKER_HOST:-unix:///var/run/docker.sock}"
 DOCKER_MOUNT=()
 case "$DOCKER_ENDPOINT" in
@@ -322,8 +293,7 @@ case "$DOCKER_ENDPOINT" in
     DOCKER_MOUNT=(-v "${sock}:${sock}")
     ;;
   tcp://*|http://*|https://*)
-    # No socket to bind: the agent dials the daemon directly, but it does so from
-    # inside a container, where localhost is not the host.
+    # The agent dials from inside a container, where localhost is not the host.
     case "$DOCKER_ENDPOINT" in
       *//localhost:*|*//127.0.0.1:*|*//\[::1\]:*)
         die "DOCKER_HOST=${DOCKER_ENDPOINT} points at localhost, which inside the agent container means the container itself. Use the host's address, or a unix:// socket."
@@ -344,15 +314,7 @@ log "pulling agent image $AGENT_IMAGE"
 docker pull "$AGENT_IMAGE" >/dev/null || die "failed to pull $AGENT_IMAGE"
 
 log "starting the agent"
-# Platform labels give the agent an identity Miabi recognizes on this node. Without
-# them it looks like any other container: it would be offered in the node's "Import
-# from Docker" list, and it could be stopped from the containers page — which is the
-# one container whose removal makes the node unreachable to the control plane.
-# managed-by=external: installed by hand here, so Miabi must not assume it may
-# recreate it. See internal/docker/labels.go.
-# The join token goes in via a 0600 env-file, not `-e`: a command line is world
-# readable in `ps` for as long as `docker run` is executing, and this token is
-# enough to enrol a node against the control plane.
+# Labels keep the agent off Import/stop lists; the token goes via a 0600 env-file, not -e, which ps shows.
 ENV_FILE="$(mktemp)"
 chmod 600 "$ENV_FILE"
 trap 'rm -f "$ENV_FILE"' EXIT

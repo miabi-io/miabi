@@ -5,10 +5,7 @@ import { licenseApi } from '@/api/license'
 import { useAuthStore } from '@/stores/auth'
 import type { LicenseView, LicenseEdition, LicenseState, UserEntitlements } from '@/api/types'
 
-// Caches commercial entitlements so the banner and per-feature gates
-// (useEntitlement) share one source of truth. Admins load the full view; every
-// other user loads the gating subset (edition, state, flags). In Community
-// installs the edition is "community" and every flag is false.
+// Admins load the full view; others load the gating subset; Community has every flag false.
 export const useLicenseStore = defineStore('license', () => {
   const view = ref<LicenseView | null>(null)
   const gates = ref<UserEntitlements | null>(null)
@@ -25,14 +22,12 @@ export const useLicenseStore = defineStore('license', () => {
     return !!current.value?.flags?.[flag]
   }
 
-  // mutable reports whether a flag's config may be changed: entitled AND the
-  // license is not degraded past its grace period (mirrors the backend gate).
+  // Mirrors the backend gate: entitled and not degraded past the grace period.
   function mutable(flag: string): boolean {
     return has(flag) && (state.value === 'valid' || state.value === 'grace')
   }
 
-  // inflight dedupes concurrent load() calls (many admin pages call it on mount)
-  // so they share one request rather than racing.
+  // Many admin pages call load() on mount, so concurrent calls share one request.
   let inflight: Promise<void> | null = null
 
   // loadedAsAdmin records which view is cached, so a sign-in as another role in the same tab reloads.
@@ -52,9 +47,7 @@ export const useLicenseStore = defineStore('license', () => {
         loaded.value = true // only mark loaded on SUCCESS
       })
       .catch(() => {
-        // A transient failure (network/500/token-not-ready) must NOT permanently
-        // disable entitlements: keep any prior view and leave `loaded` false so the
-        // next gate access retries, instead of sticking every flag at "off".
+        // A transient failure keeps any prior view and leaves `loaded` false so the next access retries.
       })
       .finally(() => {
         inflight = null
@@ -62,8 +55,6 @@ export const useLicenseStore = defineStore('license', () => {
     return inflight
   }
 
-  // set updates the cache from a fresh view (e.g. right after install/remove) so
-  // the banner reacts immediately without a refetch.
   function set(v: LicenseView | null): void {
     view.value = v
     loaded.value = true

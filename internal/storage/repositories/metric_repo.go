@@ -45,9 +45,6 @@ func (r *MetricRepository) ListByApp(appID uint, since time.Time, limit int) ([]
 	return samples, err
 }
 
-// ListByApps returns samples for any of the given apps recorded since `since`,
-// oldest first. Used to aggregate a workspace's stored per-app history into a
-// single workspace-level series. Returns nil for an empty id set.
 func (r *MetricRepository) ListByApps(appIDs []uint, since time.Time) ([]models.MetricSample, error) {
 	if len(appIDs) == 0 {
 		return nil, nil

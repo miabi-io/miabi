@@ -119,9 +119,7 @@ func TestAnalyticsUpsertMergesAndQueries(t *testing.T) {
 	}
 }
 
-// RangeSummary must return the same counters as Range while leaving the top-K
-// blobs undecoded. A wrong column name here would surface as silently zeroed
-// traffic on the dashboard rather than as an error.
+// A wrong column name would surface as silently zeroed traffic rather than an error.
 func TestRangeSummarySelectsCountersOnly(t *testing.T) {
 	repo := newAnalyticsDB(t)
 	bucket := time.Date(2026, 7, 18, 9, 0, 0, 0, time.UTC)

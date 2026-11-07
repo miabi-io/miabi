@@ -47,8 +47,6 @@ var (
 
 var hostnamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$`)
 
-// GatewayPatch sets the node serving a swarm cluster's routes and, when Address is set, the address its DNS
-// records point at.
 type GatewayPatch struct {
 	ServerID uint
 	Address  *models.PublicAddress
@@ -59,8 +57,7 @@ func (s *Service) SetGatewayListener(fn func(ctx context.Context, clusterID uint
 	s.gatewayListener = fn
 }
 
-// OwnGateway returns a cluster that its own ingress node serves: a swarm outside the default cluster, whose overlay
-// the control-plane gateway cannot join. Read from the stored mode, so routes stay put while a manager is offline.
+// Read from the stored mode so routes stay put while a manager is offline.
 func (s *Service) OwnGateway(clusterID uint) (*models.Cluster, bool) {
 	if s.store == nil || s.isDefault(clusterID) {
 		return nil, false
@@ -104,8 +101,6 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	return s.Cluster(c.ID)
 }
 
-// normalizeIngress validates a cluster's public address: an IPv4 and an IPv6 address, and a DNS name for records
-// that cannot use either.
 func normalizeIngress(a models.PublicAddress) (models.PublicAddress, error) {
 	var out models.PublicAddress
 	if v4 := strings.TrimSpace(a.IPv4); v4 != "" {
@@ -150,8 +145,7 @@ func (s *Service) ConfirmGateway(clusterID uint) error {
 	return s.store.UpdateColumns(c.ID, map[string]any{"legacy_ingress": false, "ingress_server_id": c.ManagerServerID})
 }
 
-// AttachGateway joins a swarm cluster's ingress-node gateway to the cluster's ingress overlay, which is how it
-// reaches apps on the other nodes. Every refresh re-asserts it, in case the attachment was lost.
+// Re-asserted every refresh in case the attachment was lost.
 func (s *Service) AttachGateway(ctx context.Context, clusterID uint) {
 	c, ok := s.OwnGateway(clusterID)
 	if !ok {
@@ -168,9 +162,7 @@ func (s *Service) AttachGateway(ctx context.Context, clusterID uint) {
 	s.attachGateway(ctx, c, dc, edgegateway.ContainerNameFor(srv))
 }
 
-// AttachNodeGateway joins a node's freshly started gateway to its cluster's ingress overlay when the node is the
-// ingress node of a swarm cluster other than the default one. It reads the stored cluster rather than the refreshed
-// swarm state, which still lags when an agent has just reconnected.
+// Reads the stored cluster because swarm state still lags right after an agent reconnects.
 func (s *Service) AttachNodeGateway(ctx context.Context, dc docker.Client, srv *models.Server, container string) {
 	c, ok := s.OwnGateway(srv.ClusterID)
 	if !ok || c.IngressNode() != srv.ID {

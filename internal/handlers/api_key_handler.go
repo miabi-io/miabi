@@ -41,8 +41,7 @@ type APIKeyHandler struct {
 	audit      *audit.Logger
 }
 
-// SetElevation requires a platform admin to hold a fresh console unlock before minting an
-// admin-scope key, which would otherwise be a way around the unlock.
+// A fresh console unlock is required for admin-scope keys, which would otherwise bypass the unlock.
 func (h *APIKeyHandler) SetElevation(users *repositories.UserRepository, gate *elevation.Service) {
 	h.users, h.gate = users, gate
 }
@@ -77,9 +76,7 @@ type APIKeyCreated struct {
 func (h *APIKeyHandler) Create(c *okapi.Context, req *CreateAPIKeyRequest) error {
 	userID := middlewares.UserID(c)
 
-	// A workspace-scoped key (the recommended default) must be bound to a
-	// workspace the user actually belongs to; account-wide keys (no workspace)
-	// are allowed and reach only the user's own workspaces at request time.
+	// Account-wide keys are allowed and reach only the user's own workspaces at request time.
 	if req.Body.WorkspaceID != nil {
 		if _, err := h.workspaces.FindMember(*req.Body.WorkspaceID, userID); err != nil {
 			return c.AbortForbidden("you are not a member of this workspace")
@@ -166,8 +163,7 @@ func (h *APIKeyHandler) Revoke(c *okapi.Context) error {
 	return message(c, "API key revoked")
 }
 
-// Delete permanently removes an API key. Only already-inactive (revoked or
-// expired) keys may be deleted; active keys must be revoked first.
+// Only inactive (revoked or expired) keys may be deleted.
 func (h *APIKeyHandler) Delete(c *okapi.Context) error {
 	key, err := h.ownedKey(c)
 	if err != nil {
@@ -184,9 +180,6 @@ func (h *APIKeyHandler) Delete(c *okapi.Context) error {
 	return message(c, "API key deleted")
 }
 
-// ownedKey parses the {id} path param and loads the key, enforcing that it
-// belongs to the authenticated user. On failure it returns the abort error to
-// return from the handler.
 func (h *APIKeyHandler) ownedKey(c *okapi.Context) (*models.APIKey, error) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {

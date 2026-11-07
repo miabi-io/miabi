@@ -30,10 +30,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// stackRow is a sqlite-friendly stand-in for the stacks table: the full model
-// carries an Apps association and Postgres-flavoured indexes sqlite cannot
-// migrate, and Update only touches these columns. Reads and writes still go
-// through the real models.Stack schema.
+// The full model has an Apps association and Postgres-flavoured indexes sqlite cannot migrate.
 type stackRow struct {
 	ID            uint `gorm:"primaryKey"`
 	UID           string
@@ -73,9 +70,7 @@ func newUpdateService(t *testing.T) (*Service, *gorm.DB) {
 
 func ptr(s string) *string { return &s }
 
-// A stack's name is its identity: DockerName, the per-stack network and the key
-// GitOps matches it by are all derived from it at creation and never re-derived.
-// Renaming would silently detach the stack from its own resources.
+// Renaming would silently detach the stack from its DockerName, network and GitOps identity.
 func TestUpdateRejectsRename(t *testing.T) {
 	svc, db := newUpdateService(t)
 
@@ -93,8 +88,7 @@ func TestUpdateRejectsRename(t *testing.T) {
 	}
 }
 
-// A rename to a name that is merely taken must still report immutability, not
-// "already exists" — the second reads as "pick another name", which it isn't.
+// "already exists" would read as "pick another name", which it isn't.
 func TestUpdateRejectsRenameToATakenName(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	_, err := svc.Update(1, 1, UpdateInput{Name: ptr("shop")})
@@ -103,8 +97,7 @@ func TestUpdateRejectsRenameToATakenName(t *testing.T) {
 	}
 }
 
-// Clients that PATCH the whole object back — including its unchanged name — are
-// common, and must keep working.
+// Clients that PATCH the whole object back, including the unchanged name, must keep working.
 func TestUpdateAcceptsTheCurrentName(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	st, err := svc.Update(1, 1, UpdateInput{Name: ptr("blog"), Description: ptr("updated")})
@@ -116,8 +109,6 @@ func TestUpdateAcceptsTheCurrentName(t *testing.T) {
 	}
 }
 
-// The name is normalized before comparison, so a differently-cased or spaced
-// spelling of the same handle is still a no-op rather than a refusal.
 func TestUpdateAcceptsTheCurrentNameUnnormalized(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	if _, err := svc.Update(1, 1, UpdateInput{Name: ptr("  Blog  ")}); err != nil {
@@ -147,8 +138,6 @@ func TestUpdateChangesDisplayName(t *testing.T) {
 	}
 }
 
-// A blank display name falls back to the handle rather than leaving the stack
-// showing nothing in the console.
 func TestUpdateBlankDisplayNameFallsBackToTheName(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	st, err := svc.Update(1, 1, UpdateInput{DisplayName: ptr("  ")})
@@ -171,8 +160,6 @@ func TestUpdateNotFound(t *testing.T) {
 	}
 }
 
-// Guards the model contract the refusal rests on: DisplayName is free text,
-// Name is the unique handle.
 func TestStackNameIsTheUniqueHandle(t *testing.T) {
 	var s models.Stack
 	s.Name = "blog"

@@ -34,8 +34,7 @@ func TestSourceOwnedElsewhere(t *testing.T) {
 			}
 		})
 	}
-	// A stack or an imported compose app is still the user's to edit: nothing upstream would
-	// overwrite the change, and there is no template upgrade path to protect.
+	// Stacks and compose imports stay user-editable: nothing upstream overwrites them and no template upgrade applies.
 	for _, val := range []string{ManagedByUser, ManagedByStack, ManagedByStackImport, ""} {
 		if _, ok := SourceOwnedElsewhere(Metadata{MetaManagedBy: val}); ok {
 			t.Errorf("SourceOwnedElsewhere(%q) reported owned; only marketplace and gitops are", val)

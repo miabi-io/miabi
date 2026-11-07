@@ -66,9 +66,7 @@ func TestPlatformBackupSettingsNormalize(t *testing.T) {
 	}
 }
 
-// Normalize runs on every settings read, so it has to be idempotent. Otherwise the prefix
-// would grow ("miabi/miabi/databases") on each boot and every artifact written before the
-// drift would be orphaned somewhere a restore no longer looks.
+// Without idempotency the prefix would grow each boot and orphan earlier artifacts.
 func TestPlatformBackupSettingsNormalizeIsIdempotent(t *testing.T) {
 	st := PlatformBackupSettings{RootPath: "miabi", DatabaseBackupPath: "dumps"}
 	st.Normalize()

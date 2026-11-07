@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
-// ResourceIcon renders a resource logo with a graceful fallback chain:
-//   src (brand logo URL) → mdi (glyph) → generated initials avatar.
 // The avatar colour is hashed from the name so it is stable per resource.
 const props = withDefaults(
   defineProps<{ src?: string; mdi?: string; name?: string; size?: number }>(),

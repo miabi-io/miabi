@@ -67,8 +67,7 @@ func TestRemoteSwarmNetworksAreCreatedThroughTheSwarm(t *testing.T) {
 	}
 }
 
-// On a swarm worker an overlay is invisible until a container attaches, so ensuring it
-// would create a same-named local bridge and strand the database off the workspace network.
+// On a swarm worker an overlay is invisible until attached, so ensuring it would create a same-named local bridge.
 func TestInstanceOverlaysAreNotEnsuredOnTheNode(t *testing.T) {
 	inst := &models.DatabaseInstance{
 		NetworkName: "mb-ws-1-default",

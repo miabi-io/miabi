@@ -17,11 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package metadataguard keeps containers off the cloud metadata service on every node.
-//
-// Each node runs a small helper container (host network, NET_ADMIN, the host filesystem read-only)
-// that applies an nftables table with the host's own nft and re-applies it if it disappears. Its
-// restart policy brings it back after a reboot, so the control plane only has to make sure it exists.
+// Package metadataguard keeps containers off the cloud metadata service on every node via a per-node nftables helper.
 package metadataguard
 
 import (
@@ -51,19 +47,16 @@ const (
 	concurrency  = 8
 )
 
-// blockedV4 are the metadata endpoints of the clouds Miabi is commonly run on: link-local (AWS, GCP,
-// Azure IMDS, Oracle, Hetzner, DigitalOcean, OpenStack), Azure's wireserver and Alibaba Cloud.
+// Metadata endpoints of common clouds: link-local IMDS, Azure wireserver and Alibaba Cloud.
 var blockedV4 = []string{"169.254.0.0/16", "168.63.129.16", "100.100.100.200"}
 
 // blockedV6 is AWS's IPv6 IMDS endpoint.
 var blockedV6 = []string{"fd00:ec2::254"}
 
-// bridgeInterfaces are where container traffic enters the host: the default bridge, every user
-// network's br-<id>, and swarm's gateway bridge.
+// Where container traffic enters the host: default bridge, user networks' br-<id>, and swarm's gateway bridge.
 var bridgeInterfaces = []string{"docker0", "br-*", "docker_gwbridge"}
 
-// Ruleset renders the table. DNS stays open because GCP and Azure resolve through these addresses,
-// and a container on the default bridge inherits the host's resolver.
+// Ruleset renders the table; DNS stays open because GCP and Azure resolve through these addresses.
 func Ruleset() string {
 	var b strings.Builder
 	// Declaring then deleting makes the load an atomic replace that also works on first install.
@@ -80,9 +73,7 @@ func Ruleset() string {
 	return b.String()
 }
 
-// guardScript runs in the helper. It validates before applying so a bad ruleset never replaces a
-// good one, and checks every minute that the table is still there. A host without nft is reported
-// and left alone rather than restarted in a loop.
+// Validates before applying so a bad ruleset never replaces a good one; a host without nft is reported, not restart-looped.
 const guardScript = `set -u
 echo "$MB_NFT_RULES" | base64 -d > /tmp/rules.nft
 nft() { chroot /host nft "$@"; }
@@ -126,8 +117,7 @@ type Service struct {
 	enabled bool
 }
 
-// NewService returns a guard service. enabled=false removes the guard from every node it finds it on
-// (MIABI_METADATA_GUARD=false).
+// NewService returns a guard service; enabled=false removes the guard from every node it is found on.
 func NewService(clients NodeDocker, servers Servers, enabled bool) *Service {
 	return &Service{clients: clients, servers: servers, enabled: enabled}
 }
@@ -171,8 +161,7 @@ func specHash(spec docker.RunSpec) string {
 	return hex.EncodeToString(h.Sum(nil))[:24]
 }
 
-// Ensure makes the node's guard match what this build would deploy. A running guard with the same
-// spec is left alone, so this is cheap to call on every reconnect and sweep.
+// Ensure makes the node's guard match this build; a running guard with the same spec is left alone, so it is cheap to call.
 func (s *Service) Ensure(ctx context.Context, dc docker.Client, node string) error {
 	if !s.enabled {
 		return s.Remove(ctx, dc, node)
@@ -195,8 +184,7 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client, node string) err
 	return nil
 }
 
-// Remove takes the guard off a node and deletes its table. Stopping the helper alone leaves the
-// rules in place, which is the safe default for every other reason a container stops.
+// Remove takes the guard off a node and deletes its table; stopping the helper alone deliberately leaves the rules in place.
 func (s *Service) Remove(ctx context.Context, dc docker.Client, node string) error {
 	if _, err := dc.InspectContainer(ctx, ContainerName); err != nil {
 		return nil
@@ -224,8 +212,7 @@ func (s *Service) Remove(ctx context.Context, dc docker.Client, node string) err
 	return nil
 }
 
-// OnConnect is the node manager's agent-connect hook: an agent that reconnects after a reboot gets
-// its guard checked straight away rather than at the next sweep.
+// OnConnect checks the guard as soon as an agent reconnects after a reboot, rather than at the next sweep.
 func (s *Service) OnConnect(ctx context.Context, srv *models.Server, _ string, dc docker.Client) {
 	ctx, cancel := context.WithTimeout(ctx, opTimeout)
 	defer cancel()

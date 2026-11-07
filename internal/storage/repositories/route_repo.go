@@ -36,9 +36,7 @@ func NewRouteRepository(db *gorm.DB) *RouteRepository { return &RouteRepository{
 func (r *RouteRepository) Create(rt *models.Route) error { return r.db.Create(rt).Error }
 func (r *RouteRepository) Update(rt *models.Route) error { return r.db.Save(rt).Error }
 
-// UpdateStatus persists a route's config-sync status without touching the rest of
-// the row (so a reconcile never clobbers a concurrent edit). syncedAt is the
-// reconcile time; a zero value leaves synced_at unchanged.
+// UpdateStatus writes only status columns so a reconcile never clobbers a concurrent edit; zero syncedAt keeps synced_at.
 func (r *RouteRepository) UpdateStatus(id uint, status models.RouteStatus, reason string, syncedAt time.Time) error {
 	fields := map[string]any{"status": status, "status_reason": reason}
 	if !syncedAt.IsZero() {
@@ -62,18 +60,14 @@ func (r *RouteRepository) ListByWorkspace(workspaceID uint) ([]models.Route, err
 	return routes, err
 }
 
-// ListAll returns every route across all workspaces. Used to enforce globally
-// unique route hostnames (a host maps to exactly one route, regardless of
-// workspace). Hosts are JSON-serialized, so membership is checked in Go.
+// Hosts are JSON-serialized, so global hostname uniqueness is checked in Go.
 func (r *RouteRepository) ListAll() ([]models.Route, error) {
 	var routes []models.Route
 	err := r.db.Find(&routes).Error
 	return routes, err
 }
 
-// ListPagedAll returns a page of routes across every workspace, for the platform admin Routes
-// view. search matches the name or any host (hosts is JSON text, so a substring match suffices);
-// status filters by config-sync status; a non-nil workspaceID scopes to one workspace.
+// Hosts is JSON text, so a substring match suffices for search.
 func (r *RouteRepository) ListPagedAll(search, status string, workspaceID *uint, limit, offset int) ([]models.Route, int64, error) {
 	q := r.db.Model(&models.Route{})
 	if s := strings.TrimSpace(search); s != "" {
@@ -95,8 +89,6 @@ func (r *RouteRepository) ListPagedAll(search, status string, workspaceID *uint,
 	return out, total, err
 }
 
-// CountByStatus returns the number of routes in each config-sync status across
-// all workspaces, for the admin resync summary and Routes overview.
 func (r *RouteRepository) CountByStatus() (map[models.RouteStatus]int64, error) {
 	var rows []struct {
 		Status models.RouteStatus

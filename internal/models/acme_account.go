@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// ACMEAccount is the platform's registered ACME account for a CA directory, reused across
-// all managed-certificate issuance. The account key is encrypted at rest and never returned.
-// Keyed by CADirURL, so switching CA (staging -> production) registers a distinct account.
+// Keyed by CADirURL, so switching CA registers a distinct account; the key is encrypted, never returned.
 type ACMEAccount struct {
 	ID       uint   `json:"id" gorm:"primaryKey"`
 	CADirURL string `json:"ca_dir_url" gorm:"uniqueIndex;not null"`

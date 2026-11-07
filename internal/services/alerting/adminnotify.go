@@ -24,12 +24,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 )
 
-// AdminNotifier delivers a standalone item to every platform admin's inbox.
-//
-// It is the fan-out platform alerts already use — same recipients, same SSE push
-// — separated from the Engine so a caller with something to say and no Alert
-// behind it does not have to invent a second delivery path. A host-port binding
-// waiting on review is the first such caller.
+// AdminNotifier reuses the platform-alert fan-out for standalone items with no Alert behind them.
 type AdminNotifier struct {
 	admins SystemAdminLister
 	inbox  InboxStore
@@ -40,9 +35,7 @@ func NewAdminNotifier(admins SystemAdminLister, inbox InboxStore, bus Publisher)
 	return &AdminNotifier{admins: admins, inbox: inbox, bus: bus}
 }
 
-// NotifyAdmins writes one inbox row per admin and pings each of their streams.
-// A row per admin per call: two pending requests are two things to act on, not
-// one item updated twice.
+// A row per admin per call: two pending requests are two things to act on, not one item updated twice.
 func (n *AdminNotifier) NotifyAdmins(item models.Notification) error {
 	if n == nil || n.admins == nil || n.inbox == nil {
 		return nil

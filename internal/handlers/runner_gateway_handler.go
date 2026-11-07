@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// RunnerGatewayHandler is the runner tunnel endpoint: a runner dials in over an outbound
-// WebSocket (NAT-friendly, no inbound ports) authenticated by its registration token, a distinct
-// scope from the node join token. It bypasses the user-JWT middleware and is rate-limited per IP.
+// Outbound WebSocket (no inbound ports), authenticated by registration token, rate-limited per IP.
 type RunnerGatewayHandler struct {
 	svc      *runner.Service
 	manager  *runners.Manager
@@ -46,23 +44,17 @@ func NewRunnerGatewayHandler(svc *runner.Service, manager *runners.Manager) *Run
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
-			// The runner is a Go client (no Origin header), so it passes; a browser
-			// with a cross-site Origin is rejected. SetAllowedOrigins may widen this
-			// to the configured allowlist.
+			// The Go runner sends no Origin header, so it passes; a cross-site browser Origin is rejected.
 			CheckOrigin: allowWSOrigin(nil),
 		},
 	}
 }
 
-// SetAllowedOrigins restricts browser WebSocket upgrades to same-origin plus the
-// given origins (Go runners send no Origin and are unaffected).
 func (h *RunnerGatewayHandler) SetAllowedOrigins(origins []string) {
 	h.upgrader.CheckOrigin = allowWSOrigin(origins)
 }
 
-// Connect authenticates a runner by its registration token, upgrades the
-// connection, and hands the tunnel to the manager — blocking until the runner
-// disconnects (so the HTTP handler holds the connection open).
+// Blocks until the runner disconnects, so the HTTP handler holds the connection open.
 func (h *RunnerGatewayHandler) Connect(c *okapi.Context) error {
 	token := bearer(c.Header("Authorization"))
 	if token == "" {

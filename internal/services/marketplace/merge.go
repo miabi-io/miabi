@@ -27,34 +27,19 @@ import (
 	"github.com/miabi-io/miabi/internal/services/marketplace/remote"
 )
 
-// SourceCommunity labels a template synced from the community/ folder of the
-// marketplace registry (untrusted, badged). Official (embedded or synced) and
-// custom (workspace import) are defined in catalog.go / marketplace.go.
+// Community templates are untrusted and badged.
 const SourceCommunity = remote.SourceCommunity
 
-// RemoteCatalog is the synced official+community catalog served by the standalone marketplace service,
-// merged into the local one. nil when no marketplace URL is set, in which case the catalog is the
-// embedded official floor plus workspace custom imports — exactly the pre-sync behavior.
+// nil when no marketplace URL is set: only the embedded official floor plus custom imports.
 type RemoteCatalog interface {
-	// Templates returns the synced templates (official + community), versions
-	// newest-first.
 	Templates() []remote.DecodedTemplate
-	// Manifest resolves a synced manifest (empty version = latest), reporting the
-	// template's source label.
 	Manifest(slug, version string) (*manifest.Manifest, string, bool)
 }
 
-// SetRemote wires the synced registry catalog. Optional: without it, only the
-// embedded official floor and workspace custom imports are served.
 func (s *Service) SetRemote(r RemoteCatalog) { s.remote = r }
 
-// ListPublic returns the non-workspace catalog: the embedded official floor
-// merged with the synced official+community registry (no custom imports). Backs
-// the login-only global catalog endpoint.
 func (s *Service) ListPublic() []CatalogEntry { return s.officialAndCommunity() }
 
-// GetPublicEntry returns one entry from the public catalog, preferring official
-// over a colliding community slug.
 func (s *Service) GetPublicEntry(slug string) (CatalogEntry, bool) {
 	rank := map[string]int{SourceOfficial: 2, SourceCommunity: 1}
 	var best *CatalogEntry
@@ -73,8 +58,6 @@ func (s *Service) GetPublicEntry(slug string) (CatalogEntry, bool) {
 	return CatalogEntry{}, false
 }
 
-// GetPublicManifest resolves a manifest from the public (official+community)
-// catalog (empty version = latest).
 func (s *Service) GetPublicManifest(slug, version string) (*manifest.Manifest, bool) {
 	m, _, ok := s.resolveOfficialOrCommunity(slug, version)
 	return m, ok
@@ -85,9 +68,7 @@ type officialAgg struct {
 	latest   *manifest.Manifest
 }
 
-// officialAndCommunity returns the merged non-custom catalog. The synced registry is authoritative for
-// official templates — a slug it delivers overrides the built-in copy entirely, so a corrected manifest goes
-// live without a Miabi release. The embedded floor fills only slugs the registry did not deliver.
+// The registry is authoritative for official slugs so a corrected manifest goes live without a Miabi release.
 func (s *Service) officialAndCommunity() []CatalogEntry {
 	officials := map[string]*officialAgg{}
 	add := func(m *manifest.Manifest) {
@@ -102,8 +83,6 @@ func (s *Service) officialAndCommunity() []CatalogEntry {
 		}
 	}
 
-	// Synced registry first (authoritative). Record which official names it
-	// covers so the built-in floor below only fills the gaps.
 	remoteOfficial := map[string]bool{}
 	var community []CatalogEntry
 	if s.remote != nil {
@@ -123,8 +102,6 @@ func (s *Service) officialAndCommunity() []CatalogEntry {
 		}
 	}
 
-	// Built-in official floor: fills only names the registry did not deliver, so
-	// a synced official template overrides its built-in copy.
 	for _, e := range List() {
 		if remoteOfficial[e.Name] {
 			continue
@@ -158,9 +135,7 @@ func sortByDisplayName(entries []CatalogEntry) {
 	})
 }
 
-// resolveOfficialOrCommunity finds the best non-custom manifest for a slug across the synced registry and
-// the embedded floor. The registry is authoritative for official templates and overrides the built-in copy;
-// the floor is the fallback. A community slug colliding with a built-in official defers to official.
+// The registry overrides the built-in official copy; a community slug colliding with an official defers to it.
 func (s *Service) resolveOfficialOrCommunity(slug, version string) (*manifest.Manifest, string, bool) {
 	var remM *manifest.Manifest
 	var remSrc string
@@ -172,13 +147,10 @@ func (s *Service) resolveOfficialOrCommunity(slug, version string) (*manifest.Ma
 	if remOK && remSrc == SourceOfficial {
 		return remM, SourceOfficial, true
 	}
-	// Otherwise the built-in official floor serves (offline fallback, or a version
-	// the registry dropped). Official always trumps a colliding community slug.
+	// Official always trumps a colliding community slug.
 	if embM, embOK := GetManifest(slug, version); embOK {
 		return embM, SourceOfficial, true
 	}
-	// Only the registry has it: a community slug, or an official version absent
-	// from the floor.
 	if remOK {
 		return remM, remSrc, true
 	}

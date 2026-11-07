@@ -29,8 +29,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// DBBackupExt is the extension of a platform database dump: pg_dump's custom format, which is
-// compressed and lets a restore load into a fresh database.
+// pg_dump's custom format is compressed and lets a restore load into a fresh database.
 const DBBackupExt = ".dump"
 
 const (
@@ -40,11 +39,7 @@ const (
 	dumpMount     = "/backup"
 )
 
-// DumpDatabase writes a pg_dump of the platform database to dir/name. It runs the client from the
-// manifest's Postgres image, so pg_dump is never older than the server it reads.
-//
-// The dump lands under a temporary name and is renamed only once pg_dump exits cleanly, so a killed
-// or failed run never leaves a file that looks like a backup.
+// Uses the manifest's Postgres image so pg_dump is never older than the server; renamed only on clean exit.
 func (s *Service) DumpDatabase(ctx context.Context, m *Manifest, dir, name string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", dir, err)
@@ -70,12 +65,7 @@ func (s *Service) DumpDatabase(ctx context.Context, m *Manifest, dir, name strin
 	return final, nil
 }
 
-// RestoreDatabase replaces the platform database with the dump at file. The control plane must
-// already be stopped: it would otherwise reconnect between the drop and the rename.
-//
-// The dump is loaded into a scratch database first and swapped in only when pg_restore succeeds, so
-// a corrupt or truncated file leaves the live database untouched. Restoring into a fresh database
-// rather than with --clean also drops tables a newer migration added after the dump was taken.
+// Loaded into a scratch DB and swapped in only on success, so a bad dump leaves the live database untouched.
 func (s *Service) RestoreDatabase(ctx context.Context, m *Manifest, file string) error {
 	if _, err := os.Stat(file); err != nil {
 		return err
@@ -96,8 +86,7 @@ func (s *Service) RestoreDatabase(ctx context.Context, m *Manifest, file string)
 	return nil
 }
 
-// StopControlPlane removes the control-plane container so nothing writes to the database while it is
-// replaced. It is stateless — Converge recreates it from the manifest.
+// The control plane is stateless; Converge recreates it from the manifest.
 func (s *Service) StopControlPlane(ctx context.Context) error {
 	if err := s.dc.RemoveContainer(ctx, ContainerControlPlane, true); err != nil && !isNotFound(err) {
 		return fmt.Errorf("stop %s: %w", ContainerControlPlane, err)
@@ -105,9 +94,7 @@ func (s *Service) StopControlPlane(ctx context.Context) error {
 	return nil
 }
 
-// runPGClient runs script in a throwaway container from the Postgres image, on the database's own
-// network and with dir bound at /backup. It runs as the calling user so the dump is owned by
-// whoever asked for it, not by root.
+// Runs as the calling user so the dump is owned by whoever asked for it, not root.
 func (s *Service) runPGClient(ctx context.Context, m *Manifest, role, dir string, readOnly bool, script string) error {
 	pg, err := s.dc.InspectContainer(ctx, ContainerPostgres)
 	if err != nil {
@@ -119,8 +106,7 @@ func (s *Service) runPGClient(ctx context.Context, m *Manifest, role, dir string
 	if !strings.EqualFold(pg.State, "running") && pg.State != "" {
 		return fmt.Errorf("%s is %s — start the stack first (miabi setup)", ContainerPostgres, pg.State)
 	}
-	// Join the network Postgres is actually on: an install predating the internal network still has
-	// it on the proxy network until its next converge.
+	// An install predating the internal network still has Postgres on the proxy network until its next converge.
 	network := m.InternalNetwork.Name
 	if len(pg.Networks) > 0 && !onNetwork(pg, network) {
 		network = pg.Networks[0].Name

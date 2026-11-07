@@ -8,9 +8,7 @@ export interface StackInput {
 }
 
 export interface StackUpdateInput {
-  // No `name`: a stack's name is its identity — the Compose project name, the
-  // per-stack network and the GitOps match key are all derived from it — so the
-  // API refuses to change it. Edit display_name instead.
+  // No `name`: the Compose project, per-stack network and GitOps match key derive from it, so the API refuses changes.
   display_name?: string
   description?: string
 }

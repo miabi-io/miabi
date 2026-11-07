@@ -13,8 +13,6 @@ const router = useRouter()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
 
-// The sign-up page is a front door like signing in, so it wears the operator's
-// identity too — same source, same fallbacks.
 const brand = ref<Brand>({})
 const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
 const brandLogo = computed(() => (theme.isDark && brand.value.logo_dark_url?.trim()) || brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
@@ -28,13 +26,11 @@ const done = ref(false)
 const verificationRequired = ref(false)
 const nameInput = ref<HTMLInputElement | null>(null)
 
-// Matches handlers.MinRegistrationPasswordLen. Checked here for the message, and
-// again on the server, which is the one that counts.
+// Matches handlers.MinRegistrationPasswordLen; the server check is the one that counts.
 const MIN_PASSWORD = MIN_PASSWORD_LENGTH
 
 onMounted(async () => {
-  // Sign-up is off by default and can be switched off at any time, so a bookmarked
-  // /register must not present a form that cannot succeed.
+  // Sign-up can be switched off at any time, so a bookmarked /register must not show a form that cannot succeed.
   try {
     const { data } = await authApi.status()
     if (!data.data?.registration_enabled) {
@@ -83,9 +79,7 @@ async function submit() {
     :subtitle="done ? '' : $t('register.subtitle')"
     :error="error"
   >
-    <!-- Confirmation. The wording never says whether the address was already
-         registered: the API answers a duplicate the same way as a new account, so
-         sign-up cannot be used to find out who has one. -->
+    <!-- The API answers a duplicate like a new account, so sign-up cannot be used to discover who has one. -->
     <template v-if="done">
       <p class="register-done">
         <i18n-t v-if="verificationRequired" keypath="register.sentVerification" tag="span"><template #email><strong>{{ email }}</strong></template></i18n-t>

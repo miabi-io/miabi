@@ -1,29 +1,10 @@
-# Configuration files (kind: Config) — a monitoring bundle whose apps are
-# configured by files rather than environment variables: Prometheus scrapes a
-# target from a mounted prometheus.yml, Grafana reads a provisioned datasource
-# whose password is rendered from the managed database.
-#
-#   POST /api/v1/workspaces/{ws}/apply
-#   { "manifests": "<this file>", "dry_run": true }   # preview the plan
-#   { "manifests": "<this file>" }                     # converge the workspace
-#
-# What this example shows:
-#   • a Config holding several files, mounted as a directory (every file under
-#     one path) and as a single pinned key (one file at an exact path + mode)
-#   • custom `delimiters`, so a file whose own syntax is {{ }} survives rendering
-#   • `sensitive: true` for content carrying credentials — kept out of the plan
-#   • `reloadPolicy: none` on an app that reloads its own config file
-#
-# Editing a file here and re-applying redeploys every app mounting that config
-# (except the ones with reloadPolicy: none). Content limits: 256 KB per file,
-# 512 KB per config.
+# Apps configured by mounted files; re-applying a changed file redeploys its mounts unless reloadPolicy is none.
 apiVersion: miabi.io/v1
 kind: Config
 metadata:
   name: prom-conf
 spec:
-  # Prometheus alert annotations use {{ $labels.x }} — render on << >> so only
-  # Miabi's own references are substituted and the file's braces survive.
+  # Prometheus uses {{ }} itself, so render on << >> and only Miabi's references are substituted.
   delimiters: ["<<", ">>"]
   data:
     prometheus.yml: |
@@ -47,10 +28,7 @@ spec:
                 summary: "{{ $labels.instance }} is down"
 
 ---
-# The datasource Grafana provisions at boot. The password comes from the managed
-# database below, rendered at apply time — so the file is never checked into Git
-# with a credential in it. `sensitive` keeps the content out of apply plans;
-# reading it back needs a workspace admin and is audited.
+# The password is rendered from the managed database at apply time, so no credential lives in Git.
 apiVersion: miabi.io/v1
 kind: Config
 metadata:
@@ -108,13 +86,10 @@ spec:
     - container: 9090
       scheme: http
   mounts:
-    # No `key`: every file in the set is projected under this directory, so the
-    # config lands as /etc/prometheus/prometheus.yml and
-    # /etc/prometheus/rules/alerts.yml. Config mounts are always read-only.
+    # No `key`: every file is projected under this directory, read-only.
     - config: prom-conf
       path: /etc/prometheus
-  # Prometheus watches its own rule files, so a content change should not bounce
-  # the container. Default is `restart`, which redeploys on every config change.
+  # Prometheus watches its own rule files; the default `restart` would redeploy on every change.
   reloadPolicy: none
 
 ---
@@ -135,8 +110,7 @@ spec:
   mounts:
     - volume: grafana-data
       path: /var/lib/grafana
-    # With `key`, the mount names one file and `path` is that file's exact
-    # location. `mode` overrides the config's default for this file only.
+    # With `key`, `path` is the exact file location and `mode` applies to this file only.
     - config: grafana-datasources
       key: metrics.yml
       path: /etc/grafana/provisioning/datasources/metrics.yml

@@ -27,8 +27,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// IPv6Upgrades lists the manifest's networks that want IPv6 but exist without it. Docker cannot turn
-// IPv6 on for an existing network, so each has to be recreated; see AllowNetworkRecreate.
+// Docker cannot enable IPv6 on an existing network, so each must be recreated; see AllowNetworkRecreate.
 func (s *Service) IPv6Upgrades(ctx context.Context, m *Manifest) ([]string, error) {
 	var out []string
 	for _, n := range []NetworkConfig{m.Network, m.InternalNetwork} {
@@ -49,9 +48,7 @@ func (s *Service) IPv6Upgrades(ctx context.Context, m *Manifest) ([]string, erro
 	return out, nil
 }
 
-// AllowNetworkRecreate lets the next converge recreate the networks IPv6Upgrades reports. It is off by
-// default because a recreate briefly detaches every container on the network: only setup turns it on,
-// after the operator has been shown the plan.
+// Off by default since a recreate briefly detaches every container; only setup enables it after showing the plan.
 func (s *Service) AllowNetworkRecreate() { s.recreateNetworks = true }
 
 type attachment struct {
@@ -59,9 +56,7 @@ type attachment struct {
 	aliases []string
 }
 
-// recreateNetwork replaces an existing network with spec, carrying every attached container across with
-// its aliases, which is how gateway upstreams address apps. If the new network cannot be created, the old
-// one is rebuilt from old so nothing is left detached.
+// Aliases carry across because gateway upstreams address apps by them; on failure the old network is rebuilt.
 func (s *Service) recreateNetwork(ctx context.Context, spec, old docker.NetworkSpec) error {
 	attached, err := s.attachedTo(ctx, spec.Name)
 	if err != nil {

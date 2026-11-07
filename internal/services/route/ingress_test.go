@@ -29,8 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// serverRow is a sqlite-friendly stand-in for models.Server, whose UIDModel carries a Postgres-only
-// gen_random_uuid() default. It mirrors only the columns routing reads, under the same table name.
+// models.Server's UIDModel has a Postgres-only gen_random_uuid() default, so sqlite needs this stand-in.
 type serverRow struct {
 	ID           uint `gorm:"primaryKey"`
 	IsLocal      bool
@@ -98,8 +97,7 @@ func TestGatewayBackends(t *testing.T) {
 	}
 }
 
-// DNS points at the public address of the cluster whose gateway serves the app. A service app is always served by
-// the central gateway, and so is every app of the default cluster, even on a node that still runs a gateway.
+// Service apps and every default-cluster app are served by the central gateway, even on a node running one.
 func TestGatewayServerAndDNSTarget(t *testing.T) {
 	s := newIngressService(t)
 
@@ -127,8 +125,7 @@ func TestGatewayServerAndDNSTarget(t *testing.T) {
 	}
 }
 
-// The control-plane gateway cannot join a remote swarm's overlay, so the swarm's ingress node serves every app
-// in it, service apps included, whichever node they run on. Its DNS target is the cluster's own address only.
+// The control-plane gateway can't join a remote swarm's overlay, so the swarm's ingress node serves all its apps.
 func TestRemoteSwarmIsServedByItsIngressNode(t *testing.T) {
 	s := newIngressService(t)
 	gw := &models.Cluster{ID: 9, Mode: models.ClusterModeSwarm, IngressServerID: edgeServer}

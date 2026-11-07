@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/billing"
 )
 
-// billingRoutes registers the Billing API. The group is disabled (404, left out of the OpenAPI
-// document) unless MIABI_BILLING_API_ENABLED is set at boot; even then each call needs a billing
-// key and a licence with the billing flag.
+// Disabled (404, omitted from OpenAPI) unless MIABI_BILLING_API_ENABLED; calls also need a billing key and license flag.
 func (r *Router) billingRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/billing").WithTagInfo(okapi.GroupTag{Name: "Billing", Description: "The Billing API for an external billing platform (Enterprise, off by default)."})
 	if !r.cfg.BillingAPIEnabled {

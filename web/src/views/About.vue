@@ -58,9 +58,7 @@ async function load() {
 }
 onMounted(load)
 
-// The build date, as a plain local date. The exact timestamp goes in the title
-// rather than the cell: "23 August 2026" is what someone is checking, and the
-// hour only matters when two builds share a day.
+// The exact timestamp goes in the title; the date is what someone is checking.
 const buildDate = computed(() => {
   const raw = info.value?.build_date
   if (!raw) return null
@@ -70,9 +68,7 @@ const buildDate = computed(() => {
 })
 
 function copyVersion() {
-  // The date travels with it: a version and commit alone do not distinguish two
-  // builds of the same commit, which is exactly the case someone pasting this
-  // into a bug report is usually in.
+  // Version and commit alone don't distinguish two builds of the same commit, so the date goes in the bug report.
   const parts = [
     `${info.value?.name ?? 'Miabi'} ${info.value?.version ?? ''}`.trim(),
     info.value?.commit_id ? `(${info.value.commit_id})` : '',
@@ -107,8 +103,7 @@ function copyVersion() {
         <div class="card-body">
           <div class="kv"><span class="k">{{ $t('about.version') }}</span><span class="v">{{ info?.version ?? '—' }}</span></div>
           <div class="kv"><span class="k">{{ $t('about.commit') }}</span><span class="v mono">{{ info?.commit_id ?? '—' }}</span></div>
-          <!-- Absent on a build with no ldflags; showing "—" is honest, where
-               "unknown" in a date field reads as a broken value. -->
+          <!-- Absent on a build with no ldflags; "unknown" in a date field would read as broken. -->
           <div class="kv">
             <span class="k">{{ $t('about.buildDate') }}</span>
             <span class="v" :title="buildDate?.exact">{{ buildDate?.label ?? '—' }}</span>

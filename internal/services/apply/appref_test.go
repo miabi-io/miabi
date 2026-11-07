@@ -35,9 +35,7 @@ func parseSet(t *testing.T, yaml string) *declarative.ResourceSet {
 	return set
 }
 
-// The regression the id-derived alias could never pass: on a first apply neither app exists, and
-// applications share a plan rank, so whichever is created first must still be able to address the
-// other. It works because an app's address is its own name, known from the manifest alone.
+// On a first apply neither app exists, so addressing must work from the manifest name alone.
 func TestSiblingResolvesOnAFirstApplyWithNothingLive(t *testing.T) {
 	set := parseSet(t, `
 apiVersion: miabi.io/v1
@@ -66,8 +64,7 @@ spec:
 	}
 }
 
-// An app already in the workspace but absent from the bundle is addressable too — you do not have to
-// declare something you are not changing.
+// You don't have to declare something you aren't changing.
 func TestLiveAppIsAddressableWithoutBeingDeclared(t *testing.T) {
 	live := map[string]declarative.AppView{
 		"api": {Host: "api", Port: "9000", Scheme: "http", Alias: "mb-app-x-4"},
@@ -101,8 +98,6 @@ spec: { image: ghcr.io/org/api, ports: [{ container: 8080, scheme: https }] }
 	}
 }
 
-// A manifest that simply omits ports must not silently downgrade a running app's address to a
-// portless URL.
 func TestDeclaredWithoutPortsKeepsTheLivePort(t *testing.T) {
 	live := map[string]declarative.AppView{"api": {Host: "api", Port: "9000", Scheme: "https"}}
 	views := overlayDesiredApps(live, parseSet(t, `
@@ -116,8 +111,7 @@ spec: { image: ghcr.io/org/api }
 	}
 }
 
-// Off cluster mode a workspace network is a node-local bridge, so this reference would render a
-// hostname that never resolves. Failing the apply beats a connection refused hours later.
+// Off cluster mode the network is a node-local bridge, so the hostname would never resolve.
 func TestCrossNodeReferenceIsRefused(t *testing.T) {
 	nodes := map[string]appPlacement{
 		"web": {id: 0, node: "the local node"},
@@ -144,8 +138,7 @@ func TestSameNodeReferenceIsFine(t *testing.T) {
 	}
 }
 
-// Placement the engine does not know is not placement it may reject: an app being created in this
-// same apply has no node yet, and guessing would fail a manifest that is perfectly fine.
+// A not-yet-created app has no node, and guessing would fail a valid manifest.
 func TestUnknownPlacementIsNotRefused(t *testing.T) {
 	nodes := map[string]appPlacement{"web": {id: 0, node: "the local node"}}
 	if err := (refCheck{}).refError("web", nodes, "application", map[string]bool{"api": true}, nodes); err != nil {
@@ -156,8 +149,6 @@ func TestUnknownPlacementIsNotRefused(t *testing.T) {
 	}
 }
 
-// With two offending references the message must be the same on every run, or an operator re-running
-// an apply sees a different cause each time.
 func TestCrossNodeMessageIsDeterministic(t *testing.T) {
 	nodes := map[string]appPlacement{
 		"web": {id: 0, node: "local"}, "api": {id: 3, node: "edge-1"}, "cache": {id: 4, node: "edge-2"},
@@ -203,8 +194,7 @@ func TestDBRefPatternFindsTheDatabaseName(t *testing.T) {
 	}
 }
 
-// The guard reads the RAW env, before rendering replaces the templates — so it has to recognise the
-// forms people actually write.
+// The guard reads the raw env, so it must recognise the forms people write.
 func TestAppRefPatternFindsTheFormsPeopleWrite(t *testing.T) {
 	for _, in := range []string{
 		"{{ .applications.api }}",

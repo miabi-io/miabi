@@ -26,17 +26,13 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// FleetCapacity is what the fleet physically has, and how much of it workloads have already claimed.
-// Committed is a reservation total, not utilization: it is what decides whether the next app can be
-// scheduled, and it is the only one of the two the control plane can know exactly.
+// FleetCapacity Committed is a reservation total, not utilization; it decides whether the next app fits.
 type FleetCapacity struct {
 	CPUCores    int   `json:"cpu_cores"`
 	MemoryBytes int64 `json:"memory_bytes"`
-	// NodesCounted is how many nodes answered. Capacity is the sum over those, so a node that was
-	// unreachable at the last refresh is absent from the totals rather than counted as zero.
+	// Unreachable nodes are absent from the totals rather than counted as zero.
 	NodesCounted int `json:"nodes_counted"`
 	NodesTotal   int `json:"nodes_total"`
-	// Committed sums the explicit CPU and memory limits set on applications and database instances.
 	// Workloads with no limit are invisible here, so this is a floor, not a ceiling.
 	CommittedNanoCPUs    int64 `json:"committed_nano_cpus"`
 	CommittedMemoryBytes int64 `json:"committed_memory_bytes"`
@@ -44,21 +40,17 @@ type FleetCapacity struct {
 	StorageBytes     int64 `json:"storage_bytes"`
 	StorageFreeBytes int64 `json:"storage_free_bytes"`
 
-	// Real utilization, sampled on the nodes themselves. CPUPercent is weighted by each node's core
-	// count, so a busy 16-core node counts for more than a busy 2-core one. NodesSampled is how many
-	// answered; zero means no figure, not an idle fleet.
+	// CPUPercent is weighted by core count; NodesSampled zero means no figure, not an idle fleet.
 	CPUPercent      float64 `json:"cpu_percent"`
 	MemoryUsedBytes int64   `json:"memory_used_bytes"`
 	NodesSampled    int     `json:"nodes_sampled"`
 }
 
-// StorageClassStats aggregates the operator's registered disks. Capacity and free space come from
-// the storage-class sweep's cached columns, so this costs one query and never touches a node.
+// StorageClassStats reads the sweep's cached columns, so it never touches a node.
 type StorageClassStats struct {
 	Total   int64 `json:"total"`   // registered classes, including the built-in one
 	Managed int64 `json:"managed"` // classes that own a path, i.e. have a disk to measure
-	// CapacityBytes and AvailableBytes sum only classes that share no filesystem, so two classes on
-	// one disk would double-count; the per-class figures below are the reliable ones.
+	// Summed only over classes sharing no filesystem to avoid double-counting; per-class figures are reliable.
 	CapacityBytes  int64 `json:"capacity_bytes"`
 	AvailableBytes int64 `json:"available_bytes"`
 	// Fullest names the class closest to full, which is the one that will break something first.
@@ -68,8 +60,6 @@ type StorageClassStats struct {
 	Unmeasured int64 `json:"unmeasured"`
 }
 
-// PlatformSignals are the things an operator wants to be told about without going looking: expiring
-// certificates, firing alerts, and whether the platform's own backup is still running.
 type PlatformSignals struct {
 	CertsExpiringSoon int64      `json:"certs_expiring_soon"` // valid, but inside certExpiryWindow
 	CertsExpired      int64      `json:"certs_expired"`
@@ -79,11 +69,9 @@ type PlatformSignals struct {
 }
 
 const (
-	// usageMaxAge bounds how old a node's usage reading may be before it stops counting toward the
-	// fleet figures, so a node that quietly stopped reporting fades out instead of freezing them.
+	// A node that stopped reporting fades out of fleet figures instead of freezing them.
 	usageMaxAge = 5 * time.Minute
-	// certExpiryWindow is how far ahead a certificate counts as "expiring soon". Two weeks is long
-	// enough to act on a renewal that is not self-healing, short enough not to cry wolf.
+	// Two weeks is long enough to act on a non-self-healing renewal, short enough not to cry wolf.
 	certExpiryWindow = 14 * 24 * time.Hour
 )
 
@@ -95,10 +83,7 @@ type NodeCapacityStore interface {
 // SetNodeCapacity wires the stored-capacity reader (nil-safe).
 func (h *AdminMetricsHandler) SetNodeCapacity(c NodeCapacityStore) { h.nodeCapacity = c }
 
-// fleet reports the fleet from STORED capacity: the node sweep measures each node on its own
-// schedule and writes what it found, so the dashboard is a query rather than a fan-out of Docker
-// calls. That is what keeps it flat in the number of nodes — probing here made it slower with
-// every node added, and blocked every concurrent reader while it ran.
+// Reads stored capacity so the dashboard stays flat in node count; probing here blocked concurrent readers.
 func (h *AdminMetricsHandler) fleet() *FleetCapacity {
 	if h.nodeCapacity == nil {
 		return nil

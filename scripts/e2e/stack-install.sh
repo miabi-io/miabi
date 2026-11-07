@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The stack installer, as users run it. TLS is out of reach on a runner (no public
-# DNS, so ACME cannot issue and the gateway serves its default certificate), hence curl -k.
+# No public DNS on a runner, so ACME cannot issue and the gateway serves its default cert; hence curl -k.
 source "$(dirname "$0")/lib.sh"
 
 DOMAIN=miabi.127.0.0.1.nip.io

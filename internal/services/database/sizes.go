@@ -33,13 +33,9 @@ import (
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 )
 
-// sizeSyncTTL is how long a synced size is considered fresh; a lazy refresh
-// triggers only past this age.
 const sizeSyncTTL = 24 * time.Hour
 
-// MaybeRefreshSizes lazily refreshes an instance's sizes in the background when they are stale and the
-// instance is running. It never blocks the caller and debounces concurrent triggers per instance, so a
-// detail-page load returns immediately with possibly-stale values and the next one shows fresh ones.
+// MaybeRefreshSizes refreshes stale sizes in the background without blocking, debounced per instance.
 func (s *Service) MaybeRefreshSizes(inst *models.DatabaseInstance) {
 	if inst == nil || inst.Status != models.DBStatusRunning {
 		return
@@ -63,13 +59,10 @@ func (s *Service) MaybeRefreshSizes(inst *models.DatabaseInstance) {
 	}()
 }
 
-// syncAllTimeout bounds one instance's probe during the nightly sweep. Each engine is queried
-// through a container exec, so a wedged instance would otherwise hold the whole sweep behind it.
+// Each probe is a container exec, so a wedged instance would otherwise stall the whole sweep.
 const syncAllTimeout = 2 * time.Minute
 
-// SyncAllSizes refreshes every running instance's sizes. Without it the numbers are only ever
-// refreshed lazily, when someone opens a detail page and the value is a day old — so a database
-// nobody looks at is never measured, and the usage totals that aggregate it drift indefinitely.
+// SyncAllSizes exists so databases nobody opens are still measured and usage totals don't drift.
 func (s *Service) SyncAllSizes(ctx context.Context) (int, error) {
 	list, err := s.repo.ListAllInstances()
 	if err != nil {
@@ -82,8 +75,7 @@ func (s *Service) SyncAllSizes(ctx context.Context) (int, error) {
 			return measured, ctx.Err()
 		}
 		inst := &list[i]
-		// Only a running instance can answer. A stopped one keeps its last known size rather than
-		// being zeroed, which would read as "this database lost its data".
+		// A stopped instance keeps its last size; zeroing it would read as data loss.
 		if inst.Status != models.DBStatusRunning {
 			skipped++
 			continue
@@ -102,8 +94,6 @@ func (s *Service) SyncAllSizes(ctx context.Context) (int, error) {
 	return measured, nil
 }
 
-// SyncSizes refreshes the on-disk size of an instance and its logical databases
-// by querying the engine. Requires the instance to be running.
 func (s *Service) SyncSizes(ctx context.Context, inst *models.DatabaseInstance) error {
 	if inst.Status != models.DBStatusRunning {
 		return ErrInstanceNotReady
@@ -142,8 +132,7 @@ func (s *Service) SyncSizes(ctx context.Context, inst *models.DatabaseInstance) 
 	case models.DBEnginePostgres:
 		query = "SELECT datname, pg_database_size(datname) FROM pg_database WHERE NOT datistemplate"
 	case models.DBEngineMongoDB:
-		// Emit "<db>\t<sizeOnDisk>" per database so parseSizeRows handles it like
-		// the SQL engines' tab-separated output.
+		// Tab-separated so parseSizeRows handles it like the SQL engines' output.
 		query = `db.adminCommand({listDatabases:1}).databases.forEach(function(d){print(d.name+"\t"+d.sizeOnDisk)})`
 	default: // mysql / mariadb
 		query = "SELECT table_schema, COALESCE(SUM(data_length+index_length),0) FROM information_schema.tables GROUP BY table_schema"
@@ -172,9 +161,7 @@ func (s *Service) SyncSizes(ctx context.Context, inst *models.DatabaseInstance) 
 	return s.repo.Update(inst)
 }
 
-// libsqlDiskSize measures the on-disk size of a libSQL instance's data directory
-// by running `du -sb` in a tiny helper container with the instance's data volume
-// mounted (libSQL exposes no SQL/CLI size probe).
+// libSQL exposes no size probe, so du -sb runs in a helper with the data volume mounted.
 func (s *Service) libsqlDiskSize(ctx context.Context, inst *models.DatabaseInstance) (int64, error) {
 	dc, err := s.dockerFor(inst)
 	if err != nil {
@@ -202,8 +189,6 @@ func (s *Service) libsqlDiskSize(ctx context.Context, inst *models.DatabaseInsta
 	return n, nil
 }
 
-// helperImage is the tiny image used for volume operations (resolved from the
-// deployment-config catalog, else busybox).
 func (s *Service) helperImage() string {
 	if s.images != nil {
 		if r := s.images.Ref(platformimage.KeyHelper); r != "" {
@@ -245,8 +230,6 @@ func (s *Service) execQuery(ctx context.Context, inst *models.DatabaseInstance, 
 	return out, nil
 }
 
-// parseSizeRows parses "name|size" (postgres) or "name<TAB>size" (mysql) lines
-// into a name->bytes map.
 func parseSizeRows(out string) map[string]int64 {
 	sizes := map[string]int64{}
 	for _, line := range strings.Split(out, "\n") {

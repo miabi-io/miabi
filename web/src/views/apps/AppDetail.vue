@@ -41,8 +41,7 @@ import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
 import { envFields, linksWholeInstance, prefixedName, sanitizePrefix, type DBEnvField } from '@/utils/dbEnv'
 
-// Secret-reference example built here so `}}` doesn't break the template's
-// mustache parser.
+// Built here so `}}` doesn't break the template's mustache parser.
 const secretRefHint = '${{ secrets.NAME }}'
 
 const STRATEGIES: { value: DeployStrategy; label: string; hint: string }[] = [
@@ -81,8 +80,6 @@ const tabs = [
   { key: 'settings', label: 'appDetail.tab.settings' },
 ] as const
 type TabKey = (typeof tabs)[number]['key']
-// The active tab is mirrored in the URL (?tab=…) so refresh, back/forward, and
-// shared links land on the same tab.
 function tabFromQuery(): TabKey {
   const q = route.query.tab
   return typeof q === 'string' && tabs.some((t) => t.key === q) ? (q as TabKey) : 'overview'
@@ -134,8 +131,6 @@ async function saveExternalAccess() {
     extSaving.value = false
   }
 }
-// Turn external access off entirely: clears the selection and removes all
-// generated routes.
 function disableExternalAccess() {
   extSelected.value = new Set()
   saveExternalAccess()
@@ -146,8 +141,6 @@ const extExposedCount = computed(() => extAccess.value?.ports?.length ?? 0)
 const appEvents = ref<AppEvent[]>([])
 const eventsLoading = ref(false)
 let eventsES: EventSource | null = null
-// The Events tab pages the history (newest-first) with a "Load more" cursor
-// rather than dumping everything; live events still prepend over the SSE.
 const EVENTS_PAGE = 20
 const eventsHasMore = ref(false)
 const loadingMoreEvents = ref(false)
@@ -160,24 +153,18 @@ let statusPoll: ReturnType<typeof setInterval> | null = null
 const runtimeLogs = ref<string[]>([])
 const runtimeConnected = ref(false)
 let runtimeES: EventSource | null = null
-// Cap the in-memory log buffer so a chatty container can't grow the DOM (and the
-// tab) without bound; oldest lines are dropped and a note is shown when trimmed.
+// Capped so a chatty container can't grow the DOM without bound.
 const RUNTIME_LOG_CAP = 5000
 const logsTrimmed = ref(false)
-// Client-side log search: narrows only the rendered view (the buffer keeps
-// filling over the SSE). Plain substring or regex, with hit highlighting.
-// Seeded from the URL (?q=…&re=1&size=…) so refresh and shared links persist.
+// Narrows only the rendered view; the buffer keeps filling over SSE.
 const logSearch = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const logRegexMode = ref(route.query.re === '1')
-// Logs panel size: shared with every other log panel and remembered between
-// sessions; ?size= still wins for a shared link.
 const { size: logSize } = useLogSize(route.query.size)
 const logViewStyle = computed(() => ({
   height: logHeight(logSize.value),
   minHeight: logSize.value === 'large' ? '420px' : undefined,
 }))
-// A single compiled matcher shared by the filter and the highlighter. Global +
-// case-insensitive; plain queries are escaped so regex metachars are literal.
+// Plain queries are escaped so regex metachars are literal.
 const logMatcher = computed<RegExp | null>(() => {
   const q = logSearch.value.trim()
   if (!q) return null
@@ -196,8 +183,6 @@ const filteredRuntimeLogs = computed(() => {
   return runtimeLogs.value.filter((l) => { re.lastIndex = 0; return re.test(l) })
 })
 interface LogSegment { text: string; hit: boolean }
-// Split a line into matched / unmatched segments for highlighting. Falls back to
-// the whole line when there's no active matcher.
 function logSegments(line: string): LogSegment[] {
   const re = logMatcher.value
   if (!re) return [{ text: line, hit: false }]
@@ -215,17 +200,14 @@ function logSegments(line: string): LogSegment[] {
   return segs.length ? segs : [{ text: line, hit: false }]
 }
 
-// Follow mode: keep the log view pinned to the newest line as output streams in.
-// Scrolling up pauses it (the user is reading history); scrolling back to the
-// bottom resumes. The toggle button does the same explicitly.
+// Scrolling up pauses follow; scrolling back to the bottom resumes it.
 const logFollow = ref(true)
 const logViewEl = ref<HTMLElement | null>(null)
 function scrollLogsToBottom() {
   const el = logViewEl.value
   if (el) el.scrollTop = el.scrollHeight
 }
-// Programmatic scroll-to-bottom keeps us "at bottom", so this never fights the
-// auto-follow; a real upward scroll trips the threshold and pauses follow.
+// Programmatic scroll keeps us "at bottom", so this never fights auto-follow.
 function onLogScroll() {
   const el = logViewEl.value
   if (!el) return
@@ -235,14 +217,11 @@ function toggleLogFollow() {
   logFollow.value = !logFollow.value
   if (logFollow.value) nextTick(scrollLogsToBottom)
 }
-// New (or newly-filtered) lines, or a panel resize: stick to the bottom while
-// following.
 watch([() => filteredRuntimeLogs.value.length, logSize], () => {
   if (logFollow.value) nextTick(scrollLogsToBottom)
 })
 
-// Copy / download operate on the currently-visible lines, so an active search
-// narrows the export to what you see.
+// Copy/download use the visible lines, so an active search narrows the export.
 const logCopied = ref(false)
 // --- GitOps manifest export -------------------------------------------------
 const manifestOpen = ref(false)
@@ -250,8 +229,7 @@ const manifestYaml = ref('')
 const manifestLoading = ref(false)
 const manifestCopied = ref(false)
 
-// Marketplace- and GitOps-managed apps are excluded: the first is described by its template, the
-// second already has a manifest, and a second copy invites two documents claiming the same app.
+// Marketplace and GitOps apps already have a describing document; a second copy would conflict.
 const canExportManifest = computed(() => !!app.value && !imageManaged.value)
 
 async function openManifest() {
@@ -315,16 +293,12 @@ function downloadLogs() {
 const deployments = ref<Deployment[]>([])
 const logs = ref<string[]>([])
 const streamingId = ref<number | null>(null)
-// deployStreaming is true while a deployment's log stream is open (live); its
-// status drives the toolbar badge. The buffer is capped like the runtime logs.
 const deployStreaming = ref(false)
 const deployStatus = ref('')
 const deployLogsTrimmed = ref(false)
 let es: EventSource | null = null
 
-// streamingNumber is the per-app deployment number of the currently streamed
-// deployment (streamingId is its global id, used for the SSE stream). Shown in
-// the Logs header so it matches the "#<number>" in the deployments table.
+// Matches the "#<number>" in the deployments table; streamingId is the global id for SSE.
 const streamingNumber = computed(() =>
   deployments.value.find((d) => d.id === streamingId.value)?.number ?? null,
 )
@@ -340,8 +314,6 @@ function depStatusClass(s: string): string {
 const envVars = ref<AppEnvVar[]>([])
 const revealedEnv = ref<Record<string, string>>({}) // key -> revealed secret value
 const revealingEnv = ref('') // key with a reveal request in flight
-// Add/update env var modal. editingEnvKey is set while updating an existing
-// variable (its name is locked); null when creating a new one.
 const showEnvModal = ref(false)
 const editingEnvKey = ref<string | null>(null)
 const envForm = ref({ key: '', value: '', secret: false })
@@ -362,11 +334,7 @@ const copiedEnvKey = ref('')
 
 // Routes (this app's Goma routes)
 const appRoutes = ref<Route[]>([])
-// Browser URL for a route host (https when TLS is on), so users can open the app
-// directly from the Routes tab.
-// Routes are created and edited in place: routing an app is something you decide
-// while looking at the app, so the same form the routes page uses opens here with
-// the application fixed.
+// Routes are edited in place here with the application fixed, using the routes page's form.
 const showRouteModal = ref(false)
 const editingRoute = ref<Route | null>(null)
 function addRoute() {
@@ -392,15 +360,11 @@ function routeUrl(r: Route, host: string): string {
 
 // Ports / host bindings
 const appBindings = ref<PortBinding[]>([])
-// Approved host port bindings rule out rolling: the new container would have to
-// publish a port the running one still holds, which Docker refuses. The worker
-// falls back to recreate, so the form stops offering rolling rather than promise
-// a zero-downtime deploy it can't do.
+// Approved host ports rule out rolling: Docker refuses publishing a port the old container holds, so it recreates.
 const publishedHostPorts = computed(() => appBindings.value.filter((b) => b.status === 'approved'))
 const hasHostPorts = computed(() => publishedHostPorts.value.length > 0)
 const hostPortList = computed(() => publishedHostPorts.value.map((b) => `${b.host_port}/${b.protocol}`).join(', '))
-// Rolling is hidden (not just disabled) when it cannot run, so the list only
-// contains choices that do what they say.
+// Hidden, not disabled, so the list only contains choices that do what they say.
 const availableStrategies = computed(() =>
   hasHostPorts.value ? STRATEGIES.filter((s) => s.value !== 'rolling') : STRATEGIES,
 )
@@ -433,8 +397,6 @@ const bindForm = ref<{ container_port: number; protocol: 'tcp' | 'udp'; host_por
 const showAddPort = ref(false)
 const portForm = ref<{ container_port: number; protocol: 'tcp' | 'udp'; scheme: 'http' | 'https'; name: string }>({ container_port: 0, protocol: 'tcp', scheme: 'http', name: '' })
 
-// Promise-based confirm dialog, replacing window.confirm for the port flows so
-// they get a real modal. askConfirm resolves true on confirm, false on cancel.
 interface ConfirmOpts { title: string; message?: string; confirmLabel?: string; cancelLabel?: string; variant?: 'danger' | 'primary' }
 const confirmDialog = ref<ConfirmOpts & { open: boolean }>({ open: false, title: '' })
 let confirmResolve: ((ok: boolean) => void) | null = null
@@ -450,9 +412,7 @@ function resolveConfirm(ok: boolean) {
 
 // Volumes
 const volumes = ref<Volume[]>([])
-// Only volumes the API would accept: the app's location, and for node-local storage the app's node. A
-// service is pinned to its volumes' node at deploy, and host-path and shared volumes mount anywhere.
-// A cluster id of 0 predates locations, so it is left to the API to judge.
+// Only volumes the API would accept; a cluster id of 0 predates locations, so the API judges it.
 const volumesOnNode = computed(() =>
   volumes.value.filter((v) => {
     const a = app.value
@@ -463,8 +423,7 @@ const volumesOnNode = computed(() =>
   }),
 )
 const hiddenVolumeCount = computed(() => volumes.value.length - volumesOnNode.value.length)
-// Narrows the attach dropdown. The selected volume always stays in the list so
-// filtering can never silently invalidate the binding.
+// The selected volume always stays listed so filtering never silently invalidates the binding.
 const volumeSearch = ref('')
 const volumeOptions = computed(() => {
   const q = volumeSearch.value.trim().toLowerCase()
@@ -492,13 +451,10 @@ const gitRepos = ref<GitRepository[]>([])
 const networks = ref<Network[]>([])
 // Which network's addressing (IPv4, IPv6, gateways) the detail modal is showing.
 const netDetailFor = ref<Network | null>(null)
-// The IPv6 column appears only when a container actually has an address: on a single-stack install
-// it would otherwise be a dash on every row.
+// Shown only when a container has an address; single-stack installs would show a dash on every row.
 const anyContainerIPv6 = computed(() => (liveStatus.value?.networks ?? []).some((n) => !!n.ipv6_address))
 const stacks = ref<Stack[]>([])
-// The workspace networks the app is attached to (always including the workspace
-// default). In cluster mode these are Swarm overlays, which is what lets the app
-// reach a database on another node.
+// In cluster mode these are Swarm overlays, which is what lets the app reach a database on another node.
 const attachedNets = computed<Network[]>(() => app.value?.networks ?? [])
 interface SettingsForm {
   image: string; tag: string; command: string; registry_id: number | null; git_repository_id: number | null
@@ -531,10 +487,7 @@ const SOURCE_TYPES: { value: 'image' | 'git'; label: string; hint: string; icon:
   { value: 'git', label: 'appDetail.source.git', hint: 'appDetail.source.gitHint', icon: 'mdi-git' },
 ]
 
-// The source is edited separately from the rest of settings, because switching image <-> git is a
-// whole-source replacement rather than a field edit: the server clears the fields belonging to the
-// source being left, may drop a repo-owned pipeline, and marks the app for redeploy. Folding that
-// into "Save settings" would make a destructive change look like an incidental one.
+// Separate from settings: switching image/git clears the other source, may drop a pipeline and needs a redeploy.
 const editingSource = ref(false)
 const savingSource = ref(false)
 // sourceDraft.type is what the user is choosing; app.source_type is what is stored.
@@ -583,8 +536,7 @@ async function saveSource() {
     syncSettingsForm()
     editingSource.value = false
 
-    // Say what else moved. None of it is visible in the app record, and a silent pipeline removal
-    // would be discovered only at the next deploy.
+    // None of this is visible in the app record, and a silent pipeline removal would surface only at next deploy.
     const notes: string[] = []
     if (res.change.pipeline_removed) notes.push(t('notify.appDetail.pipelineRemoved'))
     if (res.change.redeploy_required) notes.push(t('notify.appDetail.redeployNeededToApply'))
@@ -605,9 +557,7 @@ async function saveSource() {
 // --- Pipeline re-sync -----------------------------------------------------
 const resyncingPipeline = ref(false)
 
-// resyncPipeline re-reads pipelines.yaml from the repository: it adopts one when the app has none
-// (the file was added after the app was created, or it only just became a git app) and re-syncs the
-// stored spec when it already has one.
+// Adopts a pipelines.yaml added after creation, or re-syncs the stored spec.
 async function resyncPipeline() {
   if (!wid.value || !app.value) return
   resyncingPipeline.value = true
@@ -629,8 +579,7 @@ async function resyncPipeline() {
 }
 const limits = ref<ResourceLimits>({ max_cpu_cores: 0, max_memory_mb: 0 })
 
-// splitCommand turns the command input into argv (whitespace-separated), matching
-// how one-off Jobs parse their command. Empty = use the image's default CMD.
+// Matches how one-off Jobs parse their command; empty uses the image's default CMD.
 function splitCommand(s: string): string[] {
   return s.trim().split(/\s+/).filter(Boolean)
 }
@@ -652,8 +601,7 @@ const IMAGE_PULL_POLICIES: { value: ImagePullPolicy; label: string }[] = [
   { value: 'if-not-present', label: 'appDetail.settings.pullIfNotPresent' },
   { value: 'never', label: 'appDetail.settings.pullNever' },
 ]
-// What the control manager may do about this app if its container disappears. Set one app to "off" or
-// "observe" when an automatic redeploy would interrupt you, rather than changing the whole platform.
+// Per-app override so one app can opt out of automatic redeploys without changing the platform.
 const RECONCILE_POLICIES: { value: ReconcilePolicy; label: string }[] = [
   { value: 'inherit', label: 'appDetail.settings.reconcileDefault' },
   { value: 'off', label: 'appDetail.settings.reconcileIgnore' },
@@ -679,8 +627,7 @@ const showDeploy = ref(false)
 const deployNoCache = ref(false)
 const invalidatingCache = ref(false)
 
-// Invalidation is a state change, not a build: it names a new cache generation and the next build
-// (deploy or pipeline run) pays for the cold rebuild.
+// A state change, not a build: the next build pays for the cold rebuild.
 async function invalidateBuildCache() {
   if (!wid.value) return
   invalidatingCache.value = true
@@ -697,12 +644,7 @@ const deployTag = ref('')
 const deployStrategy = ref<DeployStrategy>('rolling')
 const deploying = ref(false)
 
-// --- Repository pipeline ---
-//
-// When the app's repository carries a pipeline, deploys run through it. The app
-// then has no direct build of its own, which changes what several controls mean:
-// the build-method settings stop applying, and a deploy produces a run rather
-// than a deployment.
+// With a repo pipeline the build-method settings stop applying and a deploy produces a run, not a deployment.
 const repoPipeline = ref<PipelineDefinition | null>(null)
 const deploysViaPipeline = computed(() => !!repoPipeline.value)
 // Every pipeline bound to the app, linked from the header.
@@ -712,8 +654,7 @@ async function loadRepoPipeline() {
   repoPipeline.value = null
   if (!wid.value) { appPipelines.value = []; return }
   try {
-    // Pipelines are listed workspace-wide; keep the ones bound to this app. Failure is
-    // silent — this only enriches the page.
+    // Failure is silent: this only enriches the page.
     const res = await pipelineApi.list(wid.value, 0, 100)
     appPipelines.value = (res.data.data ?? []).filter((p) => p.application_id === appId.value)
     if (app.value?.source_type === 'git') {
@@ -724,11 +665,7 @@ async function loadRepoPipeline() {
   }
 }
 
-/**
- * Follow whatever a deploy produced. A pipeline run has its own page — that is
- * where its per-step logs live — while a direct deployment streams into the
- * Deployments tab as before.
- */
+/** A pipeline run has its own page with per-step logs; a direct deployment streams into the Deployments tab. */
 function followDeploy(res: Deployment | PipelineRunAccepted, message: string) {
   if (isPipelineRun(res)) {
     notify.success(`${message} — ${t('notify.appDetail.pipelineRunStarted', { number: res.run.number })}`)
@@ -744,8 +681,6 @@ function followDeploy(res: Deployment | PipelineRunAccepted, message: string) {
 const canaryActive = computed(() => !!app.value?.canary_release_id)
 const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
 const canaryManual = computed(() => app.value?.canary_mode === 'manual')
-// What the rollout card says about the weight, which differs entirely by mode:
-// the ramp is going somewhere, a manual canary is being held.
 const canaryPaused = computed(() => !!app.value?.canary_paused_at)
 
 const canaryPausedFor = computed(() => {
@@ -821,31 +756,22 @@ async function abortCanary() {
   } catch (e) { notify.apiError(e) } finally { canaryBusy.value = false }
 }
 
-// Interactive shell modal. Gated by Admin+ role and the plan's shell-exec
-// capability (resolved from the workspace usage endpoint).
+// Gated by Admin+ and the plan's shell-exec capability.
 const shellOpen = ref(false)
 const processesOpen = ref(false)
 const shellExecAllowed = ref(false)
 
-// Custom container labels (Traefik &c.). Gated by the plan's custom-labels
-// capability + global kill-switch (resolved from the usage endpoint). Reserved
-// io.miabi.* / com.docker.* keys are rejected server-side; edits apply on the
-// next deploy.
+// Reserved io.miabi.* / com.docker.* keys are rejected server-side; edits apply on the next deploy.
 const containerLabels = ref<Record<string, string>>({})
 const newLabel = ref({ key: '', value: '' })
 const customLabelsAllowed = ref(false)
 
-// GPU access. Gated by the plan's allow_gpu capability (resolved from the usage
-// endpoint). When false the GPU controls are hidden entirely — no dangling field
-// that always 403s.
+// Hidden entirely when disallowed, so there is no field that always 403s.
 const gpuAllowed = ref(false)
 
-// The workspace's containers must drop root (restricted profile or a server-level
-// mandate), so a run-as user has to be a non-root numeric uid.
+// A run-as user must then be a non-root numeric uid.
 const requireNonRoot = ref(false)
-// Mirrors the server's rule so the field explains itself before a save round-trips.
-// The card is absent, not disabled, in an ordinary workspace: it would be greyed
-// in nearly all of them.
+// The card is absent, not disabled, in ordinary workspaces, where it would almost always be greyed.
 const capCatalog = ref<CapabilityCatalog | null>(null)
 const canGrant = computed(() => ws.currentWorkspace?.privileged === true && !requireNonRoot.value)
 const grantsElevated = computed(() => ws.currentWorkspace?.system === true)
@@ -908,24 +834,17 @@ const deleting = ref(false)
 const releaseDetail = ref<Release | null>(null)
 const releaseBusy = ref<number | null>(null)
 
-// When a saved repository is selected in settings, reflect its clone URL in the
-// URL field (still editable as a per-app override).
 function onSettingsRepoSelect() {
   const repo = gitRepos.value.find((r) => r.id === settingsForm.value.git_repository_id)
   if (repo) settingsForm.value.git_repo = repo.url
 }
 
-// The settings form as it was last filled from the server, and which app it was
-// filled for. loadApp() runs on every deployment SSE event and on the canary
-// rollout poll, so a background refresh must never refill the form on top of
-// unsaved work — that erases whatever is being typed.
+// loadApp() runs on every deployment SSE event and canary poll, so refreshes must not refill over unsaved work.
 const settingsBaseline = ref('')
 const settingsSyncedFor = ref<number | null>(null)
 const settingsEdited = computed(() => JSON.stringify(settingsForm.value) !== settingsBaseline.value)
 
-// refillSettingsForm is what background refreshes call: it fills the form on a
-// first load or an app switch, and otherwise leaves unsaved edits alone. Explicit
-// resets (cancel, source switch, save) still call syncSettingsForm directly.
+// Explicit resets (cancel, source switch, save) call syncSettingsForm directly.
 function refillSettingsForm() {
   if (settingsSyncedFor.value !== (app.value?.id ?? null) || !settingsEdited.value) syncSettingsForm()
 }
@@ -984,8 +903,7 @@ async function loadApp() {
   } catch (e) {
     notify.apiError(e)
   }
-  // Resolve capabilities separately so a usage error never blocks the app from
-  // loading; the shell icon simply stays hidden and the Labels panel read-only.
+  // Separate so a usage error never blocks the app from loading.
   try {
     const usage = (await usageApi.get(wid.value)).data.data
     shellExecAllowed.value = usage.capabilities.shell_exec
@@ -1018,8 +936,6 @@ async function loadTab() {
     else if (tab.value === 'logs') startRuntimeLogs()
     else if (tab.value === 'deployments') {
       deployments.value = (await appApi.deployments(wid.value, appId.value)).data.data ?? []
-      // Show logs immediately: stream the live deployment, else the most recent,
-      // unless one is already being followed.
       if (deployments.value.length && streamingId.value === null) {
         // ?deployment= is how a pipeline run links to the deploy it started.
         const target = deployments.value.find((d) => d.id === Number(route.query.deployment))
@@ -1036,8 +952,7 @@ async function loadTab() {
     else if (tab.value === 'settings') {
       // The strategy picker greys out rolling when a host port is published.
       await loadBindings()
-      // Unconditional: canGrant depends on the workspace list, which may not have
-      // resolved yet. The card's v-if does the gating.
+      // Unconditional: canGrant depends on the workspace list, which may not have resolved yet.
       loadCapabilityCatalog()
       registries.value = (await registryApi.list(wid.value)).data.data ?? []
       gitRepos.value = (await gitRepositoryApi.list(wid.value)).data.data ?? []
@@ -1051,8 +966,7 @@ async function loadTab() {
   }
 }
 
-// closeStreams tears down per-tab streams (runtime logs). The events stream and
-// status poll are page-level and live for the whole detail page.
+// The events stream and status poll are page-level and outlive tab switches.
 function closeStreams() {
   runtimeES?.close()
   runtimeES = null
@@ -1099,14 +1013,12 @@ async function loadOverview() {
 const isDeployed = computed(() => !!app.value?.current_release_id || (overview.value?.current_version ?? 0) > 0)
 const deployVerb = computed(() => (isDeployed.value ? 'Redeploy' : 'Deploy'))
 
-// changeNote: config changes no longer auto-deploy — a deployed app is flagged
-// as needing a redeploy, which the user applies manually.
+// Config changes don't auto-deploy; a deployed app is flagged as needing a manual redeploy.
 function changeNote(): string {
   return isDeployed.value ? ` — ${t('notify.appDetail.redeployRequired')}` : ''
 }
 
-// startEventsStream loads the event history and opens a single live SSE shared
-// by the Overview "Latest events" card and the Events tab. Idempotent.
+// One SSE shared by the Overview card and the Events tab; idempotent.
 async function startEventsStream() {
   if (!wid.value || eventsES) return
   eventsLoading.value = true
@@ -1127,8 +1039,7 @@ async function startEventsStream() {
   eventsES.onerror = () => eventsES?.close()
 }
 
-// loadMoreEvents appends the next older page using the oldest loaded event as the
-// cursor. Live events keep prepending via the SSE, so only the tail grows here.
+// Live events prepend via SSE, so only the tail grows here.
 async function loadMoreEvents() {
   if (!wid.value || appEvents.value.length === 0) return
   loadingMoreEvents.value = true
@@ -1170,9 +1081,7 @@ async function saveSettings() {
   if (!wid.value || !app.value) return
   savingSettings.value = true
   try {
-    // Source fields come from the STORED app, never the form: the Source card above owns them, and
-    // a half-typed edit sitting in the form must not be applied through this general PATCH — that
-    // would bypass the switch semantics (clearing the other source, dropping a repo pipeline).
+    // Source fields come from the stored app so this PATCH can't bypass the source-switch semantics.
     app.value = (await appApi.update(wid.value, appId.value, {
       image: app.value.image || undefined,
       tag: app.value.tag || '',
@@ -1192,8 +1101,7 @@ async function saveSettings() {
       canary_step_interval_seconds: settingsForm.value.canary_step_interval_seconds,
       memory_bytes: Math.max(0, Math.round((settingsForm.value.memory_mb || 0) * MB)),
       nano_cpus: Math.max(0, Math.round((settingsForm.value.cpu_cores || 0) * 1e9)),
-      // Only send a GPU request when the plan allows it (the field is hidden
-      // otherwise), so a disallowed workspace never trips the 403.
+      // A disallowed workspace never sends a GPU request, so it never trips the 403.
       gpu_count: gpuAllowed.value ? Math.max(0, Math.round(settingsForm.value.gpu_count || 0)) : 0,
       gpu_kind: gpuAllowed.value ? settingsForm.value.gpu_kind.trim() : '',
       run_as_user: settingsForm.value.run_as_user.trim(),
@@ -1233,10 +1141,7 @@ function openAddPort() {
   portForm.value = { container_port: 0, protocol: 'tcp', scheme: 'http', name: '' }
   showAddPort.value = true
 }
-// addContainerPort / removeContainerPort declare/undeclare a container port from
-// the Ports tab. The app Update endpoint replaces the whole port set (and other
-// config), so reuse the Settings save path with the full current state rather
-// than a partial update that would wipe unrelated fields.
+// Update replaces the whole port set and config, so reuse the full Settings save rather than a partial update.
 async function addContainerPort() {
   if (!app.value || portForm.value.container_port <= 0) return
   const dup = (app.value.ports || []).some((p: AppPort) => p.container_port === portForm.value.container_port && p.protocol === portForm.value.protocol)
@@ -1292,9 +1197,7 @@ async function suggestPort() {
     suggestingPort.value = false
   }
 }
-// removeBind withdraws a pending request, or releases an approved (live) host
-// port. An approved port stays published until the app is redeployed, so offer
-// to redeploy now and apply it.
+// An approved port stays published until redeploy, so offer to redeploy now.
 async function removeBind(b: PortBinding) {
   if (!wid.value) return
   const approved = b.status === 'approved'
@@ -1330,8 +1233,7 @@ watch(() => route.query.tab, () => {
   if (t !== tab.value) tab.value = t
 })
 
-// Mirror the log search + panel size into the URL (?q=…&re=1&size=…) and react to
-// back/forward. Uses replace (no history spam) and drops params at their default.
+// Uses replace (no history spam) and drops params at their default.
 watch([logSearch, logRegexMode, logSize], ([q, re, size]) => {
   const next = { ...route.query }
   if (q.trim()) next.q = q; else delete next.q
@@ -1344,16 +1246,11 @@ watch(() => [route.query.q, route.query.re, route.query.size], ([q, re, size]) =
   if (qs !== logSearch.value) logSearch.value = qs
   const rb = re === '1'
   if (rb !== logRegexMode.value) logRegexMode.value = rb
-  // Only follow ?size= when it is present; an absent one keeps the remembered
-  // preference rather than resetting the panel on every query change.
+  // An absent ?size= keeps the remembered preference rather than resetting on every query change.
   if (isLogSize(size) && size !== logSize.value) logSize.value = size
 })
 
-// Page-level live data: a single events stream + a status poll for the whole
-// detail page (independent of the active tab). This only tears down its OWN
-// resources — the runtime logs stream is owned by loadTab (which also watches
-// appId), so closing it here would race the initial loadTab and leave the Logs
-// tab stuck on "connecting…" after a refresh straight into it.
+// Leave the runtime log stream to loadTab; closing it here races the initial load and sticks Logs on "connecting".
 watch([appId, wid], () => {
   eventsES?.close()
   eventsES = null
@@ -1381,8 +1278,7 @@ async function streamLogs(id: number) {
   deployStreaming.value = true
   deployStatus.value = 'streaming'
   deployLogsTrimmed.value = false
-  // A finished deployment loads its stored logs once (no dangling SSE); a running
-  // one (or a freshly-started deploy not yet in the list) streams live below.
+  // A finished deployment loads stored logs once instead of holding an SSE open.
   const dep = deployments.value.find((d) => d.id === id)
   if (dep && wid.value != null && ['succeeded', 'running', 'failed'].includes(dep.status)) {
     const w = wid.value
@@ -1411,8 +1307,6 @@ async function streamLogs(id: number) {
         const s = String(e.data)
         deployStatus.value = s
         logs.value.push(`— status: ${s} —`)
-        // Canary just went live (non-terminal): reveal the rollout card + refresh
-        // the list, and keep the stream open for the live progression.
         if (e.data === 'canary') { loadApp(); loadTab() }
         else if (e.data === 'succeeded' || e.data === 'running' || e.data === 'failed') { deployStreaming.value = false; es?.close(); loadApp(); loadTab() }
       }
@@ -1421,21 +1315,12 @@ async function streamLogs(id: number) {
   es.onerror = () => { deployStreaming.value = false; es?.close() }
 }
 
-// managedBy records how the app came to exist ('marketplace' | 'gitops' | 'user'
-// | …), from the reserved miabi.io/managed-by metadata.
 const managedBy = computed(() => app.value?.metadata?.['miabi.io/managed-by'] || '')
 const gitopsId = computed(() => Number(managedBy.value === 'gitops' ? app.value?.metadata?.['miabi.io/gitops-source'] : 0) || 0)
 
-// imageManaged is true when the image/tag are owned by an external source of
-// truth — a marketplace template or a GitOps manifest — so editing them in
-// Settings is blocked: the change belongs in that source (a marketplace upgrade
-// or the Git manifest), and an in-place edit would just drift or be overwritten.
+// Image/tag are owned by a template or GitOps manifest, so an in-place edit would drift or be overwritten.
 const imageManaged = computed(() => managedBy.value === 'marketplace' || managedBy.value === 'gitops')
 
-// template surfaces marketplace provenance (set on install via the reserved
-// miabi.io/* metadata keys). When present, the app's image is owned by a
-// template, so a manual image change is warned about and the proper upgrade path
-// is offered. Returns null for non-marketplace apps.
 const template = computed(() => {
   const m = app.value?.metadata ?? {}
   if (m['miabi.io/managed-by'] !== 'marketplace') return null
@@ -1447,15 +1332,10 @@ const template = computed(() => {
   }
 })
 
-// goToUpgrade leaves for the marketplace upgrade flow for this app's template,
-// addressed by the template slug (the recommended way to change a template app's
-// image). Slug is the portable identity across installs and the planned central
-// template registry.
+// The slug is the portable template identity across installs.
 function goToUpgrade() {
   showDeploy.value = false
-  // Use the real template handle (miabi.io/template), not the display fallback
-  // (`name`, which can be "a marketplace template"). An empty handle falls back
-  // to the marketplace Installed tab instead of pushing a broken route.
+  // Use miabi.io/template, not the display fallback; an empty handle goes to the Installed tab instead.
   const slug = template.value?.slug
   router.push(
     slug
@@ -1464,15 +1344,11 @@ function goToUpgrade() {
   )
 }
 
-// confirmTemplateImageChange gates a manual image/tag change on a template-managed
-// app behind an explicit confirmation. Returns true to proceed, false to abort.
-// Ad-hoc apps (no template) always proceed.
 async function confirmTemplateImageChange(): Promise<boolean> {
   if (!template.value) return true
   return askConfirm({
     title: t('confirm.title.appDetail.changeATemplateManaged'),
-    // Two keys rather than an optional fragment spliced in: "(v1.2)" sits in a different
-    // place in other languages, and a translator cannot move what arrives pre-assembled.
+    // Two keys: "(v1.2)" sits differently in other languages and a translator cannot move a pre-assembled fragment.
     message: template.value.version
       ? t('confirm.message.appDetail.templateImageVersioned', { name: app.value?.name, template: template.value.name, version: template.value.version })
       : t('confirm.message.appDetail.templateImage', { name: app.value?.name, template: template.value.name }),
@@ -1486,8 +1362,7 @@ async function openDeploy() {
   deployTag.value = app.value?.tag || ''
   deployNoCache.value = false
   showDeploy.value = true
-  // Bindings are otherwise only loaded on the Ports tab, and the strategy list
-  // depends on them.
+  // Bindings otherwise load only on the Ports tab, and the strategy list depends on them.
   await loadBindings()
   const preferred = app.value?.deploy_strategy || 'rolling'
   deployStrategy.value = availableStrategies.value.some((s) => s.value === preferred)
@@ -1564,8 +1439,7 @@ async function deleteRelease(r: Release) {
   }
 }
 
-// openEnvModal opens the modal to create a new variable; openEnvEdit loads an
-// existing one for update (secret values aren't returned, so they're re-entered).
+// Secret values aren't returned, so they're re-entered on edit.
 function openEnvModal() {
   editingEnvKey.value = null
   envForm.value = { key: '', value: '', secret: false }
@@ -1616,8 +1490,7 @@ async function copyEnvValue(e: AppEnvVar) {
 
 // --- Custom container labels (Traefik &c.) ---
 
-// Keys a user may never set — the server rejects them too; this is a fast
-// client-side guard mirroring docker.IsReservedLabelKey.
+// Mirrors docker.IsReservedLabelKey; the server rejects these too.
 const RESERVED_LABEL_PREFIXES = ['io.miabi.', 'miabi.', 'com.docker.']
 function isReservedLabelKey(k: string): boolean {
   return RESERVED_LABEL_PREFIXES.some((p) => k.startsWith(p))
@@ -1651,8 +1524,7 @@ async function delLabel(key: string) {
   } catch (e) { notify.apiError(e) }
 }
 
-// Secret env vars are masked in the list; reveal fetches the decrypted value on
-// demand (admin only, audited server-side). Toggling again hides it.
+// Fetches the decrypted value on demand (admin only, audited server-side).
 async function toggleReveal(e: AppEnvVar) {
   if (revealedEnv.value[e.key] !== undefined) {
     const next = { ...revealedEnv.value }
@@ -1702,10 +1574,7 @@ async function detachVolume(volumeId: number) {
   loadApp()
 }
 
-// --- Config file mounts ---
-// A config is a set of named files. Mounting it whole projects every file under a
-// directory; mounting one key places that single file at an exact path. Both shapes
-// exist in the manifest, so the form exposes both rather than only the simple one.
+// Both whole-config and single-key mounts exist in the manifest, so the form exposes both.
 const workspaceConfigs = ref<Config[]>([])
 const configMount = ref<{ config_id: number | null; whole: boolean; key: string; path: string }>({
   config_id: null, whole: true, key: '', path: '',
@@ -1723,8 +1592,7 @@ async function loadWorkspaceConfigs() {
   } catch (e) { notify.apiError(e) }
 }
 
-// Reset the file selection whenever the config changes: a key from the previous
-// config is never valid for the new one, and the API refuses it.
+// A key from the previous config is never valid for the new one, and the API refuses it.
 watch(() => configMount.value.config_id, () => {
   configMount.value.key = ''
 })
@@ -1733,8 +1601,7 @@ function configName(id?: number) {
   return workspaceConfigs.value.find((c) => c.id === id)?.name || `config ${id}`
 }
 
-// The exact container paths the current form would produce. Path shape is where
-// config mounts go wrong, so it is shown rather than described.
+// Path shape is where config mounts go wrong, so the result is shown rather than described.
 const configPathPreview = computed<string[]>(() => {
   const path = configMount.value.path.trim()
   if (!path || !selectedConfig.value) return []
@@ -1778,9 +1645,7 @@ const hostPresets = ref<HostMountPreset[]>([])
 const hostMount = ref({ preset: '', path: '', read_only: false })
 // Only workspace admins in a privileged workspace may manage host binds.
 const canHostMount = computed(() => !!ws.currentWorkspace?.privileged && ws.isWorkspaceAdmin)
-// Split mounts by source. A config mount carries neither a volume nor a preset,
-// so it has to be excluded explicitly — otherwise it renders as a blank volume
-// row keyed on volume_id 0, and its detach button calls detachVolume(0).
+// Config mounts must be excluded explicitly or they render as a volume row and detach calls detachVolume(0).
 const volumeMounts = computed(() => (app.value?.mounts ?? []).filter((m) => !m.host_preset && !m.config_id))
 const hostMounts = computed(() => (app.value?.mounts ?? []).filter((m) => m.host_preset))
 const configMounts = computed(() => (app.value?.mounts ?? []).filter((m) => !!m.config_id))
@@ -1845,12 +1710,8 @@ function badge(s: string) {
   return 'badge-warning' // created, deploying, restarting, starting
 }
 
-// The status shown in the header: the live container status when available,
-// falling back to the stored status.
 const displayStatus = computed(() => liveStatus.value?.status || app.value?.status || 'created')
 
-// A short live detail line for the header (uptime when running, restart count
-// when looping).
 const statusDetail = computed(() => {
   const ls = liveStatus.value
   if (!ls) return ''
@@ -1882,8 +1743,6 @@ function healthBadge(h: string) {
   return 'badge-warning'
 }
 
-// Deployment status badge: the live deployment is shown as a green "live"; other
-// successful ones are neutral history; in-progress states are amber.
 function depBadge(s: string) {
   if (s === 'failed') return 'badge-danger'
   if (s === 'succeeded' || s === 'running') return 'badge-neutral'
@@ -1893,8 +1752,7 @@ function depBadge(s: string) {
 // Cluster (service) runtime: scaling controls on the overview.
 const isService = computed(() => app.value?.runtime_kind === 'service')
 const replicaTarget = computed(() => liveStatus.value?.service_replicas || app.value?.replicas || 1)
-// Real replica placement for a service app: where Swarm actually scheduled the
-// running tasks (populated on the app-detail read). Empty until tasks are running.
+// Empty until tasks are running.
 const nodePlacement = computed(() => app.value?.nodes ?? [])
 const nodePlacementLabel = computed(() =>
   nodePlacement.value.map((n: NodePlacement) => `${n.name} (${n.tasks})`).join(' · '),
@@ -1993,8 +1851,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart') {
   lifecycleBusy.value = action
   try {
     const data = (await appApi[action](wid.value, appId.value)).data.data
-    // Start/Restart on an app with pending changes returns a deployment (a
-    // redeploy) — follow its logs; otherwise it's a plain lifecycle action.
+    // Start/Restart with pending changes returns a redeploy, so follow its logs.
     if (data && 'id' in data) {
       notify.success(t('notify.appDetail.redeployingLatest'))
       tab.value = 'deployments'
@@ -2025,7 +1882,6 @@ function eventIcon(type: string): string {
 }
 
 
-// "by Jonas" when a person asked for it, otherwise the machine cause — pipeline, auto, reconcile.
 // A deleted user leaves no name, so the trigger is what still answers "what caused this".
 function deployedBy(d: LastDeploy): string {
   if (d.by_name) return t('appDetail.byName', { name: d.by_name })
@@ -2192,8 +2048,7 @@ async function detachDatabase(d: AppDatabase) {
               <span class="mdi" :class="app.source_type === 'git' ? 'mdi-git' : 'mdi-docker'"></span>
               <router-link v-if="app.source_type === 'git' && app.git_repository_id" class="prov-link" :to="{ name: 'git-repository', params: { id: app.git_repository_id } }">{{ app.git_repo }}</router-link>
               <template v-else>{{ app.image || app.git_repo }}</template>
-              <!-- Container apps run on one node; a service app's replicas are spread
-                   by the scheduler, so its real placement is shown in the overview. -->
+              <!-- A service's replicas are spread by the scheduler, so its placement is shown in the overview. -->
               <template v-if="!isService && app.server_name"> · <span class="mdi mdi-server-network"></span> {{ app.server_name }}</template>
               <template v-else-if="isService && nodePlacement.length"> · <span class="mdi mdi-server-network"></span> {{ nodePlacementLabel }}</template>
               <LocationName :cluster-id="app.cluster_id" />
@@ -2253,8 +2108,7 @@ async function detachDatabase(d: AppDatabase) {
       </div>
     </div>
 
-    <!-- Header strip is a shortcut into the rollout; on the Deployments tab the
-         full canary card is already shown, so it would be redundant there. -->
+    <!-- Redundant on the Deployments tab, which already shows the full canary card. -->
     <button v-if="canaryActive && tab !== 'deployments'" class="canary-strip" :title="$t('appDetail.canaryInProgress')" @click="tab = 'deployments'">
       <span class="mdi mdi-rocket-launch-outline"></span>
       <span class="canary-strip-text">Canary {{ canaryWeight }}%</span>
@@ -2283,8 +2137,6 @@ async function detachDatabase(d: AppDatabase) {
             <button class="btn-icon btn-icon-muted" :disabled="scaleBusy" :title="$t('appDetail.scaleUp')" :aria-label="$t('appDetail.scaleUp')" @click="scaleBy(1)"><span class="mdi mdi-plus"></span></button>
           </span>
         </div>
-        <!-- Real replica placement: where the Swarm scheduler actually put the
-             running tasks, not the single node the app was created against. -->
         <div v-if="isService && nodePlacement.length" class="summary-item">
           <span class="summary-label">{{ $t('appDetail.nodes') }}</span>
           <span class="summary-value" :title="`Running on ${nodePlacementLabel}`">
@@ -2303,8 +2155,7 @@ async function detachDatabase(d: AppDatabase) {
           <span class="summary-label">{{ $t('appDetail.restarts') }}</span>
           <span class="summary-value">{{ liveStatus.restart_count }}×</span>
         </div>
-        <!-- Beside the container's own restart count, which counts crashes: this one is a person
-             acting on the app. Kept away from Last deploy, which is a different release. -->
+        <!-- Unlike the container's restart count (crashes), this is a person acting on the app. -->
         <div v-if="overview.last_lifecycle" class="summary-item">
           <span class="summary-label">{{ $t('appDetail.lastAction') }}</span>
           <span class="summary-value" :title="fmtDateTime(overview.last_lifecycle.at)">
@@ -2343,8 +2194,6 @@ async function detachDatabase(d: AppDatabase) {
           <span class="summary-label">{{ $t('appDetail.envVars') }}</span>
           <span class="summary-value">{{ overview.env_count }}</span>
         </div>
-        <!-- Beside Created, the other lifecycle date: when the running code last changed, and who
-             asked for it. Clicks through to the deployment itself. -->
         <div class="summary-item" :class="{ clickable: overview.last_deploy }" @click="overview.last_deploy && (tab = 'deployments')">
           <span class="summary-label">{{ $t('appDetail.lastDeploy') }}</span>
           <span v-if="overview.last_deploy" class="summary-value" :title="fmtDateTime(overview.last_deploy.at)">
@@ -2489,9 +2338,7 @@ async function detachDatabase(d: AppDatabase) {
         </div>
       </div>
 
-      <!-- Which workspace networks the app is attached to. The default network is
-           always one of them, and in cluster mode it is a Swarm overlay — which is
-           what lets the app reach a database on another node. -->
+      <!-- In cluster mode the default network is a Swarm overlay, which lets the app reach databases on other nodes. -->
       <div class="card mb-4">
         <div class="card-header">
           <h2>{{ $t('appDetail.networks') }}</h2>
@@ -2533,17 +2380,14 @@ async function detachDatabase(d: AppDatabase) {
             <template #ephemeral><strong>{{ $t('appDetail.net.ephemeral') }}</strong></template>
           </i18n-t>
         </div>
-        <!-- A replicated service has no single container IP: Swarm may run its tasks
-             on any node, and they are replaced on every update. Say that, rather than
-             falling through to "no IP yet", which reads as broken for a healthy app. -->
+        <!-- A service has no single container IP; falling through to "no IP yet" would read as broken. -->
         <div v-if="isService" class="card-body text-muted text-sm" style="padding-top: 0">{{ $t('appDetail.net.replicatedNoIp') }}</div>
         <div v-else-if="liveStatus?.networks?.length" class="table-wrapper">
           <table>
             <thead>
               <tr>
                 <th>{{ $t('appDetail.network') }}</th><th>{{ $t('appDetail.ipAddress') }}</th>
-                <!-- Only when something actually has one: on a single-stack install this column
-                     would be a dash on every row, for every user. -->
+                <!-- Hidden on single-stack installs, where it would be a dash on every row. -->
                 <th v-if="anyContainerIPv6">{{ $t('appDetail.ipv6Address') }}</th>
                 <th>{{ $t('appDetail.gateway') }}</th><th></th>
               </tr>
@@ -2997,9 +2841,6 @@ async function detachDatabase(d: AppDatabase) {
         </table>
       </div>
 
-      <!-- Config file mounts. A separate card from volumes because the two are
-           different resources with different shapes: a volume is one path, a config
-           is a set of files that can be projected whole or one at a time. -->
       <div class="card mt-4">
         <div class="card-header page-header">
           <h2>{{ $t('appDetail.configFiles') }}</h2>
@@ -3082,8 +2923,6 @@ async function detachDatabase(d: AppDatabase) {
                 />
               </div>
 
-              <!-- Path shape is the thing people get wrong, so show the result
-                   rather than explaining the rule. -->
               <div v-if="configPathPreview.length" class="cfg-preview">
                 <span class="form-label" style="margin-bottom: 4px; display: block">{{ $t('appDetail.filesInTheContainer') }}</span>
                 <code v-for="p in configPathPreview" :key="p" class="cfg-preview-path">{{ p }}</code>
@@ -3212,8 +3051,7 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Settings -->
     <div v-else-if="tab === 'settings'">
-      <!-- Source: edited separately from the rest of settings, because switching image <-> git
-           clears the other source's fields, may drop a repo pipeline, and needs a redeploy. -->
+      <!-- Separate: switching image/git clears the other source's fields, may drop a repo pipeline, and needs a redeploy. -->
       <div class="card mb-4">
         <div class="card-header source-header">
           <div>
@@ -3279,8 +3117,7 @@ async function detachDatabase(d: AppDatabase) {
             </div>
           </div>
 
-          <!-- What a switch costs. Shown only when actually switching, so it reads as consequence
-               rather than boilerplate. -->
+          <!-- Shown only when actually switching, so it reads as consequence rather than boilerplate. -->
           <div v-if="sourceSwitching" class="tpl-notice source-warning">
             <span class="mdi mdi-alert-outline"></span>
             <div class="tpl-notice-text">
@@ -3377,8 +3214,7 @@ async function detachDatabase(d: AppDatabase) {
           </div>
         </div>
 
-        <!-- Pipeline re-sync: only meaningful for a git app, and the one place an operator can pull
-             a pipelines.yaml that was added (or edited) after the app was created. -->
+        <!-- The one place to pull a pipelines.yaml added or edited after the app was created. -->
         <div v-if="app.source_type === 'git' && !editingSource" class="card-body source-pipeline">
           <div class="source-pipeline-row">
             <div>
@@ -3408,8 +3244,7 @@ async function detachDatabase(d: AppDatabase) {
           </div>
         </div>
 
-        <!-- The cache is the app's, shared by direct deploys and pipeline runs, so it is invalidated
-             here rather than per pipeline. -->
+        <!-- The cache is the app's, shared by direct deploys and pipeline runs, so it is invalidated here. -->
         <div v-if="app.source_type === 'git' && !editingSource" class="card-body source-pipeline">
           <div class="source-pipeline-row">
             <div>
@@ -4403,8 +4238,6 @@ async function detachDatabase(d: AppDatabase) {
 /* Provenance link in the header subline (marketplace template / GitOps). */
 .prov-link { color: var(--primary-600); }
 .prov-link:hover { text-decoration: underline; }
-/* Deployments tab: a full-width canary banner on top, then a narrow Deployments
-   list (pick) beside a wide Logs panel (view). */
 .detail-grid { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
 .log-view { height: 600px; overflow: auto; white-space: pre-wrap; }
@@ -4448,8 +4281,6 @@ async function detachDatabase(d: AppDatabase) {
 .log-icon-btn:hover:not(:disabled) { color: var(--text-primary); }
 .log-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .log-trim-note { margin: 0 0 8px; }
-/* Per-line log rendering (enables match highlighting). Inherits pre-wrap from
-   .code-block; blank lines keep their row height. */
 .log-line { min-height: 1.4em; }
 .log-hit { background: var(--warning-400, #facc15); color: #1a1a2e; border-radius: 2px; }
 .log-placeholder { color: var(--text-secondary); }

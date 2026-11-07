@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// recordingInbox captures the rows a notifier writes. Distinct from the DB-backed
-// inbox the engine tests use: here the rows themselves are the assertion.
 type recordingInbox struct {
 	rows []models.Notification
 	err  error
@@ -65,8 +63,7 @@ func TestNotifyAdminsReachesEveryAdmin(t *testing.T) {
 		if r.Kind != models.NotificationKindInfo {
 			t.Errorf("kind = %q, want the standalone info kind", r.Kind)
 		}
-		// An AlertID would make the inbox update one row rather than add another,
-		// collapsing two separate requests into a single item.
+		// An AlertID would make the inbox update one row, collapsing separate requests into one item.
 		if r.AlertID != nil {
 			t.Error("a standalone notice must not carry an AlertID")
 		}

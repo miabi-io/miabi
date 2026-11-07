@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// The workspace activity feed. Events stream in over SSE, so the newest row is
-// briefly highlighted to show the page is live rather than stale.
+// The newest row is briefly highlighted to show the page is live rather than stale.
 import { useRouter } from 'vue-router'
 import type { RecentEvent } from '@/api/types'
 import { relTime } from './format'

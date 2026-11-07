@@ -44,23 +44,18 @@ const verifyTarget = ref<PlatformBackupSet | null>(null)
 const reconciling = ref(false)
 const completing = ref(false)
 
-// Fields this deployment takes from environment variables. They are shown
-// read-only: the process configuration wins, so accepting an edit here would be
-// a lie.
+// The process configuration wins, so accepting an edit here would be a lie.
 const envLocked = computed(() => new Set(settings.value?.env_locked ?? []))
 function locked(field: string): boolean {
   return envLocked.value.has(field)
 }
 const s3FromEnv = computed(() => locked('s3_bucket'))
 
-// A passphrase is available if one is stored (or supplied by the environment) or
-// the operator is entering one right now.
 const havePassphrase = computed(() => passphraseSet.value || !!form.backup_passphrase)
 
 // Editable settings form.
 const form = reactive<PlatformBackupSettingsPayload>({
-  // S3/MinIO is the only destination, so it starts selected — an unchecked box
-  // would hide the fields the operator came here to fill in.
+  // S3/MinIO is the only destination, so it starts selected.
   s3_enabled: true,
   s3_endpoint: '',
   s3_bucket: '',
@@ -74,8 +69,7 @@ const form = reactive<PlatformBackupSettingsPayload>({
   volume_backup_path: '',
   encrypt_backups: false,
   backup_passphrase: '',
-  // Off until a passphrase exists — sealing the envelope needs one, and a
-  // checkbox that cannot be honoured is worse than one that is not offered.
+  // Sealing the envelope needs a passphrase, so stay off until one exists.
   include_identity: false,
   include_tenant_data: false,
   schedule_enabled: false,
@@ -117,10 +111,7 @@ function applySettings(s: PlatformBackupSettings) {
   passphraseSet.value = s.passphrase_set
 }
 
-// Each panel loads independently. With Promise.all, one failing call — a
-// volume listing that cannot reach Docker, a history query that errors — took
-// the settings down with it: applySettings never ran, the form kept its blank
-// defaults, and a perfectly good configuration looked like it had vanished.
+// Loaded independently: with Promise.all one failing call blanked the settings form.
 async function load() {
   if (!ent.has.value) return
   loading.value = true
@@ -136,8 +127,7 @@ async function load() {
     if (s.status === 'fulfilled') {
       applySettings(s.value.data.data)
     } else {
-      // The only failure worth interrupting the operator for: without settings
-      // there is nothing on this page to act on.
+      // Without settings there is nothing on this page to act on.
       notify.apiError(s.reason)
     }
     if (b.status === 'fulfilled') backups.value = b.value.data.data ?? []
@@ -149,18 +139,13 @@ async function load() {
   }
 }
 
-// The entitlement is read from the license store, which loads asynchronously.
-// Firing load() without awaiting it meant the first paint ran while `ent.has`
-// was still false, load() returned immediately, and nothing was ever fetched —
-// the page stayed empty until some other action happened to call load() again,
-// which is why history only appeared after running a backup.
+// Await the license load: the entitlement is async, and an early load() returned without fetching anything.
 onMounted(async () => {
   await licenseStore.load()
   await load()
 })
 
-// A later license refresh (or a slow first load resolving after mount) must also
-// populate the page rather than leaving it blank.
+// A later license refresh must also populate the page.
 watch(
   () => ent.has.value,
   (has, was) => {
@@ -261,8 +246,6 @@ async function runVerify() {
   }
 }
 
-// Restore from the bucket: browse what is there, pick artifacts, restore them
-// into this live platform.
 const discovering = ref(false)
 const discovered = ref<DiscoveredSet[]>([])
 const openRef = ref<string | null>(null)
@@ -292,8 +275,7 @@ function toggleOpen(set: DiscoveredSet) {
   restoreReport.value = null
 }
 
-// Selection is keyed by ref+file: a discovered artifact has no local id until
-// its recovery point has been imported.
+// Keyed by ref+file: a discovered artifact has no local id until its recovery point is imported.
 function artifactKey(set: DiscoveredSet, a: DiscoveredArtifact): string {
   return `${set.ref}::${a.key}`
 }
@@ -316,9 +298,7 @@ function selectAll(set: DiscoveredSet) {
   selected.value = new Set(restorableArtifacts(set).map((a) => artifactKey(set, a)))
 }
 
-// The recovery point must exist locally before its artifacts have ids to
-// restore by, so a discovered-but-unknown one is adopted first. Import is
-// idempotent, so this is safe to repeat.
+// Artifacts need local ids, so an unknown recovery point is imported first; import is idempotent.
 async function runSelectiveRestore() {
   const set = pendingRestoreSet.value
   if (!set) return
@@ -1223,8 +1203,7 @@ function fmtSize(n: number): string {
   color: var(--text-muted);
 }
 
-/* Recovery banner — deliberately loud: a quiesced platform looks healthy and is
-   not yet serving, and that has to be impossible to miss. */
+/* Deliberately loud: a quiesced platform looks healthy but is not serving yet. */
 .recovering {
   border-left: 3px solid var(--warning, #d29922);
 }

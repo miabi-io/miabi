@@ -32,8 +32,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// committedSchema is the generated file checked into the repo and published to
-// editors. A stale copy means completion for a field the parser already accepts.
+// A stale committed schema means no completion for fields the parser already accepts.
 const committedSchema = "../../schema/miabi.io-v1.schema.json"
 
 func TestCommittedSchemaIsCurrent(t *testing.T) {
@@ -71,8 +70,6 @@ func compiled(t *testing.T) *jsonschema.Schema {
 	return s
 }
 
-// docsOf splits a multi-document manifest into JSON-shaped values the validator
-// can read, the same way the parser splits it.
 func docsOf(t *testing.T, path string) []any {
 	t.Helper()
 	f, err := os.Open(path)
@@ -106,8 +103,7 @@ func docsOf(t *testing.T, path string) []any {
 	return out
 }
 
-// Every example the parser accepts must validate. A schema stricter than the
-// parser flags correct files; the examples are the shared reference for both.
+// A schema stricter than the parser would flag correct example files.
 func TestExamplesValidateAgainstSchema(t *testing.T) {
 	files, err := filepath.Glob("../../examples/apply/*.yaml")
 	if err != nil || len(files) == 0 {
@@ -146,8 +142,6 @@ func TestGitOpsExamplesValidate(t *testing.T) {
 	}
 }
 
-// The strictness the parser has, the schema must have: a typo is the failure
-// this whole file exists to move from apply-time to type-time.
 func TestSchemaRejectsWhatTheParserRejects(t *testing.T) {
 	schema := compiled(t)
 	cases := []struct {
@@ -178,8 +172,6 @@ func TestSchemaRejectsWhatTheParserRejects(t *testing.T) {
 	}
 }
 
-// Descriptions are the reason to generate rather than hand-write: an editor
-// hover should be the same prose as the code's comment.
 func TestSchemaCarriesDescriptions(t *testing.T) {
 	raw, err := d.JSONSchema()
 	if err != nil {

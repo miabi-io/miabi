@@ -21,9 +21,7 @@ package models
 
 import "strings"
 
-// Permission is a fine-grained capability of the form "resource:action". Each built-in
-// WorkspaceRole maps to a permission set reproducing rank-based RequireRole exactly (enforced
-// by permission_test.go); custom roles are just alternative permission sets.
+// Permission: each built-in role's set reproduces rank-based RequireRole exactly (enforced by permission_test.go).
 type Permission string
 
 const (
@@ -105,9 +103,7 @@ var ownerExtra = []Permission{
 	PermWorkspaceWrite, PermWorkspaceDelete,
 }
 
-// rolePermissions is the permission set granted by each built-in role. It is
-// strictly monotonic by rank (owner ⊇ admin ⊇ developer ⊇ viewer), reproducing
-// the AtLeast() semantics RequireRole relies on. permission_test.go enforces this.
+// Strictly monotonic by rank to match RequireRole's AtLeast semantics; permission_test.go enforces this.
 var rolePermissions = func() map[WorkspaceRole]map[Permission]bool {
 	viewer := allReadPermissions
 	developer := append(append([]Permission{}, viewer...), developerExtra...)
@@ -143,8 +139,6 @@ func RolePermissions(role WorkspaceRole) map[Permission]bool {
 	return out
 }
 
-// AllPermissions returns the full catalog in a stable, grouped order (for the UI
-// and the permission-picker in custom roles).
 func AllPermissions() []Permission {
 	return []Permission{
 		PermAppRead, PermAppWrite, PermAppDeploy, PermAppDelete, PermAppAdmin,

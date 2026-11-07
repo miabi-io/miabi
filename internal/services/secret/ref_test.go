@@ -28,9 +28,7 @@ func TestRefName(t *testing.T) {
 		{"  ${{ secrets.a-b_c }}  ", "a-b_c"},
 		{"", ""},
 		{"ghp_averyrealtoken", ""},
-		// A credential is opaque, so only a value that is *entirely* a reference
-		// counts. Anything else is the literal secret — a token that happens to
-		// contain the sequence must not be turned into a dangling reference.
+		// A credential is opaque: a token that merely contains the sequence must not become a dangling reference.
 		{"prefix-${{ secrets.TOKEN }}", ""},
 		{"${{ secrets.TOKEN }} suffix", ""},
 		{"${{ secrets.A }}${{ secrets.B }}", ""},

@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// newCached builds a Provider with a pre-populated cache (no DB) for testing the
-// typed getters in isolation.
 func newCached(values map[string]models.Setting) *Provider {
 	return &Provider{cache: values}
 }
@@ -64,9 +62,6 @@ func TestProviderInt(t *testing.T) {
 	}
 }
 
-// TestProviderRefreshIfStale verifies the lazy-refresh gating: a stale cache triggers a reload on the next
-// read — here a no-op nil-repo reload that just re-stamps loadedAt — so loadedAt advances and the cache is
-// still served. A fresh cache, with the ttl disabled, is never reloaded.
 func TestProviderRefreshIfStale(t *testing.T) {
 	old := time.Now().Add(-time.Hour)
 	p := &Provider{

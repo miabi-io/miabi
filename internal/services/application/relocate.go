@@ -23,9 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// RelocateDeploy deploys the release the app is running on the node its record now names. It reuses the
-// active release's image, so a git app is not rebuilt and an image app does not pick up a newer tag: a move
-// changes where the app runs, never what runs.
+// RelocateDeploy reuses the active image: a move changes where the app runs, never what runs.
 func (s *Service) RelocateDeploy(app *models.Application, trigger string) (*models.Deployment, error) {
 	image := ""
 	if rel, err := s.releases.FindActive(app.ID); err == nil && rel.Image != "" {

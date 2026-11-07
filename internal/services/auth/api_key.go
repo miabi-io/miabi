@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// keyPrefix is the human-readable namespace prefix on every token. Tokens have
-// the form mb_<64-hex-secret>; the stored KeyPrefix is keyPrefix + the first 8
-// hex chars, used for an indexed lookup before the constant-time hash compare.
+// Stored KeyPrefix is keyPrefix plus 8 hex chars, for an indexed lookup before the constant-time compare.
 const keyPrefix = "mb_"
 
 // prefixLen is the length of the stored, indexed lookup prefix.
@@ -53,8 +51,7 @@ func NewAPIKeyService(keys *repositories.APIKeyRepository) *APIKeyService {
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
 func (s *APIKeyService) SetQuota(q *quota.Service) { s.quota = q }
 
-// NormalizeScopes validates, deduplicates, and defaults a requested scope set.
-// An empty set defaults to read-only; an unknown scope is an error.
+// An empty set defaults to read-only.
 func NormalizeScopes(scopes []string) ([]string, error) {
 	if len(scopes) == 0 {
 		return []string{models.ScopeRead}, nil
@@ -74,15 +71,12 @@ func NormalizeScopes(scopes []string) ([]string, error) {
 	return out, nil
 }
 
-// Create generates a new API key, persists its hash, and returns the one-time
-// plaintext token (shown to the user only once).
 func (s *APIKeyService) Create(userID uint, workspaceID *uint, name string, allowedIPs, scopes []string, expiresAt *time.Time) (plaintext string, key *models.APIKey, err error) {
 	normScopes, err := NormalizeScopes(scopes)
 	if err != nil {
 		return "", nil, err
 	}
-	// Quota is enforced for workspace-scoped keys; personal keys (no workspace)
-	// are not counted against a workspace plan.
+	// Personal keys are not counted against a workspace plan.
 	if workspaceID != nil && s.quota.Enabled() {
 		n, _ := s.keys.CountByWorkspace(*workspaceID)
 		if err := s.quota.CheckCreate(*workspaceID, quota.ResourceAPIKeys, int(n)); err != nil {
@@ -110,8 +104,7 @@ func (s *APIKeyService) Create(userID uint, workspaceID *uint, name string, allo
 	return plaintext, key, nil
 }
 
-// CreateBilling mints a billing key: scope billing only, account-wide, owned by the platform
-// billing service user. It bypasses NormalizeScopes because users can never pick that scope.
+// CreateBilling bypasses NormalizeScopes because users can never pick the billing scope.
 func (s *APIKeyService) CreateBilling(userID uint, name string, allowedIPs []string) (plaintext string, key *models.APIKey, err error) {
 	raw, _ := generateToken()
 	plaintext = keyPrefix + raw
@@ -129,9 +122,7 @@ func (s *APIKeyService) CreateBilling(userID uint, name string, allowedIPs []str
 	return plaintext, key, nil
 }
 
-// CreateMigration mints a migration key: scope migration only, bound to one workspace (or, for a
-// platform admin's instance key, to none), and always expiring. Like a billing key it bypasses
-// NormalizeScopes, because users can never pick that scope.
+// CreateMigration bypasses NormalizeScopes because users can never pick the migration scope.
 func (s *APIKeyService) CreateMigration(userID uint, workspaceID *uint, name string, expiresAt time.Time) (plaintext string, key *models.APIKey, err error) {
 	raw, _ := generateToken()
 	plaintext = keyPrefix + raw
@@ -151,9 +142,7 @@ func (s *APIKeyService) CreateMigration(userID uint, workspaceID *uint, name str
 	return plaintext, key, nil
 }
 
-// CreateEphemeral mints a short-lived, machine-minted API key for a runner job: workspace-scoped, bound
-// to one application, expiring at the job deadline, and marked Ephemeral so it is hidden from the UI and
-// excluded from the MaxAPIKeys quota. No quota check — job credentials never count against a plan.
+// CreateEphemeral keys are hidden from the UI and never count against MaxAPIKeys.
 func (s *APIKeyService) CreateEphemeral(userID, workspaceID uint, appID *uint, name string, scopes []string, expiresAt time.Time) (plaintext string, key *models.APIKey, err error) {
 	normScopes, err := NormalizeScopes(scopes)
 	if err != nil {
@@ -179,20 +168,13 @@ func (s *APIKeyService) CreateEphemeral(userID, workspaceID uint, appID *uint, n
 	return plaintext, key, nil
 }
 
-// Revoke marks a key revoked (used to kill a run's ephemeral credentials the
-// moment the run reaches a terminal state).
 func (s *APIKeyService) Revoke(id uint) error { return s.keys.Revoke(id) }
 
-// SweepExpiredEphemeral deletes ephemeral job keys past their expiry — a
-// belt-and-suspenders cleanup for keys orphaned by a runner that died without
-// its run releasing them. Returns the number deleted.
+// SweepExpiredEphemeral cleans up keys orphaned by a runner that died without releasing them.
 func (s *APIKeyService) SweepExpiredEphemeral(now time.Time) (int, error) {
 	return s.keys.DeleteExpiredEphemeral(now)
 }
 
-// Verify validates a presented token and returns the matching key. The lookup
-// is indexed on the prefix; the secret is compared in constant time, and the
-// key must be neither revoked nor expired.
 func (s *APIKeyService) Verify(plaintext string) (*models.APIKey, error) {
 	if !strings.HasPrefix(plaintext, keyPrefix) || len(plaintext) < prefixLen {
 		return nil, ErrInvalidAPIKey

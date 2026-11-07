@@ -203,9 +203,7 @@ func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
 	}
 }
 
-// "Miabi v1.2.1 is available — you're running 1.3.0." The cached verdict depends on the index AND the build it
-// was compared against, but the ETag fingerprints only the index — so after an upgrade every check would 304
-// and the old verdict would survive permanently, offering a downgrade.
+// The ETag fingerprints only the index, so after an upgrade a 304 would keep offering a downgrade.
 func TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed(t *testing.T) {
 	idx := &Index{Components: map[string]Channels{ComponentMiabi: {Stable: rel("1.2.1")}}}
 	srv, hits, sawIfNoneMatch := serve(t, idx, `"abc"`)

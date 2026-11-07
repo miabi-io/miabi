@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package recovery finishes what `miabi restore` starts. A restored control-plane database is a faithful
-// record of a machine that no longer exists: its rows name containers never created here, networks that do
-// not exist, and images this host cannot reach — and the platform boots looking healthy while serving nothing.
+// Package recovery converges a restored control-plane DB, whose rows describe a machine that no longer exists, onto this host.
 package recovery
 
 import (
@@ -55,12 +53,9 @@ type Report struct {
 	AppsRedeployed   int `json:"apps_redeployed"`
 	RoutesSynced     int `json:"routes_synced"`
 
-	// TenantData reports the workload restore, when the recovery point carried
-	// tenant databases and volumes.
 	TenantData *TenantRestoreSummary `json:"tenant_data,omitempty"`
 
-	// Unrecoverable names what this host cannot bring back at all, so the loss is
-	// stated rather than discovered at the first failed deploy.
+	// Stated up front rather than discovered at the first failed deploy.
 	Unrecoverable []string `json:"unrecoverable"`
 	// Manual names what a human must do: DNS, certificates, re-enrolment.
 	Manual []string `json:"manual"`
@@ -68,9 +63,7 @@ type Report struct {
 	Failures []string `json:"failures"`
 }
 
-// TenantRestoreSummary reports what the workload restore recovered. It mirrors
-// platformbackup's report rather than embedding it, so this package does not
-// depend on the backup service's types.
+// Mirrors platformbackup's report rather than embedding it, avoiding a dependency on its types.
 type TenantRestoreSummary struct {
 	Ref               string   `json:"ref"`
 	DatabasesRestored int      `json:"databases_restored"`
@@ -79,13 +72,10 @@ type TenantRestoreSummary struct {
 	Failures          []string `json:"failures,omitempty"`
 }
 
-// TenantRestorer restores workload data from the newest usable recovery point.
-// Optional: without one, a reconcile brings back the control plane and says so.
+// Optional: without one, reconcile restores only the control plane and says so.
 type TenantRestorer func(ctx context.Context) (*TenantRestoreSummary, error)
 
-// DatabaseEnsurer brings a managed database instance's container back. "Ensure", not "start": on recovered
-// hardware the row's container id names a container on a machine that is gone, so starting it can only fail.
-// The implementation recreates from the stored spec when the recorded container is not there.
+// Ensure, not start: the recorded container id names one on a machine that is gone, so recreate from spec.
 type DatabaseEnsurer func(ctx context.Context, instanceID uint) error
 
 // SettingsStore reads and writes platform settings.
@@ -110,8 +100,7 @@ type AppRedeployer func(app *models.Application) error
 // RouteSyncer re-renders the gateway configuration for a workspace.
 type RouteSyncer func(ctx context.Context, workspaceID uint) error
 
-// RegistryInfo reports how the built-in registry stores its blobs, which decides
-// whether images survived the host that is gone.
+// Decides whether images survived the lost host.
 type RegistryInfo func() (storageType string, enabled bool)
 
 // Service drives post-restore reconciliation.
@@ -132,9 +121,7 @@ type Service struct {
 	last *Report
 }
 
-// New builds the recovery service. The action hooks are optional: a nil hook
-// makes its step a reported gap rather than a crash, because a partially wired
-// recovery is still better than none.
+// Nil hooks make their step a reported gap rather than a crash.
 func New(settings SettingsStore, servers ServerStore, apps *repositories.ApplicationRepository, networks *repositories.NetworkRepository) *Service {
 	return &Service{settings: settings, servers: servers, apps: apps, networks: networks}
 }
@@ -144,9 +131,7 @@ func (s *Service) SetRedeployer(fn AppRedeployer)      { s.redeploy = fn }
 func (s *Service) SetRouteSyncer(fn RouteSyncer)       { s.syncRoutes = fn }
 func (s *Service) SetRegistryInfo(fn RegistryInfo)     { s.registry = fn }
 
-// SetDatabaseRecovery wires the two halves of workload recovery: bringing each managed database instance's
-// container back, and then loading the recovery point's dumps into them. They are set together because
-// either alone is useless — an empty database that starts, or a dump with nowhere to go.
+// Set together because either alone is useless: an empty database, or a dump with nowhere to go.
 func (s *Service) SetDatabaseRecovery(list DatabaseLister, ensure DatabaseEnsurer, restore TenantRestorer) {
 	s.instances, s.ensureDatabase, s.restoreTenants = list, ensure, restore
 }
@@ -154,9 +139,7 @@ func (s *Service) SetDatabaseRecovery(list DatabaseLister, ensure DatabaseEnsure
 // DatabaseLister returns every managed database instance across workspaces.
 type DatabaseLister func() ([]models.DatabaseInstance, error)
 
-// Pending reports whether this platform is a restore awaiting completion. It is
-// read on every boot: the marker lives in the restored database, so the platform
-// knows it is recovering before it does anything else.
+// Pending is read on every boot; the marker lives in the restored DB so recovery is known before anything else.
 func (s *Service) Pending() bool {
 	rec, err := s.settings.Get(models.RestorePendingKey)
 	if err != nil || rec == nil {
@@ -175,13 +158,9 @@ func (s *Service) Status() Status {
 	return st
 }
 
-// Reconcile converges the restored control-plane state onto this host. It is deliberately tolerant: one app
-// that will not deploy must not stop the other forty from coming back. Everything that fails is collected
-// and reported rather than returned, because the operator needs the whole picture at once.
+// Reconcile is tolerant: failures are collected and reported so one bad app never blocks the rest.
 func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
-	// Initialised, not left nil: a nil slice marshals to JSON null, and a client reading report.failures.length
-	// on null crashes the page it was meant to render. An empty list is the honest encoding of "nothing went
-	// wrong", and saying so is the API's job rather than every consumer's to defend against.
+	// Non-nil so it marshals to [] not null; clients reading failures.length on null crash.
 	rep := &Report{
 		StartedAt:     time.Now().UTC(),
 		Unrecoverable: []string{},
@@ -189,9 +168,7 @@ func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
 		Failures:      []string{},
 	}
 
-	// Order matters and is the whole design of this function: infrastructure before the things that sit on it,
-	// and data before the workloads that read it. An app redeployed against a database that is not yet up and
-	// not yet populated comes back healthy and empty, which is worse than not coming back.
+	// Infrastructure before what sits on it, data before workloads: an app against an empty DB comes back healthy and empty.
 	s.resetNodes(rep)
 	s.ensureNetworks(ctx, rep)
 	s.startDatabases(ctx, rep)
@@ -209,9 +186,7 @@ func (s *Service) Reconcile(ctx context.Context) (*Report, error) {
 	return rep, nil
 }
 
-// resetNodes invalidates host-bound identity on the restored node records. A Server row carries the swarm node
-// id of a machine that is gone; left in place, the platform schedules work onto nodes that do not exist and
-// reports them healthy. Clearing it makes the truth visible: one local manager, remotes awaiting re-enrolment.
+// Restored Server rows carry swarm ids of gone machines; clearing them stops scheduling onto phantom nodes.
 func (s *Service) resetNodes(rep *Report) {
 	servers, err := s.servers.List()
 	if err != nil {
@@ -225,8 +200,7 @@ func (s *Service) resetNodes(rep *Report) {
 		}
 		srv.SwarmNodeID = ""
 		if !srv.IsLocal {
-			// Remote nodes cannot be recovered from here: their agent enrolment was
-			// issued by the host that is gone.
+			// Remote agent enrolment was issued by the host that is gone, so it cannot be recovered here.
 			srv.Status = models.ServerStatusOffline
 			rep.Manual = append(rep.Manual,
 				fmt.Sprintf("re-enrol node %q — its agent enrolment belonged to the previous host", srv.Name))
@@ -239,9 +213,7 @@ func (s *Service) resetNodes(rep *Report) {
 	}
 }
 
-// ensureNetworks recreates the Docker networks the allocation ledger records.
-// The ledger is authoritative, so addresses come back identical and apps keep
-// the IPs their configuration refers to.
+// The ledger is authoritative, so addresses come back identical.
 func (s *Service) ensureNetworks(ctx context.Context, rep *Report) {
 	if s.ensureNetwork == nil || s.networks == nil {
 		return
@@ -263,9 +235,7 @@ func (s *Service) ensureNetworks(ctx context.Context, rep *Report) {
 	}
 }
 
-// redeployApps brings every application back from its stored spec. Apps whose image lived only in a
-// filesystem-backed registry cannot come back at all — those blobs died with the host — so they are named
-// as unrecoverable instead of being retried into a confusing failure.
+// Apps whose image lived only in a filesystem-backed registry are reported unrecoverable, not retried.
 func (s *Service) redeployApps(rep *Report) {
 	if s.redeploy == nil || s.apps == nil {
 		return
@@ -292,8 +262,7 @@ func (s *Service) redeployApps(rep *Report) {
 	sort.Strings(rep.Unrecoverable)
 }
 
-// startDatabases brings every managed database instance's container back before
-// any dump is loaded into it.
+// Containers must be up before any dump is loaded.
 func (s *Service) startDatabases(ctx context.Context, rep *Report) {
 	if s.ensureDatabase == nil || s.instances == nil {
 		return
@@ -313,8 +282,6 @@ func (s *Service) startDatabases(ctx context.Context, rep *Report) {
 	}
 }
 
-// restoreTenantData loads the recovery point's workload data back into the
-// instances just started.
 func (s *Service) restoreTenantData(ctx context.Context, rep *Report) {
 	if s.restoreTenants == nil {
 		return
@@ -336,9 +303,7 @@ func (s *Service) restoreTenantData(ctx context.Context, rep *Report) {
 	}
 }
 
-// registryImagesLost reports whether the built-in registry's blobs are gone —
-// true when it ran on local filesystem storage, false on S3, where the images
-// outlived the host.
+// True for local filesystem storage; on S3 the images outlived the host.
 func (s *Service) registryImagesLost() bool {
 	if s.registry == nil {
 		return false
@@ -347,8 +312,7 @@ func (s *Service) registryImagesLost() bool {
 	return enabled && storage == models.RegistryStorageFilesystem
 }
 
-// rebuildable reports whether an app can be produced again without the old
-// registry: it builds from Git, or its image comes from somewhere else.
+// Rebuildable apps build from Git or pull images from elsewhere.
 func rebuildable(app *models.Application) bool {
 	if app.GitRepositoryID != nil && *app.GitRepositoryID != 0 {
 		return true
@@ -356,9 +320,7 @@ func rebuildable(app *models.Application) bool {
 	return app.SourceType != models.AppSourceImage
 }
 
-// syncWorkspaceRoutes re-renders gateway configuration per workspace. The
-// gateway comes up with a default config; every route the platform owns has to
-// be written back out for traffic to reach anything.
+// The gateway starts with a default config, so every route must be written back for traffic to flow.
 func (s *Service) syncWorkspaceRoutes(ctx context.Context, rep *Report) {
 	if s.syncRoutes == nil || s.apps == nil {
 		return
@@ -390,9 +352,7 @@ func (s *Service) noteManualSteps(rep *Report) {
 	)
 }
 
-// Complete clears the quiesce marker: schedules resume and the platform behaves normally from here. Requiring
-// an explicit action is the point — it is the operator confirming they have read the report and moved DNS,
-// not the platform assuming it.
+// Complete requires an explicit action: the operator confirms they read the report and moved DNS.
 func (s *Service) Complete() error {
 	if err := s.settings.Delete(models.RestorePendingKey); err != nil {
 		return err

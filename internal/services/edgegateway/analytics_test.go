@@ -34,8 +34,6 @@ func analyticsService(t *testing.T, stream, platformRedis string) *Service {
 	return s
 }
 
-// The manager's gateway publishes to the platform Redis — the one the analytics
-// consumer reads — so its rendered config turns analytics on.
 func TestManagerGatewayRendersAnalytics(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
 	got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true})
@@ -52,8 +50,7 @@ func TestManagerGatewayRendersAnalytics(t *testing.T) {
 	}
 }
 
-// A remote edge node publishes to its own Redis, which the agent drains and
-// forwards to the manager — so it publishes too, into that local buffer.
+// A remote edge node publishes into its own Redis, which the agent drains and forwards to the manager.
 func TestRemoteEdgeNodeRendersAnalytics(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
 	got := s.RenderConfig(&models.Server{Name: "edge-1"})
@@ -65,8 +62,7 @@ func TestRemoteEdgeNodeRendersAnalytics(t *testing.T) {
 	}
 }
 
-// Every event names the gateway that served it, or edge traffic is
-// indistinguishable from the manager's once both land in one stream.
+// Without a gateway id, edge traffic is indistinguishable from the manager's in one stream.
 func TestEdgeGatewayEnvCarriesGatewayID(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
 	env := s.gatewayEnv(&models.Server{Name: "edge-1"}, "tok", "redispw")
@@ -92,8 +88,6 @@ func TestNoGatewayIDWithoutAnalytics(t *testing.T) {
 	}
 }
 
-// With the platform consumer switched off (MIABI_ANALYTICS_ENABLED=false) no
-// stream is wired, so nothing is published anywhere.
 func TestNoAnalyticsWithoutAConsumer(t *testing.T) {
 	s := analyticsService(t, "", "miabi-redis:6379")
 	if got := s.RenderConfig(&models.Server{Name: "manager", IsLocal: true}); strings.Contains(got, "analytics:") {

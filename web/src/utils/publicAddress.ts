@@ -37,10 +37,7 @@ export function isDnsName(v: string): boolean {
   return hostnamePattern.test(normalizeHost(v))
 }
 
-/**
- * Mirrors models.PublicAddress.AddressRecords: an A and an AAAA per IP family, else a CNAME to the hostname (never
- * at the apex), and a www host whose bare name is routed too aliases that name.
- */
+/** Mirrors models.PublicAddress.AddressRecords. */
 export function addressRecords(host: string, routed: string[], a: PublicAddress, apex = false): AddressRecord[] {
   const h = normalizeHost(host)
   if (!h || h.startsWith('*')) return []

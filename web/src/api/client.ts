@@ -12,8 +12,7 @@ declare module 'axios' {
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   headers: { 'Content-Type': 'application/json' },
-  // Send the HttpOnly session cookie with every request. The JWT is no longer
-  // stored in JS, so there is no Authorization header to attach.
+  // The JWT lives only in the HttpOnly session cookie, so there is no Authorization header to attach.
   withCredentials: true,
 })
 
@@ -22,8 +21,7 @@ api.interceptors.response.use(
   async (error) => {
     const code = error.response?.data?.error?.code
     const cfg = error.config
-    // A locked admin console answers 403 with a code, never 401 (which signs the user out). Ask for
-    // the unlock and replay the request once, so nothing the admin was doing is lost.
+    // A locked admin console answers 403 (never 401, which signs out); unlock and replay once so no work is lost.
     if (error.response?.status === 403 && (ELEVATION_CODES as readonly string[]).includes(code)
       && cfg && !cfg._elevationRetry && !String(cfg.url ?? '').includes('/admin/elevat')) {
       const ok = await useElevationStore().requestUnlock(code as ElevationCode)
@@ -33,8 +31,7 @@ api.interceptors.response.use(
     }
     if (error.response?.status === 401) {
       const auth = useAuthStore()
-      // Clear local state only — never call logout() here: it POSTs /auth/logout,
-      // which would itself 401 and re-enter this handler in an infinite loop.
+      // Never call logout() here: it POSTs /auth/logout, which would 401 and re-enter this handler forever.
       auth.clearSession()
       // /cli/authorize falls back to its own sign-in form; leaving it would lose the CLI's callback.
       if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/cli/')) {
@@ -45,9 +42,7 @@ api.interceptors.response.use(
   },
 )
 
-// apiErrorMessage extracts a human message from a rejected request. The backend
-// envelope is { error: { code, message, error } }; `message` is the human reason,
-// so prefer it then fall back.
+// apiErrorMessage prefers the envelope's human `message`, then falls back.
 export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
   if (axios.isAxiosError(err)) {
     const e = err.response?.data?.error
@@ -56,15 +51,12 @@ export function apiErrorMessage(err: unknown, fallback = 'Something went wrong')
   return err instanceof Error ? err.message : fallback
 }
 
-// statusTitle maps an HTTP status to a friendly toast heading, so the title
-// reflects what went wrong instead of a constant "Error".
 export function statusTitle(status?: number): string {
   const key = statusKey(status)
   return t(`error.status.${key}`)
 }
 
-// The heading is ours, not the server's — the API's own message stays underneath as the
-// English detail line.
+// The heading is ours; the API's own message stays underneath as the detail line.
 function statusKey(status?: number): string {
   switch (status) {
     case 400: return 'badRequest'
@@ -82,9 +74,6 @@ function statusKey(status?: number): string {
   return 'serverError'
 }
 
-// ApiError is the decomposed envelope error: the HTTP `status`, a status-derived
-// `title`, the human `message`, an optional `detail` (the raw `error` field, only
-// when it adds something beyond `message`), and the stable machine `code`.
 export interface ApiError {
   status?: number
   code?: string
@@ -93,9 +82,7 @@ export interface ApiError {
   detail?: string
 }
 
-// apiError decomposes a rejected request into an ApiError. `detail` is set only
-// when the envelope's raw `error` differs from `message`, so callers never render
-// the same line twice.
+// apiError sets `detail` only when the raw `error` differs from `message`, so callers never render it twice.
 export function apiError(err: unknown, fallback = 'Something went wrong'): ApiError {
   const resp = axios.isAxiosError(err) ? err.response : undefined
   const e = resp?.data?.error
@@ -105,25 +92,21 @@ export function apiError(err: unknown, fallback = 'Something went wrong'): ApiEr
   return { status, code: e?.code, title: statusTitle(status), message, detail }
 }
 
-// SSE EventSource URL. The session travels as the HttpOnly cookie, sent
-// automatically on the same-origin request (EventSource is opened with
-// withCredentials by the caller), so no token goes in the URL.
+// The session travels as the HttpOnly cookie (caller opens EventSource withCredentials), so no token goes in the URL.
 export function sseUrl(path: string): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
   return new URL(`${origin}${base}${path}`).toString()
 }
 
-// Absolute API URL for a same-origin file download (the session cookie is sent
-// automatically, so an anchor/href works with no token in the URL).
+// The session cookie is sent on same-origin downloads, so an href works with no token in the URL.
 export function apiUrl(path: string): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin
   return new URL(`${origin}${base}${path}`).toString()
 }
 
-// WebSocket URL. The browser sends the session cookie on the same-origin
-// handshake, so the JWT no longer needs to be carried as a query param.
+// The browser sends the session cookie on the same-origin handshake, so no token query param is needed.
 export function wsUrl(path: string): string {
   const base = (import.meta.env.VITE_API_URL || '/api/v1') as string
   const origin = base.startsWith('http') ? '' : window.location.origin

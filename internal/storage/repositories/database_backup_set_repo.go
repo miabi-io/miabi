@@ -24,8 +24,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// DatabaseBackupSetRepository stores instance-level recovery points and reads
-// them back with their items, which is the only way a set is useful.
 type DatabaseBackupSetRepository struct{ db *gorm.DB }
 
 func NewDatabaseBackupSetRepository(db *gorm.DB) *DatabaseBackupSetRepository {
@@ -40,8 +38,7 @@ func (r *DatabaseBackupSetRepository) Update(s *models.DatabaseBackupSet) error 
 	return r.db.Save(s).Error
 }
 
-// FindInWorkspace loads a set with its items, scoped to the workspace so a set id
-// from another tenant reads as not found.
+// Scoped so a set id from another tenant reads as not found.
 func (r *DatabaseBackupSetRepository) FindInWorkspace(workspaceID, id uint) (*models.DatabaseBackupSet, error) {
 	var s models.DatabaseBackupSet
 	err := r.db.Preload("Items", func(db *gorm.DB) *gorm.DB {
@@ -63,8 +60,7 @@ func (r *DatabaseBackupSetRepository) FindByRef(workspaceID uint, ref string) (*
 	return &s, nil
 }
 
-// ListByInstance returns an instance's recovery points newest-first, each with its
-// items, so the history renders in one query pair rather than N+1.
+// Loads items in one query pair rather than N+1.
 func (r *DatabaseBackupSetRepository) ListByInstance(instanceID uint) ([]models.DatabaseBackupSet, error) {
 	var sets []models.DatabaseBackupSet
 	err := r.db.Preload("Items", func(db *gorm.DB) *gorm.DB {
@@ -73,14 +69,11 @@ func (r *DatabaseBackupSetRepository) ListByInstance(instanceID uint) ([]models.
 	return sets, err
 }
 
-// Delete removes the set row. Its items cascade at the database level; the
-// service removes their artifacts first, which the database cannot do.
+// Items cascade in the database; the service removes their artifacts first, which the database can't.
 func (r *DatabaseBackupSetRepository) Delete(id uint) error {
 	return r.db.Delete(&models.DatabaseBackupSet{}, id).Error
 }
 
-// FindByID loads a set without workspace scoping, for callers that already hold a
-// workspace-scoped row pointing at it.
 func (r *DatabaseBackupSetRepository) FindByID(id uint) (*models.DatabaseBackupSet, error) {
 	var s models.DatabaseBackupSet
 	if err := r.db.First(&s, id).Error; err != nil {
@@ -89,8 +82,6 @@ func (r *DatabaseBackupSetRepository) FindByID(id uint) (*models.DatabaseBackupS
 	return &s, nil
 }
 
-// ListSealed returns the workspace's sets that carry an envelope, which are the
-// ones a passphrase rotation has to re-wrap.
 func (r *DatabaseBackupSetRepository) ListSealed(workspaceID uint) ([]models.DatabaseBackupSet, error) {
 	var out []models.DatabaseBackupSet
 	err := r.db.Where("workspace_id = ? AND envelope <> ''", workspaceID).Find(&out).Error
@@ -110,8 +101,7 @@ func (r *DatabaseBackupSetRepository) DeleteSchedule(id uint) error {
 	return r.db.Delete(&models.DatabaseBackupSetSchedule{}, id).Error
 }
 
-// FindScheduleInWorkspace scopes the lookup so a schedule id from another tenant
-// reads as not found.
+// Scoped so a schedule id from another tenant reads as not found.
 func (r *DatabaseBackupSetRepository) FindScheduleInWorkspace(workspaceID, id uint) (*models.DatabaseBackupSetSchedule, error) {
 	var s models.DatabaseBackupSetSchedule
 	err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&s).Error
@@ -134,8 +124,6 @@ func (r *DatabaseBackupSetRepository) ListEnabledSchedules() ([]models.DatabaseB
 	return out, err
 }
 
-// ListAllRefs maps every known set ref to its row id, so discovery can mark which
-// of the bucket's recovery points this platform already has.
 func (r *DatabaseBackupSetRepository) ListAllRefs() (map[string]uint, error) {
 	var rows []models.DatabaseBackupSet
 	if err := r.db.Select("id", "ref").Find(&rows).Error; err != nil {

@@ -25,9 +25,7 @@ import (
 	"github.com/moby/moby/api/types/mount"
 )
 
-// TestBuildSwarmServiceSpecIngressAliases verifies the shared ingress overlay gets ONLY the unique
-// upstream alias while the per-workspace overlay keeps tenant-scoped aliases. The workspace-scoped
-// app name on the shared network would let app names collide across workspaces.
+// The workspace-scoped app name on the shared network would collide across workspaces.
 func TestBuildSwarmServiceSpecIngressAliases(t *testing.T) {
 	spec := buildSwarmServiceSpec(ServiceSpec{
 		Name:           "mb-app-abc-1",
@@ -75,9 +73,6 @@ func TestBuildSwarmServiceSpecEndpointMode(t *testing.T) {
 	}
 }
 
-// TestBuildSwarmServiceSpecMountDrivers verifies a shared-volume mount carries
-// its driver config into the swarm spec (so every node materializes the real
-// backing share), while a plain mount without a driver config does not.
 func TestBuildSwarmServiceSpecMountDrivers(t *testing.T) {
 	spec := buildSwarmServiceSpec(ServiceSpec{
 		Name:   "svc",
@@ -105,9 +100,7 @@ func TestBuildSwarmServiceSpecMountDrivers(t *testing.T) {
 	}
 }
 
-// TestEncodeRegistryAuth verifies the swarm registry-auth encoder: nil/empty
-// credentials yield an empty header (so public images don't get a bogus auth),
-// and a real credential yields a non-empty encoded token that workers use to pull.
+// Empty credentials must yield an empty header so public images don't get a bogus auth.
 func TestEncodeRegistryAuth(t *testing.T) {
 	if enc, err := encodeRegistryAuth(nil); err != nil || enc != "" {
 		t.Fatalf("nil auth = (%q, %v), want (\"\", nil)", enc, err)
@@ -124,8 +117,6 @@ func TestEncodeRegistryAuth(t *testing.T) {
 	}
 }
 
-// TestBuildSwarmServiceSpecNoIngress confirms a spec without an ingress network
-// attaches only its primary networks (unchanged behavior for non-cluster paths).
 func TestBuildSwarmServiceSpecNoIngress(t *testing.T) {
 	spec := buildSwarmServiceSpec(ServiceSpec{
 		Name:     "svc",

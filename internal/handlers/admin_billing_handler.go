@@ -35,8 +35,6 @@ import (
 var errBillingAPIDisabled = billing.NewCodedError(http.StatusConflict, "BILLING_API_DISABLED",
 	"the Billing API is off; set MIABI_BILLING_API_ENABLED=true and restart to use it")
 
-// AdminBillingHandler is the admin Billing page: connect this Miabi to a billing console with an
-// enrolment code, see the connection, and disconnect.
 type AdminBillingHandler struct {
 	svc     *billing.Service
 	enabled bool
@@ -62,8 +60,7 @@ type ConnectBillingRequest struct {
 	} `json:"body"`
 }
 
-// usable writes the refusal and reports false while the switch is off or the licence lacks billing.
-// AbortWithError returns nil once the response is written, so callers must check the bool, not an error.
+// AbortWithError returns nil once written, so callers must check the bool, not an error.
 func (h *AdminBillingHandler) usable(c *okapi.Context) (bool, error) {
 	switch BillingAPIState(h.enabled, h.ee) {
 	case BillingAPIOff:

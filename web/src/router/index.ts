@@ -16,21 +16,14 @@ const routes = [
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/auth/ForgotPassword.vue'), meta: { guest: true, title: 'Reset password' } },
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },
-  // The link in an invitation email. Neither guest- nor auth-gated: it signs in, signs up or accepts
-  // depending on who opens it.
+  // Neither guest- nor auth-gated: it signs in, signs up or accepts depending on who opens it.
   { path: '/invitations/accept', name: 'accept-invitation', component: () => import('@/views/auth/AcceptInvitation.vue'), meta: { title: 'Invitation' } },
   { path: '/oauth/callback', name: 'oauth-callback', component: () => import('@/views/auth/OAuthCallback.vue'), meta: { title: 'Signing in' } },
-  // "Copy login command": intentionally neither guest- nor auth-gated. It forces a
-  // fresh re-authentication (even for a signed-in user) before minting a CLI token,
-  // and also handles the SSO hand-off return (?handoff=…).
+  // Neither guest- nor auth-gated: it forces re-auth before minting a CLI token and handles the SSO hand-off return.
   { path: '/request-token', name: 'request-token', component: () => import('@/views/auth/RequestToken.vue'), meta: { title: 'CLI login token' } },
-  // `miabi login` loopback flow: like request-token, forces a fresh re-auth (even
-  // when signed in), then hands a single-use code back to the CLI's local callback
-  // (?redirect_uri=…&state=…). Neither guest- nor auth-gated.
+  // Neither guest- nor auth-gated: forces re-auth, then hands a single-use code to the CLI's local callback.
   { path: '/cli/authorize', name: 'cli-authorize', component: () => import('@/views/auth/CliAuthorize.vue'), meta: { title: 'Authorize CLI login' } },
-  // Forced password change (admin-set/reset credential). The user holds only a
-  // short-lived reset token here, not a session; the guard gates it on a pending
-  // reset rather than on auth.
+  // The user holds only a short-lived reset token, not a session, so the guard gates on a pending reset.
   { path: '/change-password', name: 'change-password', component: () => import('@/views/auth/ChangePasswordRequired.vue'), meta: { title: 'Set a new password' } },
   {
     path: '/',
@@ -104,8 +97,7 @@ const routes = [
     component: () => import('@/layouts/AdminLayout.vue'),
     meta: { auth: true, admin: true },
     children: [
-      // A bare /admin is a real destination: the console switcher and a typed URL
-      // both need somewhere to land.
+      // The console switcher and a typed URL both need somewhere to land.
       { path: '', redirect: { name: 'admin-dashboard' } },
       { path: 'users', name: 'admin-users', component: () => import('@/views/admin/Users.vue'), meta: { title: 'Users', admin: true } },
       { path: 'users/:id', name: 'admin-user-detail', component: () => import('@/views/admin/UserDetail.vue'), meta: { title: 'User', admin: true } },
@@ -187,9 +179,7 @@ router.beforeEach(async (to, from) => {
       return { path: to.path, query, hash: to.hash, replace: true }
     }
   }
-  // A pending forced password change holds only a short-lived reset token (no
-  // session): the change-password screen is the only route reachable until it's
-  // done, and it's unreachable otherwise.
+  // A pending reset holds no session: change-password is the only reachable route, and unreachable otherwise.
   if (auth.pendingReset) {
     return to.name === 'change-password' ? true : { name: 'change-password' }
   }
@@ -197,8 +187,7 @@ router.beforeEach(async (to, from) => {
   if (to.meta.auth && !auth.isAuthenticated) {
     return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} }
   }
-  // The SSO second-factor step finishes a sign-in the server parked, which may be a CLI login started
-  // from a browser that is already signed in; bouncing it to the dashboard would strand the CLI.
+  // The SSO second-factor step may finish a CLI login from a signed-in browser; redirecting would strand the CLI.
   if (to.meta.guest && auth.isAuthenticated && !to.query.sso_two_factor) return safeNext(to.query.next) || { name: 'dashboard' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'dashboard' }
   if (to.meta.admin && !(await useElevationStore().ensure())) {

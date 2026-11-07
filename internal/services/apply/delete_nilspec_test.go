@@ -21,9 +21,7 @@ package apply
 
 import "testing"
 
-// A prune-delete (and DeleteResource) drives execute with a zero Resource: the
-// pruned resource is, by definition, absent from the desired manifest. Anything
-// reading the desired spec on that path has to tolerate a nil.
+// A pruned resource is absent from the manifest, so the desired spec is nil on this path.
 func TestResolveRegistryToleratesAbsentSpec(t *testing.T) {
 	s := &Service{} // registries deliberately unwired: a nil spec must not reach it
 	id, err := s.resolveRegistry(1, "api", nil)

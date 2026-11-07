@@ -8,7 +8,6 @@ export interface WorkspaceTrait {
   badgeClass: string
 }
 
-// The system workspace is always privileged too, so it gets the one trait that says the most:
 // "system" already implies the relaxed rules that "privileged" names.
 export function workspaceTrait(
   w: { system?: boolean; privileged?: boolean } | null | undefined,

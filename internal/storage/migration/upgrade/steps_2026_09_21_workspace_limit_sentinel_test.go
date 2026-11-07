@@ -48,8 +48,6 @@ func valueOf(t *testing.T, db *gorm.DB, key string) string {
 	return row.Value
 }
 
-// A 0 meant "unlimited" under the old rule and means "none allowed" under the new one, so it has to
-// become -1. A real count must survive untouched.
 func TestWorkspaceLimitSentinelPreservesUnlimited(t *testing.T) {
 	db := limitDB(t)
 	rows := []settingFixture{
@@ -76,8 +74,7 @@ func TestWorkspaceLimitSentinelPreservesUnlimited(t *testing.T) {
 	}
 }
 
-// A value that is neither a count nor a sentinel must be left alone rather than cast. Postgres
-// errors on CAST('ten' AS INTEGER), and a step that fails blocks the boot it was meant to upgrade.
+// Postgres errors on CAST('ten' AS INTEGER), and a failing step blocks the boot it was meant to upgrade.
 func TestWorkspaceLimitSentinelLeavesUnparseableValues(t *testing.T) {
 	db := limitDB(t)
 	if err := db.Create(&[]settingFixture{
@@ -97,8 +94,6 @@ func TestWorkspaceLimitSentinelLeavesUnparseableValues(t *testing.T) {
 	}
 }
 
-// A negative value other than -1 also meant unlimited, and the step must not churn an already
-// converted row on the next boot.
 func TestWorkspaceLimitSentinelIsIdempotent(t *testing.T) {
 	db := limitDB(t)
 	if err := db.Create(&[]settingFixture{

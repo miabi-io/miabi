@@ -14,8 +14,7 @@ export interface CustomRoleInput {
   permissions: string[]
 }
 
-// roleApi manages a workspace's custom roles and member assignment (gated
-// custom_roles on the server — writes return 402 in Community).
+// Gated by custom_roles on the server; writes return 402 in Community.
 export const roleApi = {
   list: (ws: number) => api.get<ApiResponse<CustomRole[]>>(`${w(ws)}/roles`),
   create: (ws: number, body: CustomRoleInput) => api.post<ApiResponse<CustomRole>>(`${w(ws)}/roles`, body),
@@ -36,7 +35,6 @@ export const policyApi = {
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/apps/${appId}/policies/${userId}`),
 }
 
-// downloadAudit streams the audit log to a file via an authenticated blob GET.
 // scope is 'admin' (platform-wide) or a workspace id.
 export async function downloadAudit(
   scope: 'admin' | number,

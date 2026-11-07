@@ -69,13 +69,10 @@ type VolumeCreateRequest struct {
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
 		SizeMB   int  `json:"size_mb"` // declared capacity in MB (0 = unspecified)
-		// Driver: "local" (default, node-local); "nfs"/"cifs" for shared storage a replicated cluster app
-		// can mount across nodes; or "host" to bind an operator-managed host path (privileged workspaces
-		// only). DriverOpts are the backend mount options, encrypted at rest and never returned.
+		// "host" is privileged-only; DriverOpts are encrypted at rest and never returned.
 		Driver     string            `json:"driver" enum:"local,nfs,cifs,host"`
 		DriverOpts map[string]string `json:"driver_opts"`
-		// StorageClass names the storage the volume is created on. Empty takes the workspace
-		// plan's default, then the node's.
+		// Empty takes the workspace plan's default, then the node's.
 		StorageClass string `json:"storage_class"`
 	} `json:"body"`
 }
@@ -134,8 +131,7 @@ func (h *VolumeHandler) List(c *okapi.Context) error {
 	return ok(c, vols)
 }
 
-// Storage returns the workspace's declared-vs-measured storage summary. Reads
-// cached columns only — no live disk walk.
+// Reads cached columns only, no live disk walk.
 func (h *VolumeHandler) Storage(c *okapi.Context) error {
 	sum, err := h.svc.WorkspaceStorage(middlewares.WorkspaceID(c))
 	if err != nil {
@@ -176,8 +172,7 @@ type VolumeExpandRequest struct {
 	} `json:"body"`
 }
 
-// Expand raises a volume's declared capacity. Only a volume created with a size can grow: one without
-// is uncapped, and giving it a size would be a limit, not an expansion.
+// A volume without a size is uncapped; giving it one would be a limit, not an expansion.
 func (h *VolumeHandler) Expand(c *okapi.Context, req *VolumeExpandRequest) error {
 	v, err := h.load(c)
 	if err != nil {
@@ -295,9 +290,7 @@ func (h *VolumeHandler) record(c *okapi.Context, wsID uint, action string, id ui
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "volume", TargetID: strconv.Itoa(int(id)), IP: c.RealIP()})
 }
 
-// StorageClassOption is a storage class as a tenant sees it: the name to ask for and what it is,
-// never the operator's host path. Where a volume physically sits is the operator's business, and
-// the create form only needs the handle.
+// Never exposes the operator's host path.
 type StorageClassOption struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
@@ -306,8 +299,6 @@ type StorageClassOption struct {
 	Shared      bool   `json:"shared"`
 }
 
-// StorageClasses lists the classes this workspace may create volumes on: the node's classes,
-// narrowed to what the plan allows. The default flag marks the one an unstated create would get.
 func (h *VolumeHandler) StorageClasses(c *okapi.Context) error {
 	if h.classes == nil {
 		return ok(c, []StorageClassOption{})

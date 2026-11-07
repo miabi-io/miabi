@@ -18,9 +18,7 @@ const notify = useNotificationStore()
 const isAdmin = computed(() => !!route.meta.admin)
 const rid = computed(() => Number(route.params.id))
 const listPath = computed(() => (isAdmin.value ? '/admin/runners' : '/runners'))
-// Managing an existing shared runner (cordon/token/delete) is available to any
-// platform admin — the license only caps how many shared runners may be
-// registered, not managing the ones that exist. Workspace runners use the role.
+// The license only caps how many shared runners are registered, not managing existing ones.
 const canEdit = computed(() => (isAdmin.value ? true : ws.canEdit))
 
 const runner = ref<Runner | null>(null)

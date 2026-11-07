@@ -40,8 +40,7 @@ export const i18n = createI18n({
 
 const loaded = new Set<LanguageCode>([DEFAULT_LANGUAGE])
 
-// setLanguage loads a catalogue if it is not yet in memory, then switches to it. Safe to
-// call with an unknown or stale tag: it resolves through the shipped list first.
+// Safe with an unknown or stale tag: it resolves through the shipped list first.
 export async function setLanguage(tag: string | null | undefined): Promise<LanguageCode> {
   const code = resolveLanguage(tag)
   if (!loaded.has(code)) {
@@ -63,8 +62,7 @@ export async function setLanguage(tag: string | null | undefined): Promise<Langu
   return code
 }
 
-// t is the translator for code outside a component — stores, API helpers, utils — where
-// useI18n() has no instance to attach to.
+// For code outside a component, where useI18n() has no instance to attach to.
 export function t(key: string, named?: Record<string, unknown>): string {
   return named ? i18n.global.t(key, named) : i18n.global.t(key)
 }
@@ -74,8 +72,7 @@ export function activeLanguage(): LanguageCode {
   return i18n.global.locale.value as LanguageCode
 }
 
-// label translates a nav entry, falling back to its English text. The data files carry
-// both so they stay readable and keep working if a key is ever missed.
+// Data files carry English too so they stay readable and keep working if a key is missed.
 export function label(key: string, fallback: string): string {
   return i18n.global.te(key) ? i18n.global.t(key) : fallback
 }

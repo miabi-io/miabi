@@ -30,31 +30,21 @@ const (
 	RegistryStorageS3         = "s3"
 )
 
-// RegistrySettings is the single-row, platform-scoped config for the built-in Docker registry
-// (one per platform, mirroring PlatformBackupSettings). The S3 secret is encrypted at rest.
-// Only DeleteEnabled and PerWorkspaceQuotaMB are writable; the rest is environment-derived.
+// RegistrySettings: only DeleteEnabled and PerWorkspaceQuotaMB are writable; the rest is environment-derived.
 type RegistrySettings struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
-	// Enabled runs the registry container and seeds its gateway route/middleware.
-	// Read-only: MIABI_REGISTRY_ENABLED. Default false → a no-op so single-node
-	// installs are unchanged.
+	// Read-only (MIABI_REGISTRY_ENABLED); off by default so single-node installs are unchanged.
 	Enabled bool `json:"enabled"`
-	// Host is the public registry hostname (e.g. registry.<external-domain>),
-	// the docker login target. Read-only: MIABI_REGISTRY_HOST, else derived from
-	// the default cluster's external domain.
+	// Read-only: MIABI_REGISTRY_HOST, else derived from the default cluster's external domain.
 	Host string `json:"host,omitempty"`
 
-	// StorageType is "filesystem" (a managed volume) or "s3" (S3/MinIO).
-	// Read-only: MIABI_REGISTRY_STORAGE. The S3 driver additionally requires the
-	// registry_s3 entitlement, enforced at container start.
+	// Read-only: MIABI_REGISTRY_STORAGE; s3 also requires the registry_s3 entitlement, checked at container start.
 	StorageType string `json:"storage_type" gorm:"not null;default:filesystem"`
 
 	// Filesystem driver: the managed data volume, derived from StorageClass (see DataVolume).
 	VolumeName string `json:"volume_name,omitempty"`
-	// StorageClass places the filesystem driver's volume on an admin-registered disk of the
-	// control-plane node. Empty means the built-in class, Docker's data root.
-	// Read-only when MIABI_REGISTRY_STORAGE_CLASS is set.
+	// Empty means Docker's data root; read-only when MIABI_REGISTRY_STORAGE_CLASS is set.
 	StorageClass string `json:"storage_class,omitempty"`
 
 	// S3 / MinIO driver. Read-only: MIABI_REGISTRY_S3_*.
@@ -73,16 +63,13 @@ type RegistrySettings struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// S3SecretSet reports whether a secret key is stored, without exposing it.
-	// Not persisted; populated on read so the UI can render "••••• (set)".
 	S3SecretSet bool `json:"s3_secret_set" gorm:"-"`
 }
 
 // DefaultRegistryVolume is the managed data volume for the filesystem driver.
 const DefaultRegistryVolume = "mb-registry-data"
 
-// DataVolume is the filesystem driver's volume name. A class-backed registry gets its own volume, so
-// choosing a class never re-points the existing data-root volume at an empty directory.
+// A class-backed registry gets its own volume so choosing a class never re-points existing data at an empty dir.
 func (r *RegistrySettings) DataVolume() string {
 	if c := NormalizeRegistryStorageClass(r.StorageClass); c != "" {
 		return DefaultRegistryVolume + "-" + c

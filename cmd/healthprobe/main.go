@@ -17,12 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command healthprobe is the HTTP healthcheck Miabi copies into app containers,
-// so an HTTP check works in images without a shell, curl or wget.
-//
-//	healthprobe <port> <path>
-//
-// It exits 0 when the app answers 2xx/3xx on loopback, 1 otherwise.
+// Command healthprobe is the HTTP healthcheck copied into app containers, for images without a shell, curl or wget.
 package main
 
 import (
@@ -34,8 +29,7 @@ import (
 	"time"
 )
 
-// Docker kills the probe at the app's healthcheck timeout; this only bounds a
-// probe run by hand.
+// Docker kills the probe at the healthcheck timeout; this only bounds a probe run by hand.
 const maxWait = 60 * time.Second
 
 func main() {

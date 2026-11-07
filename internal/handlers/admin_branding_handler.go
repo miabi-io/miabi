@@ -33,8 +33,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/branding"
 )
 
-// AdminBrandingHandler owns the operator's identity: the sign-in page, the console
-// chrome, and whether accounts may pick their own accent.
 type AdminBrandingHandler struct {
 	svc   *branding.Service
 	ee    enterprise.EE
@@ -48,14 +46,11 @@ func NewAdminBrandingHandler(svc *branding.Service, ee enterprise.EE, auditLog *
 // BrandingResponse is the stored branding plus what the console may do with it.
 type BrandingResponse struct {
 	branding.Branding
-	// Editable reports whether this licence may CHANGE the branding, which is not
-	// the same as whether it may show it. See Update.
+	// Editable is whether the licence may change branding, not whether it may show it.
 	Editable bool `json:"editable"`
-	// Accents are the accent codes a brand accent may be set to, so the admin form
-	// and the personal picker cannot drift apart.
+	// Shared so the admin form and the personal picker cannot drift apart.
 	Accents []string `json:"accents"`
-	// Assets are the uploaded images by slot. An upload takes the place of the
-	// matching URL wherever the brand is shown.
+	// An upload takes the place of the matching URL wherever the brand is shown.
 	Assets         map[branding.AssetSlot]branding.Asset `json:"assets"`
 	MaxAssetBytes  int                                   `json:"max_asset_bytes"`
 	MaxNoticeRunes int                                   `json:"max_notice_runes"`
@@ -93,11 +88,7 @@ type UpdateBrandingRequest struct {
 	} `json:"body"`
 }
 
-// Update replaces the branding.
-//
-// Gated on Mutable rather than Has, unlike Get. An expired licence must not blank
-// an operator's sign-in page and put someone else's name on it — that is a support
-// call from every user of the install. It stops them editing it instead.
+// Update gates on Mutable, not Has, so an expired licence freezes branding rather than blanking the sign-in page.
 func (h *AdminBrandingHandler) Update(c *okapi.Context, req *UpdateBrandingRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagWhiteLabel); err != nil {
 		return c.AbortWithError(402, err)
@@ -128,8 +119,6 @@ func (h *AdminBrandingHandler) Update(c *okapi.Context, req *UpdateBrandingReque
 	return ok(c, h.response(true))
 }
 
-// UploadAsset stores an image for a slot (multipart: file), replacing any earlier
-// upload. Its type is sniffed from the bytes; see branding.DetectImage.
 func (h *AdminBrandingHandler) UploadAsset(c *okapi.Context) error {
 	if err := h.ee.RequireMutable(enterprise.FlagWhiteLabel); err != nil {
 		return c.AbortWithError(402, err)
@@ -138,8 +127,7 @@ func (h *AdminBrandingHandler) UploadAsset(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortBadRequest(err.Error())
 	}
-	// The headroom covers multipart framing. Past it the body is cut off before it is
-	// buffered, rather than spooled to disk and refused afterwards.
+	// Cut the body off before it is buffered rather than spooling to disk and refusing afterwards.
 	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, branding.MaxAssetBytes+64<<10)
 	file, _, err := c.Request().FormFile("file")
 	if err != nil {
@@ -180,8 +168,7 @@ func (h *AdminBrandingHandler) DeleteAsset(c *okapi.Context) error {
 	return ok(c, h.response(true))
 }
 
-// ServeAsset serves an uploaded image. Public, because the sign-in page showing it
-// has no session; gated on Has like the brand in auth status, so expiry keeps it.
+// ServeAsset is public because the sign-in page has no session; gated on Has so expiry keeps it.
 func (h *AdminBrandingHandler) ServeAsset(c *okapi.Context) error {
 	slot, err := branding.ParseAssetSlot(c.Param("slot"))
 	if err != nil || !h.ee.Has(enterprise.FlagWhiteLabel) {
@@ -198,8 +185,7 @@ func (h *AdminBrandingHandler) ServeAsset(c *okapi.Context) error {
 	c.SetHeader("ETag", etag)
 	c.SetHeader("Cache-Control", branding.AssetCacheControl(c.Query("v"), a.SHA256))
 	c.SetHeader("X-Content-Type-Options", "nosniff")
-	// An SVG opened directly, rather than through <img>, would run its scripts on
-	// this origin. The sandbox stops that without affecting how it renders as an image.
+	// An SVG opened directly would run scripts on this origin; the sandbox stops that.
 	c.SetHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	if c.Request().Header.Get("If-None-Match") == etag {
 		c.WriteStatus(http.StatusNotModified)

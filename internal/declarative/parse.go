@@ -32,14 +32,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrNoResources reports that a manifest source parsed with zero resources: the path exists but
-// holds no miabi.io/v1 documents. Callers distinguish it from a missing path (fs.ErrNotExist) to
-// decide whether an empty result is an intentional teardown or an error.
+// ErrNoResources is distinct from fs.ErrNotExist so callers can tell an intentional teardown from an error.
 var ErrNoResources = errors.New("no declarative resources found")
 
-// rawDoc is the kind-agnostic head of a declarative document: identity plus undecoded metadata
-// and spec nodes that Parse routes into typed structs. Both stay raw so they can be strictly
-// decoded — yaml.Node.Decode cannot enforce KnownFields, but decodeSpec can.
+// Kept raw so they can be strictly decoded; yaml.Node.Decode cannot enforce KnownFields.
 type rawDoc struct {
 	APIVersion string    `yaml:"apiVersion"`
 	Kind       Kind      `yaml:"kind"`
@@ -52,9 +48,7 @@ type rawProjectSpec struct {
 	Resources   []yaml.Node `yaml:"resources,omitempty"`
 }
 
-// Parse decodes a single- or multi-document YAML stream into a normalized, validated set of
-// resources. Unknown spec fields are rejected so typos surface rather than being silently
-// dropped. A Project's inline resources are flattened into the set.
+// Parse rejects unknown spec fields so typos surface instead of being silently dropped.
 func Parse(data []byte) (*ResourceSet, error) {
 	resources, err := parseStream(data, "")
 	if err != nil {
@@ -78,9 +72,6 @@ func Parse(data []byte) (*ResourceSet, error) {
 	return set, nil
 }
 
-// ParseFS walks an fs.FS rooted at dir, parsing every .yaml/.yml file in lexical
-// order into one combined set. It is the entry point GitOps uses over a cloned
-// repo's manifest path.
 func ParseFS(fsys fs.FS, dir string) (*ResourceSet, error) {
 	if dir == "" {
 		dir = "."
@@ -134,8 +125,6 @@ func ParseFS(fsys fs.FS, dir string) (*ResourceSet, error) {
 	return set, nil
 }
 
-// parseStream decodes every YAML document in data. src is an optional filename
-// used for error context.
 func parseStream(data []byte, src string) ([]Resource, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	var out []Resource
@@ -160,12 +149,9 @@ func parseStream(data []byte, src string) ([]Resource, error) {
 	return out, nil
 }
 
-// parseNode decodes one document node into one or more resources (a Project
-// fans out into its children plus the Project itself).
 func parseNode(node *yaml.Node) ([]Resource, error) {
 	var head rawDoc
-	// Strict-decode the document head so misplaced top-level keys (anything other
-	// than apiVersion/kind/metadata/spec) surface as errors instead of vanishing.
+	// Strict-decode the head so misplaced top-level keys surface as errors instead of vanishing.
 	if err := decodeSpec(node, &head); err != nil {
 		return nil, fmt.Errorf("decode document: %w", err)
 	}
@@ -175,8 +161,7 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 	if !knownKinds[head.Kind] {
 		return nil, fmt.Errorf("unknown kind %q", head.Kind)
 	}
-	// Strict-decode metadata too, so a typo'd key under metadata (e.g. a custom
-	// label written as a top-level metadata key) is rejected rather than dropped.
+	// Strict-decode metadata so a misplaced custom label is rejected rather than dropped.
 	var meta Meta
 	if err := decodeSpec(&head.Metadata, &meta); err != nil {
 		return nil, fmt.Errorf("%s: decode metadata: %w", head.Kind, err)
@@ -293,8 +278,6 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 	return []Resource{r}, nil
 }
 
-// decodeSpec strictly decodes a spec node into out, rejecting unknown fields. A
-// nil/empty node decodes to the zero value.
 func decodeSpec(n *yaml.Node, out any) error {
 	if n == nil || n.Kind == 0 {
 		return nil

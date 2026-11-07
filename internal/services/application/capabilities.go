@@ -23,8 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// validDropCapabilities normalizes the capabilities an app drops. Dropping is never gated: it only takes
-// privileges away. add must already be normalized.
+// Dropping is never gated: it only takes privileges away.
 func validDropCapabilities(add, drop []string) ([]string, error) {
 	caps, err := models.NormalizeDropCapabilities(drop)
 	if err != nil {
@@ -39,8 +38,6 @@ func validDropCapabilities(add, drop []string) ([]string, error) {
 	return caps, nil
 }
 
-// EnforcesNoNewPrivileges reports whether the workspace's security profile turns no-new-privileges on for
-// its apps, whatever an app asks for.
 func (s *Service) EnforcesNoNewPrivileges(workspaceID uint) bool {
 	return s.quota.RequireNonRootUser(workspaceID, false)
 }

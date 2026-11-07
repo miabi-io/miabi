@@ -16,9 +16,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package saferollout replaces a running container with a new image without a blind cutover. It generalizes
-// the pattern edgegateway used for node gateways — start the new image under a throwaway name, watch it, then
-// promote — and adds the missing half: a rollback, so a failed promotion never leaves nothing running.
+// Package saferollout tests a new image under a throwaway name before promoting, with rollback on failure.
 package saferollout
 
 import (
@@ -31,8 +29,6 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// Phases reported through OnPhase, in order. "failed" is terminal and carries the
-// cause; "rolled-back" means the previous image is running again.
 const (
 	PhasePulling     = "pulling"
 	PhaseTesting     = "testing"
@@ -45,13 +41,9 @@ const (
 	PhaseDone        = "done"
 )
 
-// DefaultObserve is how long a test container must stay up before its image is
-// trusted. A bad image or config almost always exits on boot, so simply still
-// being alive after the window is a strong signal.
+// A bad image almost always exits on boot, so surviving the window is a strong signal.
 const DefaultObserve = 25 * time.Second
 
-// DefaultHealthWait bounds how long the promoted container may take to become
-// healthy (or, with no healthcheck, to stay running).
 const DefaultHealthWait = 90 * time.Second
 
 // Spec describes one rollout.
@@ -60,23 +52,17 @@ type Spec struct {
 	Name  string
 	Image string
 
-	// Build returns the run spec for the container. It is called with the name to create and the image to run, so
-	// the caller can vary the spec between the test container and the live one — chiefly by NOT publishing ports
-	// on the test container, since the live one still holds them.
+	// Given the name so the test container can skip publishing ports the live one still holds.
 	Build func(name, image string) docker.RunSpec
 
-	// Test runs the new image under Name+"-test" first and watches it for Observe before promoting. Skip it for
-	// containers that cannot safely run a second copy against the same state — a second control plane would
-	// migrate the live database, and a second Postgres cannot open the same data directory.
+	// Skip for containers that can't run a second copy on shared state (control plane, Postgres).
 	Test    bool
 	Observe time.Duration
 
 	// HealthWait bounds the post-promotion check. Zero uses DefaultHealthWait.
 	HealthWait time.Duration
 
-	// Rollback restores the previous image if the promoted container never becomes healthy. Almost always wanted.
-	// The exception is a container whose new image has already made a one-way change to shared state — see the
-	// migration caveat on Run.
+	// The exception is a new image that already made a one-way change to shared state.
 	Rollback bool
 
 	// OnPhase is called as each phase begins, and once with PhaseFailed on error.
@@ -86,9 +72,7 @@ type Spec struct {
 // TestName is the throwaway container a Test rollout starts.
 func (s Spec) TestName() string { return s.Name + "-test" }
 
-// Run performs the rollout. It is not atomic: the window between removing the old container and the new one
-// becoming healthy is real downtime. What it guarantees is that the window is short and ends with *something*
-// running. Note that rolling an image back does NOT roll back a migration the new image already applied.
+// Not atomic: there is a short downtime window; rolling back an image does not roll back a migration.
 func Run(ctx context.Context, dc docker.Client, sp Spec) error {
 	if sp.Name == "" || sp.Image == "" || sp.Build == nil {
 		return errors.New("saferollout: Name, Image and Build are required")
@@ -139,9 +123,7 @@ func Run(ctx context.Context, dc docker.Client, sp Spec) error {
 			return fail(fmt.Errorf("the new image did not stay up (state %q, status %q) — %s left untouched",
 				c.State, c.Status, sp.Name))
 		}
-		// "Still running" is a weak claim when the container can make a stronger one. A gateway that boots but cannot
-		// serve stays happily running, so a state-only check would wave it through and the failure would surface only
-		// AFTER it had taken the live container's ports. Where there is a healthcheck, demand it.
+		// A gateway can run without serving, so demand the healthcheck before it takes the live ports.
 		if c.Health != "" {
 			if err := WaitHealthy(ctx, dc, sp.TestName(), healthWait); err != nil {
 				return fail(fmt.Errorf("the new image never became healthy (%w) — %s left untouched",
@@ -151,9 +133,7 @@ func Run(ctx context.Context, dc docker.Client, sp Spec) error {
 		_ = dc.RemoveContainer(ctx, sp.TestName(), true)
 	}
 
-	// Remember what is running now, so a failed promotion has something to go back
-	// to. Absent (first install, or a container that vanished) is not an error — it
-	// just means there is nothing to roll back to.
+	// An absent container just means there is nothing to roll back to.
 	prevImage := currentImage(ctx, dc, sp.Name)
 
 	phase(PhasePromoting, nil)
@@ -171,9 +151,7 @@ func Run(ctx context.Context, dc docker.Client, sp Spec) error {
 	return nil
 }
 
-// EnsureImage makes an image available, preferring a fresh pull but accepting one already on the host. A hard
-// pull is wrong for the two cases that matter most at install time: an air-gapped host, and an operator
-// running a locally built or pre-loaded image. Docker's own `docker run` behaves the same way.
+// Accepts a local image so air-gapped and pre-loaded installs work, like `docker run`.
 func EnsureImage(ctx context.Context, dc docker.Client, ref string, auth *docker.RegistryAuth, notify func(string, ...any)) error {
 	pullErr := dc.PullImage(ctx, ref, auth)
 	if pullErr == nil {
@@ -192,17 +170,14 @@ func EnsureImage(ctx context.Context, dc docker.Client, ref string, auth *docker
 	return nil
 }
 
-// rollback restores prevImage under the live name. It returns an error describing both what failed and
-// what the rollback did, because "the update failed" and "the update failed and you now have nothing
-// running" are very different pages to be woken up for.
+// The error says what the rollback did, since "failed" and "failed with nothing running" differ greatly.
 func rollback(ctx context.Context, dc docker.Client, sp Spec, prevImage string, cause error, phase func(string, error)) error {
 	if !sp.Rollback || prevImage == "" || prevImage == sp.Image {
 		return cause
 	}
 	phase(PhaseRollingBack, cause)
 
-	// Background context: ctx may already be cancelled (that can be why we are here),
-	// and abandoning the rollback would leave the component down.
+	// ctx may already be cancelled, and abandoning the rollback would leave the component down.
 	bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 
@@ -228,9 +203,7 @@ func currentImage(ctx context.Context, dc docker.Client, name string) string {
 	return cfg.Image
 }
 
-// WaitHealthy blocks until the container is healthy, or until timeout. "Healthy" means whatever the container
-// can prove: Docker's verdict when there is a healthcheck, otherwise that it stayed running for a settle
-// period — rather than the instant after `docker run` returns, which a crash-looping container also passes.
+// Without a healthcheck, healthy means staying up for a settle period, which a crash-looping container fails.
 func WaitHealthy(ctx context.Context, dc docker.Client, name string, timeout time.Duration) error {
 	const (
 		poll   = time.Second

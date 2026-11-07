@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# A manual install: Postgres, Redis and the control plane by hand, 9000 published and
-# no gateway, so the gateway is added afterwards the way the Admin Dashboard does it.
+# No gateway at first, so it is added afterwards the way the Admin Dashboard does it.
 source "$(dirname "$0")/lib.sh"
 
 : >"$E2E_STATE"
@@ -8,8 +7,7 @@ DB_PW=$(openssl rand -hex 16)
 REDIS_PW=$(openssl rand -hex 16)
 ADMIN_EMAIL=admin@e2e.test
 ADMIN_PW="Mb!$(openssl rand -hex 12)"
-# nip.io resolves every name under it to the address it spells, so app hostnames reach this runner
-# without any DNS of our own.
+# nip.io resolves every name to the address it spells, so no DNS of our own is needed.
 APPS_DOMAIN=apps.127.0.0.1.nip.io
 save ADMIN_EMAIL "$ADMIN_EMAIL"
 save ADMIN_PW "$ADMIN_PW"

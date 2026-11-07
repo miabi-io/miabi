@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// Subscriber translates Docker daemon container events into AppEvents for both application
-// and database-instance containers. Run a single instance per process connected to the Docker
-// daemon.
+// Subscriber maps Docker container events to AppEvents for apps and databases; run one per process.
 type Subscriber struct {
 	docker    docker.Client
 	apps      *repositories.ApplicationRepository
@@ -67,8 +65,7 @@ func (s *Subscriber) Run(ctx context.Context) {
 }
 
 func (s *Subscriber) handle(ev docker.EngineEvent) {
-	// Container events stream unfiltered, so ignore anything that isn't one of ours —
-	// i.e. carries neither the io.miabi.app nor the io.miabi.database label.
+	// Container events stream unfiltered, so ignore anything without the app or database label.
 	if id, ok := labelID(ev.Attributes, docker.LabelApp); ok {
 		s.handleApp(ev, id)
 		return
@@ -91,8 +88,7 @@ func labelID(attrs map[string]string, label string) (uint, bool) {
 }
 
 func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
-	// Load the app first so the die-event classification can honor an in-progress
-	// stop (an intentional stop may end in a non-graceful exit code).
+	// Load the app first: an intentional stop may end in a non-graceful exit code.
 	app, err := s.apps.FindByID(appID)
 	if err != nil {
 		return // app deleted; ignore
@@ -117,10 +113,7 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	s.reconcileStatus(ev, app)
 }
 
-// handleDatabase records runtime events for a managed database instance. Unlike the app path it
-// does not write back an instance status: the database service owns that field (it drives the
-// upgrade state machine) and the detail page reads live status from Docker anyway, so writing it
-// here would race the service for no gain.
+// Doesn't write instance status: the database service owns it and writing here would race its upgrade state machine.
 func (s *Subscriber) handleDatabase(ev docker.EngineEvent, databaseID uint) {
 	if s.databases == nil || ev.Action == "destroy" {
 		return
@@ -144,9 +137,7 @@ func (s *Subscriber) handleDatabase(ev docker.EngineEvent, databaseID uint) {
 	})
 }
 
-// classify maps a Docker container action to a timeline event. userStopped tells the die
-// classification that the resource was stopped on purpose, so a non-graceful exit code still
-// reads as a stop. Pure, so it is unit-testable; ok is false for actions that produce no event.
+// userStopped makes a non-graceful exit of an intentionally stopped resource read as a stop.
 func classify(ev docker.EngineEvent, userStopped bool) (typ models.AppEventType, sev models.AppEventSeverity, msg string, ok bool) {
 	sev = models.SeverityInfo
 	switch {
@@ -176,9 +167,7 @@ func classify(ev docker.EngineEvent, userStopped bool) (typ models.AppEventType,
 	return typ, sev, msg, true
 }
 
-// reconcileStatus keeps the stored app.Status in sync with the live container.
-// It only acts on the app's active release container (so retired old/canary
-// containers never flip status), and on unexpected exits/recoveries.
+// Acts only on the active release container so retired old or canary containers never flip status.
 func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Application) {
 	if s.releases == nil {
 		return
@@ -192,9 +181,7 @@ func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Applicat
 	}
 }
 
-// activeContainerRemoved reports whether a destroy event removed the app's active release container outside a
-// deploy or a stop, which remove containers as a matter of course. That removal is what makes an app's
-// container missing, so the timeline should show it happened rather than a crash.
+// Deploys and stops remove containers routinely; other removals of the active container are what make it missing.
 func (s *Subscriber) activeContainerRemoved(ev docker.EngineEvent, app *models.Application) bool {
 	if s.releases == nil || app.Status == models.AppStatusDeploying || app.Status == models.AppStatusStopped {
 		return false
@@ -203,16 +190,11 @@ func (s *Subscriber) activeContainerRemoved(ev docker.EngineEvent, app *models.A
 	return err == nil && rel.ContainerID != "" && rel.ContainerID == ev.ContainerID
 }
 
-// dieIsStop reports whether a container "die" with the given exit code is a clean stop rather than
-// a crash. Exit 0 and 143 are always stops; any exit of a resource the user already stopped is too,
-// since a shell-form CMD swallows SIGTERM and ends in 137. Pure, so it is unit-testable.
+// Any exit of a user-stopped resource is a stop, since a shell-form CMD swallows SIGTERM and ends in 137.
 func dieIsStop(exitCode string, userStopped bool) bool {
 	return exitCode == "0" || exitCode == "143" || userStopped
 }
 
-// nextStoredStatus decides how a Docker lifecycle event should update the stored
-// app status. Pure (no DB) so it can be unit-tested. Returns the new status and
-// whether a change is warranted.
 func nextStoredStatus(action, exitCode string, current models.AppStatus) (models.AppStatus, bool) {
 	switch action {
 	case "oom":

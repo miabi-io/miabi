@@ -30,9 +30,6 @@ import (
 	"github.com/miabi-io/miabi/internal/services/wsbackup"
 )
 
-// WorkspaceBundleHandler exposes portable workspace backup & restore: exporting
-// a workspace to the bucket as a bundle, listing what the bucket holds, and
-// restoring one back.
 type WorkspaceBundleHandler struct {
 	svc   *wsbackup.Service
 	audit *audit.Logger
@@ -42,8 +39,6 @@ func NewWorkspaceBundleHandler(svc *wsbackup.Service, auditLog *audit.Logger) *W
 	return &WorkspaceBundleHandler{svc: svc, audit: auditLog}
 }
 
-// Status reports whether the workspace can take a bundle, so the UI can explain
-// what is missing instead of offering an action that fails.
 func (h *WorkspaceBundleHandler) Status(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	encrypted, err := h.svc.Configured(wsID)
@@ -90,9 +85,7 @@ func (h *WorkspaceBundleHandler) DeleteRun(c *okapi.Context) error {
 	return message(c, "bundle run deleted")
 }
 
-// Bundles lists what the bucket actually holds — the list a restore is chosen
-// from, read from the bundles' own info files rather than from this platform's
-// memory of writing them.
+// Read from the bundles' own info files, not this platform's memory of writing them.
 func (h *WorkspaceBundleHandler) Bundles(c *okapi.Context) error {
 	list, err := h.svc.Bundles(c.Request().Context(), middlewares.WorkspaceID(c))
 	if err != nil {
@@ -110,8 +103,6 @@ func (h *WorkspaceBundleHandler) Bundle(c *okapi.Context) error {
 	return ok(c, info)
 }
 
-// DeleteBundle removes a bundle from the bucket: its index, its state file and
-// every artifact under it.
 func (h *WorkspaceBundleHandler) DeleteBundle(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	ref := c.Param("ref")
@@ -139,8 +130,7 @@ type RestoreBundleRequest struct {
 	Body struct {
 		// Ref names the bundle in the bucket.
 		Ref string `json:"ref"`
-		// NewWorkspace, when set, restores into a workspace created with that name
-		// instead of into this one — a clone rather than an overwrite.
+		// Restores into a new workspace: a clone rather than an overwrite.
 		NewWorkspace string `json:"new_workspace"`
 		// RestoreData pulls the database dumps and volume archives too.
 		RestoreData bool `json:"restore_data"`
@@ -169,9 +159,7 @@ func (h *WorkspaceBundleHandler) Restore(c *okapi.Context, req *RestoreBundleReq
 	return ok(c, run)
 }
 
-// bundleError maps the service's sentinel errors onto the response envelope, so
-// a missing passphrase reads as a configuration problem the operator can fix and
-// not as an internal failure.
+// A missing passphrase must read as a fixable configuration problem, not an internal failure.
 func bundleError(c *okapi.Context, err error, fallback string) error {
 	switch {
 	case errors.Is(err, wsbackup.ErrNotConfigured):

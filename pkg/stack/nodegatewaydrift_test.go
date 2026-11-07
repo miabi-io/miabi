@@ -39,9 +39,7 @@ func (d driftEngine) InspectContainerConfig(context.Context, string) (docker.Con
 	return docker.ContainerConfig{Env: d.env}, nil
 }
 
-// A gateway-only upgrade rewrites the manifest and recreates the gateway, but node gateways follow
-// MIABI_NODE_GATEWAY_IMAGE on the CONTROL PLANE — which keeps its old value until that container is
-// recreated. Reporting the version still in force is the whole point.
+// Node gateways follow the control plane's env, which keeps its old value until that container is recreated.
 func TestNodeGatewayImageDrift(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -64,8 +62,7 @@ func TestNodeGatewayImageDrift(t *testing.T) {
 			"",
 		},
 		{
-			// Nothing to compare: the control plane predates the variable, so node gateways fall back
-			// to the build default. Claiming drift would be a guess.
+			// The control plane predates the variable, so claiming drift would be a guess.
 			"variable absent",
 			driftEngine{env: []string{"FOO=bar"}},
 			"",

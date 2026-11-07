@@ -4,8 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 
-// Completion is derived from real resources by the parent, so each step ticks
-// itself as the user makes progress — no separate step-tracking to drift.
+// Completion is derived from real resources by the parent, so there is no step-tracking to drift.
 const props = defineProps<{
   hasWorkspace: boolean
   hasApp: boolean
@@ -56,8 +55,7 @@ const steps = computed<Step[]>(() => [
 
 const doneCount = computed(() => steps.value.filter((s) => s.done).length)
 const allDone = computed(() => doneCount.value === steps.value.length)
-// Only the first unfinished step is actionable — the flow is sequential (you
-// can't deploy without a workspace, or route a domain without an app).
+// The flow is sequential, so only the first unfinished step is actionable.
 const activeKey = computed(() => steps.value.find((s) => !s.done)?.key)
 
 async function dismiss() {

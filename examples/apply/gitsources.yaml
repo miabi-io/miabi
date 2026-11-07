@@ -1,18 +1,6 @@
-# Managing GitOps projects from one folder.
-#
-# A GitSource is a GitOps project: a Git path of manifests the workspace keeps
-# reconciled. Apply this file once and every project below is created and
-# synced straight away; syncPolicy: auto keeps it in step with Git after that.
-#
-# Committed to a GitOps project's own repository instead, these become nested
-# projects ("app of apps"): the root project creates and prunes them, and they
-# are locked in the UI. Nesting stops at three levels, and a project can never
-# declare itself or one of its parents.
-#
-# Apply with:  miabi apply -f gitsources.yaml
+# A GitSource keeps a Git path reconciled; committed to a GitOps repo these become nested projects (max 3 levels).
 ---
-# The clone token lives in the vault. Seal it (`miabi secrets seal`) and use
-# kind: SealedSecret instead to commit this file.
+# Seal it (`miabi secrets seal`) and use kind: SealedSecret to commit this file.
 apiVersion: miabi.io/v1
 kind: Secret
 metadata:
@@ -20,10 +8,7 @@ metadata:
 spec:
   value: ghp_replace_me
 ---
-# A Git credential. It never holds the token itself, only the vault entry to
-# read it from at every clone, so rotating the Secret rotates the credential.
-# The examples repository is public; a token is what a private one (or your
-# own fork) needs.
+# References the vault entry, so rotating the Secret rotates the credential.
 apiVersion: miabi.io/v1
 kind: GitRepository
 metadata:
@@ -38,8 +23,7 @@ kind: GitSource
 metadata:
   name: full-stack
 spec:
-  # The credential supplies the URL and the clone token. Use repo: <url> instead
-  # for a public repository.
+  # Use repo: <url> instead for a public repository.
   repository: miabi-examples
   ref: main
   path: gitops/full-stack
@@ -54,6 +38,5 @@ metadata:
 spec:
   repo: https://github.com/miabi-io/examples.git
   path: gitops/laravel
-  # Deleting this project (or removing it from the file under --prune) also
-  # removes the apps it deployed. The default, orphan, leaves them running.
+  # cascade removes the apps it deployed on delete; the default, orphan, leaves them running.
   deletePolicy: cascade

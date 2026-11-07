@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package webhook manages workspace webhooks and the signing/delivery of their
-// JSON payloads. Signing secrets are encrypted at rest.
+// Package webhook manages workspace webhooks and signed delivery; signing secrets are encrypted at rest.
 package webhook
 
 import (
@@ -60,8 +59,7 @@ const EventTest = "webhook.test"
 type Payload struct {
 	Event       string `json:"event"`
 	WorkspaceID uint   `json:"workspace_id"`
-	// SubjectType says which resource the event is about; app-event consumers can ignore it
-	// and keep reading application_*.
+	// App-event consumers can ignore it and keep reading application_*.
 	SubjectType     string            `json:"subject_type,omitempty"`
 	ApplicationID   uint              `json:"application_id,omitempty"`
 	ApplicationName string            `json:"application_name,omitempty"`
@@ -74,8 +72,7 @@ type Payload struct {
 	Timestamp       string            `json:"timestamp"`
 }
 
-// Enqueuer schedules an asynchronous webhook delivery. Implemented by the
-// worker producer; an interface here avoids a webhook->worker import cycle.
+// An interface here avoids a webhook->worker import cycle.
 type Enqueuer interface {
 	EnqueueWebhookDeliver(webhookID, eventID uint) error
 }
@@ -163,8 +160,7 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.Webhook, error
 	return strip(w), nil
 }
 
-// Redeliver re-sends a past delivery's source event to its webhook (async). If
-// the delivery was a test (no source event), a fresh test delivery is sent.
+// A test delivery has no source event, so a fresh test delivery is sent instead.
 func (s *Service) Redeliver(workspaceID, webhookID, deliveryID uint) error {
 	w, err := s.repo.FindInWorkspace(workspaceID, webhookID)
 	if err != nil {
@@ -218,8 +214,6 @@ func (s *Service) Deliveries(workspaceID, id uint, limit int) ([]models.WebhookD
 	return s.deliveries.ListForWebhook(workspaceID, id, limit)
 }
 
-// Test synchronously delivers a signed test payload and records the outcome,
-// returning any delivery error to the caller for immediate feedback.
 func (s *Service) Test(ctx context.Context, workspaceID, id uint) error {
 	w, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
@@ -290,9 +284,7 @@ func Sign(secret string, body []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// Deliver POSTs a signed JSON body to url and returns the HTTP status code. A transport error returns (0,
-// err); a non-2xx/3xx status is reported via the returned code, and the caller decides whether to retry.
-// User-supplied headers are applied first; Content-Type, User-Agent and the signature cannot be overridden.
+// User headers apply first; Content-Type, User-Agent and the signature cannot be overridden.
 func Deliver(ctx context.Context, client *http.Client, url, secret string, headers map[string]string, body []byte) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -338,8 +330,7 @@ func validateURL(raw string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return ErrURLInvalid
 	}
-	// Reject SSRF-prone targets (loopback, link-local/metadata, and — unless
-	// allowed — private ranges). DNS names are re-checked at delivery time.
+	// DNS names are re-checked at delivery time.
 	if err := netguard.ValidateURL(raw); err != nil {
 		var blocked *netguard.ErrBlocked
 		if errors.As(err, &blocked) {

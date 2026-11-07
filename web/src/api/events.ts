@@ -13,8 +13,7 @@ export const eventsApi = {
   streamUrl(ws: number, app: number) {
     return sseUrl(`/workspaces/${ws}/apps/${app}/events/stream`)
   },
-  // Served under /timeline because /databases/{id}/events is the pre-existing live status
-  // stream, not the persisted history.
+  // Served under /timeline because /databases/{id}/events is the pre-existing live status stream.
   databaseList(ws: number, instance: number, before?: number, limit?: number) {
     const p = new URLSearchParams()
     if (before) p.set('before', String(before))
@@ -30,8 +29,7 @@ export const eventsApi = {
     return sseUrl(`/workspaces/${ws}/events/stream`)
   },
   logsUrl(ws: number, app: number, tail = 1000) {
-    // Request a fuller history window (server-capped) so the log viewer's search
-    // and resize have real backlog, not just the last 200.
+    // Request a fuller (server-capped) backlog so the log viewer's search and resize have real history.
     return sseUrl(`/workspaces/${ws}/apps/${app}/logs/stream?tail=${tail}`)
   },
 }

@@ -200,8 +200,6 @@ func TestListForWorkspaceMergesCustom(t *testing.T) {
 	}
 }
 
-// TestCatalogLoads asserts the embedded official catalog parses, its digests
-// match, and every template validates — the CI guard the README promises.
 func TestCatalogLoads(t *testing.T) {
 	if err := LoadError(); err != nil {
 		t.Fatalf("embedded catalog failed to load: %v", err)
@@ -257,9 +255,7 @@ func TestResolveInputsGeneratesAndValidates(t *testing.T) {
 	}
 }
 
-// lengthFixture / requiredFixture are inline manifests: the embedded floor is data/infra primitives, so
-// the input shapes these tests exercise (explicit length, default length, required + pattern) are modeled
-// here rather than borrowed from a shipped template.
+// The embedded floor is data/infra primitives, so these input shapes are modeled inline.
 const lengthFixture = `
 apiVersion: miabi.io/v1
 kind: Template
@@ -337,8 +333,7 @@ func TestConsumerApp(t *testing.T) {
 		t.Fatalf("multi-primary: want app 2, got %v", got)
 	}
 
-	// Name matching is token-precise: querying "d" must not match ".databases.db.".
-	// Use a multi-app manifest so the sole-app fallback doesn't mask the result.
+	// Token-precise matching: "d" must not match ".databases.db."; multiple apps avoid the sole-app fallback.
 	if got := consumerApp(multi, []*models.Application{app(1), app(2)}, "d"); got != nil {
 		t.Fatalf("name-precision: want nil for non-matching dep prefix, got %v", got)
 	}
@@ -355,8 +350,7 @@ func TestConsumerApp(t *testing.T) {
 		t.Fatalf("sole-fallback: want app 7, got %v", got)
 	}
 
-	// Connection details shared on the stack: no app names the dep, so the primary
-	// owns the link (a server + worker pair sharing one database).
+	// No app names the dep when it's shared on the stack, so the primary owns the link.
 	shared := &manifest.Manifest{
 		Stack:        &manifest.StackSpec{Env: map[string]string{"DB_HOST": "{{ .databases.db.host }}"}},
 		Applications: []manifest.AppSpec{{Name: "worker"}, {Name: "server", Primary: true}},
@@ -380,8 +374,7 @@ func TestConsumerApp(t *testing.T) {
 	}
 }
 
-// Resources are named after the install, not the template, so the same template
-// can be installed twice without the second one colliding with the first.
+// Named after the install, not the template, so the same template can be installed twice.
 func TestResourceNameIsInstallScoped(t *testing.T) {
 	free := func(string) (bool, error) { return false, nil }
 
@@ -389,12 +382,9 @@ func TestResourceNameIsInstallScoped(t *testing.T) {
 		{"Smart", "content", "smart-content"},
 		{"Smart", "db", "smart-db"},
 		{"Shop", "content", "shop-content"},
-		// The default install label is the template's, so a plain install keeps
-		// the names it has always had.
 		{"WordPress", "content", "wordpress-content"},
 		{"Goma Gateway", "config", "goma-gateway-config"},
-		// A config name has to satisfy ^[a-z0-9][a-z0-9-]*$: a user-chosen label
-		// with capitals, spaces or punctuation must still come out valid.
+		// Config names must satisfy ^[a-z0-9][a-z0-9-]*$ whatever the user's label.
 		{"Smart Shop!", "content", "smart-shop-content"},
 		{"  Édition  ", "data", "dition-data"},
 	} {
@@ -412,8 +402,7 @@ func TestResourceNameIsInstallScoped(t *testing.T) {
 	}
 }
 
-// Two installs sharing a label still get distinct names rather than one adopting
-// the other's config — the failure that let a second install overwrite the first.
+// Distinct names prevent a second install adopting and overwriting the first's config.
 func TestResourceNameDisambiguates(t *testing.T) {
 	taken := map[string]bool{"smart-config": true, "smart-config-1": true}
 	exists := func(c string) (bool, error) { return taken[c], nil }
@@ -427,8 +416,7 @@ func TestResourceNameDisambiguates(t *testing.T) {
 	}
 }
 
-// An install label that slugifies to nothing falls back to the template-local
-// name, which the manifest validator already guarantees is a valid slug.
+// The template-local name is already a valid slug per the manifest validator.
 func TestResourceNameFallsBackToTheLocalName(t *testing.T) {
 	got, err := resourceName("!!!", "content", func(string) (bool, error) { return false, nil })
 	if err != nil {

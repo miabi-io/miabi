@@ -29,16 +29,13 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// applicationRoutes registers workspace-scoped application and deployment routes.
 // Viewer reads; Developer deploys and edits; Admin deletes.
 func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 	apps := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Applications", Description: "Applications, env vars, deployments, and releases."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {
 		return []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(min)}
 	}
-	// appOp gates a per-app operation on a permission that may be held workspace-wide (the normal
-	// role) OR granted on this specific app by a resource policy (Enterprise). Additive for
-	// per-resource grantees, and identical to the plain role check in Community.
+	// Additive per-app grants via resource policy (Enterprise); identical to the plain role check in Community.
 	appOp := func(perm models.Permission) []okapi.Middleware {
 		return []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireResourcePermission(perm, models.ResourceTypeApp, "appID", r.resourcePolicies)}
 	}
@@ -572,8 +569,7 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.app.Processes,
 			Summary:     "List running processes in the container (docker top)",
 		},
-		// Interactive shell into the running container (WebSocket). Admin+ and
-		// gated by the plan's shell-exec capability; auth via ?token=.
+		// Admin+ and gated by the plan's shell-exec capability; auth via ?token= (WebSocket).
 		{
 			Method:      http.MethodGet,
 			Path:        base + "/{appID}/exec",
@@ -619,8 +615,7 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// jobRoutes registers workspace-scoped Jobs and CronJobs. A job targets an application named
-// in the request body but is managed at the workspace level. Viewer reads; Developer mutates.
+// Viewer reads; Developer mutates.
 func (r *Router) jobRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Jobs", Description: "One-off Jobs and CronJobs run in an application's runtime context."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

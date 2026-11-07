@@ -34,8 +34,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestLiveEnrolment enrols against a real Miabi Console. Run it with a fresh code from the
-// console's Admin → Instances page: MIABI_TEST_CONSOLE_CODE=mce1.… and MIABI_TEST_POSTGRES_DSN.
+// Needs MIABI_TEST_CONSOLE_CODE (from Admin -> Instances) and MIABI_TEST_POSTGRES_DSN.
 func TestLiveEnrolment(t *testing.T) {
 	rawCode, dsn := os.Getenv("MIABI_TEST_CONSOLE_CODE"), os.Getenv("MIABI_TEST_POSTGRES_DSN")
 	if rawCode == "" || dsn == "" {

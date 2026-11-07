@@ -35,8 +35,6 @@ type AppInfo struct {
 	OpenAPIDocs bool `json:"openapi_docs"`
 }
 
-// NewInfo returns the app-info handler. openAPIDocs reflects whether the /docs
-// API reference is enabled, so the web UI can show or hide its link.
 func NewInfo(openAPIDocs bool) okapi.HandlerFunc {
 	return func(c *okapi.Context) error {
 		return c.OK(dto.Response[AppInfo]{

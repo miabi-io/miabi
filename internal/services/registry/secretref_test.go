@@ -72,8 +72,7 @@ func TestStoreSecretRoutesReferenceToTheVault(t *testing.T) {
 		t.Errorf("literal stored as enc=%q ref=%q, want an encrypted value and no reference", enc, ref)
 	}
 
-	// A reference to a secret that does not exist is rejected at save time, not
-	// left to fail at the next pull.
+	// A dangling reference is rejected at save, not left to fail at the next pull.
 	if _, _, err = s.storeSecret(1, secret.Ref("NOPE")); !errors.Is(err, ErrUnknownSecret) {
 		t.Errorf("dangling reference error = %v, want ErrUnknownSecret", err)
 	}
@@ -103,9 +102,7 @@ func TestSecretResolvesReferenceAtEveryUse(t *testing.T) {
 	}
 }
 
-// A vault-backed credential is identified by its reference, so rotating the
-// secret behind it is not drift in a declarative plan — the next pull simply
-// reads the new value. Pointing it at a different secret is a real change.
+// Rotating the referenced secret is not plan drift; pointing at a different secret is.
 func TestFingerprintOfAReferenceTracksTheNameNotTheValue(t *testing.T) {
 	a := Fingerprint("ghcr", secret.Ref("GHCR_TOKEN"))
 	if a != Fingerprint("ghcr", secret.Ref("GHCR_TOKEN")) {

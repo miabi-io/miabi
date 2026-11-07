@@ -43,8 +43,7 @@ func TestDetectImage(t *testing.T) {
 		})
 	}
 
-	// Served from this origin, a file that is really a page would be stored XSS the
-	// moment someone opens its URL.
+	// Served from this origin, a file that is really a page would be stored XSS.
 	refused := map[string]string{
 		"empty":            "",
 		"html":             "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>",
@@ -76,8 +75,7 @@ func TestParseAssetSlot(t *testing.T) {
 	}
 }
 
-// A versioned URL may be cached forever only while it names the bytes actually
-// served; otherwise a replaced logo would stay stuck in browsers.
+// Otherwise a replaced logo would stay stuck in browsers.
 func TestAssetCaching(t *testing.T) {
 	sha := strings.Repeat("ab", 32)
 	url := AssetURL(AssetLogo, sha)

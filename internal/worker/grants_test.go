@@ -27,9 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// A grant that outlived its authorisation must stop the deploy, not keep being
-// applied. Write-time validation cannot cover this: a workspace can lose its
-// privileged flag and never be written to again.
+// Write-time validation can't cover this: a workspace can lose its privileged flag and never be written again.
 func TestDeployRefusesGrantsTheWorkspaceLost(t *testing.T) {
 	revoked := errors.New("workspace is no longer privileged")
 	b := &runtimeBuilder{grants: GrantGuardFunc(func(uint, models.CapabilityTier) error { return revoked })}
@@ -62,15 +60,13 @@ func TestDeployAppliesGrantsWhenStillAuthorised(t *testing.T) {
 	if len(sec.Devices) != 1 {
 		t.Errorf("Devices = %v, want the one device", sec.Devices)
 	}
-	// The device is elevated even though the capability is not, so the guard must
-	// be asked about the higher of the two.
+	// The guard must be asked about the higher tier of the device and the capability.
 	if askedFor != models.TierElevated {
 		t.Errorf("guard was asked about tier %d, want elevated — the highest decides", askedFor)
 	}
 }
 
-// The restricted profile forces a non-root container with capabilities dropped.
-// Letting an app add them back would make the profile decorative.
+// Letting an app add capabilities back would make the restricted profile decorative.
 func TestRestrictedProfileRefusesGrants(t *testing.T) {
 	b := &runtimeBuilder{} // no guard wired: the profile alone must still refuse
 	app := &models.Application{WorkspaceID: 3, AddCapabilities: []string{"NET_ADMIN"}}
@@ -109,9 +105,7 @@ func TestGrantsReachTheRunSpec(t *testing.T) {
 	}
 }
 
-// The master switch reaches the deploy path too: an app configured while grants
-// were enabled must stop receiving them the moment an operator turns them off,
-// without waiting for anyone to edit the app.
+// Turning grants off must stop them at deploy immediately, without anyone editing the app.
 func TestDeployRefusesGrantsWhenTheSwitchIsOff(t *testing.T) {
 	b := &runtimeBuilder{grants: GrantGuardFunc(func(uint, models.CapabilityTier) error {
 		return models.ErrGrantsDisabled

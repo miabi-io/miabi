@@ -37,8 +37,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// SecurityHandler serves the Security Center (Admin → Security) and the workspace-facing view of
-// the policies a tenant is subject to.
 type SecurityHandler struct {
 	svc        *secpolicy.Service
 	ports      *portbinding.Service
@@ -51,8 +49,7 @@ func NewSecurityHandler(svc *secpolicy.Service, ports *portbinding.Service, work
 	return &SecurityHandler{svc: svc, ports: ports, workspaces: workspaces, users: users, ee: ee}
 }
 
-// SecurityStatus tells the console what it can offer. Reads are ungated so Community shows the
-// page with an upgrade prompt rather than an error.
+// Reads are ungated so Community shows the page with an upgrade prompt rather than an error.
 type SecurityStatus struct {
 	Entitled bool `json:"entitled"`
 	// Mutable is false once a licence is past grace: policies keep applying, edits are frozen.
@@ -115,8 +112,7 @@ func (h *SecurityHandler) SavePolicy(c *okapi.Context, req *SavePolicyRequest) e
 	return ok(c, p)
 }
 
-// lockoutGuard refuses an enforced, required console unlock from an admin who could not satisfy it
-// themselves, which would leave the console behind a factor nobody saving it has.
+// Refuses a rule that would lock the console behind a factor the saving admin lacks.
 func (h *SecurityHandler) lockoutGuard(c *okapi.Context, req *SavePolicyRequest) string {
 	if req.Body.Kind != secpolicy.KindAdminAccess || req.Body.Mode != secpolicy.ModeEnforce {
 		return ""
@@ -132,8 +128,7 @@ func (h *SecurityHandler) lockoutGuard(c *okapi.Context, req *SavePolicyRequest)
 	return ""
 }
 
-// DeletePolicy removes a rule. Ungated: an expired licence must still be able to relax a rule
-// that is in the way.
+// Ungated: an expired licence must still be able to relax a rule that is in the way.
 func (h *SecurityHandler) DeletePolicy(c *okapi.Context) error {
 	id, err := strconv.Atoi(c.Param("policyID"))
 	if err != nil || id <= 0 {
@@ -207,16 +202,14 @@ func (h *SecurityHandler) Overview(c *okapi.Context) error {
 	return ok(c, out)
 }
 
-// RevokePortsRequest confirms a revoke. DryRun lists the affected bindings and changes nothing,
-// so the console can show every affected app before the admin confirms.
+// DryRun lists affected bindings and changes nothing.
 type RevokePortsRequest struct {
 	Body struct {
 		DryRun bool `json:"dry_run"`
 	} `json:"body"`
 }
 
-// RevokePorts rejects every approved host-port binding (Enterprise). Only offered while the
-// platform rule rejects host ports and says existing bindings are revoked.
+// Only offered while the platform rule rejects host ports and revokes existing bindings.
 func (h *SecurityHandler) RevokePorts(c *okapi.Context, req *RevokePortsRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagSecurityPolicies); err != nil {
 		return entitlementAbort(c, err)
@@ -286,8 +279,6 @@ func (h *SecurityHandler) ExportEvents(c *okapi.Context) error {
 	return nil
 }
 
-// WorkspacePortsPolicy tells a workspace member whether host-port requests are open, so the app
-// page can hide "Request host port" and say why.
 func (h *SecurityHandler) WorkspacePortsPolicy(c *okapi.Context) error {
 	return ok(c, h.svc.PortsView(middlewares.WorkspaceID(c)))
 }

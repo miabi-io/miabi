@@ -28,18 +28,11 @@ import (
 // flagPlatformRunners is a local copy of enterprise.FlagPlatformRunners.
 const flagPlatformRunners = "platform_runners"
 
-// RunnerBinding is a workspace's resolved platform-runner policy: which of the shared runners its
-// plan may build on. An empty Allowed binds nothing — the whole pool is offered, which is how every
-// install that has not narrowed a plan behaves.
-//
-// It never applies to a workspace's own runners. The plan decides what the platform lends out; the
-// machines a tenant registered are theirs.
+// RunnerBinding never applies to a workspace's own runners; an empty Allowed offers the whole shared pool.
 type RunnerBinding struct {
 	Allowed []string
 }
 
-// Allows reports whether the named shared runner may be used. An empty Allowed list permits every
-// runner in the pool.
 func (b RunnerBinding) Allows(name string) bool {
 	if len(b.Allowed) == 0 {
 		return true
@@ -52,9 +45,7 @@ func (b RunnerBinding) Allows(name string) bool {
 	return false
 }
 
-// EffectivePlatformRunners resolves which shared runners a workspace may use (override -> plan).
-// The bool is false when no binding applies, because plan enforcement is off or platform_runners is
-// not licensed — a lapsed license leaves the stored list inert rather than stranding the workspace.
+// False when enforcement is off or unlicensed, so a lapsed license leaves the list inert rather than stranding workspaces.
 func (s *Service) EffectivePlatformRunners(workspaceID uint) (RunnerBinding, bool) {
 	if !s.Enabled() || !s.entitled(flagPlatformRunners) {
 		return RunnerBinding{}, false
@@ -76,12 +67,9 @@ func platformRunnersFrom(p *models.Plan, o *models.WorkspaceQuota) []string {
 	return p.PlatformRunners
 }
 
-// PlatformRunnersLicensed reports whether the binding may be used at all, whether a plan sets one or
-// not. The admin UI asks so it can explain a locked field.
+// The admin UI asks so it can explain a locked field.
 func (s *Service) PlatformRunnersLicensed() bool { return s != nil && s.entitled(flagPlatformRunners) }
 
-// RequirePlatformRunner returns ErrCapabilityDenied when the workspace's plan does not offer the
-// named shared runner.
 func (s *Service) RequirePlatformRunner(workspaceID uint, name string) error {
 	binding, bound := s.EffectivePlatformRunners(workspaceID)
 	if !bound || binding.Allows(name) {

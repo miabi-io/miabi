@@ -31,8 +31,6 @@ func TestValidRunAsUserInheritance(t *testing.T) {
 	s := &Service{quota: &quota.Service{}} // no mandate
 	app := &models.Application{WorkspaceID: 1, RunAsUser: "1000:1000"}
 
-	// Unset on the request: the run inherits the app's account, snapshotted so the
-	// job's history shows what actually ran.
 	if got, err := s.validRunAsUser(app, ""); err != nil || got != "1000:1000" {
 		t.Errorf("blank should inherit the app's, got %q (%v)", got, err)
 	}
@@ -62,8 +60,7 @@ func TestValidRunAsUserUnderMandate(t *testing.T) {
 		t.Errorf("a non-root uid should be accepted, got %q (%v)", got, err)
 	}
 
-	// checkRunAsUser is the schedule's variant: blank stays blank, so a CronJob
-	// inherits the app's account when each run fires rather than pinning it now.
+	// A CronJob keeps blank so each run inherits the app's account when it fires.
 	appWithUser := &models.Application{WorkspaceID: 1, RunAsUser: "1000"}
 	if got, err := s.checkRunAsUser(appWithUser, ""); err != nil || got != "" {
 		t.Errorf("a schedule should not snapshot the app's user, got %q (%v)", got, err)

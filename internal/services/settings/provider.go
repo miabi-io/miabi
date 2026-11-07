@@ -18,8 +18,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package settings provides cached, typed access to platform-wide key/value settings stored in the database.
-// Consumers such as the auth flow and middleware read runtime configuration through Provider; the admin API
-// writes via the repo and calls Invalidate.
 package settings
 
 import (
@@ -34,62 +32,42 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
-// cacheTTL bounds how long a provider serves its in-memory cache before lazily reloading. A write invalidates
-// the writer's own cache immediately, but other instances only learn of a change by re-reading — without a
-// TTL they would keep resolving their boot-time value. 15s keeps overrides near-live at negligible load.
+// Without a TTL other instances would keep resolving their boot-time value.
 const cacheTTL = 15 * time.Second
 
-// Well-known setting keys. Only a subset is enforced today; the rest are stored
-// and surfaced in the admin UI.
+// Only a subset is enforced today; the rest are stored and surfaced in the admin UI.
 const (
 	KeyMaintenanceMode = "maintenance_mode"
-	// Self-service sign-up itself is not here: it is fixed at boot from
-	// MIABI_REGISTRATION_ENABLED (config.RegistrationEnabled). These two shape the
-	// policy that applies once it is open.
+	// Sign-up itself is fixed at boot from MIABI_REGISTRATION_ENABLED; these shape the policy once open.
 	KeyRequireEmailVerification = "require_email_verification"
 	KeyAllowedSignupDomains     = "allowed_signup_domains"
 	KeyDefaultWorkspaceRole     = "default_workspace_role"
 	KeyMaxWorkspacesPerUser     = "max_workspaces_per_user"
-	// KeyMaxWorkspaceMembershipsPerUser caps how many workspaces a user may JOIN
-	// as a non-owner member (0 = unlimited).
+	// 0 means unlimited.
 	KeyMaxWorkspaceMembershipsPerUser = "max_workspace_memberships_per_user"
-	// KeyWorkspaceCreation is the platform's workspace creation mode (models.WorkspaceCreation*), the
-	// default an organization that sets none falls back to.
-	KeyWorkspaceCreation = "workspace_creation"
-	// KeyInvitationSignupEnabled lets an invitee create their account from the invitation, even while
-	// self-service sign-up is closed: the invitation is the authorization.
+	KeyWorkspaceCreation              = "workspace_creation"
+	// The invitation is the authorization, even while self-service sign-up is closed.
 	KeyInvitationSignupEnabled = "invitation_signup_enabled"
 	KeyAuditLogRetentionDays   = "audit_log_retention_days"
 	// Per-application resource caps. 0 = unlimited.
 	KeyMaxCPUCores = "max_cpu_cores"
 	KeyMaxMemoryMB = "max_memory_mb"
 
-	// KeyCustomLabelsEnabled is the fleet-wide kill-switch for user-defined Docker labels on app containers. When
-	// false, custom labels are disabled everywhere regardless of any plan capability; when true, the per-plan
-	// AllowCustomLabels capability decides. Default true.
+	// Fleet-wide kill-switch; when true, the per-plan AllowCustomLabels capability decides.
 	KeyCustomLabelsEnabled = "custom_labels_enabled"
 
-	// KeyRepoPipelinesEnabled is the fleet-wide kill-switch for adopting a pipeline out of a repository's
-	// .miabi/pipeline.yaml. Adopting one lets the repository choose the step images and shell commands a runner
-	// executes, so an operator can disable it entirely; git apps then always build directly. Default true.
+	// Repo pipelines let the repository choose runner images and commands, so operators can disable them.
 	KeyRepoPipelinesEnabled = "repo_pipelines_enabled"
 
-	// KeyControlManagerMode is how far the control manager goes: "observe" reports workloads that disappeared
-	// from their node or cluster, "off" stops watching. Observe is the default because it acts on nothing.
+	// Observe is the default because it acts on nothing.
 	KeyControlManagerMode = "control_manager_mode"
 )
 
-// defaults seeds first-boot values. Keys absent here can still be created by the
-// admin via the API.
-// Defaults for the per-user workspace limits, shared by the seed and the read fallback so a missing
-// row behaves exactly like a fresh install. Owned is a generous anti-abuse bound rather than a
-// product limit; joins are unlimited because a user cannot join unasked — an owner must invite them,
-// and each workspace's own member quota already bounds that.
+// Joins are unlimited because a user can't join unasked, and member quotas already bound that.
 const (
 	DefaultMaxWorkspacesPerUser           = 10
 	DefaultMaxWorkspaceMembershipsPerUser = -1
-	// DefaultWorkspaceCreation changes nothing for accounts that predate it: none of them signed up
-	// from an invitation.
+	// Changes nothing for accounts that predate it: none of them signed up from an invitation.
 	DefaultWorkspaceCreation = models.WorkspaceCreationExceptInvited
 )
 
@@ -114,23 +92,17 @@ var defaults = []models.Setting{
 type Provider struct {
 	repo *repositories.SettingRepository
 
-	// pinned names the keys an environment variable supplies. They are re-forced on
-	// every boot, so the console must not offer them as editable: an admin who
-	// changed one would watch it revert at the next restart with no explanation.
+	// Env-supplied keys are re-forced every boot, so the console must not offer them as editable.
 	pinned map[string]bool
 
 	mu sync.RWMutex
-	// ttl bounds how long the cache is served before a lazy reload; 0 disables
-	// auto-refresh (used by tests that inject a fixed cache). loadedAt is when the
-	// cache was last filled from the database.
+	// 0 disables auto-refresh, for tests that inject a fixed cache.
 	ttl      time.Duration
 	loadedAt time.Time
 	cache    map[string]models.Setting
 }
 
-// NewProvider builds a provider and loads the cache. Defaults are seeded once, for missing keys only, so
-// existing admin values are never overwritten. envOverrides maps setting keys to env-provided values: a
-// non-empty value is authoritative and re-applied on every boot; an empty one leaves the key admin-managed.
+// NewProvider seeds defaults only for missing keys; non-empty env overrides are re-applied every boot.
 func NewProvider(repo *repositories.SettingRepository, envOverrides map[string]string) *Provider {
 	p := &Provider{repo: repo, cache: map[string]models.Setting{}, ttl: cacheTTL, pinned: map[string]bool{}}
 	for key, val := range envOverrides {
@@ -149,9 +121,6 @@ func (p *Provider) seed(envOverrides map[string]string) {
 			logger.Error("failed to seed setting", "key", s.Key, "error", err)
 		}
 	}
-	// Env-provided values win: force them on every boot so a key like
-	// allowed_signup_domains can be set from the environment (12-factor) rather than
-	// only the admin UI. Empty values are ignored (the key stays admin-managed).
 	var forced []models.Setting
 	for key, val := range envOverrides {
 		if val == "" {
@@ -186,8 +155,7 @@ func (p *Provider) reload() {
 	all, err := p.repo.All()
 	if err != nil {
 		logger.Error("failed to load settings", "error", err)
-		// Back off: keep the current cache but mark it freshly attempted so a
-		// failing database isn't re-queried on every read until the next TTL window.
+		// Marks the cache freshly attempted so a failing database isn't re-queried on every read.
 		p.mu.Lock()
 		p.loadedAt = time.Now()
 		p.mu.Unlock()
@@ -203,9 +171,6 @@ func (p *Provider) reload() {
 	p.mu.Unlock()
 }
 
-// Invalidate refreshes the cache from the database. Call after a write.
-// NewFixedProvider builds a provider over a fixed cache and no backing store, for
-// callers that need to exercise settings-driven behaviour without a database.
 func NewFixedProvider(cache map[string]models.Setting) *Provider {
 	if cache == nil {
 		cache = map[string]models.Setting{}
@@ -213,12 +178,8 @@ func NewFixedProvider(cache map[string]models.Setting) *Provider {
 	return &Provider{cache: cache, pinned: map[string]bool{}}
 }
 
-// Pinned reports whether an environment variable supplies this key, which makes it
-// read-only in the console.
 func (p *Provider) Pinned(key string) bool { return p.pinned[key] }
 
-// PinnedKeys lists every env-supplied key, for an API that has to tell the console
-// what it may not edit.
 func (p *Provider) PinnedKeys() []string {
 	out := make([]string, 0, len(p.pinned))
 	for k := range p.pinned {
@@ -230,9 +191,6 @@ func (p *Provider) PinnedKeys() []string {
 
 func (p *Provider) Invalidate() { p.reload() }
 
-// refreshIfStale lazily reloads the cache once it is older than the TTL, so an
-// override written by another instance is picked up without an explicit
-// Invalidate. No-op when the TTL is disabled (ttl <= 0) or the cache is fresh.
 func (p *Provider) refreshIfStale() {
 	p.mu.RLock()
 	stale := p.ttl > 0 && time.Since(p.loadedAt) >= p.ttl

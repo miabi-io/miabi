@@ -26,9 +26,6 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// ListImages enumerates the node's local images, flagging dangling (untagged)
-// ones and carrying the container-reference count so a report can tell which are
-// reclaimable. SharedSize/Containers are computed by the daemon here.
 func (e *engineClient) ListImages(ctx context.Context) ([]Image, error) {
 	res, err := e.cli.ImageList(ctx, client.ImageListOptions{All: false, SharedSize: true})
 	if err != nil {
@@ -51,8 +48,6 @@ func (e *engineClient) ListImages(ctx context.Context) ([]Image, error) {
 	return out, nil
 }
 
-// isDanglingImage reports whether an image has no usable tag — no RepoTags at all, or only the
-// placeholder "<none>:<none>". Such images are always safe to prune.
 func isDanglingImage(repoTags []string) bool {
 	for _, t := range repoTags {
 		if t != "" && t != "<none>:<none>" {
@@ -62,9 +57,6 @@ func isDanglingImage(repoTags []string) bool {
 	return true
 }
 
-// DiskUsage returns a `docker system df`-style breakdown for the node. The client pre-aggregates
-// per-category counts and total/reclaimable bytes (the same numbers `docker system df` shows), so
-// this is a direct projection.
 func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
 	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{
 		Containers: true, Images: true, Volumes: true, BuildCache: true, Verbose: true,
@@ -101,11 +93,9 @@ func (e *engineClient) DiskUsage(ctx context.Context) (DiskUsage, error) {
 	}, nil
 }
 
-// VolumeUsage returns measured on-disk bytes per Docker volume name. Runs the
-// daemon's `system df` filesystem walk, so it is sweep-only — never per read.
+// Runs the daemon's system df walk, so it is sweep-only, never per read.
 func (e *engineClient) VolumeUsage(ctx context.Context) ([]VolumeUsage, error) {
-	// Without Verbose the daemon returns the category totals and an empty item list, which read as
-	// "this node has no volumes" rather than as an error.
+	// Without Verbose the daemon returns an empty item list that reads as "no volumes" rather than an error.
 	du, err := e.cli.DiskUsage(ctx, client.DiskUsageOptions{Volumes: true, Verbose: true})
 	if err != nil {
 		return nil, err
@@ -113,8 +103,6 @@ func (e *engineClient) VolumeUsage(ctx context.Context) ([]VolumeUsage, error) {
 	return volumeUsageFrom(du.Volumes.Items), nil
 }
 
-// volumeUsageFrom projects the SDK volumes into our shape, skipping ones the daemon did not size
-// (nil UsageData, or Size -1).
 func volumeUsageFrom(vols []volume.Volume) []VolumeUsage {
 	out := make([]VolumeUsage, 0, len(vols))
 	for _, v := range vols {
@@ -130,9 +118,7 @@ func volumeUsageFrom(vols []volume.Volume) []VolumeUsage {
 	return out
 }
 
-// PruneImages reclaims images. With Dangling set it removes only untagged images (always safe);
-// otherwise it removes every image no container references — callers must apply their
-// referenced-image guard first. An optional Until age filter restricts it to older images.
+// Without Dangling it removes every unreferenced image, so callers must apply their referenced-image guard first.
 func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions) (PruneReport, error) {
 	pairs := []string{"dangling", "false"}
 	if opts.Dangling {
@@ -156,9 +142,7 @@ func (e *engineClient) PruneImages(ctx context.Context, opts PruneImagesOptions)
 	return out, nil
 }
 
-// PruneBuildCache reclaims the BuildKit build cache. BuildKit never touches a record an
-// in-progress or referenced build holds, so All only widens this from dangling records to every
-// unused one — the figure `docker system df` calls reclaimable, and the figure the report promises.
+// BuildKit never touches records held by in-progress builds, so All only widens to every unused record.
 func (e *engineClient) PruneBuildCache(ctx context.Context) (PruneReport, error) {
 	rep, err := e.cli.BuildCachePrune(ctx, client.BuildCachePruneOptions{All: true})
 	if err != nil {

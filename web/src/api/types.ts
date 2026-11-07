@@ -27,13 +27,11 @@ export interface AppInfo {
   name: string
   version: string
   commit_id: string
-  /** When this binary was linked, RFC 3339. Absent for a build with no ldflags,
-   *  so render nothing rather than the word "unknown" in a date field. */
+  /** Absent for a build with no ldflags; render nothing rather than "unknown". */
   build_date?: string
   openapi_docs: boolean
 }
 
-// Plan is an admin-defined per-workspace quota + capability template.
 // Numeric limits: -1 = unlimited, 0 = none.
 export interface Plan {
   id: number
@@ -44,10 +42,7 @@ export interface Plan {
   description: string
   is_default: boolean
   is_active: boolean
-  /** A plan the platform owns rather than one the operator publishes: the
-   *  built-in Unlimited plan, pinned to the system workspace. It does not count
-   *  against the edition's plan-catalog cap, and is not meant to be assigned to
-   *  a tenant. */
+  /** The built-in Unlimited plan on the system workspace; it skips the plan-catalog cap and is not for tenants. */
   system?: boolean
   max_apps: number
   max_database_instances: number
@@ -76,14 +71,12 @@ export interface Plan {
   allow_gpu: boolean
   // Run an app as a replicated Swarm service; the container runtime is always allowed.
   allow_service_runtime: boolean
-  // Fill an app's unset CPU / memory limit (0 = no default); require_resource_limits refuses an app
-  // that still has none.
+  // 0 = no default; require_resource_limits refuses an app that still has none.
   default_cpu_millicores: number
   default_memory_mb: number
   require_resource_limits: boolean
   security_profile: SecurityProfile
-  // Let apps installed from an official marketplace template keep the image's own
-  // default user even under the "restricted" security profile.
+  // Lets official marketplace apps keep the image's default user even under the "restricted" profile.
   allow_official_image_user: boolean
   // Binds the plan to locations (cluster ids, the first is the default) and a node pool. Enterprise.
   placement?: PlanPlacement
@@ -91,8 +84,7 @@ export interface Plan {
   database_sizes?: number[] | null
   // Storage classes, by name, the plan's workspaces may create volumes on; empty offers every one.
   storage_classes?: string[] | null
-  // platform_runners names the shared runners the plan may build on; empty offers the
-  // whole pool. A workspace's own runners are never bound by its plan.
+  // Empty offers the whole pool; a workspace's own runners are never bound by its plan.
   platform_runners?: string[] | null
   // The class a volume naming none gets, before the node's own default.
   default_storage_class?: string | null
@@ -132,8 +124,7 @@ export interface PlanPlacement {
   pool?: string
 }
 
-// SecurityProfile hardens how a workspace's app/job containers run. "restricted"
-// forces a non-root platform UID (OpenShift-style); "default" is unchanged.
+// "restricted" forces a non-root platform UID (OpenShift-style); "default" is unchanged.
 export type SecurityProfile = 'default' | 'restricted'
 
 export type PlanInput = Omit<Plan, 'id' | 'created_at' | 'updated_at'>
@@ -224,20 +215,16 @@ export interface WorkspaceUsage {
     shared_storage: boolean
     dns_providers: boolean
     custom_labels: boolean
-    // Cluster (Swarm) mode is on — offer the replicated "service" runtime on
-    // app create. A platform-level flag exposed to every workspace member here.
+    // Platform-level Swarm flag exposed to every workspace member.
     cluster_enabled?: boolean
     // The replicated "service" runtime is offered: the cluster is on and the plan allows it.
     service_runtime?: boolean
-    // This workspace's containers must drop root, so a run-as user has to be a
-    // non-root numeric uid rather than any account the image happens to define.
+    // A run-as user must then be a non-root numeric uid, not any account the image defines.
     require_non_root?: boolean
   }
 }
 
-// WorkspaceLiveSample is the actual, live consumption aggregated across a
-// workspace's running app + database containers (from GET /usage/live and its SSE
-// stream). Distinct from WorkspaceUsage, which reports declared quota vs limits.
+// Actual live consumption, distinct from WorkspaceUsage, which reports declared quota vs limits.
 export interface WorkspaceLiveSample {
   at: string
   containers: number       // running containers sampled
@@ -249,9 +236,6 @@ export interface WorkspaceLiveSample {
   net_tx_bytes: number
 }
 
-// WorkspaceHistoryPoint is one time-bucketed aggregate of the workspace's stored
-// metric samples, summed across its apps (from GET /usage/history). Powers the
-// dashboard sparkline.
 export interface WorkspaceHistoryPoint {
   at: string
   cpu_percent: number
@@ -259,8 +243,7 @@ export interface WorkspaceHistoryPoint {
   memory_bytes: number
 }
 
-// DNSProviderType is a connectable managed DNS host. The dns-provider-catalog endpoint
-// is authoritative; this stays a string so a new host needs no frontend change.
+// The dns-provider-catalog endpoint is authoritative; a string so a new host needs no frontend change.
 export type DNSProviderType = string
 
 export type DNSFieldType = 'string' | 'password' | 'textarea' | 'enum'
@@ -285,8 +268,7 @@ export interface DNSProviderDescriptor {
   challenge_only?: boolean
 }
 
-// DNSProvider is a workspace's connection to a DNS host. Credentials are
-// write-only and never returned.
+// Credentials are write-only and never returned.
 export interface DNSProvider {
   id: number
   workspace_id: number
@@ -351,11 +333,9 @@ export interface User {
   // True when an identity provider owns the account, so name and username are read-only.
   profile_managed?: boolean
   recovery_codes_remaining?: number
-  // Populated on /me only: the credential behind the request. For a
-  // workspace-bound API key, auth.workspace_id is the workspace the token manages.
+  // For a workspace-bound API key, auth.workspace_id is the workspace the token manages.
   auth?: AuthContext
-  // Populated on /me only. default_workspace_id is already resolved server-side, so
-  // it always names a workspace the user can open (absent when they belong to none).
+  // Resolved server-side, so it always names a workspace the user can open (absent when they belong to none).
   default_workspace_id?: number
   preferences?: UserPreferences
   /** 'service' marks a non-human account that authenticates only with API keys. */
@@ -408,14 +388,9 @@ export interface RegisterFromInvitationResult {
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-// UserPreferences are the console settings that follow a user between browsers and
-// machines, as opposed to the per-device values cached in localStorage.
-// AccentCode is one of the accents the console ships. Not an arbitrary colour:
-// see web/src/theme/accents.json for why.
+// Not an arbitrary colour: see web/src/theme/accents.json for why.
 export type AccentCode = 'default' | 'blue' | 'indigo' | 'slate' | 'orange' | 'lime'
 
-// AccentPolicy is whether the brand accent is a default accounts may override, or
-// the accent every account wears.
 export type AccentPolicy = 'default' | 'enforced'
 
 export interface UserPreferences {
@@ -448,8 +423,6 @@ export interface AuthContext {
   scopes?: string[]
 }
 
-// Session is one active sign-in for the current user. `current` flags the
-// session the running browser is authenticated with.
 export interface Session {
   id: number
   ip_address: string
@@ -463,16 +436,12 @@ export interface AuthResponse {
   token?: string
   user?: User
   two_factor_required?: boolean
-  // Set when the credentials were valid but the account has an admin-set/reset
-  // password it must replace: no session is issued, and reset_token is a
-  // short-lived token exchanged (with a new password) for a real session.
+  // No session is issued; reset_token is exchanged with a new password for a real session.
   must_change_password?: boolean
   reset_token?: string
 }
 
-// LoginTokenResponse is the "Copy login command" payload: a short-lived personal
-// API token plus the ready-to-paste CLI and curl commands (shown once).
-// two_factor_required mirrors login when the account has 2FA.
+// The token is shown once; two_factor_required mirrors login when the account has 2FA.
 export interface LoginTokenResponse {
   token?: string
   sha256?: string
@@ -482,9 +451,7 @@ export interface LoginTokenResponse {
   login_command?: string
   curl_example?: string
   two_factor_required?: boolean
-  // redirect_to is set only for the loopback CLI-login flow (`miabi login`): the
-  // browser navigates here to hand a single-use code back to the CLI's local
-  // callback. The raw token is omitted in that case.
+  // Set only for the loopback `miabi login` flow, where the raw token is omitted.
   redirect_to?: string
 }
 
@@ -503,8 +470,7 @@ export interface BrandLink {
   url: string
 }
 
-// The operator's identity for the sign-in page, which has no user and therefore no
-// personal preference to read, and for the console chrome. Empty fields mean Miabi's own.
+// The sign-in page has no user and so no personal preference to read; empty fields mean Miabi's own.
 export interface Brand {
   name?: string
   logo_url?: string
@@ -585,11 +551,7 @@ export interface AdminUser {
   suspended_until?: string | null
 }
 
-/**
- * An organization is the tenant boundary: it owns workspaces, caps how many, and may own the
- * clusters they deploy to. Exactly one is the default — the realm every unassigned workspace, user
- * and identity provider resolves to.
- */
+/** Exactly one organization is the default, the realm every unassigned workspace, user and IdP resolves to. */
 export interface Organization {
   id: number
   uid: string
@@ -731,10 +693,7 @@ export interface AdminWorkspaceDetail {
   plan_id?: number | null
   organization_id?: number | null
   organization_name?: string
-  /**
-   * The workspace's organization runs its own clusters, so its placement is fixed: the plan's
-   * location list is ignored (it would intersect to nothing) and the console shows it locked.
-   */
+  /** The plan's location list is ignored (it would intersect to nothing) and the console shows it locked. */
   placement_pinned?: boolean
   /** A hold: '' none, read_only or suspended (an admin's), or frozen (a migration's). */
   restriction?: WorkspaceRestriction
@@ -764,8 +723,7 @@ export interface PlatformMetrics {
   total_stacks: number
   total_volumes: number
   total_nodes: number
-  // Online = the local node or a connected agent; offline = an agent that dropped. The rest are swarm
-  // members without an agent.
+  // The rest are swarm members without an agent.
   online_nodes: number
   offline_nodes: number
   cordoned_nodes: number
@@ -791,8 +749,7 @@ export interface PlatformMetrics {
   version: string
   commit: string
   network_pool?: NetworkPoolStats | null
-  // Node CPU/memory capacity vs what workloads have reserved. Absent when per-node clients are
-  // not wired; capacity is collected on a TTL, not on every stream tick.
+  // Absent when per-node clients are not wired; capacity is collected on a TTL, not every stream tick.
   fleet?: FleetCapacity | null
   storage_classes: StorageClassStats
   signals: PlatformSignals
@@ -802,19 +759,16 @@ export interface PlatformMetrics {
 export interface FleetCapacity {
   cpu_cores: number
   memory_bytes: number
-  // Nodes that answered the last capacity probe; an unreachable node is absent from the totals
-  // rather than counted as zero.
+  // An unreachable node is absent from the totals rather than counted as zero.
   nodes_counted: number
   nodes_total: number
-  // Sum of the explicit limits set on apps and database instances — a reservation floor, not
-  // utilization, and blind to workloads that set no limit.
+  // A reservation floor, not utilization, and blind to workloads that set no limit.
   committed_nano_cpus: number
   committed_memory_bytes: number
   // Disk behind each node's Docker data root, summed.
   storage_bytes: number
   storage_free_bytes: number
-  // Real utilization sampled on the nodes themselves; nodes_sampled is 0 when none answered, which
-  // means "unknown", not "idle".
+  // nodes_sampled 0 means "unknown", not "idle".
   cpu_percent: number
   memory_used_bytes: number
   nodes_sampled: number
@@ -887,10 +841,7 @@ export interface PlatformSetting {
   value: string
   type: 'string' | 'int' | 'bool' | 'json'
   updated_at?: string
-  /**
-   * An environment variable supplies this value, so the console shows it
-   * read-only: an edit here would revert at the next restart.
-   */
+  /** Set by an environment variable, so an edit here would revert at the next restart. */
   pinned?: boolean
 }
 
@@ -927,12 +878,9 @@ export interface JobStatus {
 
 export type ControlManagerMode = 'off' | 'observe' | 'enforce'
 
-// ReconcilePolicy is one app's override of the platform mode: inherit follows it, off leaves the app out of
-// reconciliation entirely, observe reports without acting, enforce allows an in-place redeploy.
 export type ReconcilePolicy = 'inherit' | 'off' | 'observe' | 'enforce'
 
-// RestoreSuggestion names the backup lost data comes back from. Miabi never restores one itself, so this is
-// what the report points an operator at.
+// Miabi never restores a backup itself; the report points an operator at one.
 export interface RestoreSuggestion {
   from: 'volume-backup' | 'recovery-point'
   // available is false when there is no completed backup to restore — the worst case, said out loud.
@@ -943,8 +891,6 @@ export interface RestoreSuggestion {
   size_bytes?: number
 }
 
-// ControlManagerFinding is a workload the sweep found missing or replaced. It carries the shared drift-item
-// fields plus what only the platform-wide sweep knows: when it was first seen, and what enforcement tried.
 export interface ControlManagerFinding extends DriftItem {
   workspace_id: number
   server_id: number
@@ -961,16 +907,14 @@ export interface ControlManagerFinding extends DriftItem {
   breaker_open?: boolean
 }
 
-// ControlManagerBlockedApp is an app that must not be started again: the volume holding its data is gone, so
-// only a restore brings it back.
+// The volume holding its data is gone, so only a restore brings it back.
 export interface ControlManagerBlockedApp {
   app_id: number
   name?: string
   reason: string
 }
 
-// ControlManagerSkip is a node or cluster the sweep could not look at, so its workloads are unknown rather
-// than missing.
+// Its workloads are unknown rather than missing.
 export interface ControlManagerSkip {
   scope: 'node' | 'cluster'
   id: number
@@ -1042,8 +986,6 @@ export interface PublicProvider {
   type: OAuthProviderType
 }
 
-// ProvidersResponse is the login screen's SSO payload: buttoned providers plus
-// whether any hidden provider exists (reachable via "Continue with SSO").
 export interface ProvidersResponse {
   providers: PublicProvider[]
   sso_available: boolean
@@ -1109,8 +1051,7 @@ export interface Registry {
   server: string
   username: string
   has_secret: boolean
-  /** Name of the workspace Secret holding the password, when the credential
-   *  references the vault instead of storing its own copy. */
+  /** Set when the credential references the vault instead of storing its own copy. */
   secret_ref?: string
   created_at?: string
 }
@@ -1126,15 +1067,11 @@ export interface GitRepository {
   auth_type: GitAuthType
   username: string
   has_secret: boolean
-  /** Name of the workspace Secret holding the token or key, when the credential
-   *  references the vault instead of storing its own copy. */
+  /** Set when the credential references the vault instead of storing its own copy. */
   secret_ref?: string
   /** miabi.io/managed-by is "gitops" or "apply" when a manifest declares the credential. */
   metadata?: Record<string, string>
-  /** Result of the last reachability check (`git ls-remote` with this
-   *  credential). Recorded when the repository is created, when its URL or
-   *  credential changes, and on an explicit test — never on a read, so the list
-   *  does not re-probe every remote on every page load. */
+  /** Recorded on create, URL/credential change and explicit test, never on a read, so lists do not re-probe remotes. */
   connection_status?: GitConnectionStatus
   /** Why the last check failed; empty when it succeeded. */
   connection_error?: string
@@ -1191,8 +1128,7 @@ export interface NotificationChannel {
 
 export type AppEventSeverity = 'info' | 'warning' | 'error'
 
-// A timeline entry for a resource. subject_type says which id is meaningful:
-// "app" -> application_id, "database" -> database_id (the other is 0).
+// subject_type says which id is meaningful; the other is 0.
 export type EventSubjectType = 'app' | 'database'
 
 export interface AppEvent {
@@ -1361,8 +1297,7 @@ export interface WorkspacePortPolicy {
 
 export type AppStatus = 'created' | 'deploying' | 'running' | 'stopped' | 'failed'
 
-// LiveStatus is the real-time container status (from Docker inspect), plus a
-// stats snapshot when running. `status` is finer-grained than AppStatus.
+// `status` is finer-grained than AppStatus.
 export interface LiveStatus {
   status: string // running|restarting|unhealthy|starting|exited|stopped|paused|created|no_container
   container_state?: string
@@ -1382,10 +1317,6 @@ export interface LiveStatus {
   service_running_tasks?: number
 }
 
-// DBLiveStatus is the real-time status of a database instance (GET
-// .../databases/{id}/status): the stored lifecycle status plus the container's
-// live Docker state. Polled by the detail page so provisioning/health changes
-// surface without a manual refresh.
 export interface DBLiveStatus {
   status: string // stored lifecycle, or live-derived when running (running|unhealthy|starting|restarting|exited|stopped|...)
   stored_status: DBStatus
@@ -1398,20 +1329,17 @@ export interface DBLiveStatus {
   started_at?: string
   uptime_seconds: number
   has_container: boolean
-  // True when the instance's node has been deleted: nothing is running, whatever the stored status
-  // says, and the instance can be stopped or deleted despite it.
+  // The node was deleted: nothing runs whatever the stored status says, so stop/delete stay allowed.
   node_missing?: boolean
   upgrade?: UpgradeProgress
   stats?: StatsSample
 }
 
-// ContainerNetwork is the app container's attachment to a Docker network. IPs
-// are ephemeral (change on redeploy) — prefer the stable hostname/alias.
+// IPs change on redeploy; prefer the stable hostname/alias.
 export interface ContainerNetwork {
   name: string
   ip_address: string
-  // Absent on a single-stack network. The network detail shows the v6 subnet; this shows whether the
-  // container was actually given an address out of it.
+  // Absent on a single-stack network; shows whether the container actually got a v6 address.
   ipv6_address?: string
   gateway?: string
 }
@@ -1463,8 +1391,7 @@ export interface AppMount {
   docker_name: string
   path: string
   host_preset?: string
-  // A config mount projects files rather than binding a directory: config_key
-  // names a single file, and empty projects every file under path.
+  // config_key names a single file; empty projects every file under path.
   config_id?: number
   config_key?: string
   mode?: string
@@ -1495,8 +1422,7 @@ export interface Application {
   /** Name of the GitOps project that manages the app; filled on the detail read. */
   gitops_source_name?: string
   cluster_id?: number
-  // Real per-node replica placement for a cluster ("service") app, populated on
-  // the app-detail read: where Swarm actually scheduled the running tasks.
+  // Where Swarm actually scheduled the running tasks.
   nodes?: NodePlacement[]
   // A service app's task counts as Swarm reports them; absent when the swarm could not be asked.
   running_replicas?: number
@@ -1535,21 +1461,17 @@ export interface Application {
   canary_release_id?: number | null
   canary_weight?: number
   canary_paused_at?: string | null
-  // Advanced canary (Enterprise: advanced_canary). `manual` stands the ramp down
-  // and lets the rules below steer traffic; cleared with the canary on
-  // promote/abort, while the mode is a standing preference.
+  // Enterprise: `manual` lets the rules steer traffic and clears on promote/abort; the mode itself persists.
   canary_mode?: CanaryMode
   canary_exclusive?: boolean
   canary_priority?: number
   canary_match?: CanaryMatchRule[]
   memory_bytes?: number
   nano_cpus?: number
-  // GPU request (gated by the plan's allow_gpu). gpu_count = whole devices,
-  // gpu_kind narrows to a vendor/model.
+  // Gated by the plan's allow_gpu; gpu_count is whole devices.
   gpu_count?: number
   gpu_kind?: string
-  // Account the container runs as ("1000", "1000:1000", "node"), like `docker run
-  // --user`. Empty keeps the image's own user.
+  // Like `docker run --user`; empty keeps the image's own user.
   run_as_user?: string
   add_capabilities?: string[]
   devices?: string[]
@@ -1561,8 +1483,6 @@ export interface Application {
   image_pull_policy?: ImagePullPolicy
   // How much the control manager may do about this app, overriding the platform mode.
   reconcile_policy?: ReconcilePolicy
-  // Cluster runtime (cluster mode). "service" runs the app as a replicated Swarm
-  // service; otherwise a single container.
   runtime_kind?: RuntimeKind
   replicas?: number
   placement_constraints?: string[]
@@ -1579,8 +1499,6 @@ export interface Application {
   created_at?: string
 }
 
-// RuntimeKind is how an app runs: a single container (default) or a replicated
-// Swarm service (cluster mode).
 export type RuntimeKind = 'container' | 'service'
 
 // What switching an app's runtime would do (POST /apps/{id}/runtime, dry_run), and what stops it.
@@ -1608,8 +1526,6 @@ export interface ServiceUpdateConfig {
 
 export type DeployStrategy = 'recreate' | 'rolling' | 'canary'
 
-// CanaryMode is who moves the canary's weight: the platform's timed ramp, or the
-// user.
 export type CanaryMode = 'auto' | 'manual'
 
 export type CanaryMatchSource = 'header' | 'query' | 'cookie' | 'ip'
@@ -1623,8 +1539,7 @@ export type CanaryMatchOperator =
   | 'regex'
   | 'in'
 
-// CanaryMatchRule is one condition a request must satisfy for the canary to be
-// eligible. All of an app's rules must hold.
+// All of an app's rules must hold.
 export interface CanaryMatchRule {
   source: CanaryMatchSource
   name: string
@@ -1639,8 +1554,7 @@ export interface CanaryRoutingPayload {
   match: CanaryMatchRule[]
 }
 
-// Warnings are advisory: the save happened, but something outside Miabi has to
-// be true for the rules to mean what they read as (see the client-IP warning).
+// Advisory: the save happened, but something outside Miabi must hold for the rules to mean what they say.
 export interface CanaryRoutingResult {
   message: string
   warnings?: string[]
@@ -1652,9 +1566,7 @@ export interface CanaryPreviewRuleResult {
   matched: boolean
 }
 
-// CanaryPreview answers "which backend would serve this request?". `split` means
-// both are eligible and the gateway picks by weight, so canary_chance is the
-// share of such requests the canary serves.
+// `split` means the gateway picks by weight, so canary_chance is the canary's share of such requests.
 export interface CanaryPreview {
   backend: 'stable' | 'canary' | 'split'
   canary_chance: number
@@ -1665,8 +1577,7 @@ export interface CanaryPreview {
 
 export type RestartPolicy = 'no' | 'always' | 'unless-stopped' | 'on-failure'
 export type ImagePullPolicy = 'always' | 'if-not-present' | 'never'
-// BuildMethod selects how a git app's image is built: auto (Dockerfile if
-// present, else Cloud Native Buildpacks), or a forced dockerfile/buildpack.
+// auto uses the Dockerfile if present, else Cloud Native Buildpacks.
 export type BuildMethod = 'auto' | 'dockerfile' | 'buildpack'
 export type HealthcheckType = 'image' | 'none' | 'http' | 'command'
 
@@ -1686,8 +1597,7 @@ export interface DeploymentLogHistory {
 
 export interface Deployment {
   id: number
-  // Per-application sequential deployment number (1, 2, 3…), independent of the
-  // global id — shown to users as "#<number>". Mirrors Release.version.
+  // Per-application, independent of the global id; mirrors Release.version.
   number: number
   application_id: number
   status: DeploymentStatus
@@ -1762,12 +1672,9 @@ export interface Network {
   created_at?: string
 }
 
-// NetworkDetail is a workspace network with the addressing the ENGINE actually gave it. The stored
-// row says what Miabi asked for; these fields say what exists, and are the only place the IPv6 half
-// is visible.
+// The stored row is what Miabi asked for; these fields are what the engine actually created.
 export interface NetworkDetail extends Network {
-  // False when the network is recorded but absent from the engine — an overlay no local container
-  // has attached yet, or an offline node. The addressing fields are then empty rather than stale.
+  // False for an overlay no local container has attached yet or an offline node; addressing is then empty.
   exists: boolean
   subnet?: string
   gateway?: string
@@ -1777,8 +1684,7 @@ export interface NetworkDetail extends Network {
   scope?: string
 }
 
-// NetworkingInfo is the platform networking posture on the admin Settings page. ipv6_enabled is what
-// the operator asked for; ipv6_active is what Miabi could actually apply.
+// ipv6_enabled is what the operator asked for; ipv6_active is what Miabi could actually apply.
 export interface TelemetryStatus {
   enabled: boolean
 }
@@ -1828,9 +1734,7 @@ export interface Stack {
 
 export type RouteTLSMode = 'none' | 'acme' | 'custom'
 
-// RouteStatus is the route's config-sync status with the gateway: live (served),
-// offline (disabled or a host's domain is unverified), error (last sync failed),
-// or pending (not yet synced).
+// offline means disabled or a host's domain is unverified.
 export type RouteStatus = 'pending' | 'live' | 'offline' | 'error'
 
 export interface RouteMaintenance {
@@ -1857,12 +1761,9 @@ export interface Route {
   enabled: boolean
   exploit_protection?: boolean
   maintenance?: RouteMaintenance
-  // Generated marks a platform-managed external-access route. It is created and
-  // reconciled from the application's External Access card; the Routes UI shows it
-  // read-only (no edit/toggle/delete).
+  // Reconciled from the app's External Access card, so the Routes UI shows it read-only.
   generated?: boolean
-  // Config-sync status with the gateway (whether Goma is serving the route — not
-  // upstream health). Set whenever the workspace proxy config is reconciled.
+  // Whether Goma serves the route, not upstream health.
   status?: RouteStatus
   status_reason?: string
   synced_at?: string | null
@@ -1946,9 +1847,7 @@ export interface MiddlewareField {
   // Sub-schema for `list` rows and structured `object` groups.
   fields?: MiddlewareField[]
 
-  // Form presentation, supplied per field by the server catalog so the same
-  // editor can label a setHeaders row "Header → value" and a jwt forwardHeaders
-  // row "Header → claim path".
+  // Supplied per field by the server catalog so one editor can label different key/value rows.
   placeholder?: string
   key_label?: string
   value_label?: string
@@ -2208,14 +2107,11 @@ export interface Volume {
   // Measured on-disk usage (vs declared size_bytes); absent = never measured.
   used_bytes?: number
   used_measured_at?: string
-  // Shared storage: driver is "local" (node-local, rwo), "nfs"/"cifs" (shared,
-  // rwx — usable by a replicated cluster app across nodes), or "host" (a bind to
-  // an operator-managed host path under /mnt/*, present on every node).
+  // "nfs"/"cifs" are shared rwx for replicated apps across nodes; "host" binds an operator path under /mnt/* on every node.
   driver?: string
   access_mode?: 'rwo' | 'rwx'
   // Bind source for a "host" driver volume (the /mnt/* path); empty otherwise.
   host_path?: string
-  // The storage class the volume was created on, deciding where on the node its data lives.
   // "default" is the built-in class: the Docker engine's own data directory.
   storage_class?: string
   metadata?: Record<string, string>
@@ -2223,9 +2119,7 @@ export interface Volume {
   created_at?: string
 }
 
-// StorageClass is an admin-registered directory volumes are created in. Name and path are set once
-// at registration and can never be edited: volumes and GitOps manifests reference the name, and the
-// data of existing volumes already sits under the path.
+// Name and path are immutable: volumes and manifests reference the name, and existing data sits under the path.
 export interface StorageClass {
   id: number
   name: string
@@ -2293,8 +2187,7 @@ export interface StorageClassInput {
   reclaim_policy: 'delete' | 'retain'
 }
 
-// StorageClassOption is a class as a workspace sees it in the create form: the handle and what it
-// is for, never the operator's host path.
+// Never exposes the operator's host path.
 export interface StorageClassOption {
   name: string
   display_name: string
@@ -2335,8 +2228,7 @@ export interface VolumeFile {
 
 export interface Backup {
   id: number
-  // Per-database sequential backup number (1, 2, 3…), independent of the global
-  // id — shown to users as "#<number>".
+  // Per-database, independent of the global id.
   number: number
   engine: DBEngine
   status: 'pending' | 'running' | 'completed' | 'failed'
@@ -2350,8 +2242,7 @@ export interface Backup {
   comment?: string
   // Pinned backups are exempt from retention pruning.
   pinned: boolean
-  // The artifact was encrypted (GPG with the workspace backup passphrase, or age to
-  // the workspace recipients), which is then required to restore it.
+  // The passphrase or age recipients are then required to restore it.
   encrypted: boolean
   // sha256 of the stored artifact, as the backup tool reported it.
   sha256?: string
@@ -2384,8 +2275,7 @@ export interface DatabaseBackupSet {
   started_at?: string | null
   finished_at?: string | null
   created_at: string
-  // When the set was last checked against the bucket, and how it went. Absent
-  // means never checked.
+  // Absent means never checked.
   verified_at?: string | null
   verify_status?: 'ok' | 'failed'
   verify_error?: string
@@ -2403,9 +2293,7 @@ export interface VerifyResult {
   error?: string
 }
 
-// Recovery points plus whether the workspace can take one. The capability comes
-// from the API because reading the workspace backup settings needs admin rights,
-// which a developer looking at this page may not have.
+// The capability comes from the API because reading backup settings needs admin rights a developer may lack.
 export interface BackupSetsResponse {
   sets: DatabaseBackupSet[]
   s3_configured: boolean
@@ -2428,8 +2316,7 @@ export interface DatabaseBackupSetSchedule {
   created_at: string
 }
 
-// A recovery point found in the bucket, which may or may not be one this
-// workspace has a record of.
+// May or may not be one this workspace has a record of.
 export interface DiscoveredSet {
   ref: string
   instance: string
@@ -2461,8 +2348,7 @@ export interface AdoptResult {
   set_id: number
   adopted: number
   already_known: boolean
-  // Artifacts with no database of that name on the instance. They stay in the
-  // bucket; recreate the database and adopt again to pick them up.
+  // They stay in the bucket; recreate the database and adopt again to pick them up.
   skipped?: { database: string; filename: string; reason: string }[]
 }
 
@@ -2614,8 +2500,6 @@ export interface Invitation {
   created_at: string
 }
 
-// PendingInvitation is an invitation addressed to the current user, enriched
-// with the workspace name and inviter so they can act on it before joining.
 export interface PendingInvitation {
   id: number
   workspace_id: number
@@ -2645,8 +2529,6 @@ export interface AuditLog {
   created_at: string
 }
 
-// AuditLogDetail is a single entry enriched with the actor's name/email and the
-// full metadata, returned by the audit-log detail endpoint.
 export interface AuditLogDetail extends AuditLog {
   workspace_id?: number | null
   metadata?: Record<string, unknown>
@@ -2659,19 +2541,12 @@ export type ServerConnectivity = 'edge-gateway' | 'cluster'
 
 export type ServerRole = 'manager' | 'node'
 
-/**
- * How a node's agent stands against this control plane.
- *
- * `unsupported` is decided locally against a supported floor, so it stays true on an install that
- * cannot reach GitHub; `outdated` needs the daily release check and is only ever a hint. An absent
- * value is unknown — no badge, because absence of evidence must not read as "out of date".
- */
+/** `unsupported` is decided locally (works offline); `outdated` needs the release check; absent is unknown, no badge. */
 export type AgentState = 'current' | 'outdated' | 'unsupported'
 
 export interface Server {
   id: number
-  /** Unique URL-safe handle — the same vocabulary Application uses. Stable for
-   *  the node's life: /api/v1/provider/{name} is built from it. */
+  /** Stable for the node's life: /api/v1/provider/{name} is built from it. */
   name: string
   /** Free-text label shown in the UI; not unique. */
   display_name?: string
@@ -2687,11 +2562,7 @@ export interface Server {
   address?: string
   agent_connected?: boolean
   agent_version?: string
-  /**
-   * How this node's agent stands against the control plane. Computed server-side per request, never
-   * stored: it depends on the node's build and on the newest release, which move independently.
-   * Absent means unknown — render nothing rather than guessing.
-   */
+  /** Computed per request, never stored, since node build and newest release move independently; absent means unknown. */
   agent_state?: AgentState
   /** The version to upgrade to; set only when this node is behind it. */
   agent_latest_version?: string
@@ -2708,12 +2579,9 @@ export interface Server {
   storage_bytes?: number
   storage_free_bytes?: number
   capacity_measured_at?: string | null
-  // Cluster (Docker Swarm). Populated only when cluster mode is on; otherwise
-  // these stay empty and the node is shown as standalone.
+  // Populated only when cluster mode is on; otherwise the node is shown as standalone.
   swarm_node_id?: string
-  // True when the CLUSTER brought this node in rather than an admin: the global agent
-  // service landed on a swarm member and the agent registered itself. It distinguishes
-  // a machine an operator chose from one that simply exists because it is in the swarm.
+  // The global agent service landed on a swarm member and the agent registered itself, rather than an admin adding it.
   auto_joined?: boolean
   swarm_role?: SwarmRole
   swarm_availability?: 'active' | 'pause' | 'drain'
@@ -2723,8 +2591,7 @@ export interface Server {
   updated_at?: string
 }
 
-// SwarmRole is a node's role within the cluster's swarm; "standalone" means
-// cluster mode is on but the node is not a swarm member.
+// "standalone" means cluster mode is on but the node is not a swarm member.
 export type SwarmRole = 'leader' | 'manager' | 'worker' | 'standalone'
 
 export type ClusterMode = 'standalone' | 'swarm'
@@ -2736,8 +2603,7 @@ export interface AddressRecord {
   value: string
 }
 
-// Cluster is a deploy target: nodes that share private networking and one ingress.
-// Tenants see it as a location.
+// Tenants see a cluster as a location.
 /** Who may place into a cluster: everyone, platform admins only, or one organization. */
 export type ClusterVisibility = 'all' | 'restricted' | 'organization'
 
@@ -2760,11 +2626,7 @@ export interface Cluster {
   visibility: ClusterVisibility
   // Set together with visibility "organization": the tenant this location is dedicated to.
   organization_id?: number | null
-  /**
-   * The cluster belongs to one organization and nothing outside it can be placed here, not even by
-   * a platform admin. Derived from organization_id server-side; `restricted` visibility is a
-   * different thing (admin-only placement) and is never dedicated.
-   */
+  /** Derived from organization_id; not even a platform admin can place outside it, unlike `restricted` visibility. */
   dedicated?: boolean
   organization_name?: string
   cordoned: boolean
@@ -2788,57 +2650,36 @@ export interface Cluster {
 // ClusterStatus is the manager's swarm capability + state.
 export interface ClusterStatus {
   enabled: boolean
-  // The operator's label for this cluster. Swarm identifies it by an unreadable id and
-  // a manager address that moves, so without this the UI can only say "the cluster".
+  // Swarm's id is unreadable and its manager address moves, so this is the only human name.
   name?: string
   local_node_state: string
   manager_addr?: string
   node_id?: string
   managers: number
   nodes: number
-  // Shared overlay the reverse proxy joins to reach clustered apps' service VIPs.
-  // Set only when cluster mode is on; used to tell an admin running their own
-  // proxy how to attach it (docker network connect <ingress_network> <proxy>).
+  // Set only in cluster mode; a self-run proxy attaches via docker network connect <ingress_network> <proxy>.
   ingress_network?: string
-  // How many workspace networks are still node-local bridges. Non-zero while
-  // cluster mode is on means cross-node east-west does NOT work for those
-  // workspaces — their apps and databases sit on per-node islands. Normal for an
-  // install that was already clustered when it upgraded, since the conversion only
-  // runs on the enable transition; the admin applies it explicitly.
+  // Non-zero means cross-node traffic fails for those workspaces; conversion only runs on enable, so upgrades need it applied.
   networks_pending?: number
-  // Whether the global agent service is deployed — i.e. whether swarm workers are
-  // MANAGED (metrics, stats, shell, housekeeping) or merely running tasks Miabi
-  // cannot see into. Swarm carries the agent to every worker, including ones that
-  // join later, so this is all-or-nothing rather than per-node.
+  // All-or-nothing: Swarm carries the agent to every worker, so this says whether workers are managed at all.
   agents_deployed?: boolean
   agent_tasks?: number
-  // True when the agents do NOT verify the control plane's TLS certificate. Surfaced
-  // so a setting made once, to get a self-signed cert working, cannot quietly become
-  // permanent.
+  // Surfaced so a skip-verify setting made once for a self-signed cert cannot quietly become permanent.
   agent_insecure_tls?: boolean
-  // True when the agents verify against an operator-supplied CA. This is the HEALTHY
-  // state for a private control plane: verification still happens, anchored on their CA.
+  // The healthy state for a private control plane: verification still happens, anchored on their CA.
   agent_custom_ca?: boolean
-  // Set when that CA is a file on the nodes rather than inline PEM — a dependency on
-  // the host filesystem, so it must exist on every node including future ones.
+  // A host-file dependency, so the CA must exist on every node including future ones.
   agent_ca_cert_path?: string
   error?: string
 }
 
-// ClusterJoinInstructions is the manual `docker swarm join` command + worker
-// token for joining a host that isn't connected to the manager.
 export interface ClusterJoinInstructions {
   worker_token: string
   manager_addr: string
   command: string
 }
 
-// ClusterMember is one swarm node (docker node ls), annotated with the Miabi
-// node it maps to (or unmanaged when it has no Miabi record).
-// Preflight: what this host can and cannot do BEFORE cluster mode is turned on.
-// The blocker case is a Docker engine running inside a VM (Docker Desktop, OrbStack):
-// the swarm forms and DNS resolves, then every cross-node connection times out,
-// because VXLAN and IPSec cannot be forwarded into the VM.
+// Docker inside a VM (Desktop, OrbStack) forms a swarm but cross-node traffic times out: VXLAN/IPSec can't reach it.
 export interface ClusterFinding {
   severity: 'blocker' | 'warning' | 'info'
   title: string
@@ -2850,16 +2691,13 @@ export interface ClusterFirewallRule {
 }
 export interface ClusterPreflight {
   engine_os: string
-  // False when this engine cannot carry the overlay data plane to other hosts at
-  // all. Single-node cluster mode still works.
+  // Single-node cluster mode still works.
   multi_node_capable: boolean
   findings: ClusterFinding[]
   firewall: ClusterFirewallRule[]
 }
 
-// NetCheck probes the real overlay between every pair of nodes, separating the three
-// failures that look identical from inside an app: a name that will not resolve, a
-// connection that never completes, and a payload that dies silently at the MTU.
+// Separates unresolvable names, connections that never complete, and payloads silently dropped at the MTU.
 export interface NetCheckProbe {
   server_id: number
   node_name: string
@@ -2886,8 +2724,7 @@ export interface NetCheck {
   summary: string
 }
 
-// A service task the scheduler placed on a node. Only the manager can enumerate
-// these — the container lives on the node, which Miabi may have no client for.
+// Only the manager can enumerate these; Miabi may have no client for the node holding the container.
 export interface SwarmTask {
   id: string
   service_name: string
@@ -2901,9 +2738,7 @@ export interface SwarmTask {
   updated_at?: string
 }
 
-// The certificate the control plane currently serves, offered so agents can be pinned
-// to it instead of skipping verification. Miabi fetches it so nobody has to hunt for a
-// PEM — the alternative being that they pick "skip" and never look back.
+// Offered so agents can be pinned to it instead of skipping verification.
 export interface ControlPlaneCert {
   pem: string
   subject: string
@@ -2915,15 +2750,10 @@ export interface ControlPlaneCert {
   publicly_trusted: boolean
   // The names the certificate actually vouches for (its SANs). Empty means none.
   hosts?: string[]
-  // Whether it names the address the agents dial. This is the trap in "just trust the
-  // CA": adding a certificate to the trust pool does NOT skip the hostname check, so a
-  // certificate with no SANs (Goma's default has none) fails however well it is trusted.
+  // Trusting a CA does not skip the hostname check, so a cert with no SANs (Goma's default) still fails.
   matches_host: boolean
   dial_host: string
-  // Whether what we can offer is a real certificate AUTHORITY, or merely the server's
-  // own leaf certificate. Pinning a leaf works — until the certificate is renewed, at
-  // which point every agent drops off at once. Then the right answer is to paste the
-  // actual CA instead.
+  // Pinning a leaf works until renewal, when every agent drops at once; then paste the actual CA.
   anchor_is_ca: boolean
 }
 
@@ -2937,9 +2767,7 @@ export interface ClusterMember {
   reachability?: string
   addr?: string
   engine_version?: string
-  // Capacity as the swarm scheduler sees it — what it packs tasks against. Reported
-  // by the node over the swarm control plane, so it is known even for an unmanaged
-  // member (no Miabi agent), where host metrics are unavailable.
+  // Reported over the swarm control plane, so it is known even for an unmanaged member with no agent.
   nano_cpus?: number // 1e9 == one core
   memory_bytes?: number // total, not used
   os?: string
@@ -2974,9 +2802,7 @@ export interface ContainerStat extends StatsSample {
   id: string
 }
 
-// NodeHostMetrics is a node's real host CPU/memory usage. The local node is read from procfs; a
-// remote node reports through its agent every few seconds, or is sampled by a short-lived container
-// on the node when it has no agent that pushes (up to a minute old).
+// Local node reads procfs; remote nodes push via agent, or are sampled by a short-lived container (up to a minute old).
 export interface NodeHostMetrics {
   available: boolean
   reason?: string
@@ -2986,8 +2812,7 @@ export interface NodeHostMetrics {
   age_seconds?: number
   load1?: number
   uptime_s?: number
-  // True when the reading describes the machine the node runs on rather than the node itself: /proc
-  // is not cgroup-aware, so a containerised or memory-limited node reports its host.
+  // /proc is not cgroup-aware, so a containerised or memory-limited node reports its host.
   physical_host?: boolean
   cpu_percent: number
   mem_total_bytes: number
@@ -3040,8 +2865,7 @@ export interface GatewayStatus {
   image_override?: string
   health?: string
   status?: string
-  // Redis powering shared cache + distributed rate limiting. redis_shared = the
-  // gateway reuses the platform Redis (manager) vs a per-node Redis (edge nodes).
+  // redis_shared means the gateway reuses the platform Redis rather than a per-node one.
   redis_enabled?: boolean
   redis_shared?: boolean
   /** Middleware rules and inline TLS are encrypted rather than served in the clear. */
@@ -3052,8 +2876,6 @@ export interface GatewayStatus {
   update?: GatewayUpdateProgress
 }
 
-// GatewayUpdateProgress is the live state of a safe gateway update (test →
-// promote), mirroring the database UpgradeProgress.
 export interface GatewayUpdateProgress {
   from_image: string
   to_image: string
@@ -3090,8 +2912,7 @@ export interface GitSource {
   require_sealed_secrets: boolean
   // What deleting the project does to its resources: orphan keeps them, cascade removes them.
   delete_policy?: 'orphan' | 'cascade'
-  // miabi.io/managed-by is "gitops" for a project another project declares (its id in
-  // miabi.io/gitops-source) and "apply" for one created by miabi apply.
+  // "gitops" for a project another declares (id in miabi.io/gitops-source); "apply" for one made by miabi apply.
   metadata?: Record<string, string>
   status: GitSourceStatus
   message?: string
@@ -3127,9 +2948,7 @@ export interface ApplyPlan {
   changes: PlanChange[] | null
 }
 
-// Response to deleting a GitOps project. teardown is present only for a cascade
-// delete and lists the resources that were removed (and any that failed).
-// ApplyResult/ApplyFailure are defined below.
+// teardown is present only for a cascade delete.
 export interface GitOpsDeleteResult {
   message: string
   teardown?: ApplyResult | null
@@ -3160,8 +2979,7 @@ export interface Topology {
   nodes: TopologyNode[] | null
   edges: TopologyEdge[] | null
   counts: Partial<Record<NodeStatus, number>>
-  // Set when the desired manifests could not be loaded; nodes/edges then reflect
-  // the last deployed (live) state and `live` is true.
+  // Nodes/edges then reflect the last deployed state and `live` is true.
   error?: string
   live?: boolean
 }
@@ -3183,8 +3001,6 @@ export interface ApplyResult {
 
 export type PipelineRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
 
-// Lightweight summary of a pipeline's most recent run, attached to the list
-// response so the table can show an at-a-glance status without loading runs.
 export interface PipelineRunSummary {
   id: number
   number: number
@@ -3207,16 +3023,13 @@ export interface PipelineDefinition {
   name: string
   display_name?: string
   application_id?: number | null
-  /** The bound repository's name — the reference format, and what to send back
-   *  when updating. Present only on a repository-bound pipeline. */
+  /** The reference format and what to send back on update; present only on a repository-bound pipeline. */
   git_repository?: string
   /** The bound application's name, filled on read. */
   application_name?: string
-  /** The resolved numeric binding, for a client that needs to match against a
-   *  repository list. Read-only: write `git_repository`. */
+  /** Read-only: write `git_repository`. */
   git_repository_id?: number | null
-  /** Ref a repository-bound run builds when the trigger names none. Empty clones
-   *  the repository's default branch. */
+  /** Empty clones the repository's default branch. */
   branch?: string
   spec: string
   enabled: boolean
@@ -3527,15 +3340,12 @@ export interface LicensePlanUsage {
   limit: number // -1 = unlimited
 }
 
-// LicenseStorageClassUsage reports the class catalog, built-in included, against the
-// edition cap.
 export interface LicenseStorageClassUsage {
   used: number
   limit: number // -1 = unlimited
 }
 
-// LicenseSharedRunnerUsage reports the platform-shared runner pool against the edition
-// cap. Workspace-owned runners are bounded by the workspace plan, not by this.
+// Workspace-owned runners are bounded by the workspace plan, not by this.
 export interface LicenseSharedRunnerUsage {
   used: number
   limit: number // -1 = unlimited
@@ -3571,25 +3381,20 @@ export interface Domain {
   verified: boolean
   verified_at?: string | null
   verification_token: string
-  // How ownership was established. "admin" is a waiver, not a proof: the drift cron
-  // records what it sees but never un-verifies it.
+  // "admin" is a waiver, not a proof: the drift cron never un-verifies it.
   verified_via?: VerifiedVia
   // Last ownership check (whether it passed or failed) and the last failure reason.
   verification_checked_at?: string | null
   verification_error?: string
-  // Banned blocks a domain platform-wide (admin action): its routes are forced
-  // offline and it cannot be verified.
+  // Its routes are forced offline and it cannot be verified.
   banned?: boolean
   banned_at?: string | null
   ban_reason?: string
   challenge_host: string
   challenge_value: string
-  // dns_provider_id links a connected DNS provider (Miabi automates the records);
-  // automated mirrors it (provider linked).
   dns_provider_id?: number | null
   automated?: boolean
-  // serving_unverified marks a domain the gateway serves despite no ownership proof,
-  // because the workspace is privileged. Computed per request, never stored.
+  // Served despite no ownership proof because the workspace is privileged; computed per request, never stored.
   serving_unverified?: boolean
   created_at: string
   updated_at: string
@@ -3665,8 +3470,6 @@ export interface DomainRoute {
   enabled: boolean
 }
 
-// DomainDetail is the single-domain response: the list shape plus the routes this
-// domain gates.
 export interface DomainDetail extends Domain {
   routes: DomainRoute[]
 }
@@ -3720,8 +3523,7 @@ export interface SearchResponse {
   kinds: string[]
 }
 
-// AuthAccessStatus reports the auth controls fixed at boot from the environment,
-// which the settings screen shows beside the ones an admin can change.
+// Controls fixed at boot from the environment.
 export interface AuthAccessStatus {
   registration_enabled: boolean
   password_reset_enabled: boolean
@@ -3729,11 +3531,7 @@ export interface AuthAccessStatus {
   blocked?: string
 }
 
-// PortEntryState: what a host port is actually doing on a node.
-//   pending   — a request awaiting review; nothing is published
-//   reserved  — approved, but not on the node until the app redeploys
-//   published — approved and live
-//   unmanaged — a container holds the port with no binding behind it
+// reserved means approved but not on the node until redeploy; unmanaged means a container holds it with no binding.
 export type PortEntryState = 'pending' | 'reserved' | 'published' | 'unmanaged'
 
 export interface PortEntry {
@@ -3753,8 +3551,7 @@ export interface PortEntry {
 export interface PortNodeOverview {
   server_id: number
   name: string
-  // False when the node could not be reached: the entries then come from the
-  // binding table alone and say nothing about unmanaged ports.
+  // False when the node was unreachable: entries come from the binding table alone, saying nothing about unmanaged ports.
   inspected: boolean
   entries: PortEntry[]
 }

@@ -186,8 +186,7 @@ func TestRenderAdvancedInjectsNameAndBackends(t *testing.T) {
 	}
 }
 
-// The renderer is the last line: even a config stored before the allow-list existed, or written
-// straight into the database, must not be able to claim a hostname or a path of its own.
+// Even configs predating the allow-list or written straight to the DB must not claim a hostname or path.
 func TestRenderAdvancedCannotOverrideHostsOrPath(t *testing.T) {
 	out, err := RenderRoute(RenderedRoute{
 		ID:           12,
@@ -216,8 +215,6 @@ func TestRenderAdvancedCannotOverrideHostsOrPath(t *testing.T) {
 	}
 }
 
-// A hostless advanced route matches every request on its path, so the renderer force-disables it —
-// the same guard the structured branch has always had.
 func TestRenderHostlessAdvancedRouteIsDisabled(t *testing.T) {
 	out, err := RenderRoute(RenderedRoute{
 		ID: 12, WorkspaceID: 1, Name: "adv",
@@ -249,8 +246,7 @@ func TestRenderMiddleware(t *testing.T) {
 }
 
 func TestRenderHostlessRouteForcedDisabled(t *testing.T) {
-	// A structured route with no host would match every request on its path, so the
-	// renderer must never emit it as live — enabled: false is forced.
+	// A hostless route would match every request on its path.
 	out, err := RenderRoute(RenderedRoute{
 		ID: 1, WorkspaceID: 5, Name: "test", Path: "/",
 		Backends: []Backend{{Endpoint: "http://mb-app-1:80"}},
@@ -263,9 +259,7 @@ func TestRenderHostlessRouteForcedDisabled(t *testing.T) {
 	}
 }
 
-// TestRenderPhase1Middlewares checks the transform/security types render the exact rule keys
-// Goma's structs expect. The mirror structs below carry the same yaml tags as goma-gateway's
-// internal/types.go, so a successful unmarshal into a non-zero struct proves key parity.
+// Mirror structs carry goma-gateway's yaml tags, so a non-zero unmarshal proves key parity.
 func TestRenderPhase1Middlewares(t *testing.T) {
 	type redirectRule struct {
 		URL       string `yaml:"url"`
@@ -332,9 +326,6 @@ func TestRenderPhase1Middlewares(t *testing.T) {
 	})
 }
 
-// TestRenderHeaderAndErrorMiddlewares checks the map/list rule shapes (Phase 2/3)
-// render into the keys Goma's RequestHeader / ResponseHeader / RouteErrorInterceptor
-// structs expect — the nested maps and object lists round-trip through YAML intact.
 func TestRenderHeaderAndErrorMiddlewares(t *testing.T) {
 	decode := func(t *testing.T, mwType string, rule map[string]any, into any) {
 		t.Helper()
@@ -383,9 +374,7 @@ func TestRenderHeaderAndErrorMiddlewares(t *testing.T) {
 	}
 }
 
-// TestRenderNestedAuthObjects checks the structured sub-objects (rateLimit
-// keyStrategy, ldap connPool) render into the keys Goma's structs expect. A
-// mislabelled key here is silent: rate-limiting quietly falls back to per-IP.
+// A mislabelled key is silent: rate-limiting quietly falls back to per-IP.
 func TestRenderNestedAuthObjects(t *testing.T) {
 	out, err := RenderMiddleware(RenderedMiddleware{
 		ID: 1, WorkspaceID: 2, Name: "rl", Type: "rateLimit",
@@ -414,8 +403,7 @@ func TestRenderNestedAuthObjects(t *testing.T) {
 }
 
 func TestRenderMiddlewareDefaultsPaths(t *testing.T) {
-	// A middleware with no paths must still render an explicit paths field
-	// (defaulting to /*), otherwise Goma silently applies it to nothing.
+	// Without an explicit paths field Goma silently applies the middleware to nothing.
 	out, err := RenderMiddleware(RenderedMiddleware{
 		ID: 4, WorkspaceID: 5, Name: "access", Type: "access",
 		Rule: map[string]interface{}{"statusCode": 403},
@@ -464,8 +452,6 @@ func TestGomaSyncWorkspaceWritesOneFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected workspace file at %s: %v", path, err)
 	}
-	// The route and the middleware definition it references must be in the same
-	// file, with the route's reference namespaced to the middleware's Goma name.
 	s := string(body)
 	for _, want := range []string{"mb-ws3-svc", "mb-ws3-auth", "basicAuth"} {
 		if !strings.Contains(s, want) {
@@ -526,9 +512,7 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 		}
 	}
 
-	// Behind a TLS terminator with no trusted proxies the redirect would loop: Goma sees
-	// the plaintext hop and sends it back. Turning it off must drop the middleware AND
-	// its reference — an orphan reference fails the route at load.
+	// Behind a TLS terminator without trusted proxies the redirect loops; an orphan reference fails the route at load.
 	noRedirect := cfg
 	noRedirect.HTTPSRedirect = false
 	if err := g.SyncRegistry(context.Background(), noRedirect); err != nil {
@@ -542,8 +526,7 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 	if strings.Contains(plain, "mb-registry-https") || strings.Contains(plain, "redirectScheme") {
 		t.Errorf("the HTTPS redirect survived being disabled:\n%s", plain)
 	}
-	// Everything else still has to be there — disabling the redirect must not
-	// quietly take the auth check with it.
+	// Disabling the redirect must not quietly take the auth check with it.
 	for _, want := range []string{"mb-registry-auth", "forwardAuth", "mb-registry-ns-rewrite"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("disabling the redirect dropped %q:\n%s", want, plain)
@@ -559,10 +542,7 @@ func TestSyncRegistryWritesAndRemoves(t *testing.T) {
 	}
 }
 
-// The registry requires Basic auth even on the private network, so the gateway presents a
-// credential upstream. It must be the LAST middleware: mb-registry-auth authenticates the tenant
-// from the header their docker client sent, and replacing that header earlier would hand every
-// request the gateway's own identity before anyone had been checked.
+// Must be last: replacing the tenant's header earlier would hand every request the gateway's identity unchecked.
 func TestSyncRegistryUpstreamAuthRunsLast(t *testing.T) {
 	dir := t.TempDir()
 	g := &Goma{dir: dir}
@@ -610,8 +590,7 @@ func TestSyncRegistryUpstreamAuthRunsLast(t *testing.T) {
 	}
 }
 
-// An install with no credential renders no such middleware, rather than an empty Authorization
-// header that would strip the tenant's own.
+// An empty Authorization header would strip the tenant's own.
 func TestSyncRegistryWithoutUpstreamAuth(t *testing.T) {
 	dir := t.TempDir()
 	g := &Goma{dir: dir}

@@ -79,8 +79,7 @@ func (s *Service) plan(ctx context.Context, workspaceID, appID uint, req PlanReq
 	if err := p.load(); err != nil {
 		return nil, nil, err
 	}
-	// A service app whose data is node-local runs where that data is, so its target is chosen like a
-	// container's: a node, not the manager.
+	// Node-local data pins a service app to a node, so its target is chosen like a container's.
 	service := app.RuntimeKind == models.RuntimeService && !p.hasLocalVolumes()
 	at, err := s.Placer.Place(placement.Request{WorkspaceID: workspaceID, Location: c.Name, Admin: req.Admin, Service: service})
 	if err != nil {
@@ -262,8 +261,7 @@ func (p *planner) dependencies() []dependency {
 	return deps
 }
 
-// exclusive reports whether nothing but the app uses an instance: every logical database on it is the app's,
-// no other app is its owner or links it, and no other app's environment names it.
+// exclusive: every logical database is the app's, and no other app owns, links or names the instance in its env.
 func (p *planner) exclusive(inst *models.DatabaseInstance) bool {
 	dbs, _ := p.s.Databases.ListInstanceDatabases(inst.ID)
 	for _, d := range dbs {
@@ -285,8 +283,7 @@ func (p *planner) exclusive(inst *models.DatabaseInstance) bool {
 	return true
 }
 
-// instanceLinks lists the apps linked to an instance as a whole (Redis). A link's injected host can be
-// skipped by its env mapping, so the env scan alone would miss it.
+// A link's injected host can be skipped by its env mapping, so the env scan alone would miss it.
 func (p *planner) instanceLinks(instanceID uint) []models.DatabaseInstanceLink {
 	links, _ := p.s.Databases.ListInstanceLinks(instanceID)
 	return links
@@ -348,9 +345,7 @@ func (p *planner) checkDatabases(choices []DBChoice) {
 	}
 }
 
-// strategies lists what an instance allows, the default first. A whole move needs the instance to be the
-// app's alone and the two nodes to share an on-disk format. A restore needs logical databases of the app's
-// to dump, which Redis and libSQL do not offer here.
+// A whole move needs exclusive use and a shared on-disk format; Redis and libSQL offer no logical restore here.
 func strategies(engine models.DBEngine, exclusive, sameArch, hasDatabases bool) []string {
 	logical := hasDatabases && engine != models.DBEngineRedis && engine != models.DBEngineLibSQL
 	var out []string
@@ -406,8 +401,7 @@ func (p *planner) checkExistingTarget(src *models.DatabaseInstance, item *models
 	}
 }
 
-// sameArch compares the two nodes' CPU architectures. Unknown counts as different: a whole move onto a
-// node whose format cannot be confirmed is the one mistake that corrupts data.
+// Unknown counts as different: a whole move onto a node of unconfirmed format corrupts data.
 func (p *planner) sameArch() bool {
 	src, err := p.s.Clients.For(p.app.ServerID)
 	if err != nil {
@@ -431,8 +425,7 @@ func (p *planner) checkRouting() {
 	p.plan.CustomDomains = p.s.Routes.CustomHosts(p.app.ID)
 }
 
-// envMentions reports whether any plain env value names the host. Secret values are ciphertext and skipped:
-// a match there cannot be seen, which errs toward treating an instance as the app's alone.
+// Secret values are ciphertext and skipped, which errs toward treating the instance as the app's alone.
 func envMentions(env []models.AppEnvVar, host string) bool {
 	if host == "" {
 		return false

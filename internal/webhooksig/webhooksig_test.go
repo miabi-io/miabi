@@ -60,9 +60,7 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-// An unconfigured webhook must not verify anything. The HMAC under an empty key
-// is computable by anyone, so without the guard the caller signs its own payload
-// and the endpoint accepts it.
+// The HMAC under an empty key is computable by anyone, so an unconfigured webhook must reject everything.
 func TestVerifyRejectsAnEmptySecret(t *testing.T) {
 	body := []byte(`{"ref":"refs/heads/main"}`)
 	for _, sig := range []string{sign("", body), "", "anything"} {

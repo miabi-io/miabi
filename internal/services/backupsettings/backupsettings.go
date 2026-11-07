@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package backupsettings manages a workspace's shared S3 backup target: the
-// single bucket + credentials and the database/volume path prefixes that both
-// database and volume backups draw from. The S3 secret is encrypted at rest.
+// Package backupsettings manages a workspace's shared S3 backup target; the secret is encrypted at rest.
 package backupsettings
 
 import (
@@ -42,9 +40,6 @@ var (
 	ErrS3NotConfigured = errors.New("workspace S3 backup settings are not configured")
 )
 
-// EnvelopeRotator re-seals recovery-point envelopes when the backup passphrase
-// changes, and reports how many are sealed. Implemented by the database and volume
-// backup services; a build without one simply cannot rotate.
 type EnvelopeRotator interface {
 	RewrapSets(workspaceID uint, oldPassphrase, newPassphrase string) (int, error)
 	SealedSetCount(workspaceID uint) (int, error)
@@ -55,8 +50,7 @@ type Service struct {
 	rotators []EnvelopeRotator
 }
 
-// SetEnvelopeRotator wires recovery-point rotation. Every service that seals points under the
-// workspace passphrase must be listed, or a rotation strands the ones it missed.
+// Every service sealing points under the passphrase must be listed, or rotation strands the missed ones.
 func (s *Service) SetEnvelopeRotator(rs ...EnvelopeRotator) {
 	s.rotators = s.rotators[:0]
 	for _, r := range rs {
@@ -78,8 +72,7 @@ func (s *Service) sealedCount(workspaceID uint) (int, error) {
 	return total, nil
 }
 
-// rewrapAll rotates every rotator's envelopes, undoing the ones already moved when a later one
-// fails: the stored passphrase is only replaced on success, so every envelope has to stay under it.
+// The stored passphrase changes only on success, so already-moved envelopes are undone on failure.
 func (s *Service) rewrapAll(workspaceID uint, old, next string) error {
 	for i, r := range s.rotators {
 		if _, err := r.RewrapSets(workspaceID, old, next); err != nil {
@@ -94,18 +87,14 @@ func (s *Service) rewrapAll(workspaceID uint, old, next string) error {
 	return nil
 }
 
-// ErrSealedSetsExist refuses to discard a passphrase that recovery points are
-// still sealed with. Clearing it does not destroy them — it makes Miabi forget the
-// only secret that opens them, which is worse, because it looks like nothing
-// happened until someone tries to restore.
+// Clearing it makes Miabi forget the only secret that opens them, which looks fine until a restore.
 var ErrSealedSetsExist = errors.New("recovery points are still sealed with this passphrase; delete them first or keep the passphrase")
 
 func NewService(repo *repositories.WorkspaceBackupSettingsRepository) *Service {
 	return &Service{repo: repo}
 }
 
-// Get returns the workspace's settings, or an empty (unsaved) record when none
-// exist yet. The secret is never included; S3SecretSet reports its presence.
+// The secret is never included; S3SecretSet reports its presence.
 func (s *Service) Get(workspaceID uint) (*models.WorkspaceBackupSettings, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -121,9 +110,7 @@ func (s *Service) Get(workspaceID uint) (*models.WorkspaceBackupSettings, error)
 	return st, nil
 }
 
-// SaveInput carries the desired settings. S3SecretKey is nil/empty to keep the stored value unchanged
-// (so the UI never needs to round-trip a secret it is not allowed to read back). The two passphrases
-// are nil to keep them and an explicit "" to remove encryption.
+// Nil keeps a secret unchanged so the UI never round-trips it; "" removes a passphrase.
 type SaveInput struct {
 	S3Enabled        bool
 	S3Endpoint       string
@@ -148,8 +135,6 @@ type SaveInput struct {
 	SkipBackupVerify bool
 }
 
-// Save upserts the workspace's settings, encrypting the secret when a new one is
-// supplied and preserving the existing secret otherwise.
 func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupSettings, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -179,8 +164,7 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		st.S3SecretKeyEnc = enc
 	}
 	if in.BundlePassphrase != nil {
-		// Bundles already in the bucket keep their encryption and still need the old passphrase to
-		// restore; the UI says so before the user confirms.
+		// Bundles already in the bucket still need the old passphrase; the UI warns before confirming.
 		if *in.BundlePassphrase == "" {
 			st.BundlePassphraseEnc = ""
 		} else {
@@ -195,8 +179,7 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 		}
 	}
 	if in.BackupPassphrase != nil {
-		// An explicit empty string clears it — the only way back to cleartext backups.
-		// nil means "unchanged", as it does for every other secret here.
+		// "" clears it, the only way back to cleartext; nil means unchanged.
 		var old string
 		if st.BackupPassphraseEnc != "" {
 			if old, err = crypto.Decrypt(st.BackupPassphraseEnc); err != nil {
@@ -217,9 +200,7 @@ func (s *Service) Save(workspaceID uint, in SaveInput) (*models.WorkspaceBackupS
 			if err := wsbundle.ValidatePassphrase(*in.BackupPassphrase); err != nil {
 				return nil, err
 			}
-			// Rotate the envelopes BEFORE storing the new passphrase. If rewrapping
-			// fails the stored passphrase still opens every set, which is recoverable;
-			// the reverse would leave sets sealed with a secret nobody has.
+			// Rewrap before storing: on failure the stored passphrase still opens every set.
 			if old != "" {
 				if rerr := s.rewrapAll(workspaceID, old, *in.BackupPassphrase); rerr != nil {
 					return nil, fmt.Errorf("rotate recovery point envelopes: %w", rerr)
@@ -254,8 +235,7 @@ type PrefixCheck struct {
 	Prefix string `json:"prefix"`
 	// Key is the object the probe wrote there.
 	Key string `json:"key,omitempty"`
-	// Removed reports whether the probe could clean up after itself. False with
-	// no Error means backups will work but retention pruning will not.
+	// False with no Error means backups work but retention pruning won't.
 	Removed bool   `json:"removed"`
 	Error   string `json:"error,omitempty"`
 }
@@ -263,9 +243,7 @@ type PrefixCheck struct {
 // OK reports whether the prefix is usable.
 func (c PrefixCheck) OK() bool { return c.Error == "" }
 
-// TestTarget proves a target works by using it: under every prefix the workspace writes to, it puts a
-// small object, reads it back and removes it. It takes the settings as the operator has them on screen,
-// so an omitted secret falls back to the stored one exactly as Save does.
+// An omitted secret falls back to the stored one exactly as Save does.
 func (s *Service) TestTarget(ctx context.Context, workspaceID uint, in SaveInput) ([]PrefixCheck, error) {
 	cfg := &backup.S3Config{
 		Endpoint: in.S3Endpoint, Bucket: in.S3Bucket, Region: in.S3Region,
@@ -307,9 +285,7 @@ func (s *Service) TestTarget(ctx context.Context, workspaceID uint, in SaveInput
 	return checks, nil
 }
 
-// distinctPrefixes is every path the workspace writes backups to, de-duplicated. All three are tested
-// rather than just one: bucket policies are commonly scoped by prefix, so a target that works for database
-// dumps can still refuse the bundle tree — and finding that out during a migration is finding out late.
+// Bucket policies are often prefix-scoped, so each prefix is tested; discovering this mid-migration is late.
 func distinctPrefixes(in SaveInput) []string {
 	want := []string{
 		strings.Trim(strings.TrimSpace(in.DatabaseBackupPath), "/"),
@@ -328,8 +304,7 @@ func distinctPrefixes(in SaveInput) []string {
 	return out
 }
 
-// defaultRegion mirrors what the *-bkup helpers are given, so the client and
-// the helpers sign for the same region.
+// Client and helpers must sign for the same region.
 func defaultRegion(region string) string {
 	if strings.TrimSpace(region) == "" {
 		return "us-east-1"
@@ -337,9 +312,7 @@ func defaultRegion(region string) string {
 	return region
 }
 
-// BundleTarget returns the workspace's S3 config, the bundle prefix and the bundle passphrase, or
-// ErrS3NotConfigured when there is no target. It is the one place that decides a workspace is ready to
-// produce or read a portable bundle. An empty passphrase means bundles are written unencrypted.
+// BundleTarget is the one place deciding a workspace can produce bundles; empty passphrase means unencrypted.
 func (s *Service) BundleTarget(workspaceID uint) (*backup.S3Config, string, string, error) {
 	cfg, err := s.S3ConfigFor(workspaceID)
 	if err != nil {
@@ -362,9 +335,7 @@ func (s *Service) BundleTarget(workspaceID uint) (*backup.S3Config, string, stri
 	return cfg, st.BundlePrefix(), pass, nil
 }
 
-// S3ConfigFor returns the decrypted S3 config for a workspace, or nil when S3 is
-// not enabled/configured. The Path field is left empty: callers append the
-// database or volume prefix. Consumed by database + volume backups.
+// Path is left empty: callers append the database or volume prefix.
 func (s *Service) S3ConfigFor(workspaceID uint) (*backup.S3Config, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -391,9 +362,7 @@ func (s *Service) S3ConfigFor(workspaceID uint) (*backup.S3Config, error) {
 	}, nil
 }
 
-// VolumeBackupTarget returns the workspace's S3 config plus the volume backup
-// path prefix, or (nil, "", nil) when S3 is not enabled/configured. Satisfies
-// the volumebackup.S3Provider interface.
+// VolumeBackupTarget satisfies volumebackup.S3Provider.
 func (s *Service) VolumeBackupTarget(workspaceID uint) (*backup.S3Config, string, error) {
 	cfg, err := s.S3ConfigFor(workspaceID)
 	if err != nil || cfg == nil {
@@ -406,9 +375,6 @@ func (s *Service) VolumeBackupTarget(workspaceID uint) (*backup.S3Config, string
 	return cfg, st.VolumeBackupPath, nil
 }
 
-// DatabaseBackupTarget returns the workspace's S3 config plus the database
-// backup path prefix, or (nil, "", nil) when S3 is not enabled/configured.
-// Database backups use this as their destination when configured.
 func (s *Service) DatabaseBackupTarget(workspaceID uint) (*backup.S3Config, string, error) {
 	cfg, err := s.S3ConfigFor(workspaceID)
 	if err != nil || cfg == nil {
@@ -426,9 +392,7 @@ func (s *Service) DatabaseBackupPassphrase(workspaceID uint) (string, error) {
 	return s.BackupPassphrase(workspaceID)
 }
 
-// BackupPassphrase returns the workspace's backup passphrase, which seals database and volume
-// recovery points alike, or "" when none is set. Empty is a valid answer, not an error: a
-// workspace that has not chosen one keeps taking cleartext backups.
+// "" is valid, not an error: such a workspace keeps taking cleartext backups.
 func (s *Service) BackupPassphrase(workspaceID uint) (string, error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -443,13 +407,7 @@ func (s *Service) BackupPassphrase(workspaceID uint) (string, error) {
 	return crypto.Decrypt(st.BackupPassphraseEnc)
 }
 
-// DatabaseDestination builds the complete destination for a workspace's database
-// backups: the centralized S3 target with its path prefix when configured, else the
-// local volume, carrying the backup passphrase either way.
-//
-// It exists so no caller has to remember the passphrase separately. Every path that
-// takes a database backup on the workspace's behalf goes through here; assembling a
-// bare Destination is how database backups came to be written in the clear.
+// DatabaseDestination always carries the passphrase; a hand-built Destination is how backups went out in the clear.
 func (s *Service) DatabaseDestination(workspaceID uint) (backup.Destination, error) {
 	pass, err := s.DatabaseBackupPassphrase(workspaceID)
 	if err != nil {
@@ -476,8 +434,7 @@ func (s *Service) DatabaseDestination(workspaceID uint) (backup.Destination, err
 // ErrInvalidAge rejects an age configuration that cannot work.
 var ErrInvalidAge = errors.New("invalid age encryption settings")
 
-// applyAge validates and stores the age settings. Recipients are checked here
-// so a typo is a save error rather than backups that silently go out in the clear.
+// Recipients are checked here so a typo is a save error, not silently cleartext backups.
 func applyAge(workspaceID uint, st *models.WorkspaceBackupSettings, in SaveInput) error {
 	mode := strings.ToLower(strings.TrimSpace(in.BackupEncryption))
 	if mode != "" && mode != "gpg" && mode != "age" {
@@ -509,8 +466,6 @@ func applyAge(workspaceID uint, st *models.WorkspaceBackupSettings, in SaveInput
 	return nil
 }
 
-// normalizeAgeRecipients accepts recipients separated by newlines or commas,
-// ignoring blank lines and # comments, and returns them one per line.
 func normalizeAgeRecipients(text string) (string, error) {
 	var out []string
 	for _, line := range strings.FieldsFunc(text, func(r rune) bool { return r == '\n' || r == ',' }) {
@@ -526,10 +481,7 @@ func normalizeAgeRecipients(text string) (string, error) {
 	return strings.Join(out, "\n"), nil
 }
 
-// BackupAge returns the age recipients new backups are encrypted to ("" when the
-// workspace uses GPG) and the stored identity that reads age backups back ("" when
-// none is stored). The identity is returned whatever the current mode, so age
-// backups taken before switching back to GPG still restore.
+// The identity is returned in any mode so age backups still restore after switching back to GPG.
 func (s *Service) BackupAge(workspaceID uint) (recipients, identity string, err error) {
 	st, err := s.repo.FindByWorkspace(workspaceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {

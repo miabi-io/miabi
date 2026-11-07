@@ -118,8 +118,7 @@ func TestAddedAndMounts(t *testing.T) {
 	}
 }
 
-// A config mount carries no volume name, so mount identity has to include the
-// config and its key — otherwise every config mount looks like the same one.
+// A config mount has no volume name, so identity must include the config and its key.
 func TestMountIdentityWithConfigs(t *testing.T) {
 	oldA := manifest.AppSpec{Mounts: []manifest.Mount{
 		{Volume: "data", Path: "/etc/goma"},
@@ -182,8 +181,7 @@ func TestIsTemplated(t *testing.T) {
 	}
 }
 
-// A server without the config service must degrade to a warning, not a panic,
-// when the target version ships configuration files.
+// Without the config service it must warn, not panic.
 func TestUpgradeConfigsWithoutConfigService(t *testing.T) {
 	svc := &Service{}
 	newM := &manifest.Manifest{

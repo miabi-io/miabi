@@ -28,9 +28,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// originRepo builds a repository whose default branch is defaultBranch, with one commit on it, a
-// second branch "develop" one commit ahead, a tag on the default branch, and a branch "main" when the
-// default is something else. It returns the path and the commit each ref should resolve to.
 func originRepo(t *testing.T, defaultBranch string) (string, map[string]plumbing.Hash) {
 	t.Helper()
 	dir := t.TempDir()
@@ -82,8 +79,7 @@ func clone(t *testing.T, url string) *gogit.Repository {
 	return repo
 }
 
-// #451: a ref naming a branch other than the default failed with "reference not found", because a
-// clone only has that branch as origin/<name>.
+// Issue #451: a non-default branch failed with "reference not found" because a clone has it only as origin/<name>.
 func TestResolveRefFindsEveryBranch(t *testing.T) {
 	url, want := originRepo(t, "main")
 	repo := clone(t, url)
@@ -106,8 +102,7 @@ func TestResolveRefFindsEveryBranch(t *testing.T) {
 	}
 }
 
-// With master as the default branch, ref "main" names a different branch and must resolve to it rather
-// than to whatever the default is.
+// On a master-default repo, "main" names a different branch and must resolve to it.
 func TestResolveRefMainOnMasterRepo(t *testing.T) {
 	url, want := originRepo(t, "master")
 	got, err := ResolveRef(clone(t, url), "main")

@@ -24,8 +24,7 @@ import { kindOf, nodeStatusMeta, gitSourceStatusMeta, edgeLabel, resourceRoute }
 import AppModal from '@/components/AppModal.vue'
 import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus, AppEvent, ApplyPlan } from '@/api/types'
 
-// Synthetic id for the project root node (the GitSource itself is not a
-// declarative resource, so it never collides with a "<Kind>/<name>" key).
+// The GitSource is not a declarative resource, so this never collides with a "<Kind>/<name>" key.
 const PROJECT_ID = '__project__'
 
 const route = useRoute()
@@ -57,8 +56,7 @@ const selectedKey = ref<string | null>(null)
 const resourceBusy = ref(false)
 const confirmDelete = ref(false)
 
-// Resource drawer tabs. Overview is always present; Events/Logs appear for the
-// kinds that have them (and only once the resource is live).
+// Events/Logs appear only for kinds that have them, once the resource is live.
 type DrawerTab = 'overview' | 'events' | 'logs'
 const activeTab = ref<DrawerTab>('overview')
 const drawerEvents = ref<AppEvent[]>([])
@@ -72,8 +70,6 @@ let logsES: EventSource | null = null
 const EVENTS_PAGE = 30
 const LOG_CAP = 2000
 
-// Header status filter: clicking a chip toggles that status; when the set is
-// non-empty, non-matching nodes are dimmed on the graph.
 const statusFilter = ref<Set<NodeStatus>>(new Set())
 // Preview-&-sync modal: shows the full plan (from the diff endpoint) before applying.
 const previewOpen = ref(false)
@@ -82,8 +78,7 @@ const previewPlan = ref<ApplyPlan | null>(null)
 
 const { setNodes, setEdges, fitView, updateNodeData } = useVueFlow()
 
-// Live status: a cheap poll (no repo clone) keeps each node's runtime health
-// fresh between full topology loads.
+// A cheap poll (no repo clone) keeps runtime health fresh between full topology loads.
 const LIVE_POLL_MS = 8000
 let liveTimer: ReturnType<typeof setTimeout> | null = null
 const liveOn = ref(true)
@@ -138,8 +133,7 @@ const sourceStatusMeta = gitSourceStatusMeta
 async function load() {
   if (!currentWorkspaceId.value || !sourceId.value) return
   loading.value = true
-  // Load the source first so the header + sync error always render, even if the
-  // topology cannot be built (a broken commit, an unreachable repo).
+  // Load the source first so the header and sync error render even if the topology cannot be built.
   try {
     const src = await gitopsApi.get(currentWorkspaceId.value, sourceId.value)
     source.value = src.data.data
@@ -152,8 +146,7 @@ async function load() {
     await refreshGraph()
     restoreSelection() // re-open the resource named in ?resource=, if any
   } catch (e) {
-    // Topology itself failed (rare — the backend degrades to live state). Keep the
-    // header + error visible rather than blanking the page.
+    // Rare, since the backend degrades to live state; keep the header and error visible.
     topo.value = null
     notify.apiError(e, 'Could not load project topology')
   } finally {
@@ -161,9 +154,7 @@ async function load() {
   }
 }
 
-// refreshGraph (re)loads the topology and the per-resource diff, then rebuilds the
-// Vue Flow graph. The diff is best-effort — it fails the same way the topology
-// would on a broken revision, in which case the side panel simply omits diffs.
+// The diff is best-effort; on a broken revision the side panel simply omits diffs.
 async function refreshGraph() {
   if (!currentWorkspaceId.value || !sourceId.value) return
   const tp = await gitopsApi.topology(currentWorkspaceId.value, sourceId.value)
@@ -180,9 +171,6 @@ async function refreshGraph() {
   scheduleLive() // keep node health live after the structure is (re)built
 }
 
-// dagre lays the tree left→right rooted at the project node: the project fans out
-// to its resources, which then chain by dependency (route→app→db/volume), giving
-// the ArgoCD-style "project → resources" shape.
 function buildGraph() {
   const tnodes = topo.value?.nodes ?? []
   const tedges = topo.value?.edges ?? []
@@ -200,9 +188,7 @@ function buildGraph() {
   for (const e of tedges) {
     if (g.hasNode(e.from) && g.hasNode(e.to)) g.setEdge(e.from, e.to)
   }
-  // Link the project to every resource nothing else points to (the roots of the
-  // dependency forest), so isolated resources (e.g. an unreferenced secret) and
-  // entry points (routes) both hang off the project.
+  // Isolated resources and entry points both hang off the project as roots.
   const hasIncoming = new Set(tedges.map((e) => e.to))
   const roots = tnodes.filter((n) => !hasIncoming.has(n.key))
   if (hasProject) for (const r of roots) g.setEdge(PROJECT_ID, r.key)
@@ -244,8 +230,6 @@ function buildGraph() {
     labelStyle: { fontSize: '10px', fill: 'var(--text-muted)' },
     style: { stroke: 'var(--border-primary)', strokeWidth: 1.5 },
   }))
-  // Ownership edges from the project to its root resources — solid, accented, no
-  // label, to read as "manages" rather than a data dependency.
   if (hasProject) {
     roots.forEach((r, i) => {
       flowEdges.push({
@@ -262,16 +246,13 @@ function buildGraph() {
 
   setNodes(flowNodes)
   setEdges(flowEdges)
-  // Preserve the selection across refreshes (e.g. after a per-resource sync) when
-  // the node still exists; drop it only if the resource is gone.
   const keys = new Set(tnodes.map((n) => n.key))
   if (selectedKey.value && !keys.has(selectedKey.value)) selectedKey.value = null
   applyDimming()
   nextTick(() => fitView({ padding: 0.2, maxZoom: 1.1 }))
 }
 
-// applyDimming pushes the current status filter onto each node so ResourceNode can
-// fade the ones that don't match. Cheap (data-only update, no relayout).
+// Data-only update, no relayout.
 function applyDimming() {
   const active = statusFilter.value.size > 0
   for (const n of topo.value?.nodes ?? []) {
@@ -292,8 +273,7 @@ watch([currentWorkspaceId, sourceId], load, { immediate: true })
 // ---- interactions ------------------------------------------------------------
 
 function onNodeClick(e: { node: Node }) {
-  // The project root has no side panel (the header is its detail); clicking it
-  // just clears any resource selection.
+  // The project root has no side panel; its header is its detail.
   selectedKey.value = e.node.id === PROJECT_ID ? null : e.node.id
 }
 
@@ -323,8 +303,6 @@ function openResource(node: TopologyNode | null) {
   if (target) router.push(target)
 }
 
-// syncResource reconciles just the selected resource from Git (leaves the rest of
-// the project untouched), then refreshes the graph.
 async function syncResource() {
   const node = selectedNode.value
   if (!node || !currentWorkspaceId.value || !source.value) return
@@ -342,8 +320,7 @@ async function syncResource() {
   }
 }
 
-// deleteResource deletes the selected resource's live object. Under auto-sync it
-// is recreated on the next reconcile — the confirm dialog says so.
+// Under auto-sync it is recreated on the next reconcile; the confirm dialog says so.
 async function deleteResource() {
   const node = selectedNode.value
   if (!node || !currentWorkspaceId.value || !source.value) return
@@ -373,8 +350,7 @@ const deleteMessage = computed(() => {
 
 // --- Resource drawer tabs (Overview / Events / Logs) ---
 
-// Which tabs the selected resource supports. Events/Logs need a live resource
-// (live_id) and only apply to the kinds that emit them.
+// Events/Logs need a live resource (live_id) of a kind that emits them.
 const drawerTabs = computed<{ key: DrawerTab; label: string }[]>(() => {
   const tabs: { key: DrawerTab; label: string }[] = [{ key: 'overview', label: 'gitops.tab.overview' }]
   const n = selectedNode.value
@@ -464,17 +440,12 @@ function streamLogs(node: TopologyNode) {
   }
 }
 
-// Drive the active tab's data: (re)selecting a resource or switching tabs tears
-// down any open stream and sets up the one the active tab needs. Selecting a new
-// resource resets to Overview.
 watch(selectedKey, () => {
   activeTab.value = 'overview'
   // Keep the selection in the URL so it survives reload and is shareable.
   router.replace({ query: { ...route.query, resource: selectedKey.value || undefined } })
 })
 
-// restoreSelection re-selects the resource named in ?resource= after a (re)load,
-// when nothing is selected and that resource exists.
 function restoreSelection() {
   if (selectedKey.value) return
   const q = route.query.resource
@@ -585,8 +556,7 @@ function relTime(ts?: string | null) {
 function absDate(ts?: string | null) {
   return ts ? new Date(ts).toLocaleString() : ''
 }
-// True when the last reconcile saw a newer revision than the one that last changed the workspace — the
-// normal steady state for a repo whose recent commits touched docs, CI, or anything Miabi does not own.
+// The normal steady state when recent commits touched only things Miabi does not own.
 const checkedBeyondSync = computed(() => {
   const s = source.value
   return !!s?.last_checked_commit && s.last_checked_commit !== s.last_synced_commit
@@ -668,8 +638,7 @@ const policyFlags = computed(() => {
         </span>
       </div>
       <span class="meta-sep"></span>
-      <!-- Last sync is the last reconcile that CHANGED something, so it stands still while a healthy
-           auto-sync source polls. Last check next to it is what moves. -->
+      <!-- Last sync only moves when something changed; Last check is what moves while a healthy source polls. -->
       <div class="fact">
         <span class="fact-label">{{ $t('gitops.lastSync') }}</span>
         <span class="fact-value">
@@ -696,8 +665,7 @@ const policyFlags = computed(() => {
         <span class="fact-label">{{ $t('dashboard.col.created') }}</span>
         <span class="fact-value" :title="absDate(source.created_at)">{{ relTime(source.created_at) }}</span>
       </div>
-      <!-- The applied commit's subject, on its own row: a commit message is far too long to sit inline
-           with the facts above, and truncating it to a tooltip hid the one thing that says WHAT shipped. -->
+      <!-- Its own row: truncating the subject to a tooltip hid the one thing that says what shipped. -->
       <div v-if="source.last_synced_subject" class="fact fact-row">
         <span class="fact-label">{{ $t('gitops.message') }}</span>
         <span class="fact-value fact-subject" :title="source.last_synced_subject">{{ source.last_synced_subject }}</span>
@@ -708,8 +676,7 @@ const policyFlags = computed(() => {
       <span class="mdi mdi-alert-circle-outline"></span> {{ source.message }}
     </div>
 
-    <!-- Degraded: the latest manifests couldn't be loaded; we're showing the last
-         deployed state instead of going blank. -->
+    <!-- The latest manifests couldn't be loaded, so the last deployed state is shown. -->
     <div v-if="topo?.error" class="banner banner-warning">
       <span class="mdi mdi-history"></span>
       <span>

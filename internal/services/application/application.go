@@ -51,9 +51,7 @@ import (
 
 var (
 	ErrImageRequired = errors.New("image is required for image-source applications")
-	// ErrImageNotPermitted rejects an image that lives in the built-in registry
-	// under a namespace this workspace does not own. Pulling it would use the
-	// platform credential, which every namespace accepts.
+	// Pulling it would use the platform credential, which every namespace accepts.
 	ErrImageNotPermitted = errors.New("image is not available to this workspace")
 	ErrGitRepoRequired   = errors.New("git_repo is required for git-source applications")
 	// ErrPipelinesUnavailable means the pipeline service is not wired (tests, or a build without it).
@@ -89,8 +87,7 @@ var (
 	ErrNotService            = errors.New("this operation is only valid for service-runtime (cluster) applications")
 	ErrLocalVolumeReplicated = errors.New("a replicated (replicas>1) service cannot mount a node-local volume; use a shared (nfs/cifs) volume or set replicas to 1")
 	ErrHostBindService       = errors.New("a service-runtime app cannot use a privileged host mount; host paths are node-local and don't follow a rescheduled task — use the container runtime or a managed volume")
-	// ErrVolumeUnverifiable fails the storage guards closed. A guard that cannot read a
-	// mounted volume cannot prove it is shared, and guessing "shared" forks the data.
+	// A guard that cannot read a mounted volume cannot prove it shared; guessing forks the data.
 	ErrVolumeUnverifiable = errors.New("a mounted volume could not be read, so it cannot be confirmed as shared storage; replication is refused until it resolves")
 	ErrTooManyReplicas    = fmt.Errorf("replica count exceeds the maximum of %d", MaxReplicas)
 	ErrPortRange          = errors.New("container port must be between 1 and 65535")
@@ -101,8 +98,7 @@ const MaxReplicas = models.MaxServiceReplicas
 
 // CreateInput describes a new application.
 type CreateInput struct {
-	// DisplayName is the free-text label. Handle is the desired unique slug
-	// (the URL/CLI handle); when blank it is derived from DisplayName.
+	// Handle is derived from DisplayName when blank.
 	DisplayName string
 	Handle      string
 	ServerID    uint // node to place on (0 = local)
@@ -112,8 +108,7 @@ type CreateInput struct {
 	Tag         string
 	GitRepo     string
 	GitRef      string
-	// Build config (git source only). BuildMethod defaults to auto; Builder,
-	// Buildpacks, and BuildEnv tune a buildpack build. Rejected for image apps.
+	// Git source only; rejected for image apps.
 	BuildMethod     models.AppBuildMethod
 	Builder         string
 	Buildpacks      []string
@@ -127,55 +122,36 @@ type CreateInput struct {
 	Port            int
 	MemoryBytes     int64
 	NanoCPUs        int64
-	// GPUCount / GPUKind request whole GPU devices. Gated by the AllowGPU plan
-	// capability at create time; 0 = none.
+	// Gated by the AllowGPU plan capability; 0 = none.
 	GPUCount int
 	GPUKind  string
-	// RunAsUser pins the container to an account ("uid", "uid:gid", "name",
-	// "name:group"); empty keeps the image's user. Validated against the
-	// workspace's security profile.
+	// Empty keeps the image's user; validated against the workspace security profile.
 	RunAsUser string
-	// AddCapabilities / Devices grant kernel privileges beyond the container
-	// default. Both are allow-listed and gated on the workspace; empty grants
-	// nothing.
-	AddCapabilities []string
-	Devices         []string
-	// ReadOnlyRootFilesystem, NoNewPrivileges and DropCapabilities harden the container on top of the
-	// workspace's security profile.
+	// Both are allow-listed and gated on the workspace.
+	AddCapabilities        []string
+	Devices                []string
 	ReadOnlyRootFilesystem bool
 	NoNewPrivileges        bool
 	DropCapabilities       []string
-	// DeployStrategy is the app's default rollout method. Empty leaves the model's
-	// own default (rolling), so a caller that does not care says nothing.
+	// Empty leaves the model default (rolling).
 	DeployStrategy models.DeployStrategy
 	// Healthcheck is the container health probe; nil leaves none. Zero timing fields take the defaults.
 	Healthcheck     *Healthcheck
 	RestartPolicy   models.RestartPolicy
 	ImagePullPolicy models.ImagePullPolicy
-	// Cluster runtime (cluster mode). RuntimeKind defaults to container; service
-	// runs the app as a replicated Swarm service (rejected when cluster mode is
-	// off). Replicas/PlacementConstraints/UpdateConfig apply to the service runtime.
+	// Service runtime is rejected when cluster mode is off.
 	RuntimeKind          models.RuntimeKind
 	Replicas             int
 	PlacementConstraints []string
 	UpdateConfig         *models.ServiceUpdateConfig
-	// Metadata is the app's initial metadata. Callers may set reserved
-	// "miabi.io/" keys (e.g. provenance); a missing managed-by defaults to
-	// "user". HTTP handlers must sanitize user input before setting reserved keys.
-	Metadata models.Metadata
-	// Annotations is the app's initial annotations: free-form descriptive notes
-	// with no reserved keys (the manifest's metadata.annotations).
+	// HTTP handlers must sanitize user input before setting reserved "miabi.io/" keys.
+	Metadata    models.Metadata
 	Annotations models.Metadata
-	// ContainerLabels are user-defined Docker labels for the app's container(s)
-	// (Traefik &c.). Reserved keys (io.miabi.*, com.docker.*) are sanitized on
-	// create regardless of caller.
+	// Reserved keys (io.miabi.*, com.docker.*) are sanitized on create regardless of caller.
 	ContainerLabels map[string]string
-	// UsePipeline asks Miabi to adopt the pipeline-as-code document the repository carries (git source
-	// only). Adoption re-reads the repository regardless of the inspect endpoint, and a repository that
-	// turns out to carry none is not an error — the app is created and builds directly.
+	// A repository that turns out to carry no pipeline is not an error; the app builds directly.
 	UsePipeline bool
-	// UserID attributes the adopted pipeline's first run. nil for non-interactive
-	// callers (GitOps, marketplace).
+	// nil for non-interactive callers (GitOps, marketplace).
 	UserID *uint
 }
 
@@ -220,13 +196,9 @@ type ConfigReader interface {
 // SetQuota wires the plan/quota enforcer (nil-safe; nil skips checks).
 func (s *Service) SetQuota(q *quota.Service) { s.quota = q }
 
-// Pipelines adopts, finds and triggers the pipeline a repository carries at .miabi/pipeline.yaml.
-// Implemented by pipeline.Service; an interface so this package doesn't depend on the pipeline
-// service and its git machinery just to ask whether an app has one.
+// Pipelines is an interface so this package doesn't depend on the pipeline service's git machinery.
 type Pipelines interface {
-	// AdoptForApp probes the app's repository and, on finding pipeline-as-code,
-	// creates a repo-owned pipeline bound to the app. Reports
-	// pipeline.ErrNoPipelineInRepo when the repository carries none.
+	// AdoptForApp returns pipeline.ErrNoPipelineInRepo when the repository carries none.
 	AdoptForApp(ctx context.Context, app *models.Application, userID *uint) (*models.PipelineDefinition, error)
 	// RepoPipelineForApp returns the app's enabled repo-owned pipeline, or nil.
 	RepoPipelineForApp(appID uint) (*models.PipelineDefinition, error)
@@ -236,37 +208,27 @@ type Pipelines interface {
 	DeleteForApp(workspaceID, appID uint) error
 	// GetRun loads a pipeline run of the workspace.
 	GetRun(workspaceID, id uint) (*models.PipelineRun, error)
-	// SyncFromRepo re-reads a repo-owned pipeline's spec from its repository, reporting whether
-	// the stored spec changed. An empty ref uses the pipeline's tracked one.
+	// SyncFromRepo reports whether the stored spec changed; an empty ref uses the tracked one.
 	SyncFromRepo(ctx context.Context, p *models.PipelineDefinition, ref string) (bool, error)
 }
 
-// SetPipelines wires repository pipeline adoption (nil-safe). Without it, a git
-// app always builds and deploys directly, exactly as before this existed.
 func (s *Service) SetPipelines(p Pipelines) { s.pipelines = p }
 
-// NetworkEnsurer resolves — creating if necessary — a workspace's default, platform-managed Docker
-// network, so every app joins it even when the network wasn't provisioned at workspace-creation time.
-// Implemented by the network service; an interface keeps application decoupled from it.
+// NetworkEnsurer creates a missing default network so every app can join it.
 type NetworkEnsurer interface {
 	EnsureDefault(ctx context.Context, workspaceID uint) (*models.Network, error)
 }
 
-// SetNetworkEnsurer wires default-network self-healing (nil-safe). Without it,
-// SetNetworks still attaches an already-existing default network, but cannot
-// create a missing one.
+// Without it, a missing default network cannot be created.
 func (s *Service) SetNetworkEnsurer(e NetworkEnsurer) { s.netEnsurer = e }
 
-// ClusterCap is the per-cluster control path. Implemented by the cluster service; used to gate
-// "service" runtime apps and to reach the swarm they run in.
 type ClusterCap interface {
 	IsSwarm(clusterID uint) bool
 	Manager(ctx context.Context, clusterID uint) (docker.Client, error)
 	ClusterOfServer(serverID uint) uint
 }
 
-// SetClusterCap wires the cluster-capability check (nil-safe; nil means cluster
-// mode is treated as off, so service-runtime apps are rejected).
+// SetClusterCap with nil treats cluster mode as off, rejecting service-runtime apps.
 func (s *Service) SetClusterCap(c ClusterCap) { s.cluster = c }
 
 // isSwarm reports whether the app's cluster runs the swarm a service app needs.
@@ -294,16 +256,11 @@ func (s *Service) swarmManager(ctx context.Context, app *models.Application) (do
 // SetPortBindings wires the port-binding repository, whose rows go with a deleted app.
 func (s *Service) SetPortBindings(r *repositories.PortBindingRepository) { s.portBindings = r }
 
-// ExternalLabelTaken reports whether another application already owns the given
-// external-access label. The label maps to a platform-wide host, so it must be
-// unique across all workspaces; exceptAppID excludes the app being reconciled.
+// ExternalLabelTaken checks across all workspaces since the label maps to a platform-wide host.
 func (s *Service) ExternalLabelTaken(label string, exceptAppID uint) (bool, error) {
 	return s.apps.ExternalLabelTaken(label, exceptAppID)
 }
 
-// WorkspaceInfo resolves a workspace's trust flags (privileged). Implemented by
-// the workspace repository; injected after construction. Used to gate
-// privileged host mounts.
 type WorkspaceInfo interface {
 	FindByID(id uint) (*models.Workspace, error)
 }
@@ -311,9 +268,7 @@ type WorkspaceInfo interface {
 // SetWorkspaceInfo wires the resolver used to check a workspace's privileged flag.
 func (s *Service) SetWorkspaceInfo(w WorkspaceInfo) { s.workspaces = w }
 
-// ImageGuard authorizes a user-supplied image reference against the workspace that will run it. It
-// only constrains references into the built-in registry, where a pull uses the platform credential.
-// The deploy worker enforces the same rule; this copy reports it when the app is saved.
+// ImageGuard only constrains built-in registry refs, where a pull uses the platform credential.
 type ImageGuard interface {
 	ValidateImageRef(workspaceID uint, ref string) error
 }
@@ -321,8 +276,6 @@ type ImageGuard interface {
 // SetImageGuard wires the internal-registry image check (nil skips it).
 func (s *Service) SetImageGuard(g ImageGuard) { s.imageGuard = g }
 
-// SetConfigs supplies the config reader used to spot secrets referenced from a
-// mounted file rather than from env.
 func (s *Service) SetConfigs(c ConfigReader) { s.configs = c }
 
 // StackEnvReader lists a stack's shared env, for the secret-reference scan.
@@ -330,8 +283,6 @@ type StackEnvReader interface {
 	ListByStack(stackID uint) ([]models.StackEnvVar, error)
 }
 
-// SetStackEnv supplies the stack env reader used to spot secrets an app
-// inherits from its stack rather than declares itself.
 func (s *Service) SetStackEnv(r StackEnvReader) { s.stackEnv = r }
 
 func (s *Service) checkImage(workspaceID uint, image, tag string) error {
@@ -348,20 +299,15 @@ func (s *Service) checkImage(workspaceID uint, image, tag string) error {
 type NodeDocker interface {
 	For(serverID uint) (docker.Client, error)
 	LocalID() uint
-	// ForServiceTask finds the engine holding a swarm service's task container.
-	// A service has no fixed node, and only the node running the task can see it.
+	// Only the node running a service task can see its container.
 	ForServiceTask(ctx context.Context, clusterID uint, serviceName string) (docker.Client, string, error)
 }
 
-// NodeGuard validates that a node can accept a new placement (exists, not
-// cordoned). Implemented by the node service; injected after construction.
 type NodeGuard interface {
 	Placeable(serverID uint) error
 }
 
-// ServerInfo resolves a node's display metadata by id. Implemented by the node
-// service; injected after construction (optional — read paths degrade to an
-// empty server name when unset).
+// Optional: read paths degrade to an empty server name when unset.
 type ServerInfo interface {
 	Get(id uint) (*models.Server, error)
 }
@@ -372,15 +318,11 @@ func (s *Service) SetNodeGuard(g NodeGuard) { s.nodeGuard = g }
 // SetServerInfo wires the resolver used to annotate apps with their node's name.
 func (s *Service) SetServerInfo(si ServerInfo) { s.serverInfo = si }
 
-// NodeNamer resolves a swarm node id to its Miabi display name, so a cluster app's real replica
-// placement can be shown by node name. Implemented by the node service; optional — placement degrades
-// to a short swarm id when unset.
+// Optional: placement degrades to a short swarm id when unset.
 type NodeNamer interface {
 	NameBySwarmNodeID(swarmNodeID string) string
 }
 
-// SetNodeNamer wires the swarm-node-id → name resolver used to annotate a cluster
-// app with where its replicas actually run.
 func (s *Service) SetNodeNamer(n NodeNamer) { s.nodeNamer = n }
 
 // GitOpsNamer resolves a GitOps project id to its name.
@@ -404,8 +346,6 @@ func (s *Service) annotateGitOps(app *models.Application) {
 	}
 }
 
-// annotateServer fills the transient ServerName from the node record so the UI
-// can show where an app runs. Best-effort: leaves it empty on any error.
 func (s *Service) annotateServer(app *models.Application) {
 	if app == nil || s.serverInfo == nil {
 		return
@@ -415,9 +355,7 @@ func (s *Service) annotateServer(app *models.Application) {
 	}
 }
 
-// annotatePlacement fills a cluster app's transient Nodes with where the Swarm scheduler actually placed its
-// running tasks, resolving swarm node ids to Miabi names. Best-effort and read-only, and a no-op off cluster
-// mode — the UI falls back to ServerName. Only called on the app-detail read, never per app in a list.
+// Only called on the app-detail read, never per app in a list.
 func (s *Service) annotatePlacement(ctx context.Context, app *models.Application) {
 	if app == nil || app.RuntimeKind != models.RuntimeService {
 		return
@@ -458,8 +396,6 @@ func (s *Service) annotatePlacement(ctx context.Context, app *models.Application
 	app.Nodes = placements
 }
 
-// shortSwarmID trims a swarm node id to a readable prefix for display when it
-// can't be correlated to a Miabi node name.
 func shortSwarmID(id string) string {
 	if len(id) > 12 {
 		return id[:12]
@@ -467,8 +403,7 @@ func shortSwarmID(id string) string {
 	return id
 }
 
-// eng resolves the Docker client for an app's node, returning an offline client
-// when the node's agent is disconnected (critical ops fail; cleanups no-op).
+// Returns an offline client when the agent is disconnected: critical ops fail, cleanups no-op.
 func (s *Service) eng(app *models.Application) docker.Client {
 	dc, err := s.clients.For(app.ServerID)
 	if err != nil {
@@ -477,12 +412,9 @@ func (s *Service) eng(app *models.Application) docker.Client {
 	return dc
 }
 
-// RouteSyncer reconciles an application's reverse-proxy routes. The route
-// service implements it; injected after construction to avoid an import cycle.
+// RouteSyncer is injected after construction to avoid an import cycle.
 type RouteSyncer interface {
 	SyncRoute(ctx context.Context, appID uint) error
-	// RemoveAppRoutes deletes all of an app's routes (generated + user) from the
-	// database and the proxy, used when the app itself is deleted.
 	RemoveAppRoutes(ctx context.Context, appID uint) error
 }
 
@@ -497,11 +429,8 @@ var ErrResourceCap = errors.New("requested resources exceed the platform limit")
 
 const bytesPerMB = 1024 * 1024
 
-// validateResources rejects CPU/memory requests above the admin-configured caps
-// (0 = unlimited). The error message names the offending limit for the UI.
 func (s *Service) validateResources(memoryBytes, nanoCPUs int64) error {
-	// Negative limits are meaningless (0 = unlimited) and would otherwise reach
-	// the Docker API; reject them regardless of whether platform caps are set.
+	// Negative limits would otherwise reach the Docker API, whether or not caps are set.
 	if memoryBytes < 0 || nanoCPUs < 0 {
 		return fmt.Errorf("%w: memory and CPU limits cannot be negative", ErrResourceCap)
 	}
@@ -515,8 +444,7 @@ func (s *Service) validateResources(memoryBytes, nanoCPUs int64) error {
 	)
 }
 
-// checkResourceCaps returns ErrResourceCap when a request exceeds a non-zero
-// cap. Pure (no provider) so it can be unit-tested directly.
+// Pure (no provider) so it can be unit-tested directly.
 func checkResourceCaps(maxMemoryMB, maxCPUCores int, memoryBytes, nanoCPUs int64) error {
 	if maxMemoryMB > 0 && memoryBytes > int64(maxMemoryMB)*bytesPerMB {
 		return fmt.Errorf("%w: requested %d MB of memory exceeds the platform limit of %d MB", ErrResourceCap, memoryBytes/bytesPerMB, maxMemoryMB)
@@ -527,8 +455,6 @@ func checkResourceCaps(maxMemoryMB, maxCPUCores int, memoryBytes, nanoCPUs int64
 	return nil
 }
 
-// ResourceLimits returns the platform per-app CPU/memory caps (0 = unlimited),
-// for surfacing as hints in the UI.
 func (s *Service) ResourceLimits() (maxCPUCores, maxMemoryMB int) {
 	if s.settings == nil {
 		return 0, 0
@@ -572,8 +498,7 @@ func normalizeHealthcheck(app *models.Application) {
 	}
 }
 
-// volumeLookup resolves a mounted volume within its workspace. Narrowed to the one
-// method the storage guards need so they can be tested against a fake.
+// Narrowed to the one method the storage guards need so they can be tested against a fake.
 type volumeLookup interface {
 	FindInWorkspace(workspaceID, id uint) (*models.Volume, error)
 	// FindByDockerName resolves a mount that carries only the Docker name, so the data guard can judge it.
@@ -597,8 +522,6 @@ func NewService(
 	return &Service{apps: apps, deployments: deployments, releases: releases, volumes: volumes, routes: routes, networks: networks, stacks: stacks, ports: ports, appEvents: appEvents, clients: clients, producer: producer, events: evts}
 }
 
-// validateStack confirms a referenced stack belongs to the workspace. A nil id
-// (ungrouped) validates trivially.
 func (s *Service) validateStack(workspaceID uint, stackID *uint) (*models.Stack, error) {
 	if stackID == nil {
 		return nil, nil
@@ -620,8 +543,7 @@ func (s *Service) sameLocation(a, b uint) bool {
 	return a == b
 }
 
-// joinsStack reports whether an update moves the app into a stack. Membership that predates
-// locations is left alone even when the stack sits elsewhere.
+// Membership that predates locations is left alone even when the stack sits elsewhere.
 func (s *Service) joinsStack(app *models.Application) bool {
 	prev, err := s.apps.FindByID(app.ID)
 	return err != nil || prev.StackID == nil || app.StackID == nil || *prev.StackID != *app.StackID
@@ -635,8 +557,7 @@ type PortSpec struct {
 	Name          string
 }
 
-// SetPorts replaces an application's declared container ports and keeps the
-// primary Port field in sync with the first declared port.
+// SetPorts keeps the primary Port field in sync with the first declared port.
 func (s *Service) SetPorts(app *models.Application, specs []PortSpec) error {
 	ports := make([]models.AppPort, 0, len(specs))
 	for _, sp := range specs {
@@ -679,9 +600,7 @@ type Overview struct {
 	GitRepo        string               `json:"git_repo,omitempty"`
 	CurrentVersion int                  `json:"current_version"` // 0 = no active release
 	CurrentImage   string               `json:"current_image,omitempty"`
-	// Hostname is the app's stable internal DNS name, reachable from other
-	// managed containers on the shared network across redeploys. StackHostname
-	// is its service name within its stack network (empty when ungrouped).
+	// Hostname is stable across redeploys; StackHostname is empty when ungrouped.
 	Hostname         string    `json:"hostname"`
 	StackHostname    string    `json:"stack_hostname,omitempty"`
 	RedeployRequired bool      `json:"redeploy_required"`
@@ -690,11 +609,9 @@ type Overview struct {
 	NetworksCount    int       `json:"networks_count"`
 	EnvCount         int       `json:"env_count"`
 	CreatedAt        time.Time `json:"created_at"`
-	// LastDeploy is the most recent deployment that SHIPPED, so the summary reads as when the
-	// running code last changed rather than when someone last tried. Nil for an app never deployed.
+	// LastDeploy is the last deployment that shipped, so it reads as when the running code last changed.
 	LastDeploy *LastDeploy `json:"last_deploy,omitempty"`
-	// LastLifecycle is the last start/stop/restart. Separate from LastDeploy on purpose: a restart
-	// runs the SAME release, and showing the two as one date would read as a new rollout.
+	// Separate from LastDeploy: a restart runs the same release and must not read as a new rollout.
 	LastLifecycle *LastLifecycle    `json:"last_lifecycle,omitempty"`
 	RecentEvents  []models.AppEvent `json:"recent_events"`
 }
@@ -707,8 +624,6 @@ type LastLifecycle struct {
 	ByName   string    `json:"by_name,omitempty"`
 }
 
-// LastDeploy is the summary-strip view of a deployment: enough to render "2h ago by Jonas" and
-// link to the full record, without copying the whole row into the overview.
 type LastDeploy struct {
 	ID       uint      `json:"id"`
 	Number   int       `json:"number"`
@@ -770,9 +685,7 @@ func (s *Service) Overview(app *models.Application) *Overview {
 	return ov
 }
 
-// LiveStatus is the real-time status of an application's container, derived from
-// Docker inspect (not the stored, deploy-time status). It also carries a live
-// resource-usage snapshot when the container is running.
+// LiveStatus is derived from Docker inspect, not the stored deploy-time status.
 type LiveStatus struct {
 	Status         string              `json:"status"` // running|restarting|unhealthy|starting|exited|stopped|paused|created|no_container
 	ContainerState string              `json:"container_state,omitempty"`
@@ -788,15 +701,12 @@ type LiveStatus struct {
 	Stats          *docker.StatsSample `json:"stats,omitempty"`
 	// Networks lists the running container's in-network IPs (ephemeral).
 	Networks []docker.ContainerNetwork `json:"networks,omitempty"`
-	// Cluster (service) runtime: the desired replica count and how many tasks are
-	// currently running. Zero/omitted for container apps.
+	// Zero for container apps.
 	ServiceReplicas     uint64 `json:"service_replicas,omitempty"`
 	ServiceRunningTasks uint64 `json:"service_running_tasks,omitempty"`
 }
 
-// LiveStatus inspects the app's active container and returns its real-time
-// status (plus a stats snapshot when running). Falls back to the stored status
-// when there is no running container.
+// LiveStatus falls back to the stored status when there is no running container.
 func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveStatus {
 	ls := LiveStatus{Status: string(app.Status), StoredStatus: app.Status}
 	if app.RuntimeKind == models.RuntimeService {
@@ -835,9 +745,7 @@ func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveS
 	return ls
 }
 
-// serviceLiveStatus reports the live status of a cluster (service) app from the
-// manager's view of its Swarm service: desired replicas vs running tasks. There
-// is no single container to inspect, so status is derived from task convergence.
+// A service has no single container to inspect, so status is derived from task convergence.
 func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application, ls LiveStatus) LiveStatus {
 	mgr, err := s.swarmManager(ctx, app)
 	if err != nil {
@@ -852,9 +760,7 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	ls.ServiceReplicas = st.Replicas
 	ls.ServiceRunningTasks = st.RunningTasks
 	ls.Running = st.RunningTasks > 0
-	// A service's desired replica count is the source of truth: 0 means stopped (Stop scales to zero),
-	// otherwise Swarm is converging toward it. With desired replicas > 0 but not all tasks up yet, the service
-	// is "starting" — never "exited", since Swarm keeps (re)scheduling until the desired count is met.
+	// Desired replicas are the truth: 0 means stopped, otherwise Swarm is converging, so never "exited".
 	switch {
 	case app.Status == models.AppStatusStopped || st.Replicas == 0:
 		ls.Status = "stopped"
@@ -863,18 +769,14 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	default:
 		ls.Status = "starting"
 	}
-	// Uptime comes from the swarm control plane (the task's running-since timestamp), not from inspecting a
-	// container — the task may sit on a node Miabi has no Docker client for, where there is nothing to
-	// inspect. Without this a healthy service showed no "running since" at all.
+	// Uptime comes from the swarm task, which may sit on a node Miabi has no Docker client for.
 	ls.StartedAt = st.StartedAt
 	if ls.Running && ls.StartedAt != "" {
 		if t, perr := time.Parse(time.RFC3339Nano, ls.StartedAt); perr == nil {
 			ls.UptimeSeconds = int64(time.Since(t).Seconds())
 		}
 	}
-	// A resource snapshot from a running task's container. Stats have no manager-side equivalent (there is no
-	// `docker service stats`), so this only works when the task landed on a node Miabi has a client for; on an
-	// unmanaged swarm member it is silently absent, and the rest of the status still holds.
+	// There is no manager-side service stats, so this only works on nodes Miabi has a client for.
 	if ls.Running {
 		if dc, cid, cerr := s.clients.ForServiceTask(ctx, app.ClusterID, node.AppAlias(app)); cerr == nil {
 			if sample, serr := dc.StatsOnce(ctx, cid); serr == nil {
@@ -885,9 +787,7 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	return ls
 }
 
-// deriveLiveStatus maps a container's Docker state + health into a headline
-// status for the UI. intentionallyStopped distinguishes a user-stopped app from
-// an unexpected exit (crash).
+// intentionallyStopped distinguishes a user-stopped app from a crash.
 func deriveLiveStatus(state, health string, restarting, intentionallyStopped bool) string {
 	switch state {
 	case "restarting":
@@ -927,8 +827,7 @@ func (s *Service) emit(app *models.Application, t models.AppEventType, message s
 	s.emitSeverity(app, t, models.SeverityInfo, message)
 }
 
-// emitSeverity records an app event at an explicit severity, for outcomes the
-// user should notice but that aren't failures of the operation they asked for.
+// For outcomes the user should notice that aren't failures of the requested operation.
 func (s *Service) emitSeverity(app *models.Application, t models.AppEventType, sev models.AppEventSeverity, message string) {
 	if s.events == nil {
 		return
@@ -939,14 +838,7 @@ func (s *Service) emitSeverity(app *models.Application, t models.AppEventType, s
 	})
 }
 
-// clearStaleOfficialTemplate drops the official-template mark when the app is repointed at different
-// code. The mark relaxes the restricted profile's UID rule on the grounds that an official image is
-// known to need its own user — a claim about THAT image. Repoint the app elsewhere and the claim no
-// longer holds, so "install an official template, then change the image" must not be a way to keep
-// the relaxed UID for an arbitrary one.
-//
-// A tag change is not a repoint: upgrading an official template to a newer tag is the ordinary thing
-// to do with it, and the image is still that template's.
+// The mark vouches for that image only; a tag change is not a repoint, so upgrades keep it.
 func (s *Service) clearStaleOfficialTemplate(app *models.Application) {
 	if !app.OfficialTemplate || app.ID == 0 {
 		return
@@ -962,9 +854,7 @@ func (s *Service) clearStaleOfficialTemplate(app *models.Application) {
 	}
 }
 
-// normalizeImageTag keeps the Image field as a bare repository by splitting a tag embedded in the image
-// reference into the Tag field. A tag in the image reference wins over a separately supplied tag; a
-// digest-pinned ref is left intact (kept whole in Image, no tag).
+// A tag in the image ref wins over a separate tag; digest-pinned refs are kept whole.
 func normalizeImageTag(image, tag string) (string, string) {
 	img, embedded := models.SplitImageRef(strings.TrimSpace(image))
 	if embedded != "" {
@@ -983,15 +873,10 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if in.SourceType == "" {
 		in.SourceType = models.AppSourceImage
 	}
-	// Keep Image as the bare repository: split any tag embedded in the image
-	// reference (e.g. "nginx:1.2" from a compose import or a user typing the full
-	// ref) into the Tag field.
 	if in.SourceType == models.AppSourceImage {
 		in.Image, in.Tag = normalizeImageTag(in.Image, in.Tag)
 	}
-	// A git app needs a clone URL, but a selected saved repository supplies one
-	// (the deploy worker derives the URL from the repository when GitRepo is
-	// empty), so only require an explicit URL when no repository is attached.
+	// A selected saved repository supplies the clone URL, so only require one when none is attached.
 	if in.SourceType == models.AppSourceGit && strings.TrimSpace(in.GitRepo) == "" && in.GitRepositoryID == nil {
 		return nil, ErrGitRepoRequired
 	}
@@ -1023,9 +908,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := validateGPUCount(in.GPUCount); err != nil {
 		return nil, err
 	}
-	// GPU access is a hard-gated plan capability (device passthrough is
-	// privileged): a workspace whose plan lacks AllowGPU cannot even save an app
-	// that requests one. Re-checked at deploy as defense-in-depth.
+	// Device passthrough is privileged, so GPU is hard-gated at save; re-checked at deploy.
 	if err := s.gpuAllowed(workspaceID, in.GPUCount); err != nil {
 		return nil, err
 	}
@@ -1045,8 +928,6 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err != nil {
 		return nil, err
 	}
-	// Placement: default to the local node; validate the chosen node accepts new
-	// placements (exists, not cordoned) and is reachable.
 	serverID := in.ServerID
 	if serverID == 0 {
 		serverID = s.clients.LocalID()
@@ -1105,9 +986,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		app.HealthcheckType = models.HealthcheckImage
 	}
 	normalizeRuntime(app)
-	// In cluster mode, default a caller-unspecified runtime to a replicated Swarm service for interactive creates
-	// only; declarative sources stay deterministic. normalizeRuntime has already turned an unspecified kind into
-	// "container", so branch on the original input, and mark the choice for reconcileAutoRuntime to re-check.
+	// Only interactive creates default to a service; normalizeRuntime already filled the kind, so branch on input.
 	interactive := app.Metadata[models.MetaManagedBy] == models.ManagedByUser
 	serviceOK := s.isSwarm(app.ClusterID) && s.quota.Require(workspaceID, quota.CapServiceRuntime) == nil
 	if defaultToServiceRuntime(in.RuntimeKind, serviceOK, interactive) {
@@ -1115,9 +994,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		app.Metadata = models.SetBuiltin(app.Metadata, models.MetaRuntimeAutoService, "true")
 	}
 	if err := s.validateRuntime(app, ""); err != nil {
-		// Surface the reason for an explicit choice; for the cluster-mode default,
-		// degrade to a container rather than failing a create the caller didn't ask
-		// to be a service (e.g. an app that can't run replicated).
+		// For the cluster-mode default, degrade to a container rather than failing a create nobody asked to be a service.
 		if in.RuntimeKind != "" {
 			return nil, err
 		}
@@ -1130,8 +1007,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.apps.Create(app); err != nil {
 		return nil, err
 	}
-	// Assign the stable alias/hostname now that the id exists; persisted so it
-	// stays fixed across redeploys (it is the reverse-proxy upstream).
+	// Persisted so the alias stays fixed across redeploys: it is the reverse-proxy upstream.
 	app.Alias = node.NewAppAlias(slug.Token(8), app.ID)
 	if err := s.apps.Update(app); err != nil {
 		return nil, err
@@ -1152,9 +1028,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	return app, nil
 }
 
-// adoptRepoPipeline adopts the repository's pipeline-as-code for a newly created git app, when the caller asked
-// and the platform allows it. Every failure is reported and swallowed: the app already exists and is deployable,
-// so refusing to return it over a timed-out probe would be far worse. The reason lands on the app's event feed.
+// Failures are reported and swallowed: the app already exists and is deployable.
 func (s *Service) adoptRepoPipeline(app *models.Application, in CreateInput) {
 	if !in.UsePipeline || app.SourceType != models.AppSourceGit || s.pipelines == nil {
 		return
@@ -1179,14 +1053,10 @@ func (s *Service) adoptRepoPipeline(app *models.Application, in CreateInput) {
 	}
 }
 
-// repoPipelineAdoptTimeout bounds adoption's probe clone. Generous: it runs
-// after the app is already created, so overshooting costs a slow create, not a
-// failed one.
+// Generous: the app is already created, so overshooting costs a slow create, not a failed one.
 const repoPipelineAdoptTimeout = 90 * time.Second
 
-// repoPipelinesEnabled reports the platform kill-switch for adopting pipelines out of repositories.
-// Adoption lets a repository choose the step images and shell commands that run on a runner, so an
-// operator can turn the whole capability off fleet-wide. Default on; an unset provider means on.
+// Kill-switch because a repo pipeline chooses the images and commands a runner executes; unset means on.
 func (s *Service) repoPipelinesEnabled() bool {
 	if s.settings == nil {
 		return true
@@ -1194,9 +1064,6 @@ func (s *Service) repoPipelinesEnabled() bool {
 	return s.settings.Bool(settings.KeyRepoPipelinesEnabled, true)
 }
 
-// RepoPipelineForApp returns the repo-owned pipeline that owns this app's
-// deploys, or nil when it deploys directly. Handlers use it to explain the app's
-// build path in the UI.
 func (s *Service) RepoPipelineForApp(appID uint) (*models.PipelineDefinition, error) {
 	if s.pipelines == nil {
 		return nil, nil
@@ -1204,9 +1071,7 @@ func (s *Service) RepoPipelineForApp(appID uint) (*models.PipelineDefinition, er
 	return s.pipelines.RepoPipelineForApp(appID)
 }
 
-// SetNetworks attaches the given workspace networks to the app, always including the workspace's
-// default. The default is what the app shares with its databases (a Swarm overlay in cluster mode), so
-// an app on none deploys happily and resolves nothing. A missing default is repaired, not tolerated.
+// SetNetworks always includes the default network, which the app shares with its databases; a missing one is repaired.
 func (s *Service) SetNetworks(app *models.Application, networkIDs []uint) error {
 	all, err := s.networks.ListByWorkspace(app.WorkspaceID)
 	if err != nil {
@@ -1253,8 +1118,7 @@ func (s *Service) Get(workspaceID, id uint) (*models.Application, error) {
 	}
 	s.annotateServer(app)
 	s.annotateGitOps(app)
-	// Detail read: surface where a cluster app's replicas actually run (live Swarm
-	// placement), not just the static placement node. List views skip this.
+	// List views skip this.
 	s.annotatePlacement(context.Background(), app)
 	return app, nil
 }
@@ -1271,13 +1135,10 @@ func (s *Service) List(workspaceID uint) ([]models.Application, error) {
 	return apps, nil
 }
 
-// listReplicasTimeout bounds the swarm query behind a list, so a slow manager costs the list its
-// replica counts rather than its response.
+// A slow manager costs the list its replica counts rather than its response.
 const listReplicasTimeout = 3 * time.Second
 
-// annotateReplicas fills the running and desired task counts of the cluster apps in a list, with one
-// service listing per cluster rather than an inspect per app. Best-effort: counts stay unset when a
-// swarm cannot be reached.
+// One service listing per cluster rather than an inspect per app; best-effort.
 func (s *Service) annotateReplicas(apps []models.Application) {
 	ctx, cancel := context.WithTimeout(context.Background(), listReplicasTimeout)
 	defer cancel()
@@ -1306,9 +1167,7 @@ func (s *Service) annotateReplicas(apps []models.Application) {
 	}
 }
 
-// AppsReferencingSecret returns the workspace's apps whose env references the
-// named secret (`${{ secrets.NAME }}`). Used by the Vault for "used by", the
-// delete guard, and rotation fan-out. Satisfies secret.Consumers.
+// AppsReferencingSecret satisfies secret.Consumers.
 func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models.Application, error) {
 	apps, err := s.apps.ListByWorkspaceWithEnv(workspaceID)
 	if err != nil {
@@ -1324,8 +1183,7 @@ func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models
 	return out, nil
 }
 
-// appReferencesSecret covers every route a secret reaches an app: its own env, the shared env of its stack,
-// and a mounted config whose files reference it. stacks caches each stack's env across one scan.
+// Covers own env, stack shared env, and mounted configs; stacks caches each stack's env for one scan.
 func (s *Service) appReferencesSecret(app *models.Application, name string, stacks map[uint][]models.StackEnvVar) bool {
 	own := make(map[string]bool, len(app.EnvVars))
 	for _, ev := range app.EnvVars {
@@ -1371,8 +1229,7 @@ func (s *Service) appReferencesSecret(app *models.Application, name string, stac
 	return false
 }
 
-// envReferencesSecret reports whether an env value references the named secret. A secret-flagged value is
-// stored encrypted, and a manifest may still mark a pure reference secret, so it is read decrypted.
+// A secret-flagged value is stored encrypted, so it is read decrypted.
 func envReferencesSecret(value string, isSecret bool, name string) bool {
 	if isSecret {
 		dec, err := crypto.Decrypt(value)
@@ -1384,8 +1241,6 @@ func envReferencesSecret(value string, isSecret bool, name string) bool {
 	return secret.ReferencesSecret(value, name)
 }
 
-// AppsMountingConfig lists the apps whose mounts reference a config, which drives
-// both the delete guard and the redeploy fan-out on a content change.
 func (s *Service) AppsMountingConfig(workspaceID, configID uint) ([]models.Application, error) {
 	apps, err := s.apps.ListByWorkspace(workspaceID)
 	if err != nil {
@@ -1438,14 +1293,12 @@ func (s *Service) Update(app *models.Application) error {
 	if err := validateGPUCount(app.GPUCount); err != nil {
 		return err
 	}
-	// Re-gate GPU on update so a workspace can't grant itself GPU access by editing
-	// an app after a plan downgrade. GPU quota is enforced at deploy (running apps).
+	// Re-gate GPU so a workspace can't keep GPU access by editing an app after a plan downgrade.
 	app.GPUKind = strings.TrimSpace(app.GPUKind)
 	if err := s.gpuAllowed(app.WorkspaceID, app.GPUCount); err != nil {
 		return err
 	}
-	// Re-validated on every update (interactive and GitOps alike) so a stored run-as
-	// user can't survive a plan that later mandates non-root.
+	// Re-validated on every update so a stored run-as user can't survive a plan that mandates non-root.
 	runAsUser, err := s.validRunAsUser(app.WorkspaceID, app.RunAsUser, app.OfficialTemplate)
 	if err != nil {
 		return err
@@ -1474,9 +1327,7 @@ func (s *Service) Update(app *models.Application) error {
 	if err := s.checkCompute(app, app.Replicas); err != nil {
 		return err
 	}
-	// Defense-in-depth: never let a reserved key reach the container via Update
-	// (the interactive SetContainerLabels validates + gates; GitOps sets the field
-	// directly and relies on this sanitize).
+	// GitOps sets labels directly and relies on this sanitize.
 	app.ContainerLabels = docker.SanitizeUserLabels(app.ContainerLabels)
 	if err := s.apps.Update(app); err != nil {
 		return err
@@ -1485,9 +1336,7 @@ func (s *Service) Update(app *models.Application) error {
 	return nil
 }
 
-// validStrategyOrDefault clamps a caller-supplied strategy on create. normalizeDeployConfig does the
-// same on the settings path, but it does not run here — and an unrecognised value stored raw would
-// deploy as whatever the worker's switch falls through to.
+// normalizeDeployConfig doesn't run on create, and a raw unknown value would deploy as the switch fallthrough.
 func validStrategyOrDefault(s models.DeployStrategy) models.DeployStrategy {
 	if models.ValidDeployStrategy(s) {
 		return s
@@ -1495,8 +1344,6 @@ func validStrategyOrDefault(s models.DeployStrategy) models.DeployStrategy {
 	return models.DeployRolling
 }
 
-// normalizeDeployConfig clamps the deployment strategy and canary tuning to safe
-// values so a bad payload can never produce a stuck or runaway rollout.
 func normalizeDeployConfig(app *models.Application) {
 	if !models.ValidDeployStrategy(app.DeployStrategy) {
 		app.DeployStrategy = models.DeployRolling
@@ -1514,15 +1361,11 @@ func normalizeDeployConfig(app *models.Application) {
 	normalizeRuntime(app)
 }
 
-// defaultToServiceRuntime reports whether a caller-unspecified runtime should default to a replicated Swarm
-// service: only when no explicit kind was passed, cluster mode is on, AND the app was created interactively.
-// Declarative sources are excluded so a manifest must ask for a service on purpose, never incidentally.
+// Declarative sources are excluded so a manifest must ask for a service on purpose.
 func defaultToServiceRuntime(explicit models.RuntimeKind, clusterOn, interactive bool) bool {
 	return explicit == "" && clusterOn && interactive
 }
 
-// normalizeRuntime defaults the runtime kind to container and clamps replicas to
-// at least 1.
 func normalizeRuntime(app *models.Application) {
 	if !models.ValidRuntimeKind(app.RuntimeKind) {
 		app.RuntimeKind = models.RuntimeContainer
@@ -1532,17 +1375,12 @@ func normalizeRuntime(app *models.Application) {
 	}
 }
 
-// validateRuntime rejects an app that asks for the service runtime when cluster
-// mode is off or the plan doesn't allow it, and guards against replicating
-// node-local storage. stored is the runtime the app already has (""=none): the
-// rule is about the change, not the state, or an app already a service could
-// never be edited back out of one, even on a plan that no longer allows it.
+// stored is the existing runtime: the rule applies to the change, so a service can always be edited back out.
 func (s *Service) validateRuntime(app *models.Application, stored models.RuntimeKind) error {
 	if app.RuntimeKind == models.RuntimeService && !s.isSwarm(app.ClusterID) {
 		switch {
 		case app.Metadata[models.MetaRuntimeAutoService] == "true":
-			// The platform chose this runtime, so it un-chooses it — the same
-			// degrade the create path and reconcileAutoRuntime perform.
+			// The platform chose this runtime, so it un-chooses it, as create and reconcileAutoRuntime do.
 			app.RuntimeKind = models.RuntimeContainer
 			delete(app.Metadata, models.MetaRuntimeAutoService)
 		case stored != models.RuntimeService:
@@ -1563,8 +1401,7 @@ func (s *Service) validateRuntime(app *models.Application, stored models.Runtime
 	return s.requireSharedStorage(app, app.Replicas)
 }
 
-// checkCompute checks the workspace compute quota with the app counted at the given
-// replicas (a container app always counts once), excluding its stored contribution.
+// A container app always counts once; its stored contribution is excluded.
 func (s *Service) checkCompute(app *models.Application, replicas int) error {
 	n := int64(1)
 	if app.RuntimeKind == models.RuntimeService && replicas > 1 {
@@ -1589,9 +1426,7 @@ func (s *Service) resolveMountVolume(workspaceID, volumeID uint) (*models.Volume
 	}
 }
 
-// requireSharedStorage guards a service app's storage against the ways a scheduled swarm task and
-// node-local data diverge: a privileged host-path bind can never follow a task to another node and is
-// rejected outright, and a node-local (rwo) volume is rejected once replicas > 1. No-op for container apps.
+// Host-path binds never follow a task to another node; rwo volumes are rejected once replicas > 1.
 func (s *Service) requireSharedStorage(app *models.Application, replicas int) error {
 	if app.RuntimeKind != models.RuntimeService {
 		return nil
@@ -1614,9 +1449,6 @@ func (s *Service) requireSharedStorage(app *models.Application, replicas int) er
 	return nil
 }
 
-// hasNodeLocalStorage reports whether an app's mounts include storage that a rescheduled swarm task would
-// leave behind: a privileged host-path bind, or an rwo (node-local) managed volume. The signal for whether
-// an app is safe to run as a schedulable service.
 func (s *Service) hasNodeLocalStorage(app *models.Application) bool {
 	for _, m := range app.Mounts {
 		if m.HostPreset != "" {
@@ -1633,9 +1465,7 @@ func (s *Service) hasNodeLocalStorage(app *models.Application) bool {
 	return false
 }
 
-// reconcileAutoRuntime re-evaluates a cluster-mode auto-defaulted service at its first deploy, once the app's
-// storage is known. An app holding node-local state is downgraded to a node-pinned container, so a rescheduled
-// task can't leave the data behind. One-shot: the marker clears, so a later explicit choice is respected.
+// One-shot: the marker clears so a later explicit choice is respected.
 func (s *Service) reconcileAutoRuntime(appID uint) {
 	app, err := s.apps.FindByID(appID)
 	if err != nil || app.Metadata[models.MetaRuntimeAutoService] != "true" {
@@ -1656,8 +1486,6 @@ func (s *Service) reconcileAutoRuntime(appID uint) {
 	}
 }
 
-// normalizeRestartPolicy defaults an empty or unknown restart policy to
-// unless-stopped (the platform's historical container behavior).
 func normalizeRestartPolicy(p models.RestartPolicy) models.RestartPolicy {
 	if !models.ValidRestartPolicy(p) {
 		return models.RestartUnlessStopped
@@ -1665,13 +1493,9 @@ func normalizeRestartPolicy(p models.RestartPolicy) models.RestartPolicy {
 	return p
 }
 
-// validateBuildConfig checks an app's build configuration against its source
-// type: build knobs are only meaningful for git apps, and an explicit build
-// method must be a known value. An empty method is allowed (defaults to auto).
 func validateBuildConfig(sourceType models.AppSourceType, method models.AppBuildMethod, builder string, buildpacks []string, buildEnv map[string]string) error {
 	if sourceType != models.AppSourceGit {
-		// auto is the stored default (and "no build config"); only an explicit
-		// non-auto method or any builder/buildpacks/env is rejected on image apps.
+		// auto is the stored default, so only an explicit non-auto method is rejected on image apps.
 		explicit := method != "" && method != models.BuildAuto
 		if explicit || builder != "" || len(buildpacks) > 0 || len(buildEnv) > 0 {
 			return ErrBuildConfigOnImage
@@ -1691,8 +1515,6 @@ func normalizeBuildMethod(m models.AppBuildMethod) models.AppBuildMethod {
 	return m
 }
 
-// buildMethodForSource returns the stored build method: a normalized method for
-// git apps (defaulting to auto), and auto for image apps where it is unused.
 func buildMethodForSource(sourceType models.AppSourceType, m models.AppBuildMethod) models.AppBuildMethod {
 	if sourceType != models.AppSourceGit {
 		return models.BuildAuto
@@ -1700,8 +1522,6 @@ func buildMethodForSource(sourceType models.AppSourceType, m models.AppBuildMeth
 	return normalizeBuildMethod(m)
 }
 
-// normalizeImagePullPolicy defaults an empty or unknown image pull policy to
-// always (the platform's historical behavior of pulling the tag each deploy).
 func normalizeImagePullPolicy(p models.ImagePullPolicy) models.ImagePullPolicy {
 	if !models.ValidImagePullPolicy(p) {
 		return models.PullAlways
@@ -1719,33 +1539,23 @@ func clamp(v, lo, hi int) int {
 	return v
 }
 
-// ErrNoActiveContainer is returned by Exec when the app has no running
-// container to attach a shell to.
 var ErrNoActiveContainer = errors.New("application has no active container")
 
-// guardData refuses to start an app whose data is gone. Docker would create an empty volume in its place,
-// so the only way forward is restoring the volume — which Miabi never does on its own.
+// Docker would create an empty volume in place of missing data, and Miabi never restores on its own.
 func (s *Service) guardData(ctx context.Context, app *models.Application) error {
 	return datavolume.CheckApp(ctx, s.clients, s.volumes, app)
 }
 
-// ErrTaskOnUnmanagedNode is the user-facing form of nodes.ErrTaskUnreachable: the app IS running, but
-// on a swarm node with no Miabi agent, so there is no engine to open a shell through. Docker offers no
-// manager-side exec, so this is a hard limit. Logs are unaffected — the manager aggregates those.
+// Docker offers no manager-side exec, so this is a hard limit; logs are unaffected.
 var ErrTaskOnUnmanagedNode = errors.New(
 	"this app's task runs on a swarm node with no Miabi agent, so a shell cannot be opened. " +
 		"Add the node to Miabi (install the agent) to use exec")
 
-// EnsureExecAllowed returns a CapabilityDenied error when the workspace's plan
-// does not permit opening an interactive shell into a container. Nil-safe on a
-// disabled quota service (returns nil).
 func (s *Service) EnsureExecAllowed(workspaceID uint) error {
 	return s.quota.Require(workspaceID, quota.CapShellExec)
 }
 
-// Exec opens an interactive command stream inside the app's active container.
-// Returns ErrNoActiveContainer when nothing is running. The caller owns the
-// returned stream and must Close it.
+// The caller owns the returned stream and must Close it.
 func (s *Service) Exec(ctx context.Context, app *models.Application, opts docker.ExecOptions) (docker.ExecStream, error) {
 	cid, dc, err := s.runtimeContainerID(ctx, app)
 	if err != nil {
@@ -1754,13 +1564,9 @@ func (s *Service) Exec(ctx context.Context, app *models.Application, opts docker
 	return dc.Exec(ctx, cid, opts)
 }
 
-// processListArgs is never taken from the caller: the host's ps runs as root, and a flag such as
-// `e` would print each process's environment, secrets included, to anyone who can view the app.
+// Never caller-supplied: ps runs as root and a flag like `e` would print process environments, secrets included.
 const processListArgs = "aux"
 
-// Processes lists the running processes in the app's active container (the
-// "docker top" view). Read-only — no shell capability needed. Returns
-// ErrNoActiveContainer when nothing is running.
 func (s *Service) Processes(ctx context.Context, app *models.Application) (docker.ProcessList, error) {
 	cid, dc, err := s.runtimeContainerID(ctx, app)
 	if err != nil {
@@ -1769,8 +1575,6 @@ func (s *Service) Processes(ctx context.Context, app *models.Application) (docke
 	return dc.Top(ctx, cid, processListArgs)
 }
 
-// activeContainerID returns the active release's container, or ErrNotDeployable
-// when the app has never been deployed (or its container was removed).
 func (s *Service) activeContainerID(appID uint) (string, error) {
 	rel, err := s.releases.FindActive(appID)
 	if err != nil || rel.ContainerID == "" {
@@ -1779,9 +1583,6 @@ func (s *Service) activeContainerID(appID uint) (string, error) {
 	return rel.ContainerID, nil
 }
 
-// runtimeContainerID resolves a container to inspect, exec or stream for the app, and the Docker client that owns
-// it: the active release's container for a container app, a running Swarm task for a cluster app. Returns
-// ErrTaskOnUnmanagedNode when a service runs on an agentless node, ErrNoActiveContainer when nothing is running.
 func (s *Service) runtimeContainerID(ctx context.Context, app *models.Application) (string, docker.Client, error) {
 	if app.RuntimeKind == models.RuntimeService {
 		dc, cid, err := s.clients.ForServiceTask(ctx, app.ClusterID, node.AppAlias(app))
@@ -1801,9 +1602,7 @@ func (s *Service) runtimeContainerID(ctx context.Context, app *models.Applicatio
 	return cid, s.eng(app), nil
 }
 
-// Start starts the app's stopped active container. If a redeploy is required (config changed while
-// stopped) it redeploys instead, so the new config is applied rather than starting a stale container,
-// returning that deployment so the caller can follow its logs. A plain start returns nil.
+// Start redeploys instead when config changed while stopped, returning that deployment.
 func (s *Service) Start(ctx context.Context, app *models.Application) (*models.Deployment, error) {
 	if err := s.guardData(ctx, app); err != nil {
 		return nil, err
@@ -1838,13 +1637,9 @@ func (s *Service) Start(ctx context.Context, app *models.Application) (*models.D
 	return nil, nil
 }
 
-// Stop stops the app's active container (it stays stopped; no auto-restart). For
-// a service app it scales the service to zero replicas (the desired count stays
-// recorded on the app, so Start restores it).
+// For a service app Stop scales to zero; the desired count stays recorded so Start restores it.
 func (s *Service) Stop(ctx context.Context, app *models.Application) error {
-	// Record the stop intent BEFORE stopping the container. Stopping is asynchronous: the container's die event
-	// would otherwise flip a running app to "failed" on a non-graceful exit, and a shell-form CMD that doesn't
-	// forward SIGTERM exits 137 — indistinguishable from a crash. Persisting "stopped" first makes intent win.
+	// Persist intent first: a die event from a non-graceful exit (137) would otherwise read as a crash.
 	prev := app.Status
 	_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 	if app.RuntimeKind == models.RuntimeService {
@@ -1871,9 +1666,7 @@ func (s *Service) Stop(ctx context.Context, app *models.Application) error {
 	return nil
 }
 
-// Restart restarts the app's active container. If a redeploy is required (config changed while
-// stopped) it redeploys instead, so the new config is applied rather than restarting a stale
-// container, returning that deployment so the caller can follow its logs. A plain restart returns nil.
+// Restart redeploys instead when config changed while stopped, returning that deployment.
 func (s *Service) Restart(ctx context.Context, app *models.Application) (*models.Deployment, error) {
 	if err := s.guardData(ctx, app); err != nil {
 		return nil, err
@@ -1904,22 +1697,13 @@ func (s *Service) Restart(ctx context.Context, app *models.Application) (*models
 	return nil, nil
 }
 
-// RecordLifecycle stamps the app with the start/stop/restart just performed and who asked for it.
-// Called by the handler rather than by Start/Stop/Restart themselves: those have several early
-// returns (a redeploy, a service scale, a container restart) and the actor only exists at the HTTP
-// edge, so one call at the one place that knows both beats four that each know half.
-//
-// Best-effort — this is a display fact, and failing a restart the user already got because a
-// bookkeeping write failed would be the worse outcome.
+// Called by the handler since only the HTTP edge knows the actor; best-effort, as it is display-only.
 func (s *Service) RecordLifecycle(appID uint, action string, by *uint) {
 	if err := s.apps.SetLastLifecycle(appID, action, time.Now(), by); err != nil {
 		logger.Warn("could not record the app lifecycle action", "app", appID, "action", action, "error", err)
 	}
 }
 
-// Scale sets the replica count of a cluster (service) app and applies it to the
-// live Swarm service immediately (no redeploy). Rejected for container apps or
-// when cluster mode is off.
 func (s *Service) Scale(ctx context.Context, app *models.Application, replicas int) error {
 	if app.RuntimeKind != models.RuntimeService {
 		return ErrNotService
@@ -1954,9 +1738,7 @@ func (s *Service) Scale(ctx context.Context, app *models.Application, replicas i
 	return nil
 }
 
-// WaitRunning polls the app's active container until it reports the running
-// state, or returns an error on timeout. Used as a basic readiness gate for
-// rolling restarts so the next app isn't restarted until this one recovers.
+// Readiness gate for rolling restarts.
 func (s *Service) WaitRunning(ctx context.Context, app *models.Application) error {
 	cid, err := s.activeContainerID(app.ID)
 	if err != nil {
@@ -1978,36 +1760,25 @@ func (s *Service) WaitRunning(ctx context.Context, app *models.Application) erro
 	}
 }
 
-// Delete removes the application and its active container. Refuses while the
-// app is running — it must be stopped first, to avoid yanking a live workload.
+// Refuses while running to avoid yanking a live workload.
 func (s *Service) Delete(ctx context.Context, app *models.Application) error {
 	if s.LiveStatus(ctx, app).Running {
 		return ErrAppRunning
 	}
-	// Record the deletion before the row is gone (emit reads app.ID/WorkspaceID directly, no DB lookup) so the
-	// workspace event feed — and the live dashboard — reflect it. Record publishes synchronously, so the live
-	// stream sees it even though the app row is removed below.
+	// Record before the row is gone; Record publishes synchronously so the live stream still sees it.
 	s.emit(app, models.EventAppDeleted, "Application deleted")
 	if rel, err := s.releases.FindActive(app.ID); err == nil && rel.ContainerID != "" {
-		// Recorded first, as Stop does, so the container's die and destroy events read as a deliberate stop
-		// rather than a crash or a container removed from under the app.
+		// Recorded first so die and destroy events read as a deliberate stop rather than a crash.
 		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 		_ = s.eng(app).StopContainer(ctx, rel.ContainerID, 10)
 		_ = s.eng(app).RemoveContainer(ctx, rel.ContainerID, true)
 	}
-	// Remove the app's reverse-proxy routes (generated external-access + user) from
-	// the database and the gateway, so none dangle against the deleted app.
 	if s.routeSync != nil {
 		_ = s.routeSync.RemoveAppRoutes(ctx, app.ID)
 	}
-	// Free the app's host-port bindings (managed auto-forward + user-requested) so
-	// their host ports return to the per-node allocation pool.
 	if s.portBindings != nil {
 		_ = s.portBindings.DeleteByApp(app.ID)
 	}
-	// Drop the pipelines the app's repository owned (they exist only to deploy it)
-	// and unbind any hand-written ones, so no definition is left pointing at an
-	// app that no longer exists.
 	if s.pipelines != nil {
 		if err := s.pipelines.DeleteForApp(app.WorkspaceID, app.ID); err != nil {
 			logger.Warn("could not clean up the app's pipelines", "app", app.Name, "error", err)
@@ -2036,8 +1807,7 @@ func (s *Service) SetEnvVar(appID uint, key, value string, isSecret bool) error 
 	return nil
 }
 
-// ImportEnvVars upserts every variable parsed from .env-style content (later
-// duplicate keys win), encrypting them when isSecret. Returns the number set.
+// Later duplicate keys win.
 func (s *Service) ImportEnvVars(appID uint, content string, isSecret bool) (int, error) {
 	var workspaceID uint
 	if isSecret {
@@ -2086,15 +1856,12 @@ func (s *Service) emitForApp(appID uint, t models.AppEventType, message string) 
 	s.emit(app, t, message)
 }
 
-// AttachConfig mounts a workspace config into the app. Projection is per file, so
-// this never becomes a directory bind and the mount is always read-only.
+// Projection is per file, so this never becomes a directory bind and is always read-only.
 func (s *Service) AttachConfig(app *models.Application, configID uint, key, path, mode string) error {
 	if path == "" {
 		return ErrMountPathRequired
 	}
-	// Validated here rather than at deploy: a mount naming a config from another
-	// workspace, or a key the config does not carry, fails silently in the runtime
-	// far from whoever created it.
+	// Validated here: a bad config or key would otherwise fail silently in the runtime.
 	if err := s.validateConfigMount(app.WorkspaceID, configID, key); err != nil {
 		return err
 	}
@@ -2114,9 +1881,7 @@ func (s *Service) AttachConfig(app *models.Application, configID uint, key, path
 	return nil
 }
 
-// validateConfigMount confirms the config is this workspace's and, when a single
-// file is selected, that the config actually carries that key. A nil config reader
-// (none wired) skips the check rather than blocking the mount.
+// A nil config reader skips the check rather than blocking the mount.
 func (s *Service) validateConfigMount(workspaceID, configID uint, key string) error {
 	if s.configs == nil {
 		return nil
@@ -2130,9 +1895,7 @@ func (s *Service) validateConfigMount(workspaceID, configID uint, key string) er
 	}
 	data, err := s.configs.Data(cfg)
 	if err != nil {
-		// The content cannot be read, so the key cannot be disproved. Attaching a
-		// mount is not the place to fail on a decryption problem the config page
-		// reports properly.
+		// Unreadable content cannot disprove the key; the config page reports decryption problems.
 		return nil
 	}
 	if _, ok := data[key]; !ok {
@@ -2141,9 +1904,7 @@ func (s *Service) validateConfigMount(workspaceID, configID uint, key string) er
 	return nil
 }
 
-// DetachConfig removes a config mount. key selects one of several mounts of the
-// same config; an empty key removes the whole-config mount. Takes effect on the
-// next deploy, like every other mount change.
+// An empty key removes the whole-config mount.
 func (s *Service) DetachConfig(app *models.Application, configID uint, key string) error {
 	out, removed := removeConfigMount(app.Mounts, configID, key)
 	if !removed {
@@ -2157,9 +1918,7 @@ func (s *Service) DetachConfig(app *models.Application, configID uint, key strin
 	return nil
 }
 
-// removeConfigMount drops the mount of configID projecting key, and reports whether
-// one was found. Both halves of the identity matter: the same config can be mounted
-// several times, once per file, and matching on the id alone would remove them all.
+// The same config can be mounted once per file, so matching on the id alone would remove them all.
 func removeConfigMount(mounts []models.AppMount, configID uint, key string) ([]models.AppMount, bool) {
 	out := make([]models.AppMount, 0, len(mounts))
 	removed := false
@@ -2184,8 +1943,7 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 	}
 	if nodeLocal(vol) {
 		if app.RuntimeKind == models.RuntimeService {
-			// Swarm schedules a service, and deploy pins its task to the node its node-local volumes are
-			// on, so those volumes must all be on one node; the app's own node is only the manager.
+			// Deploy pins the task to its node-local volumes' node, so they must all share one node.
 			if n := s.localMountNode(app, vol.ID); n != 0 && n != vol.ServerID {
 				return ErrNodeMismatch
 			}
@@ -2206,8 +1964,7 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 			return s.apps.Update(app)
 		}
 	}
-	// Denormalize the host path for a host-path volume so the runtime binds it
-	// without a volume lookup (the volume is immutable, so this can't drift).
+	// The volume is immutable, so the denormalized host path can't drift.
 	app.Mounts = append(app.Mounts, models.AppMount{VolumeID: vol.ID, DockerName: vol.DockerName, Path: path, HostPath: vol.HostPath})
 	if err := s.apps.Update(app); err != nil {
 		return err
@@ -2216,8 +1973,7 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 	return nil
 }
 
-// nodeLocal reports whether a volume's data exists on a single node. A host-path volume binds a path
-// present on every node, and a shared (rwx) one is mounted from its backend wherever the task runs.
+// Host-path volumes exist on every node and rwx ones mount from their backend wherever the task runs.
 func nodeLocal(v *models.Volume) bool {
 	return v.Driver != models.VolumeDriverHost && v.AccessMode != models.AccessRWX
 }
@@ -2251,9 +2007,7 @@ func (s *Service) DetachVolume(app *models.Application, volumeID uint) error {
 	return nil
 }
 
-// AttachHostMount attaches an allow-listed privileged host bind (see package hostmount) to the app at
-// path, using the preset default target when empty. Requires a privileged workspace; the host source
-// is resolved from the preset at deploy time, never taken from the client. Applies on the next deploy.
+// AttachHostMount resolves the host source from the preset at deploy time, never from the client.
 func (s *Service) AttachHostMount(app *models.Application, preset, path string, readOnly bool) error {
 	p, ok := hostmount.Get(preset)
 	if !ok {
@@ -2298,8 +2052,6 @@ func (s *Service) DetachHostMount(app *models.Application, preset string) error 
 	return nil
 }
 
-// requirePrivileged returns ErrHostMountNotPrivileged unless the workspace is
-// flagged privileged (a platform-admin-only flag).
 func (s *Service) requirePrivileged(workspaceID uint) error {
 	if s.workspaces == nil {
 		return ErrHostMountNotPrivileged
@@ -2327,9 +2079,7 @@ func (s *Service) ListEnvVars(appID uint) ([]models.AppEnvVar, error) {
 	return vars, nil
 }
 
-// RevealEnvVar returns the decrypted value of a single env var, scoped to the app. Secret values are
-// decrypted; non-secret values are returned as-is. Used by the audited reveal endpoint so an operator
-// can read a value they otherwise only see masked.
+// RevealEnvVar backs the audited reveal endpoint.
 func (s *Service) RevealEnvVar(appID uint, key string) (string, error) {
 	vars, err := s.apps.ListEnvVars(appID)
 	if err != nil {
@@ -2346,17 +2096,12 @@ func (s *Service) RevealEnvVar(appID uint, key string) (string, error) {
 	return "", ErrEnvVarNotFound
 }
 
-// Deploy creates a deployment for the current app config and enqueues it. registryOverride, when
-// non-nil, uses a different registry credential for this one deploy; tagOverride, when non-empty,
-// deploys a specific image tag for an image-source app.
-// Its callers are the machine paths — declarative apply, stacks, workspace restore — so no actor is
-// recorded. A person's deploy comes through RequestDeploy, which carries theirs.
+// Deploy is for machine paths, so no actor is recorded; a person's deploy goes through RequestDeploy.
 func (s *Service) Deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy) (*models.Deployment, error) {
 	return s.deploy(app, registryOverride, tagOverride, strategy, false, nil)
 }
 
-// deploy is Deploy plus the per-deploy build cache override, which only the user-facing entry
-// point offers: an internal redeploy must not silently pay for a cold build.
+// Only the user-facing entry point offers no-cache: an internal redeploy must not silently pay for a cold build.
 func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, noCache bool, triggeredBy *uint) (*models.Deployment, error) {
 
 	s.reconcileAutoRuntime(app.ID)
@@ -2372,23 +2117,18 @@ func (s *Service) deploy(app *models.Application, registryOverride *uint, tagOve
 	return s.enqueue(app.ID, app.ServerID, image, "manual", regID, s.resolveStrategy(app, strategy), noCache, triggeredBy)
 }
 
-// InvalidateBuildCache names a new build cache generation for the app. The next build of it runs
-// cold and repopulates the cache; nothing is deleted, so a build already in flight is unaffected.
+// Nothing is deleted, so a build already in flight is unaffected.
 func (s *Service) InvalidateBuildCache(app *models.Application) error {
 	return s.apps.BumpCacheGeneration(app.ID)
 }
 
-// DeployResult is what a deploy request produced: a Deployment for an app that
-// builds directly, or the PipelineRun that will build and deploy an app whose
-// repository carries pipeline-as-code. Exactly one is set.
+// Exactly one of Deployment or PipelineRun is set.
 type DeployResult struct {
 	Deployment *models.Deployment
 	Run        *models.PipelineRun
 }
 
-// RequestDeploy is the user-facing deploy entry point. When the app's repository owns a pipeline the
-// request starts a pipeline run instead of a direct build, so a deploy can never skip the declared
-// test and scan steps. Internal redeploys don't come through here — they must not re-run CI.
+// A repo-owned pipeline is run instead so a deploy can never skip its test and scan steps.
 func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy, userID *uint, noCache bool) (*DeployResult, error) {
 	def, err := s.RepoPipelineForApp(app.ID)
 	if err != nil {
@@ -2408,15 +2148,11 @@ func (s *Service) RequestDeploy(app *models.Application, registryOverride *uint,
 	return &DeployResult{Deployment: dep}, nil
 }
 
-// resolveStrategy picks the effective rollout method: an explicit choice, else
-// the app's default. Canary needs a running release to shift traffic against, so
-// a canary on a never-deployed app falls back to rolling.
+// Canary needs a running release, so a canary on a never-deployed app falls back to rolling.
 func (s *Service) resolveStrategy(app *models.Application, requested models.DeployStrategy) models.DeployStrategy {
 	return models.EffectiveDeployStrategy(app, requested)
 }
 
-// Redeploy enqueues a deploy that applies the app's current configuration.
-// Used by Start/Restart when a redeploy is required.
 func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) {
 	s.reconcileAutoRuntime(app.ID)
 	image := ""
@@ -2426,11 +2162,7 @@ func (s *Service) Redeploy(app *models.Application) (*models.Deployment, error) 
 	return s.enqueue(app.ID, app.ServerID, image, "auto", app.RegistryID, models.DeployRolling, false, nil)
 }
 
-// ReconcileRedeploy brings an app back where it already runs, after the control manager found its container
-// or service gone. It is deliberately the ordinary deploy path — same queue, same per-app lock, same
-// guards, routed by the app's own ServerID — so nothing is placed or moved, and the data guard in enqueue
-// refuses it outright if a volume is missing. The distinct trigger is what tells this apart from a deploy a
-// person asked for, in history and in the timeline.
+// Deliberately the ordinary deploy path, so nothing is moved and the data guard still applies.
 func (s *Service) ReconcileRedeploy(app *models.Application, reason string) (*models.Deployment, error) {
 	image := ""
 	if app.SourceType != models.AppSourceGit {
@@ -2462,16 +2194,14 @@ func (s *Service) MarkRedeployRequired(app *models.Application) (bool, error) {
 	return true, nil
 }
 
-// Limits and coded errors for user-defined container labels. The reserved-prefix
-// protection lives in the docker package (docker.SanitizeUserLabels).
+// The reserved-prefix protection lives in docker.SanitizeUserLabels.
 const (
 	maxContainerLabels  = 50
 	maxLabelKeyLength   = 256
 	maxLabelValueLength = 4096
 )
 
-// labelError carries a stable machine code so the API envelope surfaces it
-// (the error_handlers read Code() off the returned error).
+// The error handlers read Code() off the returned error.
 type labelError struct {
 	code string
 	msg  string
@@ -2490,11 +2220,7 @@ var (
 	ErrLabelInvalid  = &labelError{code: "LABEL_INVALID", msg: "label key must be non-empty and within length limits"}
 )
 
-// validRunAsUser normalizes an app's run-as user and checks it against the workspace's security
-// profile: when the workspace must drop root, only a verifiably non-root numeric uid is accepted, so
-// a custom user cannot be the way back to root. Re-run on every update, so a plan that tightens later
-// forces the app to be corrected rather than grandfathering it. officialTemplate mirrors the plan
-// exemption marketplace apps may hold. Returns the value to store.
+// A custom user cannot be the way back to root; re-run on every update so later tightening applies.
 func (s *Service) validRunAsUser(workspaceID uint, v string, officialTemplate bool) (string, error) {
 	clean, err := models.NormalizeRunAsUser(v)
 	if err != nil {
@@ -2509,9 +2235,7 @@ func (s *Service) validRunAsUser(workspaceID uint, v string, officialTemplate bo
 	return clean, nil
 }
 
-// customBuilderAllowed gates a per-app custom buildpack builder image behind the workspace's plan
-// capability. A custom builder runs on the runner with docker access, so on shared runners it is an
-// arbitrary-code vector; the platform default is used otherwise. A blank builder always passes.
+// A custom builder runs with docker access on the runner, so on shared runners it is an arbitrary-code vector.
 func (s *Service) customBuilderAllowed(workspaceID uint, builder string) error {
 	if strings.TrimSpace(builder) == "" || s.quota == nil {
 		return nil
@@ -2519,8 +2243,7 @@ func (s *Service) customBuilderAllowed(workspaceID uint, builder string) error {
 	return s.quota.Require(workspaceID, quota.CapCustomBuilder)
 }
 
-// validateGPUCount bounds the requested GPU units. 0 = none; the upper bound is a sanity cap
-// (no single node exposes near this many whole cards).
+// The upper bound is a sanity cap; no node exposes near this many cards.
 func validateGPUCount(gpuCount int) error {
 	if gpuCount < 0 || gpuCount > 64 {
 		return ErrInvalidGPUCount
@@ -2528,8 +2251,7 @@ func validateGPUCount(gpuCount int) error {
 	return nil
 }
 
-// gpuAllowed gates a GPU request behind the workspace's AllowGPU plan capability.
-// A request of 0 (no GPU) always passes; nil quota (single-tenant) skips the gate.
+// nil quota (single-tenant) skips the gate.
 func (s *Service) gpuAllowed(workspaceID uint, gpuCount int) error {
 	if gpuCount <= 0 || s.quota == nil {
 		return nil
@@ -2537,9 +2259,7 @@ func (s *Service) gpuAllowed(workspaceID uint, gpuCount int) error {
 	return s.quota.Require(workspaceID, quota.CapGPU)
 }
 
-// customLabelsAllowed resolves the two-layer admin gate: the global kill-switch
-// (settings) AND the per-workspace plan capability. Returns a coded error when
-// the feature is not permitted for the workspace.
+// Both the global kill-switch and the per-workspace plan capability must allow it.
 func (s *Service) customLabelsAllowed(workspaceID uint) error {
 	if s.settings != nil && !s.settings.Bool(settings.KeyCustomLabelsEnabled, true) {
 		return ErrCustomLabelsDisabled
@@ -2550,9 +2270,7 @@ func (s *Service) customLabelsAllowed(workspaceID uint) error {
 	return nil
 }
 
-// validateContainerLabels rejects reserved keys explicitly (so an interactive
-// edit gets a clear error rather than a silent strip), enforces the count/length
-// caps, and trims keys. Returns the cleaned map (nil when empty).
+// Reserved keys are rejected explicitly so an interactive edit gets a clear error rather than a silent strip.
 func validateContainerLabels(in map[string]string) (map[string]string, error) {
 	if len(in) > maxContainerLabels {
 		return nil, ErrTooManyLabels
@@ -2574,9 +2292,6 @@ func validateContainerLabels(in map[string]string) (map[string]string, error) {
 	return out, nil
 }
 
-// SetContainerLabels validates and persists an app's user-defined Docker labels, enforcing the plan
-// capability, the global kill-switch and the reserved-prefix protection. Labels take effect on the
-// next deploy, exactly like port, volume and env edits.
 func (s *Service) SetContainerLabels(app *models.Application, labels map[string]string) error {
 	if err := s.customLabelsAllowed(app.WorkspaceID); err != nil {
 		return err
@@ -2616,12 +2331,7 @@ func (s *Service) StartCanary(app *models.Application, registryOverride *uint, t
 	return s.Deploy(app, registryOverride, tagOverride, models.DeployCanary)
 }
 
-// SetCanaryWeight changes the share of traffic sent to the canary (1–99) and
-// re-syncs the route immediately — no redeploy, no downtime.
-//
-// 0 is allowed only for an exclusive canary, where the rules alone decide who
-// reaches it. For any other canary a 0 weight is a rule set that quietly routes
-// nothing, so it is refused rather than clamped.
+// 0 is allowed only for an exclusive canary; otherwise the rules would quietly route nothing.
 func (s *Service) SetCanaryWeight(ctx context.Context, app *models.Application, weight int) error {
 	if app.CanaryReleaseID == nil {
 		return ErrNoCanary
@@ -2678,9 +2388,6 @@ func (s *Service) ResumeCanary(app *models.Application) error {
 	return nil
 }
 
-// PromoteCanary makes the canary the new stable release. It enqueues a normal
-// deploy of the canary's image; the deploy pipeline retires the old stable and
-// the in-progress canary, leaving a single full-traffic release.
 func (s *Service) PromoteCanary(app *models.Application, triggeredBy *uint) (*models.Deployment, error) {
 	if app.CanaryReleaseID == nil {
 		return nil, ErrNoCanary
@@ -2697,8 +2404,6 @@ func (s *Service) PromoteCanary(app *models.Application, triggeredBy *uint) (*mo
 	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling, false, triggeredBy)
 }
 
-// AbortCanary stops the canary container, discards its release, and returns all
-// traffic to the stable release.
 func (s *Service) AbortCanary(ctx context.Context, app *models.Application) error {
 	if app.CanaryReleaseID == nil {
 		return ErrNoCanary
@@ -2724,9 +2429,7 @@ func (s *Service) AbortCanary(ctx context.Context, app *models.Application) erro
 	return nil
 }
 
-// finalizeCanaryDeployment closes out a non-terminal canary rollout deployment
-// when the canary is aborted manually (the worker handles promote/auto paths).
-// Best-effort: appends a final log line and marks the deployment failed.
+// The worker handles the promote and auto paths.
 func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 	if deploymentID == 0 {
 		return
@@ -2743,8 +2446,7 @@ func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 }
 
 func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool, triggeredBy *uint) (*models.Deployment, error) {
-	// Every deploy, redeploy, rollback and canary passes through here, and each of them starts a container
-	// that would mount the app's volumes — so this is where a lost one has to stop them.
+	// Every deploy path starts a container mounting the volumes, so a lost volume must stop them here.
 	if app, err := s.apps.FindByID(appID); err == nil {
 		if derr := s.guardData(context.Background(), app); derr != nil {
 			return nil, derr
@@ -2817,8 +2519,6 @@ func (s *Service) SetReleasePinned(app *models.Application, releaseID uint, pinn
 	return rel, nil
 }
 
-// DeleteRelease removes a non-active, non-pinned release and its retired
-// container (best-effort).
 func (s *Service) DeleteRelease(ctx context.Context, app *models.Application, releaseID uint) error {
 	rel, err := s.GetRelease(app, releaseID)
 	if err != nil {
@@ -2836,8 +2536,6 @@ func (s *Service) DeleteRelease(ctx context.Context, app *models.Application, re
 	return s.releases.Delete(rel.ID)
 }
 
-// uniqueName derives a workspace-unique slug handle from base, suffixing on
-// collision. Mirrors the workspace naming convention via the shared slug package.
 func (s *Service) uniqueName(workspaceID uint, base string) (string, error) {
 	return slug.Unique(base, "app", func(candidate string) (bool, error) {
 		return s.apps.ExistsByName(workspaceID, candidate)
@@ -2847,9 +2545,7 @@ func (s *Service) uniqueName(workspaceID uint, base string) (string, error) {
 // IDByUID resolves an application's portable uid to its numeric id.
 func (s *Service) IDByUID(uid string) (uint, error) { return s.apps.IDByUID(uid) }
 
-// MarkNodeRemoved records that every application on a deleted node has stopped. Deleting a node
-// leaves its apps pointing at a server row that no longer exists, holding whatever status they had
-// at that moment — usually "running", for something with no container behind it.
+// A deleted node otherwise leaves its apps reading "running" with no container behind them.
 func (s *Service) MarkNodeRemoved(serverID uint) {
 	if serverID == 0 {
 		return

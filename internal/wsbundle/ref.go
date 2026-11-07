@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package wsbundle holds the format of a Miabi Portable Bundle: one workspace, its configuration,
-// secrets and data, written to an S3 bucket as a self-describing set of objects. It depends on
-// nothing else in Miabi — a bundle is meant to be read by an instance that did not write it.
+// Package wsbundle defines the Miabi Portable Bundle format; it depends on nothing else in Miabi.
 package wsbundle
 
 import (
@@ -29,8 +27,7 @@ import (
 	"time"
 )
 
-// RefPrefix marks a workspace bundle. Restore matches on it, so a mistyped
-// argument fails fast instead of listing a whole bucket.
+// Restore matches on the prefix, so a mistyped argument fails fast instead of listing a whole bucket.
 const RefPrefix = "mbwb_"
 
 // StateExt is the sealed state file's extension; PlainStateExt the unencrypted one's.
@@ -39,8 +36,6 @@ const (
 	PlainStateExt = ".json"
 )
 
-// NewRef builds a bundle's stable name from the workspace it came from and the
-// moment it started: "mbwb_shop_20260731T020000Z".
 func NewRef(workspace string, at time.Time) string {
 	ws := Segment(workspace)
 	if ws == "" {
@@ -66,9 +61,7 @@ func Segment(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// Root is the object prefix every artifact of one bundle lives under: "<prefix>/<ref>". Its own
-// branch is what lets a restore list one bundle's artifacts without reading every object in the
-// bucket, and what lets an operator delete a bundle by removing a single prefix.
+// A per-bundle branch lets restore list one bundle's artifacts and an operator delete it by one prefix.
 func Root(prefix, ref string) string {
 	if p := strings.Trim(strings.TrimSpace(prefix), "/"); p != "" {
 		return p + "/" + ref
@@ -82,8 +75,6 @@ func DatabasePath(prefix, ref string) string { return Root(prefix, ref) + "/data
 // VolumePath is where a bundle's volume archives live.
 func VolumePath(prefix, ref string) string { return Root(prefix, ref) + "/volumes" }
 
-// StateObject is the state file's object key. It sits inside the bundle's
-// own branch, next to the data it describes.
 func StateObject(prefix, ref string, encrypted bool) string {
 	return Root(prefix, ref) + "/" + StateFile(ref, encrypted)
 }
@@ -96,9 +87,7 @@ func StateFile(ref string, encrypted bool) string {
 	return "state-" + ref + PlainStateExt
 }
 
-// InfoObject is the info file's object key. Unlike everything else it sits at the TOP of the
-// configured prefix, not inside the bundle's branch: it is the one file a restore is expected to
-// find by looking, so listing the prefix lists the bundles rather than their contents.
+// The info file sits at the top of the prefix so listing it lists bundles rather than their contents.
 func InfoObject(prefix, ref string) string {
 	name := "workspace-" + ref + InfoExt
 	if p := strings.Trim(strings.TrimSpace(prefix), "/"); p != "" {
@@ -107,9 +96,7 @@ func InfoObject(prefix, ref string) string {
 	return name
 }
 
-// RefFromInfoObject recovers the ref from an info file's object key, or "".
-// It is what lets a restore discover the bundles in a bucket with no database to
-// list them from.
+// Lets a restore discover bundles in a bucket with no database to list them from.
 func RefFromInfoObject(key string) string {
 	base := path.Base(strings.TrimSpace(key))
 	if !strings.HasPrefix(base, "workspace-") || !strings.HasSuffix(base, InfoExt) {

@@ -34,19 +34,14 @@ const (
 	AppSourceGit   AppSourceType = "git"   // build from a Git repo
 )
 
-// AppBuildMethod selects how a git-source application's image is built. It only
-// applies to git apps (image apps pull a prebuilt image).
 type AppBuildMethod string
 
 const (
-	// BuildAuto inspects the cloned repository at build time: a Dockerfile in the
-	// tree builds with Docker, otherwise Cloud Native Buildpacks build it. Default.
+	// A Dockerfile in the tree builds with Docker, otherwise Cloud Native Buildpacks.
 	BuildAuto AppBuildMethod = "auto"
 	// BuildDockerfile always builds the repo's Dockerfile.
 	BuildDockerfile AppBuildMethod = "dockerfile"
-	// BuildBuildpack always builds with Cloud Native Buildpacks (no Dockerfile
-	// required); the resulting image runs via the CNB launcher.
-	BuildBuildpack AppBuildMethod = "buildpack"
+	BuildBuildpack  AppBuildMethod = "buildpack"
 )
 
 // ValidAppBuildMethod reports whether m is a known build method.
@@ -63,24 +58,13 @@ func ValidAppBuildMethod(m AppBuildMethod) bool {
 type DeployStrategy string
 
 const (
-	// DeployRecreate stops the current container before starting the new one
-	// (brief downtime; use when two versions cannot run at once).
+	// Brief downtime; use when two versions cannot run at once.
 	DeployRecreate DeployStrategy = "recreate"
-	// DeployRolling starts the new container, waits for health, then retires the
-	// old one (zero-downtime for a single replica). Default.
-	DeployRolling DeployStrategy = "rolling"
-	// DeployCanary runs the new release alongside the stable one and shifts
-	// weighted traffic to it progressively (platform-driven).
-	DeployCanary DeployStrategy = "canary"
+	DeployRolling  DeployStrategy = "rolling"
+	DeployCanary   DeployStrategy = "canary"
 )
 
-// EffectiveDeployStrategy resolves the strategy one deploy runs with: an explicit request wins, else
-// the app's configured default, else rolling.
-//
-// It lives on the model because every path that creates a Deployment has to apply the same rule, and
-// they do not share a service — a pipeline deploy is built in the worker, a manual one in the
-// application service. When only one of them knew the rule, an app set to canary deployed rolling
-// from CI and nobody could see why.
+// On the model because pipeline and manual deploys share no service; a CI canary once ran rolling.
 func EffectiveDeployStrategy(app *Application, requested DeployStrategy) DeployStrategy {
 	st := requested
 	if !ValidDeployStrategy(st) {
@@ -89,8 +73,7 @@ func EffectiveDeployStrategy(app *Application, requested DeployStrategy) DeployS
 	if !ValidDeployStrategy(st) {
 		st = DeployRolling
 	}
-	// A canary splits traffic between the running release and the new one. With nothing running there
-	// is nothing to split, so the first deploy of an app is always a straight rollout.
+	// With nothing running there is nothing to split, so the first deploy is a straight rollout.
 	if st == DeployCanary && app.CurrentReleaseID == nil {
 		st = DeployRolling
 	}
@@ -111,11 +94,8 @@ func ValidDeployStrategy(s DeployStrategy) bool {
 type CanaryMode string
 
 const (
-	// CanaryModeAuto lets the platform ramp the weight on a timer until the canary
-	// reaches 100% and is promoted. Default, and the only mode in Community.
-	CanaryModeAuto CanaryMode = "auto"
-	// CanaryModeManual holds the weight wherever the user put it: the ramp never
-	// moves it, and traffic may additionally be steered by match rules.
+	// The only mode in Community.
+	CanaryModeAuto   CanaryMode = "auto"
 	CanaryModeManual CanaryMode = "manual"
 )
 
@@ -149,8 +129,6 @@ const (
 	CanaryMatchOpIn          = "in"
 )
 
-// CanaryMatchSources / CanaryMatchOperators are the canonical, ordered lists,
-// shared by validation, the API schema and the console.
 var (
 	CanaryMatchSources = []string{
 		CanaryMatchSourceHeader, CanaryMatchSourceQuery, CanaryMatchSourceCookie, CanaryMatchSourceIP,
@@ -181,8 +159,7 @@ func ValidCanaryMatchOperator(op string) bool {
 	return false
 }
 
-// CanaryMatchRule is one condition a request must satisfy for the canary backend
-// to be eligible. All of an app's rules must hold (AND), matching the gateway.
+// All rules must hold (AND), matching the gateway.
 type CanaryMatchRule struct {
 	Source   string `json:"source"`
 	Name     string `json:"name"`
@@ -190,26 +167,19 @@ type CanaryMatchRule struct {
 	Value    string `json:"value"`
 }
 
-// RuntimeKind is how an app runs: a single Docker container (default) or a replicated Swarm
-// service. Auto-gated on the manager being a swarm manager — a "service" app only deploys
-// when cluster mode is enabled.
+// A "service" app only deploys when cluster mode is enabled.
 type RuntimeKind string
 
 const (
 	// RuntimeContainer runs the app as one plain Docker container on its node.
 	RuntimeContainer RuntimeKind = "container"
-	// RuntimeService runs the app as a replicated Swarm service on the workspace
-	// overlay network.
-	RuntimeService RuntimeKind = "service"
+	RuntimeService   RuntimeKind = "service"
 )
 
-// MaxServiceReplicas caps a service app's replica count so a single request can't ask Swarm to
-// schedule an unbounded number of tasks (node resource-exhaustion DoS).
+// Prevents a request asking Swarm to schedule unbounded tasks (resource-exhaustion DoS).
 const MaxServiceReplicas = 100
 
-// ReconcilePolicy is how much the control manager may do about this app, overriding the platform-wide mode.
-// It exists because the first thing an operator wants, the first time a debugging session is undone by an
-// automatic redeploy, is a way to exempt one app without switching the whole platform back to observing.
+// Lets an operator exempt one app without switching the whole platform back to observing.
 type ReconcilePolicy string
 
 const (
@@ -243,26 +213,19 @@ func ValidRuntimeKind(k RuntimeKind) bool {
 	}
 }
 
-// NodePlacement is where one slice of a cluster app's replicas runs: a node's
-// display name and how many of the app's running tasks the scheduler placed on
-// it. Transient — built on read from live Swarm task placement.
+// Transient, built on read from live Swarm task placement.
 type NodePlacement struct {
-	// Name is the node's Miabi display name, or a short swarm node id when the node
-	// is not (yet) correlated to a Miabi server record.
+	// A short swarm node id when the node is not yet correlated to a Miabi server.
 	Name string `json:"name"`
 	// Tasks is the number of the app's running tasks on this node.
 	Tasks int `json:"tasks"`
 }
 
-// ServiceUpdateConfig tunes how Swarm rolls out a service update for cluster
-// apps (parallelism = tasks updated at once; delay = pause between batches).
 type ServiceUpdateConfig struct {
 	Parallelism  int `json:"parallelism,omitempty"`
 	DelaySeconds int `json:"delay_seconds,omitempty"`
 }
 
-// RestartPolicy is the Docker restart policy applied to an app's container. It
-// mirrors the engine's policies; the platform default is "unless-stopped".
 type RestartPolicy string
 
 const (
@@ -282,8 +245,6 @@ func ValidRestartPolicy(p RestartPolicy) bool {
 	}
 }
 
-// ImagePullPolicy decides whether a deploy pulls the image: "always" (default),
-// "if-not-present" reuses a cached image, "never" requires it present (air-gapped).
 // Digest-pinned refs are immutable, so they are never re-pulled when already present.
 type ImagePullPolicy string
 
@@ -313,8 +274,7 @@ const (
 	HealthcheckCommand HealthcheckType = "command" // shell command (CMD-SHELL)
 )
 
-// GatesDeploy reports whether a deploy waits for the container to report healthy. An image check
-// does not gate: its timing is the image's, and Docker probes only after a full interval.
+// An image check does not gate: Docker probes only after a full interval.
 func (t HealthcheckType) GatesDeploy() bool {
 	return t == HealthcheckHTTP || t == HealthcheckCommand
 }
@@ -343,113 +303,73 @@ const (
 // Application is a deployable workload owned by a workspace.
 type Application struct {
 	UIDModel
-	ID          uint `json:"id" gorm:"primaryKey"`
-	WorkspaceID uint `json:"workspace_id" gorm:"index:idx_app_workspace_name,unique;not null"`
-	// Name is the unique, URL/CLI/docker handle (lowercase [a-z0-9-]) scoped to
-	// the workspace; the numeric ID/UID remain the stable internal references.
-	Name string `json:"name" gorm:"index:idx_app_workspace_name,unique;not null"`
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	WorkspaceID uint   `json:"workspace_id" gorm:"index:idx_app_workspace_name,unique;not null"`
+	Name        string `json:"name" gorm:"index:idx_app_workspace_name,unique;not null"`
 	// DisplayName is the free-text label shown in the UI; not unique.
 	DisplayName string        `json:"display_name"`
 	SourceType  AppSourceType `json:"source_type" gorm:"not null;default:image"`
-	// Alias is the stable in-network DNS name and container hostname, "mb-app-<token>-<id>".
-	// Generated once at creation and reused as the proxy upstream, so it survives redeploys.
-	// Empty on legacy apps, which fall back to "mb-app-<id>".
+	// Generated once and reused as the proxy upstream; legacy apps fall back to "mb-app-<id>".
 	Alias string `json:"alias,omitempty" gorm:"index"`
-	// ServerID is the node this app runs on (0 = local control-plane node). In
-	// cluster mode (RuntimeService) it is a placement hint rather than a fixed
-	// node — Swarm schedules the tasks subject to PlacementConstraints.
-	ServerID  uint `json:"server_id" gorm:"index;not null;default:0"`
-	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
-	// ServerName is the display name of the node (transient; populated on read so
-	// the UI can show where the app runs). Empty if the node is unknown.
-	ServerName string `json:"server_name,omitempty" gorm:"-"`
-	// GitOpsSourceName names the GitOps project that manages the app (miabi.io/gitops-source),
-	// filled on the detail read.
+	// In cluster mode it is a placement hint; Swarm schedules subject to PlacementConstraints.
+	ServerID         uint   `json:"server_id" gorm:"index;not null;default:0"`
+	ClusterID        uint   `json:"cluster_id" gorm:"index;not null;default:0"`
+	ServerName       string `json:"server_name,omitempty" gorm:"-"`
 	GitOpsSourceName string `json:"gitops_source_name,omitempty" gorm:"-"`
-	// Nodes is the real per-node replica placement of a cluster (RuntimeService) app. Transient:
-	// populated only on the app-detail read, and only in cluster mode. Empty for container apps,
-	// whose single node is ServerName.
+	// Transient: populated only on the detail read in cluster mode.
 	Nodes []NodePlacement `json:"nodes,omitempty" gorm:"-"`
-	// RunningReplicas and DesiredReplicas are a cluster app's task counts as Swarm reports them.
 	// Transient, and nil when the swarm could not be asked, so the UI can tell unknown from zero.
 	RunningReplicas *uint64 `json:"running_replicas,omitempty" gorm:"-"`
 	DesiredReplicas *uint64 `json:"desired_replicas,omitempty" gorm:"-"`
 
-	// Cluster runtime. "container" (default) is a single container on plain Docker; "service"
-	// runs a replicated Swarm service on the workspace overlay when cluster mode is enabled.
 	// Replicas, PlacementConstraints and UpdateConfig apply only to the service runtime.
 	RuntimeKind          RuntimeKind          `json:"runtime_kind" gorm:"not null;default:container"`
 	Replicas             int                  `json:"replicas" gorm:"not null;default:1"`
 	PlacementConstraints []string             `json:"placement_constraints,omitempty" gorm:"serializer:json"`
 	UpdateConfig         *ServiceUpdateConfig `json:"update_config,omitempty" gorm:"serializer:json"`
 
-	// Icon is an optional logo for the app (a URL or an "mdi-…" class) shown in
-	// the UI. Set from a marketplace template on install; empty for ad-hoc apps,
-	// which fall back to a generated avatar.
+	// Empty for ad-hoc apps, which fall back to a generated avatar.
 	Icon string `json:"icon,omitempty"`
 
-	// Image source. Image is the repository (e.g. "nginx", "ghcr.io/org/app");
-	// Tag is optional and defaults to "latest" when composing the pull ref.
+	// Tag defaults to "latest" when composing the pull ref.
 	Image string `json:"image"`
 	Tag   string `json:"tag,omitempty"`
 
 	GitRepo string `json:"git_repo,omitempty"`
 	GitRef  string `json:"git_ref,omitempty"`
 
-	// Build config (git source only). BuildMethod selects auto/dockerfile/buildpack; Builder
-	// overrides the buildpack builder image; Buildpacks pins extras; BuildEnv supplies build
-	// arguments. All are ignored for image-source apps.
+	// Git source only; ignored for image-source apps.
 	BuildMethod AppBuildMethod    `json:"build_method,omitempty" gorm:"not null;default:auto"`
 	Builder     string            `json:"builder,omitempty"`
 	Buildpacks  []string          `json:"buildpacks,omitempty" gorm:"serializer:json"`
 	BuildEnv    map[string]string `json:"build_env,omitempty" gorm:"serializer:json"`
 
-	// CacheGeneration names the app's current build cache; bumping it is what "invalidate the build
-	// cache" does. It is part of the registry cache ref, so a bump points builds at a ref that does
-	// not exist yet rather than deleting anything.
+	// Part of the registry cache ref, so a bump points builds at a new ref rather than deleting anything.
 	CacheGeneration uint `json:"cache_generation" gorm:"not null;default:0"`
-	// CacheBuiltGeneration is the generation the last successful build produced. While it trails
-	// CacheGeneration the next build is forced cold — the only way to reach a runner whose cache is
-	// its local daemon and has no ref to rotate.
+	// While it trails CacheGeneration the next build is forced cold, for runners whose cache has no ref.
 	CacheBuiltGeneration uint `json:"cache_built_generation" gorm:"not null;default:0"`
 
-	// Credentials. RegistryID selects a stored registry credential used to pull
-	// private images; GitRepositoryID selects a stored Git credential used to
-	// clone private repos. Both nil = anonymous (public) source.
+	// Both nil means an anonymous (public) source.
 	RegistryID      *uint `json:"registry_id,omitempty" gorm:"index"`
 	GitRepositoryID *uint `json:"git_repository_id,omitempty" gorm:"index"`
 
-	// StackID optionally groups the app under a Stack (nil = ungrouped). When
-	// set, the stack's DockerName is applied to the app's containers as the
-	// Docker Compose project label.
+	// The stack's DockerName becomes the Docker Compose project label on the app's containers.
 	StackID *uint `json:"stack_id,omitempty" gorm:"index"`
 
-	// TemplateInstallID links the app back to the marketplace template install it
-	// was created from (nil = not installed from a template). Lets the UI show
-	// provenance ("installed from <template>") and jump to the install.
 	TemplateInstallID *uint `json:"template_install_id,omitempty" gorm:"index"`
 
-	// OfficialTemplate marks an app created from an *official* marketplace template. Set by the
-	// platform at install time, never by user input: it is the trust boundary for the
-	// AllowOfficialImageUser plan capability.
+	// Set by the platform, never user input: it is the trust boundary for AllowOfficialImageUser.
 	OfficialTemplate bool `json:"official_template" gorm:"not null;default:false"`
 
-	// Metadata holds free-form labels (provenance, grouping, declarative/GitOps).
 	// Keys under the reserved "miabi.io/" prefix are platform-managed.
 	Metadata Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
 
-	// Annotations holds free-form, non-identifying metadata (the manifest's metadata.annotations).
-	// Unlike Metadata it is never used for selection or grouping and carries no reserved keys.
-	// Persisted as JSON.
+	// Never used for selection or grouping, and carries no reserved keys.
 	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
 
-	// ContainerLabels are user-defined Docker labels stamped onto the app's container(s) at
-	// deploy time, for label-driven tools. Keys under Miabi's reserved prefixes (io.miabi.*,
-	// miabi.*, com.docker.*) are stripped so they cannot spoof platform labels. Needs a redeploy.
+	// Reserved prefixes (io.miabi.*, miabi.*, com.docker.*) are stripped so they cannot spoof platform labels.
 	ContainerLabels map[string]string `json:"container_labels,omitempty" gorm:"serializer:json"`
-	// ReloadPolicy decides what a mounted config's content change does: restart
-	// (default) redeploys the app, none leaves it running for apps that watch
-	// their own config file.
+	// none leaves the app running, for apps that watch their own config file.
 	ReloadPolicy string `json:"reload_policy,omitempty"`
 
 	Command     []string   `json:"command,omitempty" gorm:"serializer:json"`
@@ -457,38 +377,23 @@ type Application struct {
 	Port        int        `json:"port,omitempty"`                          // primary container port
 	MemoryBytes int64      `json:"memory_bytes"`                            // 0 = unlimited
 	NanoCPUs    int64      `json:"nano_cpus"`                               // 0 = unlimited; 1 core = 1e9
-	// GPUCount is the number of whole GPU units this app requests (0 = none). It
-	// is declarative on the app but only consumes quota while the app is running,
-	// and is resolved to concrete devices on the app's node at each deploy.
+	// Consumes quota only while running; resolved to concrete devices on the node at each deploy.
 	GPUCount int `json:"gpu_count" gorm:"not null;default:0"`
-	// GPUKind narrows the request to a vendor or model when set ("nvidia",
-	// "NVIDIA A100-…"); empty = any enabled GPU on the app's node.
+	// Empty means any enabled GPU on the app's node.
 	GPUKind string `json:"gpu_kind,omitempty"`
-	// RunAsUser overrides the account the container runs as ("uid", "uid:gid", "name", "name:group"),
-	// like `docker run --user`. Empty keeps the image's own user. Under the restricted security
-	// profile it must be a non-root numeric uid, and it replaces the platform UID rather than
-	// escaping it. Managed volumes are chowned to it on deploy; needs a redeploy.
+	// Under the restricted profile it must be a non-root numeric uid; managed volumes are chowned to it.
 	RunAsUser string `json:"run_as_user,omitempty"`
-	// AddCapabilities and Devices are kernel privileges beyond the container
-	// default, allow-listed in capabilities.go and gated on the workspace. Empty
-	// grants nothing; both need a redeploy.
+	// Allow-listed in capabilities.go and gated on the workspace; both need a redeploy.
 	AddCapabilities []string `json:"add_capabilities,omitempty" gorm:"serializer:json"`
 	Devices         []string `json:"devices,omitempty" gorm:"serializer:json"`
-	// ReadOnlyRootFilesystem, NoNewPrivileges and DropCapabilities (ALL for every one) harden the container
-	// on top of the workspace's security profile, which they can tighten but never loosen. Need a redeploy.
-	ReadOnlyRootFilesystem bool     `json:"read_only_root_filesystem" gorm:"not null;default:false"`
-	NoNewPrivileges        bool     `json:"no_new_privileges" gorm:"not null;default:false"`
-	DropCapabilities       []string `json:"drop_capabilities,omitempty" gorm:"serializer:json"`
-	// RestartPolicy is the Docker restart policy for the app's container.
-	// Defaults to unless-stopped (the platform's historical behavior).
-	RestartPolicy RestartPolicy `json:"restart_policy" gorm:"not null;default:unless-stopped"`
-	// ImagePullPolicy decides whether a deploy pulls the image. Defaults to
-	// always (the platform's historical behavior of fetching the tag each deploy).
-	ImagePullPolicy ImagePullPolicy `json:"image_pull_policy" gorm:"not null;default:always"`
+	// They can tighten the workspace's security profile but never loosen it.
+	ReadOnlyRootFilesystem bool            `json:"read_only_root_filesystem" gorm:"not null;default:false"`
+	NoNewPrivileges        bool            `json:"no_new_privileges" gorm:"not null;default:false"`
+	DropCapabilities       []string        `json:"drop_capabilities,omitempty" gorm:"serializer:json"`
+	RestartPolicy          RestartPolicy   `json:"restart_policy" gorm:"not null;default:unless-stopped"`
+	ImagePullPolicy        ImagePullPolicy `json:"image_pull_policy" gorm:"not null;default:always"`
 
-	// Healthcheck. image (default) keeps the image's own HEALTHCHECK; none disables every check; http
-	// probes HealthcheckHTTPPath on HealthcheckPort (0 = the app's primary port); command runs
-	// HealthcheckCommand via the shell. With http or command a deploy waits for healthy before going live.
+	// With http or command a deploy waits for healthy; HealthcheckPort 0 means the app's primary port.
 	HealthcheckType               HealthcheckType `json:"healthcheck_type" gorm:"not null;default:image"`
 	HealthcheckHTTPPath           string          `json:"healthcheck_http_path"`
 	HealthcheckPort               int             `json:"healthcheck_port"`
@@ -498,52 +403,31 @@ type Application struct {
 	HealthcheckRetries            int             `json:"healthcheck_retries" gorm:"not null;default:3"`
 	HealthcheckStartPeriodSeconds int             `json:"healthcheck_start_period_seconds" gorm:"not null;default:0"`
 
-	// Imported marks an app adopted from a pre-existing (hand-run / compose)
-	// container rather than created through Miabi. It clears on the first
-	// native deploy, which recreates the container under Miabi conventions.
+	// Clears on the first native deploy, which recreates the container under Miabi conventions.
 	Imported bool `json:"imported" gorm:"not null;default:false"`
 
-	// ExternalLabel is the stable DNS label used for one-click external access
-	// (`<label>.<base-domain>`). Generated once on first expose (default
-	// `<slug>-<token>`) so the public URL survives renames/redeploys.
+	// Generated once on first expose so the public URL survives renames and redeploys.
 	ExternalLabel string `json:"external_label,omitempty" gorm:"index"`
 
 	Status           AppStatus `json:"status" gorm:"not null;default:created"`
 	CurrentReleaseID *uint     `json:"current_release_id"`
-	// RedeployRequired is set when config changes while the app is stopped (the
-	// running container, if any, is stale). Start/Restart then redeploy instead
-	// of reusing the old container, and any successful deploy clears it.
+	// Start/Restart then redeploy instead of reusing the stale container; any successful deploy clears it.
 	RedeployRequired bool `json:"redeploy_required" gorm:"not null;default:false"`
 
-	// Last lifecycle action — start, stop or restart — and who asked for it. One triple rather than
-	// a timestamp per verb: they answer the same question ("has this been bounced lately, by whom"),
-	// and the one that matters is always the most recent. Deploys are NOT recorded here; they have
-	// their own history, and folding them in would make a restart look like a release.
-	//
-	// Nil on an app nothing has been done to since the columns existed, which reads as "unknown"
-	// rather than "never" — there is no backfill for actions already taken.
+	// Deploys are not recorded here, or a restart would look like a release; nil means unknown, not never.
 	LastLifecycleAt     *time.Time `json:"last_lifecycle_at,omitempty" gorm:"index"`
 	LastLifecycleAction string     `json:"last_lifecycle_action,omitempty"`
 	LastLifecycleByID   *uint      `json:"last_lifecycle_by_id,omitempty" gorm:"index"`
 
-	// DeployStrategy is the app's default rollout method, applied when a deploy
-	// does not specify one. See DeployStrategy constants.
 	DeployStrategy DeployStrategy `json:"deploy_strategy" gorm:"not null;default:rolling"`
 
-	// ReconcilePolicy overrides the platform's control-manager mode for this app: leave it out of
-	// reconciliation, report it without acting, or let it be redeployed in place. Inherit follows the platform.
 	ReconcilePolicy ReconcilePolicy `json:"reconcile_policy" gorm:"not null;default:inherit"`
 
-	// Canary tuning (used when DeployStrategy is canary or a deploy overrides to
-	// canary). The platform starts at CanaryInitialWeight and adds
-	// CanaryStepWeight every CanaryStepIntervalSeconds until it reaches 100%.
 	CanaryInitialWeight       int `json:"canary_initial_weight" gorm:"not null;default:10"`
 	CanaryStepWeight          int `json:"canary_step_weight" gorm:"not null;default:20"`
 	CanaryStepIntervalSeconds int `json:"canary_step_interval_seconds" gorm:"not null;default:60"`
 
-	// Canary live state. When CanaryReleaseID is set, a canary container runs alongside the
-	// stable release and the proxy sends CanaryWeight percent of traffic to it. Cleared on
-	// promote/abort and superseded by any normal deploy.
+	// Cleared on promote/abort and superseded by any normal deploy.
 	CanaryReleaseID *uint `json:"canary_release_id,omitempty"`
 	CanaryWeight    int   `json:"canary_weight" gorm:"not null;default:0"`
 
@@ -567,10 +451,7 @@ type Application struct {
 	GitRepository *GitRepository `json:"-" gorm:"foreignKey:GitRepositoryID;constraint:OnDelete:SET NULL"`
 }
 
-// ImageRef composes the effective pull reference from Image and Tag; tagOverride wins when
-// non-empty. Without an override, a digest pinned through MetaDigest wins over Tag, so the node
-// runs exactly that image. An image already carrying a tag or digest is used verbatim, otherwise
-// the tag (or "latest") is appended.
+// Without an override, a digest pinned via MetaDigest wins over Tag, so the node runs exactly that image.
 func (a *Application) ImageRef(tagOverride string) string {
 	if d := a.Metadata[MetaDigest]; tagOverride == "" && d != "" && a.Image != "" && !strings.Contains(a.Image, "@") {
 		return a.Image + "@" + d
@@ -578,8 +459,6 @@ func (a *Application) ImageRef(tagOverride string) string {
 	return ComposeImageRef(a.Image, firstNonEmpty(tagOverride, a.Tag))
 }
 
-// ComposeImageRef appends tag (defaulting to "latest") to a bare image, leaving
-// refs that already specify a tag or digest untouched.
 func ComposeImageRef(image, tag string) string {
 	if image == "" {
 		return image
@@ -605,9 +484,7 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// SplitImageRef is the inverse of ComposeImageRef: it splits a pull reference
-// into its repository and tag (e.g. "ghcr.io/org/app:v2" -> "ghcr.io/org/app",
-// "v2"). A digest-pinned ref is returned as the image with an empty tag.
+// A digest-pinned ref is returned as the image with an empty tag.
 func SplitImageRef(ref string) (image, tag string) {
 	if ref == "" {
 		return "", ""
@@ -642,8 +519,6 @@ type AppMount struct {
 	ReadOnly  bool   `json:"read_only,omitempty"`
 }
 
-// AppEnvVar is an environment variable for an application. Secret values are
-// encrypted at rest.
 type AppEnvVar struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	ApplicationID uint      `json:"application_id" gorm:"index:idx_env_app_key,unique;not null"`
@@ -728,8 +603,7 @@ type Release struct {
 	Version       int    `json:"version" gorm:"index:idx_release_app_version,unique;not null"`
 	Image         string `json:"image" gorm:"not null"`
 	ContainerID   string `json:"container_id"`
-	// RuntimeKind is the runtime the release ran under, so ContainerID is read as a container or a
-	// service id when the release is retired.
+	// Tells whether ContainerID is a container or a service id when the release is retired.
 	RuntimeKind   RuntimeKind `json:"runtime_kind" gorm:"size:16"`
 	Active        bool        `json:"active" gorm:"not null;default:false"`
 	Adopted       bool        `json:"adopted" gorm:"not null;default:false"`

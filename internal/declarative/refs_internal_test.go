@@ -21,8 +21,7 @@ package declarative
 
 import "testing"
 
-// The check's field lists must match what the renderer resolves, or a dry run would reject a reference
-// apply accepts (or wave through one it rejects).
+// Must match what the renderer resolves, or a dry run disagrees with apply.
 func TestRefFieldsMatchRenderer(t *testing.T) {
 	r := NewRenderer(RenderContext{
 		Databases: map[string]ConnView{"db": {Host: "h"}},

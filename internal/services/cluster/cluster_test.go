@@ -29,8 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// fakeDocker stubs the swarm surface of docker.Client; embedding the interface
-// satisfies the unused methods (which the cluster service never calls here).
+// Embedding the interface satisfies methods the cluster service never calls here.
 type fakeDocker struct {
 	docker.Client
 	info         docker.SwarmInfo
@@ -194,9 +193,7 @@ func TestEnableInitializesSwarm(t *testing.T) {
 	if !status.Enabled || !s.CapCluster() {
 		t.Fatalf("after enable: status.Enabled=%v CapCluster=%v, want true/true", status.Enabled, s.CapCluster())
 	}
-	// Enabling cluster mode pre-creates the shared ingress overlay so a gateway —
-	// Miabi-managed or user-attached — has a network to join immediately, and the
-	// status advertises its name for the "attach your own proxy" hint.
+	// The overlay gives any gateway a network to join immediately.
 	if len(fd.overlaysMade) != 1 || fd.overlaysMade[0] != node.IngressOverlay {
 		t.Fatalf("ingress overlay not pre-created: got %v, want [%s]", fd.overlaysMade, node.IngressOverlay)
 	}

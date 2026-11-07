@@ -34,8 +34,7 @@ const (
 	MaxAdminPasswordBytes = 72
 )
 
-// CheckAdminPassword reports why pw cannot be the first admin's password, so setup fails before
-// anything is created rather than leaving a control plane that cannot start.
+// Setup fails before anything is created rather than leaving a control plane that cannot start.
 func CheckAdminPassword(pw string) error {
 	if n := utf8.RuneCountInString(pw); n < MinAdminPasswordLength {
 		return fmt.Errorf("%s must be at least %d characters (got %d)", AdminPasswordEnv, MinAdminPasswordLength, n)

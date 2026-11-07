@@ -49,8 +49,7 @@ func authTestService(t *testing.T) *Service {
 			t.Fatalf("seed user: %v", err)
 		}
 	}
-	// GORM applies the `default:true` for a zero-value Active at insert, so force
-	// the disabled account off explicitly.
+	// GORM applies default:true to a zero-value Active at insert, so disable explicitly.
 	if err := db.Model(&models.User{}).Where("username = ?", "off").Update("active", false).Error; err != nil {
 		t.Fatalf("disable user: %v", err)
 	}

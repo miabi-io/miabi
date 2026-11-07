@@ -25,9 +25,7 @@ import (
 	"testing"
 )
 
-// The finding: the browse API took a repository name from a query parameter and joined it under the
-// caller's namespace, so a name carrying `..` addressed another workspace's repository. Every one of
-// these must be refused before it reaches a URL.
+// Regression: a `..` repository name addressed another workspace's repository.
 func TestRepoPathRefusesTraversal(t *testing.T) {
 	for _, name := range []string{
 		"../ws_2/app",
@@ -58,8 +56,7 @@ func TestRepoPathRefusesTraversal(t *testing.T) {
 	}
 }
 
-// The names the platform and its users actually produce must still work — app handles are slugs, and
-// a repository may be nested.
+// App handles are slugs, and a repository may be nested.
 func TestRepoPathAcceptsRealNames(t *testing.T) {
 	for name, want := range map[string]string{
 		"app":            "ws_7/app",
@@ -85,9 +82,7 @@ func TestRepoPathAcceptsRealNames(t *testing.T) {
 	}
 }
 
-// The invariant that matters: whatever repoPath accepts addresses the CALLER's namespace. Leading
-// and trailing slashes are trimmed rather than honoured, so a name that looks absolute resolves
-// inside the workspace (and 404s there) instead of climbing out of it.
+// Leading/trailing slashes are trimmed, so a name that looks absolute stays inside the workspace.
 func TestRepoPathAlwaysStaysInTheNamespace(t *testing.T) {
 	for _, name := range []string{
 		"app", "team/app", "/ws_2/app", "//ws_2/app", "app/", "  app  ", "ws_2/app",
@@ -128,9 +123,7 @@ func TestValidateTag(t *testing.T) {
 	}
 }
 
-// Escaping is the second line, not the first: it keeps a stray slash from opening a path of its own.
-// It deliberately does NOT neutralise `..` — url.PathEscape leaves a dot segment alone — which is
-// why the grammar check runs on every caller-supplied name.
+// Escaping deliberately does not neutralise `..`, which is why the grammar check runs on every name.
 func TestEscapePath(t *testing.T) {
 	for in, want := range map[string]string{
 		"ws_1/app":     "ws_1/app",

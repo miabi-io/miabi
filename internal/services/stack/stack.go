@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package stack groups related applications in a workspace. A stack carries a user-facing name and a
-// platform-managed Docker Compose project name, and member containers are labeled with it so Docker tooling
-// groups them. Stacks are purely organizational — deleting one detaches its apps, which keep running.
+// Package stack groups apps organizationally; deleting a stack detaches its apps, which keep running.
 package stack
 
 import (
@@ -43,13 +41,7 @@ import (
 var (
 	ErrNameRequired = errors.New("stack name is required")
 	ErrNameTaken    = errors.New("a stack with this name already exists")
-	// ErrNameImmutable rejects renaming a stack. The name is the stack's identity,
-	// not a label: DockerName (the Compose project name stamped into every member
-	// container's labels), the per-stack Docker network and any volumes provisioned
-	// by an import are all derived from it at creation and never re-derived, and a
-	// GitOps bundle matches stacks by name — so a rename silently detaches the
-	// stack from its own resources and makes an apply create a duplicate. Use
-	// DisplayName for a label that can change.
+	// The name derives DockerName, network and volumes, and GitOps matches on it; use DisplayName for a label.
 	ErrNameImmutable   = errors.New("a stack's name cannot be changed; edit its display name instead")
 	ErrNotFound        = errors.New("stack not found")
 	ErrAppNotFound     = errors.New("application not found in workspace")
@@ -59,9 +51,7 @@ var (
 	ErrEnvVarNotFound  = errors.New("environment variable not found")
 )
 
-// AppService is the slice of *application.Service the stack service drives:
-// per-app container lifecycle, deploy, delete, create (for compose import), and
-// env management. An interface keeps the stack service unit-testable with a fake.
+// An interface keeps the stack service unit-testable with a fake.
 type AppService interface {
 	Start(ctx context.Context, app *models.Application) (*models.Deployment, error)
 	Stop(ctx context.Context, app *models.Application) error
@@ -75,29 +65,19 @@ type AppService interface {
 	AttachVolume(app *models.Application, volumeID uint, path string) error
 }
 
-// VolumeCreator provisions managed volumes, used by compose import to back the
-// named volumes a compose file declares. Satisfied by *storage.Service.
 type VolumeCreator interface {
 	Create(ctx context.Context, workspaceID, serverID uint, name string, sizeBytes int64, meta, annotations models.Metadata) (*models.Volume, error)
 }
 
-// NetworkManager creates/removes the Docker network that backs a stack's
-// service-name discovery. Satisfied by docker.Client.
 type NetworkManager interface {
 	EnsureNetwork(ctx context.Context, name string) (string, error)
 	RemoveNetwork(ctx context.Context, name string) error
-	// EnsureNetworkSpec / ListNetworks let the subnet allocator drive network
-	// creation (satisfies netalloc.NetworkProvisioner).
 	EnsureNetworkSpec(ctx context.Context, spec docker.NetworkSpec) (string, error)
 	ListNetworks(ctx context.Context) ([]docker.Network, error)
 }
 
-// PortRequester files admin-validated host port-binding requests, used by
-// compose import to capture published ports. Satisfied by *portbinding.Service.
 type PortRequester interface {
 	Request(workspaceID, userID uint, in portbinding.RequestInput) (*models.PortBinding, error)
-	// RequestImport files a binding during import, tolerating host-port conflicts
-	// (filed pending) and returning the conflicting owner instead of failing.
 	RequestImport(workspaceID, userID uint, in portbinding.RequestInput) (*models.PortBinding, string, error)
 }
 
@@ -117,21 +97,15 @@ func NewService(repo *repositories.StackRepository, apps *repositories.Applicati
 	return &Service{repo: repo, apps: apps, env: env, events: events, app: app, volumes: volumes, docker: docker, ports: ports}
 }
 
-// SetAllocator wires the subnet allocator so a stack's network gets a Miabi-carved
-// subnet instead of Docker's default pool (nil-safe; nil = Docker default pool).
+// Nil falls back to Docker's default address pool.
 func (s *Service) SetAllocator(a *netalloc.Service) { s.alloc = a }
 
 type Input struct {
-	// Name is the desired unique slug handle; it is normalized to canonical slug
-	// form. DisplayName is the free-text label (falls back to Name when blank).
 	Name        string
 	DisplayName string
 	Description string
-	// Metadata is the stack's initial metadata. Callers may set reserved
-	// "miabi.io/" keys (provenance); a missing managed-by defaults to "user".
-	Metadata models.Metadata
-	// Annotations is the stack's initial annotations: free-form descriptive notes
-	// with no reserved keys (the manifest's metadata.annotations).
+	// Callers may set reserved "miabi.io/" provenance keys; a missing managed-by defaults to "user".
+	Metadata    models.Metadata
 	Annotations models.Metadata
 	// ClusterID is the location the stack's members run in; 0 is the default cluster.
 	ClusterID uint
@@ -157,16 +131,12 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if err != nil {
 		return nil, err
 	}
-	// Per-stack network gives member apps service-name DNS, isolated from other
-	// stacks. Derived from the (already unique) DockerName.
 	dockerNetwork := "mb-stack-" + dockerName
 	if s.docker != nil {
 		spec := docker.NetworkSpec{Name: dockerNetwork}
 		var err error
 		if s.alloc != nil {
-			// Carve a subnet from the Miabi pool so we don't exhaust Docker's small
-			// built-in default-address-pools ("all predefined address pools have been
-			// fully subnetted").
+			// A Miabi-carved subnet avoids exhausting Docker's small built-in default-address-pools.
 			_, _, err = s.alloc.EnsureManaged(ctx, s.docker, spec, 0, models.NetAllocKindStack)
 		} else {
 			_, err = s.docker.EnsureNetworkSpec(ctx, spec)
@@ -195,8 +165,6 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	return st, nil
 }
 
-// uniqueDockerName derives a Compose-safe project name (`ws{id}-{slug}`),
-// suffixing on collision so it stays globally unique.
 func (s *Service) uniqueDockerName(workspaceID uint, name string) (string, error) {
 	base := fmt.Sprintf("ws%d-%s", workspaceID, slug.Make(name, "stack"))
 	return slug.Unique(base, base, func(candidate string) (bool, error) {
@@ -222,12 +190,8 @@ func (s *Service) AppCount(stackID uint) (int64, error) {
 }
 
 type UpdateInput struct {
-	// Name is accepted only to be checked: passing the stack's current name is a
-	// no-op (so a client that PATCHes the whole object back still works), and
-	// passing a different one is refused. See ErrNameImmutable.
-	Name *string
-	// DisplayName is the free-text label shown in the console. This is the field
-	// that is meant to change.
+	// The current name is a no-op so whole-object PATCH clients work; a different one is refused.
+	Name        *string
 	DisplayName *string
 	Description *string
 	// Annotations, when non-nil, replaces the stack's annotations wholesale.
@@ -239,8 +203,6 @@ func (s *Service) Update(workspaceID, id uint, in UpdateInput) (*models.Stack, e
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	// Compared against the stored value so a no-op passes through: only an actual
-	// rename is refused.
 	if in.Name != nil {
 		name := slug.Make(*in.Name, "")
 		if name == "" {
@@ -269,9 +231,6 @@ func (s *Service) Update(workspaceID, id uint, in UpdateInput) (*models.Stack, e
 	return st, nil
 }
 
-// Delete removes a stack. By default its applications are detached and keep
-// running; when withApps is set, the member applications (and their containers)
-// are deleted too.
 func (s *Service) Delete(ctx context.Context, workspaceID, id uint, withApps bool) error {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, id)
 	if err != nil {
@@ -289,8 +248,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, withApps boo
 	if err := s.repo.Delete(st.ID); err != nil {
 		return err
 	}
-	// Best-effort: removing the network fails while detached apps still run on
-	// it; it is reclaimed once those containers stop or redeploy elsewhere.
+	// Removing the network fails while detached apps still run on it; it's reclaimed once they leave.
 	if s.docker != nil && st.DockerNetwork != "" {
 		_ = s.docker.RemoveNetwork(ctx, st.DockerNetwork)
 		if s.alloc != nil {
@@ -300,8 +258,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, withApps boo
 	return nil
 }
 
-// AddApp assigns an application (in the same workspace) to a stack. An app
-// already in a different stack is rejected rather than silently moved.
+// An app already in a different stack is rejected rather than silently moved.
 func (s *Service) AddApp(workspaceID, stackID, appID uint) (*models.Stack, error) {
 	st, err := s.repo.FindInWorkspace(workspaceID, stackID)
 	if err != nil {
@@ -321,8 +278,6 @@ func (s *Service) AddApp(workspaceID, stackID, appID uint) (*models.Stack, error
 	return s.repo.FindInWorkspaceWithApps(workspaceID, st.ID)
 }
 
-// RemoveApp clears an application's stack assignment (no-op if it is not a
-// member of this stack).
 func (s *Service) RemoveApp(workspaceID, stackID, appID uint) (*models.Stack, error) {
 	st, err := s.repo.FindInWorkspace(workspaceID, stackID)
 	if err != nil {
@@ -350,8 +305,6 @@ const (
 	ActionRestart Action = "restart"
 )
 
-// AppActionResult reports the outcome of a lifecycle action for one member app.
-// Status is "ok" (acted), "skipped" (no active release to act on), or "failed".
 type AppActionResult struct {
 	AppID   uint   `json:"app_id"`
 	AppName string `json:"app_name"`
@@ -359,9 +312,7 @@ type AppActionResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// Lifecycle applies a start, stop or restart action to every application in the stack. Best-effort: an app
-// with no active release is skipped and one that errors is recorded as failed, but neither aborts the others.
-// When rolling is set, each app is waited until running before the next, so the stack is never fully down.
+// Lifecycle is best-effort per app; with rolling, each app runs before the next so the stack never fully stops.
 func (s *Service) Lifecycle(ctx context.Context, workspaceID, stackID uint, action Action, rolling bool) ([]AppActionResult, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -370,9 +321,7 @@ func (s *Service) Lifecycle(ctx context.Context, workspaceID, stackID uint, acti
 	return s.applyLifecycle(ctx, st.Apps, action, rolling)
 }
 
-// applyLifecycle runs the action over the given apps, classifying each result.
-// Split out from Lifecycle so the per-app outcome logic is unit-testable
-// without a database.
+// Split out so per-app outcome logic is testable without a database.
 func (s *Service) applyLifecycle(ctx context.Context, apps []models.Application, action Action, rolling bool) ([]AppActionResult, error) {
 	results := make([]AppActionResult, 0, len(apps))
 	for i := range apps {
@@ -414,9 +363,6 @@ type DeployResult struct {
 	Error        string `json:"error,omitempty"`
 }
 
-// DeployAll enqueues a deploy for every application in the stack, returning a
-// per-app summary. Best-effort: one app's failure to enqueue doesn't stop the
-// others.
 func (s *Service) DeployAll(workspaceID, stackID uint) ([]DeployResult, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -425,8 +371,6 @@ func (s *Service) DeployAll(workspaceID, stackID uint) ([]DeployResult, error) {
 	return s.deployApps(st.Apps, false), nil
 }
 
-// deployApps enqueues a deploy per application, optionally skipping those already
-// current. Best-effort: one app's failure to enqueue doesn't stop the others.
 func (s *Service) deployApps(apps []models.Application, onlyOutdated bool) []DeployResult {
 	results := make([]DeployResult, 0, len(apps))
 	for i := range apps {
@@ -446,10 +390,7 @@ func (s *Service) deployApps(apps []models.Application, onlyOutdated bool) []Dep
 	return results
 }
 
-// DeployOutdated enqueues a deploy for only the member applications whose
-// configuration has moved on since their last one. Preferred over DeployAll after
-// a shared env change: it leaves apps that are already current — and apps never
-// deployed at all — alone, rather than restarting a whole stack to fix part of it.
+// DeployOutdated leaves current and never-deployed apps alone, rather than restarting the whole stack.
 func (s *Service) DeployOutdated(workspaceID, stackID uint) ([]DeployResult, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -502,8 +443,6 @@ func (s *Service) Events(workspaceID, stackID uint, limit int) ([]models.AppEven
 	return s.events.ListByApps(ids, limit)
 }
 
-// ListEnvVars returns the stack's shared env vars (secret values masked), each
-// annotated with the member applications that shadow it.
 func (s *Service) ListEnvVars(workspaceID, stackID uint) ([]models.StackEnvVar, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -523,9 +462,7 @@ func (s *Service) ListEnvVars(workspaceID, stackID uint) ([]models.StackEnvVar, 
 	return vars, nil
 }
 
-// overridesFor maps each key to the member applications that define it themselves.
-// An app-level variable wins over the stack's, so without this a shared value can
-// be set, seen in the list, and quietly ignored by the app it was meant for.
+// An app-level variable wins, so without this a shared value is set, listed, and quietly ignored.
 func (s *Service) overridesFor(st *models.Stack) map[string][]string {
 	if len(st.Apps) == 0 {
 		return nil
@@ -553,9 +490,7 @@ func (s *Service) overridesFor(st *models.Stack) map[string][]string {
 	return out
 }
 
-// RevealEnvVar returns a shared env var's decrypted value. Mirrors the per-app
-// reveal: list and set are lower-privileged, but reading a secret's plaintext is
-// gated to workspace admins by the route and audited by the handler.
+// Reading plaintext is gated to workspace admins by the route and audited by the handler.
 func (s *Service) RevealEnvVar(workspaceID, stackID uint, key string) (string, error) {
 	if _, err := s.repo.FindInWorkspace(workspaceID, stackID); err != nil {
 		return "", ErrNotFound
@@ -575,8 +510,6 @@ func (s *Service) RevealEnvVar(workspaceID, stackID uint, key string) (string, e
 	return "", ErrEnvVarNotFound
 }
 
-// SetEnvVar upserts a shared env var on the stack (secret values encrypted) and
-// returns how many member applications it left needing a redeploy.
 func (s *Service) SetEnvVar(workspaceID, stackID uint, key, value string, isSecret bool) (int, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -600,17 +533,10 @@ func (s *Service) SetEnvVar(workspaceID, stackID uint, key, value string, isSecr
 	return s.markMembersStale(st), nil
 }
 
-// markMembersStale flags every already-deployed member application as needing a
-// redeploy, and reports how many it flagged.
-//
-// A stack env var is injected into each member's container at deploy time, so
-// changing one leaves every running member behind its own configuration. Without
-// this the drift is invisible until something unrelated triggers a deploy.
+// Stack env is injected at deploy, so a change leaves running members silently behind without this.
 func (s *Service) markMembersStale(st *models.Stack) int {
 	n := 0
 	for i := range st.Apps {
-		// An app that has never been deployed has no stale container to replace;
-		// MarkRedeployRequired reports that by marking nothing.
 		if marked, err := s.app.MarkRedeployRequired(&st.Apps[i]); err == nil && marked {
 			n++
 		}
@@ -618,9 +544,6 @@ func (s *Service) markMembersStale(st *models.Stack) int {
 	return n
 }
 
-// ImportEnvVars bulk-upserts shared env vars from .env-style content, encrypting
-// them when isSecret. Returns the number set and how many member applications
-// were left needing a redeploy.
 func (s *Service) ImportEnvVars(workspaceID, stackID uint, content string, isSecret bool) (imported, stale int, err error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {
@@ -646,8 +569,6 @@ func (s *Service) ImportEnvVars(workspaceID, stackID uint, content string, isSec
 	return len(pairs), s.markMembersStale(st), nil
 }
 
-// DeleteEnvVar removes a shared env var from the stack and returns how many
-// member applications it left needing a redeploy.
 func (s *Service) DeleteEnvVar(workspaceID, stackID uint, key string) (int, error) {
 	st, err := s.repo.FindInWorkspaceWithApps(workspaceID, stackID)
 	if err != nil {

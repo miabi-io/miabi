@@ -35,9 +35,7 @@ func NewGitRepoRepository(db *gorm.DB) *GitRepoRepository { return &GitRepoRepos
 func (r *GitRepoRepository) Create(g *models.GitRepository) error { return r.db.Create(g).Error }
 func (r *GitRepoRepository) Update(g *models.GitRepository) error { return r.db.Save(g).Error }
 
-// SetConnection records the outcome of a reachability check. A targeted update
-// rather than a Save: the caller's struct may have been stripped of its secret
-// for a response, and Save would write that emptiness back.
+// A targeted update: the caller's struct may be stripped of its secret, and Save would write that back.
 func (r *GitRepoRepository) SetConnection(id uint, status models.GitConnectionStatus, reason string, at time.Time) error {
 	return r.db.Model(&models.GitRepository{}).Where("id = ?", id).
 		Updates(map[string]any{
@@ -64,8 +62,7 @@ func (r *GitRepoRepository) ListByWorkspace(workspaceID uint) ([]models.GitRepos
 	return repos, err
 }
 
-// FindByName resolves a repository by its workspace-unique handle. Names are
-// immutable, which is what makes them safe for another resource to reference.
+// Names are immutable, which makes them safe for other resources to reference.
 func (r *GitRepoRepository) FindByName(workspaceID uint, name string) (*models.GitRepository, error) {
 	var g models.GitRepository
 	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&g).Error; err != nil {

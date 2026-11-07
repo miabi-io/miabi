@@ -35,20 +35,16 @@ import (
 )
 
 const (
-	// analyticsGroup is the Redis consumer group shared by every worker, so each
-	// gateway event is rolled up exactly once regardless of worker count.
+	// Shared by every worker so each gateway event is rolled up exactly once.
 	analyticsGroup = "miabi-analytics"
-	// analyticsBucketGrace keeps the current (and just-past) minute open so
-	// late-arriving events still land in their bucket before it is flushed.
+	// Keeps the current and just-past minute open so late events still land in their bucket.
 	analyticsBucketGrace = 90 * time.Second
 	// analyticsRouteTTL bounds how stale the route→app reverse map may get.
 	analyticsRouteTTL    = time.Minute
 	analyticsStopTimeout = 10 * time.Second
 )
 
-// AnalyticsConsumer reads Goma Gateway's per-request event stream, rolls events into minute
-// buckets and persists closed buckets on an interval. It resolves each event's workspace from
-// the route name and its app from a cached route->app map. Holds no per-request rows and no PII.
+// AnalyticsConsumer rolls Goma's per-request event stream into minute buckets; it holds no per-request rows or PII.
 type AnalyticsConsumer struct {
 	rdb    *redis.Client
 	routes *repositories.RouteRepository
@@ -66,9 +62,7 @@ type AnalyticsConsumer struct {
 	routeLoaded time.Time
 }
 
-// NewAnalyticsConsumer wires the consumer. consumer is this worker's unique name within the group,
-// so pending-message ownership is per-worker. retentionDays is evaluated on each prune; nil
-// disables pruning. live is passed in rather than built here, so the window is configured once.
+// consumer must be unique within the group so pending-message ownership is per-worker; nil retentionDays disables pruning.
 func NewAnalyticsConsumer(rdb *redis.Client, routes *repositories.RouteRepository, store *repositories.AnalyticsRepository, stream, consumer string, flushEvery time.Duration, retentionDays func() int, live *analytics.LiveTracker) *AnalyticsConsumer {
 	if flushEvery <= 0 {
 		flushEvery = 15 * time.Second
@@ -85,9 +79,7 @@ func NewAnalyticsConsumer(rdb *redis.Client, routes *repositories.RouteRepositor
 	}
 }
 
-// Run consumes until ctx is cancelled, reading batches in one goroutine and flushing closed
-// buckets on a ticker in another. It returns only once the final flush completed, so a caller can
-// wait before closing the database — buckets live in memory until their minute closes.
+// Run returns only after the final flush, so a caller can wait before closing the database.
 func (c *AnalyticsConsumer) Run(ctx context.Context) {
 	if err := c.ensureGroup(ctx); err != nil {
 		logger.Warn("analytics: consumer group setup failed; analytics disabled", "error", err)
@@ -147,9 +139,7 @@ func (c *AnalyticsConsumer) Run(ctx context.Context) {
 	}
 }
 
-// Start runs the consumer in the background and returns a function that stops it and waits for the
-// final flush. Call it during shutdown, before closing the database. It gives up after
-// analyticsStopTimeout so a stuck flush can't block exit. Safe to call more than once.
+// Start returns a stop func that waits for the final flush (bounded by analyticsStopTimeout); call before closing the DB.
 func (c *AnalyticsConsumer) Start(ctx context.Context) func() {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -173,8 +163,6 @@ func (c *AnalyticsConsumer) Start(ctx context.Context) func() {
 	}
 }
 
-// ensureGroup creates the consumer group at the stream tail (MkStream), ignoring
-// the BUSYGROUP error when it already exists.
 func (c *AnalyticsConsumer) ensureGroup(ctx context.Context) error {
 	err := c.rdb.XGroupCreateMkStream(ctx, c.stream, analyticsGroup, "$").Err()
 	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
@@ -183,8 +171,6 @@ func (c *AnalyticsConsumer) ensureGroup(ctx context.Context) error {
 	return nil
 }
 
-// ingestMessage rolls one event into its bucket and reports the visitor sighting the caller should
-// record, if the event counts towards live visitors.
 func (c *AnalyticsConsumer) ingestMessage(msg redis.XMessage) (analytics.LiveVisit, bool) {
 	raw, ok := msg.Values[analytics.StreamEventField].(string)
 	if !ok || raw == "" {
@@ -204,17 +190,14 @@ func (c *AnalyticsConsumer) ingestMessage(msg redis.XMessage) (analytics.LiveVis
 	app := c.appFor(e.Route)
 	c.agg.Ingest(&e, ws, app)
 
-	// Live visitors counts people, so automated traffic is left out — a crawler
-	// sweeping the site shouldn't read as an audience.
+	// Bots are left out so a crawler sweeping the site doesn't read as an audience.
 	if e.VID == "" || analytics.IsBotUA(e.UA) {
 		return analytics.LiveVisit{}, false
 	}
 	return analytics.LiveVisit{Workspace: ws, App: app, VID: e.VID}, true
 }
 
-// appFor resolves a Goma route name to its application id via a short-lived cache
-// of every route's Goma name. A miss (unknown route) returns 0 — the rollup still
-// records workspace-level traffic, just without an app dimension.
+// An unknown route returns 0; the rollup still records workspace-level traffic.
 func (c *AnalyticsConsumer) appFor(gomaRoute string) uint {
 	if time.Since(c.routeLoaded) > analyticsRouteTTL {
 		c.reloadRoutes()
@@ -237,8 +220,6 @@ func (c *AnalyticsConsumer) reloadRoutes() {
 	c.routeLoaded = time.Now()
 }
 
-// flushLoop persists closed buckets on the flush interval and prunes old rollups
-// roughly hourly.
 func (c *AnalyticsConsumer) flushLoop(ctx context.Context) {
 	flush := time.NewTicker(c.flushEvery)
 	defer flush.Stop()

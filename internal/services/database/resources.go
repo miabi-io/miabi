@@ -46,8 +46,7 @@ const (
 func (e engineSpec) minMemory() int64   { return int64(e.minMemoryMB) * mebibyte }
 func (e engineSpec) minNanoCPUs() int64 { return int64(e.minMilliCPU) * nanosPerMilli }
 
-// validate refuses negative limits, and limits too small for the engine to run on: memory that low ends with
-// the kernel killing the database, and CPU that low with it timing out on start, rather than a clear error.
+// Too-small limits end in an OOM kill or start timeout rather than a clear error.
 func (r Resources) validate(engine models.DBEngine, spec engineSpec) error {
 	switch {
 	case r.MemoryBytes < 0 || r.NanoCPUs < 0:
@@ -60,8 +59,7 @@ func (r Resources) validate(engine models.DBEngine, spec engineSpec) error {
 	return nil
 }
 
-// withDefaults sizes each dimension the plan caps but the request leaves unset, so an instance created without
-// a size, by a marketplace install or a manifest, still counts against the budget.
+// Unset dimensions the plan caps get defaults, so unsized instances still count against the budget.
 func (r Resources) withDefaults(spec engineSpec, cpuCapped, memoryCapped bool) Resources {
 	if memoryCapped && r.MemoryBytes == 0 {
 		r.MemoryBytes = int64(spec.defaultMemoryMB) * mebibyte
@@ -76,8 +74,7 @@ func formatCores(nanoCPUs int64) string {
 	return strconv.FormatFloat(float64(nanoCPUs)/nanosPerCore, 'f', -1, 64)
 }
 
-// tuningArgs sizes the engine's own memory use to the container limit. Left alone, an engine sizes itself from
-// the host's memory and is killed when it reaches the container's.
+// Left alone, an engine sizes itself from host memory and is killed at the container limit.
 func tuningArgs(engine models.DBEngine, memoryBytes int64) []string {
 	if memoryBytes <= 0 {
 		return nil
@@ -103,8 +100,7 @@ func tuningArgs(engine models.DBEngine, memoryBytes int64) []string {
 	return nil
 }
 
-// Resize sets an instance's CPU and memory limits and recreates its container on the same data volume, so the
-// engine is re-tuned to the new memory. The database restarts briefly; a stopped instance stays stopped.
+// Resize recreates the container on the same volume so the engine is re-tuned; a stopped instance stays stopped.
 func (s *Service) Resize(ctx context.Context, inst *models.DatabaseInstance, res Resources) (*models.DatabaseInstance, error) {
 	if inst.Status == models.DBStatusUpgrading || inst.Status == models.DBStatusProvisioning {
 		return nil, ErrInstanceBusy
@@ -148,8 +144,7 @@ func (s *Service) Resize(ctx context.Context, inst *models.DatabaseInstance, res
 	return inst, nil
 }
 
-// RunResize recreates the instance's container with its new limits, on the worker. A container that does not
-// come up with them is brought back with the previous limits, so a resize never leaves the database down.
+// RunResize restores the previous limits if the container fails to come up, so a resize never leaves the DB down.
 func (s *Service) RunResize(ctx context.Context, instanceID uint, previous Resources) error {
 	inst, err := s.repo.FindByID(instanceID)
 	if err != nil {
@@ -163,8 +158,7 @@ func (s *Service) RunResize(ctx context.Context, instanceID uint, previous Resou
 	if err != nil {
 		return err
 	}
-	// Recreating the container would mount its data volume again, so a lost one stops the resize here rather
-	// than bringing the instance up on an empty volume.
+	// Recreating remounts the data volume, so a lost one must stop here rather than come up empty.
 	if err := s.guardData(ctx, inst); err != nil {
 		return err
 	}

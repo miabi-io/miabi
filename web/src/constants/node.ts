@@ -1,5 +1,3 @@
-// Option metadata for the node Add/Edit forms. The select fields render only the
-// `label`; the `description` is surfaced via an info popover and a hint line.
 
 export interface NodeOption {
   value: string
@@ -37,6 +35,5 @@ export function nodeOptionDescription(options: NodeOption[], value?: string): st
   return options.find((o) => o.value === value)?.description ?? ''
 }
 
-// MIN_AGENT_VERSION mirrors updatecheck.MinAgentVersion (Go) — the oldest node agent this control
-// plane supports, and the threshold the Nodes page paints red. Keep the two in step.
+// Mirrors updatecheck.MinAgentVersion (Go); keep the two in step.
 export const MIN_AGENT_VERSION = '0.4.0'

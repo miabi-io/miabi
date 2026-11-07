@@ -38,35 +38,24 @@ const (
 	VerifyFailed = "failed"
 )
 
-// VerifyResult is what a check found. It names artifacts rather than only counting
-// them: "one file is missing" is not actionable, "billing's dump is gone" is.
+// Names artifacts rather than counting them so the result is actionable.
 type VerifyResult struct {
 	Ref     string `json:"ref"`
 	OK      bool   `json:"ok"`
 	Checked int    `json:"checked"`
-	// Missing are artifacts the set recorded that are no longer in the bucket —
-	// usually a lifecycle rule, occasionally an upload nobody noticed had failed.
+	// Usually a lifecycle rule, occasionally an unnoticed failed upload.
 	Missing []string `json:"missing,omitempty"`
-	// Resized are artifacts whose stored size no longer matches what was recorded,
-	// which means the object is not the one this set took.
+	// A different size means the object is not the one this set took.
 	Resized []string `json:"resized,omitempty"`
-	// Changed lists artifacts whose checksum in the backup tool's index differs from the
-	// one recorded when they were taken.
 	Changed []string `json:"changed,omitempty"`
 	// Indexed reports that the backup tool's index was consulted.
 	Indexed bool `json:"indexed,omitempty"`
-	// EnvelopeOK reports that the workspace passphrase still opens the data key. A
-	// set can be perfectly intact in the bucket and unreadable all the same.
+	// A set can be intact in the bucket and still unreadable.
 	EnvelopeOK bool   `json:"envelope_ok"`
 	Error      string `json:"error,omitempty"`
 }
 
-// VerifySet checks a recovery point against the bucket: every artifact is still
-// there, still the size it was, and the envelope still opens.
-//
-// It deliberately does not read the dumps back. That costs the size of the backup
-// every time, which is how verification becomes the thing people switch off.
-// Proving a dump actually loads is a drill, and a drill needs a live engine.
+// VerifySet does not read dumps back: that costs the backup's size every time and gets switched off.
 func (s *Service) VerifySet(ctx context.Context, cfg *S3Config, set *models.DatabaseBackupSet, passphrase string) (*VerifyResult, error) {
 	if s.sets == nil {
 		return nil, ErrSetsUnavailable
@@ -93,8 +82,7 @@ func (s *Service) VerifySet(ctx context.Context, cfg *S3Config, set *models.Data
 	return res, nil
 }
 
-// checkSetAgainstBucket is the judgement, separated from the bucket read so it is
-// testable without one.
+// Separated from the bucket read so it is testable without one.
 func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64, idx map[string]IndexEntry, passphrase string) *VerifyResult {
 	res := &VerifyResult{Ref: set.Ref, Indexed: idx != nil}
 	for i := range set.Items {
@@ -155,8 +143,7 @@ func checkSetAgainstBucket(set *models.DatabaseBackupSet, sizes map[string]int64
 	return res
 }
 
-// recordVerification persists the outcome and raises a failure where someone will
-// see it. A check that fails silently is worth nothing.
+// A check that fails silently is worth nothing.
 func (s *Service) recordVerification(set *models.DatabaseBackupSet, res *VerifyResult) {
 	now := time.Now()
 	set.VerifiedAt = &now

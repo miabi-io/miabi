@@ -29,8 +29,6 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// recUI records what the operator would have been shown, so the tests can assert on the explanation
-// and not just the file.
 type recUI struct{ lines []string }
 
 func (u *recUI) Printf(f string, a ...any)  { u.lines = append(u.lines, sprintf(f, a...)) }
@@ -88,8 +86,7 @@ func TestEnvSetWritesTheVariable(t *testing.T) {
 	}
 }
 
-// Validation is Normalize's, and its errors name where the value really lives. That is the whole
-// reason this verb does not re-implement any checking.
+// This verb deliberately re-implements no checking.
 func TestEnvSetRefusesAKeyThatHasItsOwnHome(t *testing.T) {
 	cases := map[string]struct{ assign, want string }{
 		"a registry setting": {"MIABI_REGISTRY_HOST=registry.example.com", "registry"},
@@ -124,8 +121,6 @@ func TestEnvUnsetRemovesTheVariable(t *testing.T) {
 	}
 }
 
-// Miabi seeds a couple of variables into the manifest, so unsetting one restores its default instead
-// of removing it. Saying so beats letting the operator diff the file and find it still there.
 func TestUnsettingASeededDefaultRestoresIt(t *testing.T) {
 	path := installedManifest(t)
 	ui := &recUI{}

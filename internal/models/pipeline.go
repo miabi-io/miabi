@@ -27,19 +27,13 @@ type PipelineSource string
 const (
 	// PipelineSourceManual is a spec authored in Miabi: the UI and API own it.
 	PipelineSourceManual PipelineSource = "manual"
-	// PipelineSourceRepo is a spec adopted from the repository's pipeline-as-code
-	// file. The repo is the source of truth — the spec is re-read at each run's
-	// commit, and Miabi refuses to edit it in place.
+	// PipelineSourceRepo specs are re-read at each run's commit and cannot be edited in Miabi.
 	PipelineSourceRepo PipelineSource = "repo"
 )
 
-// PipelineCheckout names what a pipeline clones into the shared workspace before
-// its steps run. Distinct from PipelineSource, which is about who owns the spec.
 type PipelineCheckout string
 
 const (
-	// CheckoutNone is a command-only pipeline: nothing is cloned, and steps run
-	// against an empty workspace.
 	CheckoutNone PipelineCheckout = "none"
 	// CheckoutApplication clones the bound application's repository.
 	CheckoutApplication PipelineCheckout = "application"
@@ -47,9 +41,6 @@ const (
 	CheckoutRepository PipelineCheckout = "repository"
 )
 
-// PipelineDefinition is a versioned, pipeline-as-code definition
-// (kind: Pipeline). The raw YAML spec is stored so the runner reads the same
-// document the repo carries at .miabi/pipeline.yaml.
 type PipelineDefinition struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -57,12 +48,9 @@ type PipelineDefinition struct {
 	// Name is the unique slug handle scoped to the workspace.
 	Name string `json:"name" gorm:"index:idx_pipeline_ws_name,unique;not null"`
 	// DisplayName is the free-text label shown in the UI; not unique.
-	DisplayName string `json:"display_name"`
-	// ApplicationID optionally binds the pipeline to an application: the app
-	// supplies the source to clone, the image repository to push to, and the
-	// target a `uses: deploy` step deploys.
-	ApplicationID   *uint `json:"application_id,omitempty" gorm:"index"`
-	GitRepositoryID *uint `json:"git_repository_id,omitempty" gorm:"index"`
+	DisplayName     string `json:"display_name"`
+	ApplicationID   *uint  `json:"application_id,omitempty" gorm:"index"`
+	GitRepositoryID *uint  `json:"git_repository_id,omitempty" gorm:"index"`
 	// GitRepository is the bound repository's name, filled on read.
 	GitRepository string `json:"git_repository,omitempty" gorm:"-"`
 	// ApplicationName is the bound application's name, filled on read.
@@ -73,34 +61,22 @@ type PipelineDefinition struct {
 	Enabled       bool   `json:"enabled" gorm:"not null;default:true"`
 	WebhookSecret string `json:"-" gorm:"not null;default:''"`
 
-	// Source records who owns Spec. An empty value reads as manual, so pipelines
-	// created before repository adoption existed keep behaving exactly as before.
-	Source PipelineSource `json:"source,omitempty" gorm:"not null;default:manual"`
-	// SourcePath is the repo-relative path Spec was read from (repo source only),
-	// e.g. ".miabi/pipeline.yaml".
-	SourcePath string `json:"source_path,omitempty"`
-	// SourceRef is the branch or ref the spec is read from (repo source only).
-	// It is the app's tracked ref at adoption time.
-	SourceRef string `json:"source_ref,omitempty"`
-	// SourceCommit is the commit Spec was last read at (repo source only) — what
-	// the UI shows as "synced from <commit>".
+	// Empty reads as manual so pipelines created before repo adoption behave as before.
+	Source     PipelineSource `json:"source,omitempty" gorm:"not null;default:manual"`
+	SourcePath string         `json:"source_path,omitempty"`
+	// The app's tracked ref at adoption time.
+	SourceRef    string `json:"source_ref,omitempty"`
 	SourceCommit string `json:"source_commit,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// LastRun is a non-persisted summary of the pipeline's most recent run,
-	// populated by the list endpoint for an at-a-glance health signal. nil when
-	// the pipeline has never run.
 	LastRun *PipelineRunSummary `json:"last_run,omitempty" gorm:"-"`
 }
 
-// IsRepoOwned reports whether the repository owns this pipeline's spec, which
-// makes it read-only in Miabi and re-read on every run.
 func (p *PipelineDefinition) IsRepoOwned() bool { return p.Source == PipelineSourceRepo }
 
-// Checkout reports what this pipeline clones. The application binding wins when
-// both are somehow set, though the service refuses to store that combination.
+// The application binding wins if both are set, though the service refuses to store that combination.
 func (p *PipelineDefinition) Checkout() PipelineCheckout {
 	switch {
 	case p.ApplicationID != nil:
@@ -112,8 +88,6 @@ func (p *PipelineDefinition) Checkout() PipelineCheckout {
 	}
 }
 
-// PipelineRunSummary is a lightweight view of a run for list contexts — enough
-// to render a status badge and "ran 2h ago" without shipping steps or logs.
 type PipelineRunSummary struct {
 	ID         uint              `json:"id"`
 	Number     int               `json:"number"`
@@ -157,8 +131,6 @@ func (s PipelineRunStatus) IsTerminal() bool {
 	return s == PipelineRunSucceeded || s == PipelineRunFailed || s == PipelineRunCanceled
 }
 
-// PipelineRun is one execution of a PipelineDefinition: build → test → … →
-// deploy, turning a commit into an image and a Release.
 type PipelineRun struct {
 	ID          uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID uint `json:"workspace_id" gorm:"index;not null"`
@@ -168,8 +140,7 @@ type PipelineRun struct {
 	Status PipelineRunStatus `json:"status" gorm:"not null;default:pending"`
 	// Trigger records how the run started: push | manual | schedule | upstream.
 	Trigger string `json:"trigger"`
-	// Branch is the ref the run built, surfaced to steps as $MIABI_BRANCH. Set
-	// from the pushed ref, or from the app's tracked ref for a manual run.
+	// Set from the pushed ref, or the app's tracked ref for a manual run.
 	Branch        string `json:"branch,omitempty"`
 	Commit        string `json:"commit,omitempty"`
 	CommitMessage string `json:"commit_message,omitempty" gorm:"type:text"`
@@ -178,20 +149,15 @@ type PipelineRun struct {
 	TriggeredByUserID *uint `json:"triggered_by_user_id,omitempty"`
 	// ImageID is the artifact the run produced (nil until the build step pushes).
 	ImageID *uint `json:"image_id,omitempty"`
-	// Version is the version reserved for this run by its version policy (e.g. 1.4.2), and ImageTag the
-	// tag it renders to (v1.4.2). Both empty for a run that builds nothing or has no policy.
+	// Both empty for a run that builds nothing or has no version policy.
 	Version  string `json:"version,omitempty"`
 	ImageTag string `json:"image_tag,omitempty"`
-	// RunnerID records which runner executed this run (provenance / "built on
-	// runner X"); nil when it ran on the internal runner.
+	// nil when it ran on the internal runner.
 	RunnerID *uint  `json:"runner_id,omitempty"`
 	Error    string `json:"error,omitempty" gorm:"type:text"`
-	// Env is the pipeline-level environment as written in the spec, applied to
-	// every step. Stored unresolved, like the steps' own.
+	// Stored unresolved, like the steps' own.
 	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`
-	// NoCache records that this run was asked to ignore the build cache, overriding whatever the spec's
-	// `cache:` says. It is a per-run override, not a setting: the next run caches again unless it asks
-	// too. Kept on the run because "why did this one take nine minutes?" is a question about the run.
+	// A per-run override of the spec's cache setting; the next run caches again unless it asks too.
 	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
 
 	StartedAt  *time.Time `json:"started_at,omitempty"`
@@ -222,30 +188,20 @@ type PipelineStepRun struct {
 	Status        PipelineRunStatus `json:"status" gorm:"not null;default:pending"`
 	Image         string            `json:"image,omitempty"`
 	Uses          string            `json:"uses,omitempty"` // built-in step kind (e.g. "deploy")
-	// Run is the shell command for a container (Image) step, executed in a non-login shell inside
-	// the step image — like a GitHub Actions `run:` step — so pipes, && and env expansion work.
-	// Empty for `uses:` built-in steps.
+	// Runs in a non-login shell inside the step image so pipes, && and env expansion work.
 	Run string `json:"run,omitempty" gorm:"type:text"`
-	// Dockerfile and BuildContext configure a `uses: build` step, relative to the checked-out
-	// source root; empty means "Dockerfile" and the root. Recorded per RUN because a run is the
-	// audit record of what was built, not of the definition as it reads today.
+	// Recorded per run because a run is the audit record of what was built, not of today's definition.
 	Dockerfile   string `json:"dockerfile,omitempty"`
 	BuildContext string `json:"build_context,omitempty"`
-	// BuildArgs are the step's Dockerfile ARG values, recorded per run as part of what produced
-	// the image. Not secrets — a build arg is readable from the image history — so they are
-	// stored in the clear, unlike the run's credentials.
+	// Stored in the clear: build args are readable from the image history, so they are not secrets.
 	BuildArgs map[string]string `json:"build_args,omitempty" gorm:"serializer:json"`
-	// NoCache builds this step's image from scratch. It is the resolved answer for this run — the spec's
-	// `cache: false` OR the run-level override — so the runner reads one field and the row records what
-	// was actually asked of the builder.
+	// Resolved value (spec cache: false OR the run override), so the runner reads one field.
 	NoCache bool `json:"no_cache,omitempty" gorm:"not null;default:false"`
 	// Platforms are the platforms this step's image was built for; empty means the runner's own.
 	Platforms []string `json:"platforms,omitempty" gorm:"serializer:json"`
-	// Env is the step's environment as written in the spec, references included:
-	// the run records what was asked for, never a resolved secret value.
+	// Stored as written, references included: never a resolved secret value.
 	Env map[string]string `json:"env,omitempty" gorm:"serializer:json"`
-	// ContinueOnError lets the run keep going (and still succeed) when this step
-	// fails; the step is still recorded failed.
+	// The step is still recorded failed.
 	ContinueOnError bool   `json:"continue_on_error,omitempty"`
 	ExitCode        int    `json:"exit_code"`
 	Logs            string `json:"logs,omitempty" gorm:"type:text"`

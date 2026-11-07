@@ -32,9 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/node"
 )
 
-// Cluster networking fails almost unreadably from outside: the swarm forms, DNS resolves, then packets vanish
-// and it looks like a broken app. NetCheck probes the real data plane between every pair of nodes and separates
-// the three identical-looking failures: DNS resolution, TCP completion, and a 1400-byte payload (MTU black hole).
+// NetCheck separates three identical-looking overlay failures: DNS, TCP, and a 1400-byte payload (MTU).
 const (
 	probePort     = 9099
 	probePayload  = 1400 // bytes; large enough to exceed a broken overlay MTU
@@ -62,8 +60,6 @@ type NetCheckResult struct {
 	Payload bool   `json:"payload"` // a 1400-byte body round-tripped
 	IP      string `json:"ip,omitempty"`
 	Error   string `json:"error,omitempty"`
-	// Verdict names the failure in the operator's terms rather than making them
-	// infer it from three booleans.
 	Verdict string `json:"verdict"`
 }
 
@@ -96,9 +92,7 @@ func (s *Service) probeImage() string {
 	return s.probeImageFallback
 }
 
-// NetCheck probes the cluster's overlay data plane from every node to every other
-// node. It requires cluster mode, runs only on nodes Miabi has a Docker client for
-// (it must start a container there), and cleans up after itself.
+// Runs only on nodes Miabi has a Docker client for, since it must start a container there.
 func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error) {
 	if !s.IsSwarm(clusterID) {
 		return NetCheck{}, ErrNotEnabled
@@ -109,8 +103,7 @@ func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error
 	overlay := node.IngressOverlay // every cluster node joins it; nothing new to create
 	out := NetCheck{Network: overlay}
 
-	// Only nodes with a Docker client can host a probe. An unmanaged swarm member
-	// cannot be probed at all — say so rather than silently omitting it.
+	// Unmanaged swarm members cannot be probed, so say so rather than silently omitting them.
 	servers, err := s.nodes.List(ctx)
 	if err != nil {
 		return NetCheck{}, err
@@ -157,16 +150,14 @@ func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error
 		return out, nil
 	}
 
-	// Give the probes a moment to bind and their names to propagate through the
-	// swarm's gossip, so a DNS miss means a real problem rather than a race.
+	// Wait for probes to bind and names to propagate so a DNS miss means a real problem, not a race.
 	select {
 	case <-ctx.Done():
 		return out, ctx.Err()
 	case <-time.After(3 * time.Second):
 	}
 
-	// Probe every ordered pair concurrently: connectivity is not symmetric (a
-	// one-way firewall rule is common), so A->B and B->A are separate facts.
+	// Connectivity is not symmetric (one-way firewall rules are common), so A->B and B->A are separate.
 	var (
 		mu sync.Mutex
 		wg sync.WaitGroup
@@ -193,8 +184,7 @@ func (s *Service) NetCheck(ctx context.Context, clusterID uint) (NetCheck, error
 	return out, nil
 }
 
-// probeVIP dials a probe service's virtual IP from the node its task is pinned to, so a failure cannot be the
-// network between nodes: it is Docker failing to program IPVS there, as inside an LXC container.
+// Dialing from the task's own node isolates IPVS programming failures, as inside an LXC container.
 func (s *Service) probeVIP(ctx context.Context, clusterID uint, image, overlay string, dc docker.Client, srv models.Server) *NetCheckResult {
 	r := &NetCheckResult{From: srv.Name, To: "a service virtual IP"}
 	mgr, err := s.Manager(ctx, clusterID)
@@ -272,8 +262,7 @@ func vipVerdict(r NetCheckResult) string {
 	}
 }
 
-// finishVIP folds the virtual IP probe into the report. A broken virtual IP only fails the check while the cluster
-// still reaches its services through one.
+// A broken virtual IP only fails the check while the cluster still reaches services through one.
 func finishVIP(out *NetCheck, mode models.ServiceEndpointMode) {
 	v := out.VIP
 	switch {
@@ -317,9 +306,6 @@ func (s *Service) stopProbe(dc docker.Client, alias string) {
 	}
 }
 
-// probePair runs a one-shot on the source node that resolves, dials and pushes a
-// 1400-byte payload to the target's alias — the three failures an app cannot tell
-// apart from the inside.
 func (s *Service) probePair(ctx context.Context, dc docker.Client, image, overlay, fromName, toName, toAlias string) NetCheckResult {
 	r := NetCheckResult{From: fromName, To: toName}
 
@@ -356,9 +342,7 @@ n=$(head -c %[3]d /dev/zero | tr '\0' 'x' | nc -w 8 %[1]s %[2]d 2>/dev/null | wc
 	return r
 }
 
-// verdict names the failure. Each of these looks identical from inside an app — a
-// name that resolves and a connection that never completes — so the whole point of
-// the check is to tell them apart.
+// Each looks identical from inside an app, so telling them apart is the whole point.
 func verdict(r NetCheckResult) string {
 	switch {
 	case r.Payload:

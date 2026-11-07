@@ -21,17 +21,13 @@ package repositories
 
 import "github.com/miabi-io/miabi/internal/models"
 
-// Per-workspace resource counts used by the quota service to enforce plan
-// limits. Each is a cheap COUNT(*) scoped to the workspace.
-
 func (r *ApplicationRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Application{}).Where("workspace_id = ?", workspaceID).Count(&n).Error
 	return n, err
 }
 
-// CountWithoutLimitsByWorkspace counts apps missing a CPU or a memory limit, which run unbounded and add
-// nothing to the plan's compute totals.
+// CountWithoutLimitsByWorkspace counts apps missing a CPU or memory limit, which add nothing to compute totals.
 func (r *ApplicationRepository) CountWithoutLimitsByWorkspace(workspaceID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Application{}).
@@ -65,9 +61,7 @@ func (r *JobRepository) CountCronByWorkspace(workspaceID uint) (int64, error) {
 	return n, err
 }
 
-// CountByWorkspace counts a workspace's user-managed API keys. Ephemeral,
-// machine-minted job/registry credentials are excluded: they are per-run,
-// short-lived, and must not consume the workspace's MaxAPIKeys quota.
+// Ephemeral job/registry credentials are excluded so they don't consume the MaxAPIKeys quota.
 func (r *APIKeyRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.APIKey{}).
@@ -75,9 +69,7 @@ func (r *APIKeyRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	return n, err
 }
 
-// CountByWorkspace counts a workspace's owned (non-ephemeral) runners for the
-// MaxRunners quota. Platform-shared runners (nil workspace) are never counted
-// against a workspace, and autoscaled ephemeral runners are excluded.
+// Platform-shared runners and autoscaled ephemeral runners are never counted against the MaxRunners quota.
 func (r *RunnerRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Runner{}).
@@ -92,9 +84,7 @@ func (r *DatabaseRepository) CountDatabasesByInstance(instanceID uint) (int64, e
 	return n, err
 }
 
-// SumResourcesByWorkspace returns the aggregate requested CPU (nanoCPUs) and
-// memory (bytes) across a workspace's apps, counting every replica of a service
-// app, optionally excluding one app (for update checks). excludeAppID = 0 excludes nothing.
+// SumResourcesByWorkspace counts every replica of a service app; excludeAppID = 0 excludes nothing.
 func (r *ApplicationRepository) SumResourcesByWorkspace(workspaceID, excludeAppID uint) (nanoCPUs, memoryBytes int64, err error) {
 	var row struct {
 		CPU int64
@@ -113,9 +103,7 @@ func (r *ApplicationRepository) SumResourcesByWorkspace(workspaceID, excludeAppI
 	return row.CPU, row.Mem, nil
 }
 
-// SumRunningGPUsByWorkspace returns the aggregate GPU units (GPUCount x replicas) held by a
-// workspace's *running* apps — the live allocation the GPU quota is checked against. Pass the
-// app being redeployed as excludeAppID so its own units aren't double-counted; 0 excludes none.
+// Pass the app being redeployed as excludeAppID so its own GPU units aren't double-counted; 0 excludes none.
 func (r *ApplicationRepository) SumRunningGPUsByWorkspace(workspaceID, excludeAppID uint) (int64, error) {
 	var total int64
 	q := r.db.Model(&models.Application{}).
@@ -128,8 +116,6 @@ func (r *ApplicationRepository) SumRunningGPUsByWorkspace(workspaceID, excludeAp
 	return total, err
 }
 
-// SumRunningGPUs returns the total GPU units held by every running app across the
-// platform (for the miabi_gpu_allocated metric).
 func (r *ApplicationRepository) SumRunningGPUs() (int64, error) {
 	var total int64
 	err := r.db.Model(&models.Application{}).
@@ -147,8 +133,6 @@ func (r *VolumeRepository) SumSizeByWorkspace(workspaceID uint) (int64, error) {
 	return total, err
 }
 
-// SumVolumeSizeByWorkspace returns the total declared DB-instance data-volume
-// size (bytes) in a workspace.
 func (r *DatabaseRepository) SumVolumeSizeByWorkspace(workspaceID uint) (int64, error) {
 	var total int64
 	err := r.db.Model(&models.DatabaseInstance{}).
@@ -157,8 +141,6 @@ func (r *DatabaseRepository) SumVolumeSizeByWorkspace(workspaceID uint) (int64, 
 	return total, err
 }
 
-// SumResourcesByWorkspace returns the total CPU (nano) and memory (bytes) limits of a workspace's database
-// instances, leaving out excludeID.
 func (r *DatabaseRepository) SumResourcesByWorkspace(workspaceID, excludeID uint) (int64, int64, error) {
 	var row struct {
 		CPU    int64

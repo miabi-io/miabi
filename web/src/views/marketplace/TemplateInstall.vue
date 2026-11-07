@@ -42,9 +42,7 @@ function dedicatedOnly(db: ManifestDatabase): boolean {
   return db.engine in DEDICATED_ONLY
 }
 
-// defaultPlacement seeds the selector from the template's declared placement, so
-// a template that asks for a dedicated instance defaults to "Dedicated" (the user
-// can still switch to Automatic or an existing instance).
+// The user can still switch to Automatic or an existing instance.
 function defaultPlacement(db: ManifestDatabase): string {
   if (dedicatedOnly(db) || db.placement === 'dedicated') return 'dedicated'
   if (db.placement === 'shared') {
@@ -102,9 +100,7 @@ async function loadInstalls() {
   }
 }
 
-// Installs of THIS template, matched by slug — the stable template identity (an
-// install id is workspace-local and mutable). Drives the "In this workspace"
-// card and the upgrade affordance.
+// Matched by slug, the stable template identity; install ids are workspace-local and mutable.
 const templateInstalls = computed(() => installs.value.filter((i) => i.template_name === slug.value))
 // The applications those installs created, for the left-side card.
 const appsUsing = computed(() => templateInstalls.value.flatMap((i) => i.apps ?? []))
@@ -184,13 +180,10 @@ async function loadInstances() {
 watch(() => form.value.location, loadInstances)
 
 onMounted(async () => {
-  // Load instances before the manifest so placement defaults (e.g. a "shared"
-  // template) can pre-select an existing instance.
+  // Instances load first so placement defaults can pre-select an existing one.
   await loadInstances()
   await Promise.all([loadDetail(), loadInstalls()])
-  // Deep link: marketplace/<slug>?upgrade opens the upgrade plan for this
-  // template's install (used by the app detail "Upgrade via Marketplace" action
-  // and the Marketplace Installed tab). No-op when nothing newer is available.
+  // Used by the app detail "Upgrade via Marketplace" action and the Installed tab; no-op when nothing is newer.
   if (route.query.upgrade !== undefined && upgradableInstall.value) {
     openUpgrade(upgradableInstall.value)
   }
@@ -198,8 +191,7 @@ onMounted(async () => {
 
 const confirmOpen = ref(false)
 
-// review validates required inputs client-side, then opens the confirmation
-// modal (the server validates authoritatively on install).
+// The server validates authoritatively on install.
 function review() {
   if (!entry.value) return
   for (const inp of manifest.value?.inputs ?? []) {
@@ -224,8 +216,7 @@ function pickedInstance(db: ManifestDatabase): DatabaseInstance | undefined {
   return instances.value.find((i) => String(i.id) === v)
 }
 
-// placementLabel resolves, for the confirmation summary, what the chosen mode
-// will actually do — matching the backend's reuse-or-create rule.
+// Must match the backend's reuse-or-create rule.
 function placementLabel(db: ManifestDatabase): string {
   const v = form.value.placement[db.name]
   if (v === 'dedicated') return 'New dedicated instance'
@@ -236,8 +227,6 @@ function placementLabel(db: ManifestDatabase): string {
   return existing.length ? `Automatic — reuse ${existing[0].name}` : 'Automatic — new instance'
 }
 
-// placementHint surfaces, inline under the selector, what the current choice will
-// do — whether Automatic will reuse an existing instance or provision a new one.
 function placementHint(db: ManifestDatabase): string {
   const size = sizeOf(db) ? ` The template gives it ${sizeOf(db)}.` : ''
   if (dedicatedOnly(db)) return `${DEDICATED_ONLY[db.engine]} is always provisioned as a dedicated instance.` + size
@@ -252,11 +241,7 @@ function placementHint(db: ManifestDatabase): string {
     : `Automatic will provision a new dedicated ${db.engine} instance.`
 }
 
-// ---- what the install will actually create ----
-//
-// The list shows resolved names (see @/utils/installNames), not the manifest's
-// local ones: what a resource is called depends on the Name field above it, and
-// that is the whole reason two installs of one template no longer collide.
+// Shows resolved names (see @/utils/installNames), which depend on the Name field.
 
 // The label the install is named after: what the user typed, else the template's.
 const installLabel = computed(() => (form.value.name || entry.value?.display_name || '').trim())
@@ -327,8 +312,6 @@ const provisions = computed<Provision[]>(() => {
   return out
 })
 
-// reviewGroups is the same list, grouped by kind for the confirmation dialog —
-// "Volumes: Smart content, Smart db" reads better there than one row per item.
 const reviewGroups = computed<Record<string, Provision[]>>(() => {
   const plural: Record<string, string> = {
     app: 'Applications',
@@ -398,9 +381,7 @@ async function confirmDelete() {
   }
 }
 
-// --- Async install with live progress (SSE) --------------------------------
-// The install runs server-side as a job; we stream its phases and only navigate
-// to the app/stack once it is live, rather than landing on an empty shell.
+// Navigate only once the install job is live, rather than landing on an empty shell.
 const installJob = ref<InstallJob | null>(null)
 let jobES: EventSource | null = null
 
@@ -438,8 +419,7 @@ async function install() {
     const job = (
       await marketplaceApi.startInstall(ws.currentWorkspaceId, {
         name: e.name,
-        // Install the version the user selected (route query), not the entry's
-        // latest. Empty falls back to latest, which the backend resolves.
+        // Empty falls back to latest, which the backend resolves.
         version: version.value || e.version,
         display_name: form.value.name || undefined,
         inputs: form.value.inputs,
@@ -473,12 +453,10 @@ function startJobStream(id: string) {
       }
     }
   }
-  // EventSource auto-reconnects on transient errors; the server re-sends the
-  // current snapshot on reconnect, so nothing to do here.
+  // EventSource auto-reconnects and the server re-sends the current snapshot.
 }
 
-// onJobDone navigates on success or surfaces the failure (the modal stays open
-// so the user can read the error and go back to adjust the form).
+// The modal stays open on failure so the user can read the error and adjust the form.
 function onJobDone(job: InstallJob) {
   if (job.status === 'succeeded') {
     notify.success(t('notify.templateInstall.installed', { name: form.value.name || entry.value?.display_name }))
@@ -950,8 +928,6 @@ onUnmounted(stopJobStream)
   align-items: baseline;
   gap: 6px;
 }
-/* Name over qualifier: the sidebar is narrow, and an image reference or a long
-   install name would otherwise push the kind out of the card. */
 .provision-list .prov-text {
   display: flex;
   flex-direction: column;
@@ -960,8 +936,6 @@ onUnmounted(stopJobStream)
 .provision-list .mdi {
   color: var(--text-muted);
 }
-/* The resolved name is the point of the row, so it wins over the kind label —
-   and a long one wraps instead of pushing the kind out of the card. */
 .provision-list .prov-name {
   font-weight: 500;
   overflow-wrap: anywhere;

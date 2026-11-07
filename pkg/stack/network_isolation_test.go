@@ -30,9 +30,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The whole point of the split: a routed application joins m.Network, so anything else sitting there is
-// reachable from a tenant container. Postgres holds one superuser password for the entire control plane
-// and Redis's queue is code execution in the worker — neither has a second boundary to fall back on.
+// Routed apps join m.Network, and neither Postgres's superuser password nor Redis's queue has a second boundary.
 func TestPlatformComponentsAreOffTheProxyNetwork(t *testing.T) {
 	m := testManifest()
 	svc := &Service{}
@@ -59,9 +57,7 @@ func TestPlatformComponentsAreOffTheProxyNetwork(t *testing.T) {
 	}
 }
 
-// The gateway is the ONLY component on both, and that is what makes the proxy network ingress-only:
-// traffic crosses into the platform at a process that terminates TLS and applies the operator's
-// middlewares, not at a flat Docker bridge.
+// The gateway being the only bridge is what makes the proxy network ingress-only.
 func TestOnlyTheGatewayBridgesBothNetworks(t *testing.T) {
 	m := testManifest()
 	svc := &Service{}
@@ -78,8 +74,6 @@ func TestOnlyTheGatewayBridgesBothNetworks(t *testing.T) {
 	}
 }
 
-// Normalize supplies the private network for every manifest written before the split, so an existing
-// install gains it on its next converge without the operator editing anything.
 func TestPreSplitManifestGainsThePrivateNetwork(t *testing.T) {
 	m := &Manifest{
 		Version: CurrentVersion,
@@ -96,9 +90,7 @@ func TestPreSplitManifestGainsThePrivateNetwork(t *testing.T) {
 	}
 }
 
-// The default private subnet must miss both neighbours: the proxy network's own range, and the workspace
-// allocator's pool (MIABI_NETWORK_POOL_CIDR = 10.64.0.0/12), whose first block a naive 10.64.0.0/16
-// would land squarely on.
+// A naive 10.64.0.0/16 would land on the workspace allocator's pool (10.64.0.0/12).
 func TestDefaultSubnetsDoNotCollide(t *testing.T) {
 	if DefaultInternalSubnet == DefaultSubnet {
 		t.Fatalf("both networks default to %s", DefaultSubnet)
@@ -110,8 +102,7 @@ func TestDefaultSubnetsDoNotCollide(t *testing.T) {
 	}
 }
 
-// A hand-edited manifest that points both names at one network would report a private stack it does not
-// have — every component back on the proxy network, silently.
+// Pointing both names at one network would silently put every component back on the proxy network.
 func TestNormalizeRefusesOneNetworkUnderTwoNames(t *testing.T) {
 	m := testManifest()
 	m.InternalNetwork.Name = m.Network.Name
@@ -120,8 +111,7 @@ func TestNormalizeRefusesOneNetworkUnderTwoNames(t *testing.T) {
 	}
 }
 
-// Networks are part of the spec hash, which is what makes the split actually happen on an existing
-// install: without this, converge would decide "up to date" and leave Postgres on the app network.
+// Without networks in the spec hash, converge would leave Postgres on the app network.
 func TestMovingAComponentBetweenNetworksRecreatesIt(t *testing.T) {
 	m := testManifest()
 	before := specHash(postgresSpec(m, ContainerPostgres, m.Images.Postgres))
@@ -134,10 +124,7 @@ func TestMovingAComponentBetweenNetworksRecreatesIt(t *testing.T) {
 	}
 }
 
-// The migration must ATTACH before anything is recreated. Converge recreates in dependency order, so a
-// stack that changed networks one container at a time would spend the gap with a control plane talking
-// to a database that had just left its network — and `miabi upgrade miabi-postgres` recreates exactly
-// one component, leaving the panel down until someone ran a full converge.
+// Attach before recreating, or a single-component upgrade leaves the control plane cut off from its database.
 func TestMigrateNetworksAttachesTheRunningStackWithoutRecreatingIt(t *testing.T) {
 	m := testManifest()
 	dc := &fakeEngine{containers: map[string][]string{
@@ -165,9 +152,7 @@ func TestMigrateNetworksAttachesTheRunningStackWithoutRecreatingIt(t *testing.T)
 	}
 }
 
-// The component loop leaves a container alone when its spec hash is already current, which is exactly
-// the state a converge interrupted between the attach and the recreate leaves behind. Without the
-// disconnect, that container keeps an attachment the manifest says it must not have.
+// A converge interrupted between attach and recreate leaves a hash-current container with a forbidden attachment.
 func TestMigrateNetworksDetachesAHalfMigratedComponent(t *testing.T) {
 	m := testManifest()
 	dc := &fakeEngine{containers: map[string][]string{
@@ -183,8 +168,6 @@ func TestMigrateNetworksDetachesAHalfMigratedComponent(t *testing.T) {
 	}
 }
 
-// A fresh install has nothing to migrate: the component loop creates every container on the right
-// networks, and touching a missing one would be an error the installer has no business raising.
 func TestMigrateNetworksIsANoOpOnAFreshHost(t *testing.T) {
 	m := testManifest()
 	dc := &fakeEngine{}
@@ -198,8 +181,6 @@ func TestMigrateNetworksIsANoOpOnAFreshHost(t *testing.T) {
 	}
 }
 
-// fakeEngine records the network calls migrateNetworks makes. Every other method is enough to satisfy
-// docker.Client and no more — this exercise is about attachments, not about running containers.
 type fakeEngine struct {
 	containers   map[string][]string // name -> attached networks
 	connected    map[string][]string
@@ -271,10 +252,7 @@ func (f *fakeEngine) InspectNetwork(context.Context, string) (docker.NetworkStat
 func (f *fakeEngine) RemoveNetwork(context.Context, string) error { return nil }
 func (f *fakeEngine) Rootless(context.Context) (bool, error)      { return false, nil }
 
-// The Compose stacks are the other install path, and they drifted apart once already — which is why
-// the goma.yml drift test exists. The split is worth the same guard: a Compose file that quietly puts
-// Postgres back on the shared app network would hand every routed container the control-plane database,
-// and nothing in Go would notice.
+// A Compose file putting Postgres back on the shared network would expose the control-plane DB to every app.
 func TestComposeStacksKeepThePlatformOffTheSharedNetwork(t *testing.T) {
 	for _, tc := range []struct {
 		file    string
@@ -318,9 +296,7 @@ func TestComposeStacksKeepThePlatformOffTheSharedNetwork(t *testing.T) {
 	}
 }
 
-// Compose declares the private network, but the CONTROL PLANE only learns its name from the
-// environment. Without this key the helper containers Miabi runs out of process — platform backups,
-// the built-in registry — stay on the shared network, where the database no longer is.
+// Without this key, out-of-process helpers (backups, registry) stay on the shared network away from the database.
 func TestComposeEnvExampleNamesThePrivateNetwork(t *testing.T) {
 	b, err := os.ReadFile("../../examples/compose/.env.example")
 	if err != nil {

@@ -1,7 +1,6 @@
 name: E2E
 
-# Installs the platform built from this commit on a clean runner and drives it end to end: the stack
-# installer, a manual install, a real workload behind the gateway, and GitOps. Unit tests live in ci.yml.
+# Installs the platform built from this commit on a clean runner and drives it end to end.
 on:
   push:
     branches: [main, dev]

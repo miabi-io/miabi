@@ -28,9 +28,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// TLSMaterial holds PEM-encoded TLS material for a TCP Docker endpoint. A nil
-// *TLSMaterial means a plaintext connection. CACert alone enables server
-// verification; Cert+Key add client authentication (mTLS).
+// TLSMaterial nil means plaintext; CACert alone verifies the server, Cert+Key add mTLS.
 type TLSMaterial struct {
 	CACert []byte
 	Cert   []byte
@@ -56,8 +54,6 @@ func (m *TLSMaterial) config() (*tls.Config, error) {
 	return cfg, nil
 }
 
-// NewSocket connects to a Docker engine at a socket/host string (e.g.
-// "unix:///var/run/docker.sock" or "tcp://host:2375" without TLS).
 func NewSocket(host string) (Client, error) {
 	cli, err := client.New(client.WithHost(host))
 	if err != nil {
@@ -66,9 +62,6 @@ func NewSocket(host string) (Client, error) {
 	return &engineClient{cli: cli}, nil
 }
 
-// NewTCP connects to a Docker engine over TCP. With tlsm == nil the connection
-// is plaintext; otherwise it uses TLS (server verification, plus client auth if
-// Cert+Key are present). host is e.g. "tcp://host:2376".
 func NewTCP(host string, tlsm *TLSMaterial) (Client, error) {
 	if tlsm == nil {
 		return NewSocket(host)
@@ -78,9 +71,7 @@ func NewTCP(host string, tlsm *TLSMaterial) (Client, error) {
 		return nil, err
 	}
 	httpc := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsCfg}}
-	// WithHTTPClient first so our TLS transport survives WithHost's
-	// ConfigureTransport (which only installs a tcp dialer); WithScheme forces
-	// HTTPS over the TCP endpoint.
+	// WithHTTPClient first so our TLS transport survives WithHost's ConfigureTransport.
 	cli, err := client.New(
 		client.WithHTTPClient(httpc),
 		client.WithHost(host),

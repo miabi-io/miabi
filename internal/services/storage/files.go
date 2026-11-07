@@ -42,8 +42,6 @@ type ImageResolver interface {
 // SetImageResolver wires the deployment-config resolver for the volume helper image.
 func (s *Service) SetImageResolver(r ImageResolver) { s.images = r }
 
-// helperImage is the small image used to browse/seed a volume's files
-// (deployment-config catalog, falling back to busybox).
 func (s *Service) helperImage() string {
 	if s.images != nil {
 		if r := s.images.Ref(platformimage.KeyHelper); r != "" {
@@ -56,8 +54,7 @@ func (s *Service) helperImage() string {
 // fileMount is where the helper container mounts the target volume.
 const fileMount = "/vol"
 
-// maxListedFiles caps a single listing to keep the response bounded; volumes
-// used for config are small, but a stray data volume could hold thousands.
+// Config volumes are small, but a stray data volume could hold thousands of files.
 const maxListedFiles = 5000
 
 // ErrFileNotFound is returned when a requested path is absent from the volume.
@@ -71,8 +68,6 @@ type VolumeFile struct {
 	IsDir   bool   `json:"is_dir"`
 }
 
-// ListFiles returns the files and directories stored in a volume by inspecting
-// it with a short-lived helper container.
 func (s *Service) ListFiles(ctx context.Context, v *models.Volume) ([]VolumeFile, error) {
 	dc, err := s.clients.For(v.ServerID)
 	if err != nil {
@@ -82,8 +77,7 @@ func (s *Service) ListFiles(ctx context.Context, v *models.Volume) ([]VolumeFile
 	if err := dc.PullImage(ctx, image, nil); err != nil {
 		return nil, fmt.Errorf("pull helper image: %w", err)
 	}
-	// stat format: <file type>|<size>|<mtime epoch>|<name>; names are relative
-	// to the volume root (find runs with cwd = /vol).
+	// Names are relative to the volume root because find runs with cwd = /vol.
 	script := "cd " + fileMount + " 2>/dev/null && find . -mindepth 1 -exec stat -c '%F|%s|%Y|%n' {} + 2>/dev/null"
 	exit, out, err := dc.RunOneShot(ctx, docker.RunSpec{
 		Name:   fmt.Sprintf("mb-vls-%d", v.ID),
@@ -128,8 +122,6 @@ func parseFileListing(out string) []VolumeFile {
 	return files
 }
 
-// UploadFile streams an uploaded file into a volume at the given (optional)
-// sub-directory, creating intermediate directories as needed.
 func (s *Service) UploadFile(ctx context.Context, v *models.Volume, subdir, filename string, content io.Reader, size int64) (string, error) {
 	name := path.Base(strings.TrimSpace(filename))
 	if name == "" || name == "." || name == "/" {
@@ -225,8 +217,6 @@ func (s *Service) DeleteFile(ctx context.Context, v *models.Volume, rel string) 
 	return nil
 }
 
-// cleanRelPath validates and normalizes a relative path inside a volume,
-// rejecting absolute paths and traversal outside the root.
 func cleanRelPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	p = strings.TrimPrefix(p, "/")

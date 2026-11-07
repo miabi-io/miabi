@@ -32,11 +32,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdminStorageClassHandler manages the disks a platform offers. Every edition may register classes
-// up to Entitlements.StorageClassLimit, shared ones included — a Community fleet is node-capped, so
-// a shared mount there is not the multi-node story a license guards. The storage_classes
-// entitlement lifts the cap. A lapsed license never breaks existing classes: only the next create
-// is refused.
+// A lapsed license never breaks existing classes: only the next create is refused.
 type AdminStorageClassHandler struct {
 	svc   *storageclass.Service
 	ee    enterprise.EE
@@ -68,10 +64,7 @@ type UpdateStorageClassRequest struct {
 	Body storageClassBody `json:"body"`
 }
 
-// overCap reports whether the edition's cap on the whole catalog is already reached. It writes no
-// response: entitlementAbort returns nil once it has written one, so the refusal has to be the
-// handler's own return or the create runs on regardless. A failed count does not block a create —
-// a counting hiccup should not stand between an operator and their disk.
+// Writes no response: entitlementAbort returns nil, so the refusal must be the handler's own return.
 func (h *AdminStorageClassHandler) overCap() bool {
 	if h.ee.Mutable(enterprise.FlagStorageClasses) {
 		return false
@@ -103,8 +96,7 @@ func (h *AdminStorageClassHandler) Get(c *okapi.Context) error {
 	return ok(c, sc)
 }
 
-// Create registers a class. The node is probed for the path before the row is written, so a class
-// whose disk is not mounted fails here instead of at a tenant's first deploy.
+// The node is probed for the path first, so an unmounted disk fails here, not at a tenant's first deploy.
 func (h *AdminStorageClassHandler) Create(c *okapi.Context, req *CreateStorageClassRequest) error {
 	if h.overCap() {
 		return entitlementAbort(c, enterprise.ErrStorageClassLimit)
@@ -117,10 +109,7 @@ func (h *AdminStorageClassHandler) Create(c *okapi.Context, req *CreateStorageCl
 	return created(c, sc)
 }
 
-// Update changes the editable fields. A name or path change is refused: volumes and GitOps
-// manifests dereference both, so rewriting one breaks the references instead of moving anything.
-// Ungated: an edition that may register a class must be able to correct it, and a class it could
-// neither fix nor delete once in use would be a trap.
+// Name and path are immutable: volumes and GitOps manifests dereference both.
 func (h *AdminStorageClassHandler) Update(c *okapi.Context, req *UpdateStorageClassRequest) error {
 	id, err := uintParam(c, "id")
 	if err != nil {
@@ -134,8 +123,7 @@ func (h *AdminStorageClassHandler) Update(c *okapi.Context, req *UpdateStorageCl
 	return ok(c, sc)
 }
 
-// Delete removes a class no volume references. Ungated, so a lapsed license can still clean up.
-// Disabling is the way to stop new volumes landing on a disk without touching the ones already there.
+// Ungated, so a lapsed license can still clean up.
 func (h *AdminStorageClassHandler) Delete(c *okapi.Context) error {
 	id, err := uintParam(c, "id")
 	if err != nil {

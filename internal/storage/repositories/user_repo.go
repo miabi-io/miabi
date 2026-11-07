@@ -43,9 +43,7 @@ func (r *UserRepository) Update(user *models.User) error {
 	return r.db.Save(user).Error
 }
 
-// SetWorkspaceLimit sets (or clears, when limit is nil) a user's per-user
-// workspace-count override. Uses Select so a nil clears the column back to
-// "inherit the platform limit".
+// Uses Select so a nil limit clears the column back to "inherit the platform limit".
 func (r *UserRepository) SetWorkspaceLimit(userID uint, limit *int) error {
 	return r.db.Model(&models.User{}).Where("id = ?", userID).
 		Select("workspace_limit").Update("workspace_limit", limit).Error
@@ -57,8 +55,6 @@ func (r *UserRepository) SetCanCreateWorkspaces(userID uint, allowed *bool) erro
 		Select("can_create_workspaces").Update("can_create_workspaces", allowed).Error
 }
 
-// SetWorkspaceMembershipLimit sets (or clears, when nil) a user's per-user
-// workspace-membership override — the join counterpart of SetWorkspaceLimit.
 func (r *UserRepository) SetWorkspaceMembershipLimit(userID uint, limit *int) error {
 	return r.db.Model(&models.User{}).Where("id = ?", userID).
 		Select("workspace_membership_limit").Update("workspace_membership_limit", limit).Error
@@ -106,24 +102,20 @@ func (r *UserRepository) ExistsByUsername(username string) (bool, error) {
 	return count > 0, err
 }
 
-// Count returns the number of people, leaving out service accounts: it decides whether a sign-up is the
-// first, and so the platform admin.
+// Count leaves out service accounts: it decides whether a sign-up is the first, and so the platform admin.
 func (r *UserRepository) Count() (int64, error) {
 	var count int64
 	err := r.db.Model(&models.User{}).Where("kind <> ?", models.UserKindService).Count(&count).Error
 	return count, err
 }
 
-// CountByRole returns the number of people with the given system role. A service account is left out
-// even if its role column says admin, since it is never treated as one (see models.User.IsAdmin).
+// A service account is left out even if its role says admin, since it is never treated as one.
 func (r *UserRepository) CountByRole(role models.SystemRole) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.User{}).Where("role = ? AND kind <> ?", role, models.UserKindService).Count(&count).Error
 	return count, err
 }
 
-// ListAdminIDs returns the user ids of the platform super-admins — the recipients
-// of platform-scoped alerts (node offline, engine too old, license).
 func (r *UserRepository) ListAdminIDs() ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.User{}).Where("role = ? AND kind <> ?", models.SystemRoleAdmin, models.UserKindService).
@@ -156,8 +148,6 @@ func (r *UserRepository) CountActive() (int64, error) {
 	return count, err
 }
 
-// List returns users matching an optional search term (name/username/email) and kind (empty for
-// every kind), newest first, with the total count for pagination.
 func (r *UserRepository) List(search, kind string, limit, offset int) ([]models.User, int64, error) {
 	var (
 		users []models.User
@@ -178,14 +168,7 @@ func (r *UserRepository) List(search, kind string, limit, offset int) ([]models.
 	return users, total, nil
 }
 
-// Delete removes a user by id.
-// Delete removes the account, first releasing the organizations it owned so none is left
-// accountable to a user that no longer exists. The next user created there adopts it, or an admin
-// names one.
-//
-// The release is best-effort: it is bookkeeping, and an account — often one being purged on the
-// owner's own request — must not survive because of it. An organization left pointing at a deleted
-// user reads as having no owner, which is what it has.
+// Releasing owned organizations is best-effort: a purge must not fail on bookkeeping.
 func (r *UserRepository) Delete(id uint) error {
 	err := r.db.Model(&models.Organization{}).
 		Where("owner_user_id = ?", id).
@@ -199,24 +182,13 @@ func (r *UserRepository) Delete(id uint) error {
 	return r.db.Delete(&models.User{}, id).Error
 }
 
-// ListDueForDeletion returns accounts whose scheduled deletion time has passed,
-// for the purge job.
 func (r *UserRepository) ListDueForDeletion(now time.Time) ([]models.User, error) {
 	var users []models.User
 	err := r.db.Where("scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= ?", now).Find(&users).Error
 	return users, err
 }
 
-// DefaultWorkspace resolves where a client with no workspace in mind should land,
-// with the caller's role in it.
-//
-// Membership is re-checked on every read, so a default naming a workspace the user
-// has left — or one that was deleted — never dead-ends the console. It falls back to
-// the user's OLDEST membership, which is almost always their primary workspace (the
-// membership list is ordered newest-first for display, which is the wrong guess
-// here), and repairs the stored value in place.
-//
-// Returns (nil, nil) when the user belongs to no workspace at all.
+// DefaultWorkspace falls back to the oldest membership when the stored default is stale and repairs it; nil if none.
 func (r *UserRepository) DefaultWorkspace(userID uint) (*models.WorkspaceWithRole, error) {
 	var user models.User
 	if err := r.db.Select("id", "default_workspace_id").First(&user, userID).Error; err != nil {
@@ -236,8 +208,6 @@ func (r *UserRepository) DefaultWorkspace(userID uint) (*models.WorkspaceWithRol
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		// No membership left to point at; drop the stale pointer rather than keep
-		// handing back a workspace the user cannot open.
 		if user.DefaultWorkspaceID != nil {
 			_ = r.SetDefaultWorkspace(userID, nil)
 		}
@@ -249,15 +219,12 @@ func (r *UserRepository) DefaultWorkspace(userID uint) (*models.WorkspaceWithRol
 	return ws, nil
 }
 
-// SetDefaultWorkspace records where header-less clients land. Nil clears it. The
-// caller is responsible for checking membership — see workspace.Service.SetDefault.
+// The caller must check membership (see workspace.Service.SetDefault).
 func (r *UserRepository) SetDefaultWorkspace(userID uint, workspaceID *uint) error {
 	return r.db.Model(&models.User{}).Where("id = ?", userID).
 		Update("default_workspace_id", workspaceID).Error
 }
 
-// workspaceForMember returns the workspace and the caller's role in it, or
-// gorm.ErrRecordNotFound when they are not a member.
 func (r *UserRepository) workspaceForMember(userID, workspaceID uint) (*models.WorkspaceWithRole, error) {
 	var row models.WorkspaceWithRole
 	err := r.db.Model(&models.Workspace{}).

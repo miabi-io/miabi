@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Import a workspace from another Miabi into a new workspace here, owned by the caller.
-// The run id lives in ?run= so a reload or a shared link returns to the progress view.
+// The run id lives in ?run= so a reload or shared link returns to the progress view.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'

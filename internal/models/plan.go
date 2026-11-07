@@ -24,25 +24,16 @@ import (
 	"time"
 )
 
-// Unlimited is the limit value meaning "no cap". Distinct from 0 ("none
-// allowed"), so a plan can forbid a resource entirely.
+// Distinct from 0 ("none allowed"), so a plan can forbid a resource entirely.
 const Unlimited = -1
 
-// UnlimitedPlanName is the name of the built-in plan with no limits and all
-// capabilities (seeded by SeedPlans). The platform system workspace is pinned to
-// it so platform-managed infrastructure is never constrained by quotas.
+// The platform system workspace is pinned to it so platform infrastructure is never quota-constrained.
 const UnlimitedPlanName = "Unlimited"
 
-// SecurityProfile values harden how a workspace's application and job containers
-// run. The zero value ("") is treated as SecurityProfileDefault, which keeps the
-// Plan model's GORM zero-value-omission invariant intact (see the limits block).
+// "" is treated as SecurityProfileDefault, preserving the Plan GORM zero-value-omission invariant.
 const (
-	// SecurityProfileDefault runs containers as the image's default user with no
-	// extra hardening — the platform's historical behavior.
 	SecurityProfileDefault = "default"
-	// SecurityProfileRestricted forces app/job containers to run as the platform
-	// non-root UID (UID:0) with no-new-privileges and NET_RAW dropped — like
-	// OpenShift's restricted SCC. May break images that require root.
+	// Like OpenShift's restricted SCC: non-root UID, no-new-privileges, NET_RAW dropped; may break root images.
 	SecurityProfileRestricted = "restricted"
 )
 
@@ -70,16 +61,14 @@ func PoolOf(s *Server) string {
 	return s.Labels[PoolLabel]
 }
 
-// PlanPlacement binds a plan to locations and a node pool (Enterprise). No locations allows every location;
-// no pool keeps the plan's workloads on nodes that are in no pool.
+// PlanPlacement: no locations allows every location; no pool keeps workloads on nodes in no pool.
 type PlanPlacement struct {
 	// Locations are the cluster ids the plan may use; the first is its default location.
 	Locations []uint `json:"locations,omitempty"`
 	Pool      string `json:"pool,omitempty"`
 }
 
-// Plan is an admin-defined per-workspace quota + capability template. Numeric
-// limits use -1 for unlimited and 0 for none; capability booleans gate features.
+// Plan limits use -1 for unlimited and 0 for none.
 type Plan struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	Name        string `json:"name" gorm:"uniqueIndex;not null"`
@@ -118,12 +107,9 @@ type Plan struct {
 	SecurityProfile           string  `json:"security_profile" gorm:"not null;default:'default'"`
 	AllowOfficialImageUser    bool    `json:"allow_official_image_user" gorm:"not null;default:false"`
 	AllowGPU                  bool    `json:"allow_gpu" gorm:"not null;default:false"`
-	// AllowServiceRuntime gates running an app as a replicated Swarm service; the container runtime is
-	// always allowed. Defaults on so existing plans keep the runtime they always had.
+	// Defaults on so existing plans keep the runtime they always had.
 	AllowServiceRuntime bool `json:"allow_service_runtime" gorm:"not null;default:true"`
-	// DefaultCPUMillicores and DefaultMemoryMB fill an app's unset CPU or memory limit (0 = no default).
-	// RequireResourceLimits refuses an app that still has none, so unlimited apps can't slip past the
-	// plan's CPU and memory totals.
+	// RequireResourceLimits refuses apps still without limits so they cannot slip past the plan totals.
 	DefaultCPUMillicores  int           `json:"default_cpu_millicores" gorm:"not null;default:0"`
 	DefaultMemoryMB       int           `json:"default_memory_mb" gorm:"not null;default:0"`
 	RequireResourceLimits bool          `json:"require_resource_limits" gorm:"not null;default:false"`
@@ -131,17 +117,13 @@ type Plan struct {
 	DatabaseSizes         []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
 	StorageClasses        []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
 	DefaultStorageClass   string        `json:"default_storage_class"`
-	// PlatformRunners names the shared runners this plan may build on. Empty offers every shared
-	// runner, so an existing plan keeps the whole pool. It refines AllowPlatformRunners rather than
-	// replacing it: without that capability no shared runner is in scope at all. A workspace's own
-	// runners are never bound by it — they are the tenant's machines, not the platform's.
+	// Empty offers every shared runner; refines AllowPlatformRunners and never binds a workspace's own runners.
 	PlatformRunners []string  `json:"platform_runners" gorm:"type:text;serializer:json"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-// WorkspaceQuota holds per-workspace overrides applied on top of the assigned
-// plan. Any non-nil field overrides the plan for that workspace; nil inherits.
+// WorkspaceQuota: any non-nil field overrides the plan; nil inherits.
 type WorkspaceQuota struct {
 	WorkspaceID               uint           `json:"workspace_id" gorm:"primaryKey"`
 	MaxApps                   *int           `json:"max_apps,omitempty" min:"-1"`

@@ -47,8 +47,7 @@ func (r *Router) applyRoutes() []okapi.RouteDefinition {
 			Method: http.MethodGet,
 			Path:   "/{workspace}/apps/{appID}/manifest",
 			Group:  g,
-			// Viewer: the bundle carries no secret values — a secret env var is emitted as its name
-			// under secretEnv with an empty value, exactly as the plan engine masks it.
+			// Viewer is enough: secret env vars are exported by name with an empty value, as the plan engine masks them.
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.apply.ExportApplication,
 			Summary:     "Export an application as a miabi.io/v1 manifest bundle",
@@ -166,8 +165,7 @@ func (r *Router) gitOpsRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// versioningRoutes serve version policies: how pipeline-built images are numbered and tagged. Reading is
-// open to viewers; changing the rules, or the series a repository releases on, is an admin decision.
+// Reading is open to viewers; changing rules or a repository's series is an admin decision.
 func (r *Router) versioningRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Versioning", Description: "Version policies: the version, and image tag, each pipeline build gets."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

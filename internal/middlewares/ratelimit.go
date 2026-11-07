@@ -29,9 +29,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RateLimit returns a fixed-window rate limiter keyed by client IP and request path, backed by
-// Redis, for unauthenticated abuse-prone endpoints. When Redis is down it either fails open, or —
-// with localFallback — falls back to a per-process in-memory limiter so brute force stays throttled.
+// When Redis is down it fails open, or with localFallback uses a per-process limiter.
 func RateLimit(rdb *redis.Client, limit int, window time.Duration, localFallback bool) okapi.Middleware {
 	var (
 		fallback *memLimiter
@@ -52,8 +50,6 @@ func RateLimit(rdb *redis.Client, limit int, window time.Duration, localFallback
 			return c.Next()
 		}
 		if rdb == nil {
-			// No Redis wired at all (not an outage): use the local fallback when one
-			// is configured so the endpoint is still throttled; otherwise allow.
 			if fallback != nil {
 				return applyMemLimit(c, fallback, limit, window)
 			}
@@ -87,9 +83,7 @@ func applyMemLimit(c *okapi.Context, m *memLimiter, limit int, window time.Durat
 	return c.Next()
 }
 
-// memLimiter is a small fixed-window per-process rate limiter used as the
-// fallback when Redis is down. Windows expire on their own; the map is swept
-// opportunistically once it grows past a bound so it can't leak memory.
+// The map is swept once it grows past a bound so it can't leak memory.
 type memLimiter struct {
 	mu   sync.Mutex
 	hits map[string]memWindow

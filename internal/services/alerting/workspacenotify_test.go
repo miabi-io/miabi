@@ -52,8 +52,7 @@ func members() []models.WorkspaceMember {
 	}
 }
 
-// The role gate is the whole boundary: a viewer cannot act on a failed backup, so they are not told
-// about it, exactly as they are not told about the alert.
+// A viewer cannot act on a failed backup, so they are not told, as with the alert.
 func TestNotifyWorkspaceRespectsMinRole(t *testing.T) {
 	inbox, bus := &capturedInbox{}, &capturedBus{}
 	n := NewWorkspaceNotifier(stubMembers{members()}, inbox, bus)
@@ -80,8 +79,7 @@ func TestNotifyWorkspaceRespectsMinRole(t *testing.T) {
 		if r.Severity != models.AlertInfo {
 			t.Errorf("severity = %q, want it defaulted to info", r.Severity)
 		}
-		// An AlertID would let Upsert fold this into an alert's notification and make a standalone
-		// fact part of a condition's history.
+		// An AlertID would let Upsert fold a standalone fact into a condition's history.
 		if r.AlertID != nil {
 			t.Error("a standalone item carries an alert id")
 		}

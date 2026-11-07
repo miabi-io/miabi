@@ -29,8 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Shadow tables mirror the models without the Postgres-only uid default sqlite cannot parse, the
-// same way the repository tests do. Rows are seeded through these; the handler reads the real models.
+// Shadow tables omit the Postgres-only uid default sqlite cannot parse.
 type storageClassTable struct {
 	ID             uint `gorm:"primaryKey"`
 	Name           string
@@ -81,8 +80,7 @@ func metricsDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// The fullest class is what breaks first, so that is the one the dashboard names — not an average,
-// which two half-empty disks would hide a full one behind.
+// Name the fullest class: an average would hide a full disk behind half-empty ones.
 func TestStorageClassStatsReportsTheFullestClass(t *testing.T) {
 	db := metricsDB(t)
 	h := &AdminMetricsHandler{db: db}
@@ -147,8 +145,7 @@ func TestSignalsSeparatesExpiredFromExpiring(t *testing.T) {
 	}
 }
 
-// A failed newest backup must read as failed even though an older one succeeded — otherwise the
-// dashboard reports the last success and nobody learns that backups started failing.
+// A failed newest backup must read as failed even if an older one succeeded.
 func TestSignalsReportsAFailedNewestBackup(t *testing.T) {
 	db := metricsDB(t)
 	h := &AdminMetricsHandler{db: db}
@@ -204,8 +201,7 @@ type databaseInstanceTable struct {
 
 func (databaseInstanceTable) TableName() string { return "database_instances" }
 
-// Capacity is read from what the node sweep stored, so the dashboard is a query: it must not grow
-// slower as nodes are added, and a node nobody has measured must not read as a node with none.
+// An unmeasured node must not read as a node with no capacity.
 func TestFleetSumsOnlyMeasuredNodes(t *testing.T) {
 	db := metricsDB(t)
 	now := time.Now()

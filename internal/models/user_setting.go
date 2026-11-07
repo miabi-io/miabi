@@ -42,9 +42,7 @@ func ValidTheme(t Theme) bool {
 	return false
 }
 
-// Accent is the console's primary colour. A fixed set rather than a free colour:
-// an arbitrary hex cannot be checked for contrast on both grounds, against white
-// button text, or against the semantic ramps — a fixed set is checked once.
+// A fixed set because an arbitrary hex cannot be contrast-checked against button text and semantic ramps.
 type Accent string
 
 const (
@@ -56,8 +54,6 @@ const (
 	AccentLime    Accent = "lime"
 )
 
-// AccentCodes lists every accent, so an API can offer exactly what the console can
-// render rather than restating the list somewhere it can drift.
 func AccentCodes() []string {
 	return []string{
 		string(AccentDefault), string(AccentBlue), string(AccentIndigo),
@@ -65,8 +61,7 @@ func AccentCodes() []string {
 	}
 }
 
-// ValidAccent reports whether a is an accent the console ships. Keep in step with
-// web/src/theme/accents.json, which is what actually renders them.
+// Keep in step with web/src/theme/accents.json, which actually renders them.
 func ValidAccent(a Accent) bool {
 	switch a {
 	case AccentDefault, AccentBlue, AccentIndigo, AccentSlate, AccentOrange, AccentLime:
@@ -81,9 +76,7 @@ const (
 	LocaleFrench  = "fr"
 )
 
-// locales is the display languages the console ships, in menu order. The console
-// renders its own list (web/src/i18n/languages.ts); locale_test.go fails if the two
-// drift, because a language offered there and rejected here cannot be saved.
+// locale_test.go fails if this drifts from web/src/i18n/languages.ts.
 var locales = []string{LocaleEnglish, LocaleFrench}
 
 // Locales lists the display languages the console ships.
@@ -98,9 +91,7 @@ func ValidLocale(l string) bool {
 	return slices.Contains(locales, l)
 }
 
-// ResolveLocale maps a stored value onto a shipped language: the code itself, then
-// its primary subtag ("fr-CA" is French), then English. Rows saved while Language
-// was a free-text field hold arbitrary BCP 47 tags.
+// Rows saved while Language was free text hold arbitrary BCP 47 tags, hence the primary-subtag fallback.
 func ResolveLocale(l string) string {
 	l = strings.ToLower(strings.TrimSpace(l))
 	if ValidLocale(l) {
@@ -117,16 +108,12 @@ type UserSetting struct {
 	UserID uint `json:"-" gorm:"uniqueIndex;not null"`
 
 	Theme Theme `json:"theme" gorm:"size:10;not null;default:system"`
-	// Accent is EMPTY until the user picks one, which is not the same as picking
-	// the default: an unset accent inherits the operator's brand accent, and a
-	// chosen one does not. Resolved on read; see usersettings.
-	Accent      Accent `json:"accent" gorm:"size:16;not null;default:''"`
-	Timezone    string `json:"timezone" gorm:"size:64;not null;default:UTC"`
-	Locale      string `json:"locale" gorm:"size:10;not null;default:en"`
-	LandingView string `json:"landing_view" gorm:"size:32;not null;default:dashboard"`
-	// AccentLocked means the operator enforces the brand accent, so Accent is theirs
-	// and the console offers no choice. Resolved on read, never stored.
-	AccentLocked bool `json:"accent_locked" gorm:"-"`
+	// Empty is not the default: an unset accent inherits the operator's brand accent, a chosen one does not.
+	Accent       Accent `json:"accent" gorm:"size:16;not null;default:''"`
+	Timezone     string `json:"timezone" gorm:"size:64;not null;default:UTC"`
+	Locale       string `json:"locale" gorm:"size:10;not null;default:en"`
+	LandingView  string `json:"landing_view" gorm:"size:32;not null;default:dashboard"`
+	AccentLocked bool   `json:"accent_locked" gorm:"-"`
 
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`

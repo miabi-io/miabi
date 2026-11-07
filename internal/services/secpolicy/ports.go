@@ -46,9 +46,7 @@ type PortRequest struct {
 // PortDecision is what the policy lets a request do.
 type PortDecision struct {
 	// Allowed is false only when an enforced rule refuses the request.
-	Allowed bool
-	// AutoApprove approves the request without review (an allowed range, or a privileged
-	// workspace the policy still lets bypass review).
+	Allowed     bool
 	AutoApprove bool
 	// AutoApproveNote explains an auto-approval on the binding.
 	AutoApproveNote string
@@ -97,9 +95,7 @@ func (s *Service) CheckPortRequest(req PortRequest) PortDecision {
 	return d
 }
 
-// decidePortRequest is the judgement, without storage. denied names what an enforced rule refuses
-// (or an audit rule would have); empty when nothing is refused. Audit mode keeps Community
-// behaviour and only reports.
+// Audit mode keeps Community behaviour and only reports what would be denied.
 func decidePortRequest(mode string, spec PortsSpec, req PortRequest) (PortDecision, string) {
 	proto := req.Protocol
 	if proto != "udp" {
@@ -147,9 +143,7 @@ type PublishDecision struct {
 	Reason      string
 }
 
-// CheckPortPublish re-checks an approved binding at deploy time, so a row approved before a
-// reject_all rule (unless grandfathered by existing: keep/report), or written by any other path,
-// cannot publish.
+// CheckPortPublish re-checks at deploy so a binding approved before reject_all, or written elsewhere, can't publish.
 func (s *Service) CheckPortPublish(p PortPublish) PublishDecision {
 	if !s.Active() {
 		return PublishDecision{Allowed: true}
@@ -201,8 +195,6 @@ func grandfathered(spec PortsSpec, policyAt time.Time, b models.PortBinding) boo
 	return spec.Existing != PortsExistingRevoke && !b.UpdatedAt.After(policyAt)
 }
 
-// PortsPolicyView is what a workspace member may know about the host-port policy, so the UI can
-// hide "Request host port" and say why.
 type PortsPolicyView struct {
 	RequestsAllowed bool        `json:"requests_allowed"`
 	Mode            string      `json:"mode"`

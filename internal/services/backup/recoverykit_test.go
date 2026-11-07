@@ -50,8 +50,7 @@ func sealedSet(t *testing.T) (*models.DatabaseBackupSet, string) {
 	}, key
 }
 
-// The kit is what someone reads when Miabi is gone, so it has to carry the
-// envelope, where the artifacts are, and how to open them.
+// The kit is read when Miabi is gone, so it must carry the envelope, locations and how to open them.
 func TestRecoveryKitCarriesWhatRecoveryNeeds(t *testing.T) {
 	set, _ := sealedSet(t)
 	kit := renderRecoveryKit(set, time.Now().UTC())
@@ -72,8 +71,7 @@ func TestRecoveryKitCarriesWhatRecoveryNeeds(t *testing.T) {
 	}
 }
 
-// A kit is safe to store beside the backups precisely because it cannot open them
-// on its own. Leaking the data key into it would undo the encryption entirely.
+// Leaking the data key into the kit would undo the encryption entirely.
 func TestRecoveryKitNeverContainsTheDataKey(t *testing.T) {
 	set, key := sealedSet(t)
 	if strings.Contains(renderRecoveryKit(set, time.Now().UTC()), key) {
@@ -81,8 +79,6 @@ func TestRecoveryKitNeverContainsTheDataKey(t *testing.T) {
 	}
 }
 
-// The embedded script must describe the format this build actually seals with, or
-// it decrypts nothing.
 func TestRecoveryKitScriptMatchesTheEnvelopeFormat(t *testing.T) {
 	f := dbenvelope.Format()
 	script := kitPythonScript(f)
@@ -97,8 +93,7 @@ func TestRecoveryKitScriptMatchesTheEnvelopeFormat(t *testing.T) {
 			t.Errorf("the script does not carry %q", want)
 		}
 	}
-	// Prompts must not land on stdout, or redirecting the output captures them
-	// along with the key.
+	// Prompts on stdout would be captured with the key when output is redirected.
 	if !strings.Contains(script, "stream=sys.stderr") {
 		t.Error("the passphrase prompt is not sent to stderr")
 	}

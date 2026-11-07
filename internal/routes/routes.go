@@ -150,8 +150,7 @@ import (
 type Router struct {
 	app *okapi.Okapi
 	cfg *config.Config
-	// netInfo is the networking posture the admin Settings page reports. Resolved at boot because
-	// the IPv6 answer depends on the engine, not only on the environment.
+	// Resolved at boot because the IPv6 answer depends on the engine, not only the environment.
 	netInfo      handlers.NetworkingInfo
 	v1           *okapi.Group
 	authenticate okapi.Middleware
@@ -166,12 +165,9 @@ type Router struct {
 	authRateLimit    okapi.Middleware
 	ee               enterprise.EE
 	resourcePolicies *repositories.ResourcePolicyRepository
-	// agentRateLimit guards the agent tunnel endpoint. Far more lenient than the login limiter: it
-	// is a token-authenticated, long-lived WebSocket, and reconnect storms or several nodes behind
-	// one NAT must not lock agents out. The long random join token makes brute force a non-issue.
+	// Lenient so reconnect storms or nodes behind one NAT are not locked out; the long join token defeats brute force.
 	agentRateLimit okapi.Middleware
-	// agentStatsRateLimit is per IP like agentRateLimit, but every node pushes 4 times a minute and a
-	// swarm's nodes usually share one egress IP.
+	// Every node pushes 4 times a minute and a swarm's nodes usually share one egress IP.
 	agentStatsRateLimit okapi.Middleware
 	h                   routerHandlers
 }
@@ -274,8 +270,7 @@ type routerHandlers struct {
 	adminRunner         *handlers.AdminRunnerHandler
 }
 
-// InitRoutes wires repositories, services, handlers, and routes onto the app. It
-// returns the port-forward service so the caller can release its live sessions on shutdown.
+// Returns the port-forward service so the caller can release live sessions on shutdown.
 func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
@@ -321,8 +316,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		settings.KeyInvitationSignupEnabled:  cfg.InvitationSignupEnabled,
 		settings.KeyControlManagerMode:       cfg.ControlManagerMode,
 	})
-	// Pinned values are written back to the settings table, so a console mode the environment no
-	// longer sets would otherwise outlive the variable, and no admin could clear it from the UI.
+	// Pinned values are written back, so a console mode the env no longer sets would otherwise outlive it uncleared.
 	if cfg.WorkspaceCreation != models.WorkspaceCreationConsole {
 		if st, err := settingRepo.Get(settings.KeyWorkspaceCreation); err == nil && st.Value == models.WorkspaceCreationConsole {
 			if err := settingRepo.BulkUpsert([]models.Setting{{Key: settings.KeyWorkspaceCreation, Value: settings.DefaultWorkspaceCreation, Type: models.SettingTypeString}}); err != nil {
@@ -342,8 +336,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
 	orgRepo := repositories.NewOrganizationRepository(db)
 	clusterRepo := repositories.NewClusterRepository(db)
-	// Organizations: the tenant realm workspaces belong to, their workspace cap, and the clusters
-	// dedicated to them. One default org always exists, so this is wired in every edition.
+	// One default org always exists, so this is wired in every edition.
 	organizationService := organization.NewService(orgRepo)
 	samlConfigRepo := repositories.NewSAMLConfigRepository(db)
 	scimTokenRepo := repositories.NewSCIMTokenRepository(db)
@@ -352,28 +345,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	customRoleService := customrole.NewService(customRoleRepo)
 	resourcePolicyRepo := repositories.NewResourcePolicyRepository(db)
 	siemConfigRepo := repositories.NewSIEMConfigRepository(db)
-	// Stable per-instance Install ID: identifies this deployment to the license/
-	// customer portal (shown as "Your Install ID"); a license may be bound to it.
+	// A license may be bound to this Install ID.
 	installID, err := dbstorage.EnsureInstallID(db)
 	if err != nil {
 		logger.Warn("failed to ensure install id", "error", err)
 	}
-	// Commercial edition seam: gates licensed features behind a verified license.
-	// In Community builds this is the deny-all stub (no verification code linked).
+	// In Community builds this is the deny-all stub with no verification code linked.
 	ee := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installID)
-	// Enterprise SIEM streaming: ships the audit log to external sinks at-least-once
-	// via a durable cursor. Dormant unless the siem_stream entitlement is present.
+	// Dormant unless the siem_stream entitlement is present.
 	siemStreamer := siem.NewStreamer(auditRepo, siemConfigRepo, ee)
-	// Enterprise SSO (SAML): provision the identity to a session and hand back the
-	// SPA callback URL. Keeps auth/session out of the enterprise package. No-op in
-	// Community (the stub's InitSSO does nothing).
+	// Keeps auth/session out of the enterprise package; no-op in Community.
 	ee.InitSSO(enterprise.SSODeps{
 		DB:      db,
 		BaseURL: cfg.ApiBaseURL,
 		Decrypt: crypto.Decrypt, // read the LDAP bind password stored at rest
 		Login: func(ctx context.Context, ident enterprise.SSOIdentity) (string, error) {
-			// SAML assertions don't carry a handle through SSOIdentity, so the
-			// username is derived from the email as before.
+			// SAML identities carry no handle, so the username is derived from the email.
 			user, err := oauthService.ProvisionSSOUser(ctx, ident.Email, ident.Name, "")
 			if err != nil {
 				return "", err
@@ -389,8 +376,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			return strings.TrimRight(cfg.AppWebURL, "/") + "/oauth/callback?token=" + token, nil
 		},
 	})
-	// Enterprise LDAP/AD: turns a directory bind (behind ee.LDAP()) into a
-	// provisioned user with reconciled group access. No-op in Community.
+	// No-op in Community.
 	directoryService := directory.NewService(ee, userRepo, workspaceRepo, ldapRepo)
 	serverRepo := repositories.NewServerRepository(db)
 	licenseNodeCount := func() int64 {
@@ -400,23 +386,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 		return n
 	}
-	// Plans / quotas: per-workspace resource limits + capability gates. Enforcement
-	// is off by default (cfg.PlanEnforcement); when off, all checks pass.
+	// Enforcement is off by default (cfg.PlanEnforcement); when off, all checks pass.
 	planRepo := repositories.NewPlanRepository(db)
 	quotaService := quota.NewService(planRepo, quotaOverrideRepo, appRepo, volumeRepo, dbRepo, cfg.PlanEnforcement)
 	quotaService.SetEdition(ee)                        // clamps Enterprise-only shell/security policies in CE
 	quotaService.SetForceNonRoot(cfg.ForceNonRootUser) // server-level non-root mandate, on top of the plan
 	quotaService.SetCPUOvercommit(cfg.QuotaCPUOvercommit)
-	// Runners: dedicated build/pipeline machines (workspace-owned + platform-shared).
-	// Quota gates MaxRunners on create and the platform-runners capability on use.
 	runnerService := runner.NewService(repositories.NewRunnerRepository(db))
 	runnerService.SetQuota(quotaService)
 	runnerService.SetImage(cfg.RunnerImage) // enrollment command shows the configured image (MIABI_RUNNER_IMAGE)
-	// Runner tunnels: runners dial in outbound (token-authenticated); the manager
-	// tracks each runner's live session + online/offline status.
 	runnerManager := runners.NewManager(runnerService)
-	// Scheduling: the manager is the live-tunnel registry, and the lease store
-	// provides per-runner concurrency accounting + dead-lease requeue.
 	runnerService.SetScheduling(runnerManager, repositories.NewRunnerLeaseRepository(db))
 	apiKeyService := auth.NewAPIKeyService(apiKeyRepo)
 	billingService := billing.NewService(db, userRepo, apiKeyService, planRepo, settingRepo,
@@ -431,9 +410,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		return workspaceCreationMode() == models.WorkspaceCreationConsole
 	})
 	apiKeyService.SetQuota(quotaService)
-	// Login-token issuer for the console's "Copy login command": mints a short-lived personal API
-	// key and renders the CLI/curl commands. --url is the panel ROOT, so use the web URL — not
-	// MIABI_API_URL, which already includes /api/v1. Empty is fine; the page falls back to origin.
+	// Use the web URL: --url is the panel root, and MIABI_API_URL already includes /api/v1.
 	loginTokenServerURL := strings.TrimRight(cfg.AppWebURL, "/")
 	if loginTokenServerURL == "" {
 		loginTokenServerURL = strings.TrimSuffix(strings.TrimRight(cfg.ApiBaseURL, "/"), "/api/v1")
@@ -450,8 +427,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("subnet allocator disabled; falling back to Docker's default address pool", "error", err)
 		subnetAllocator = nil
 	} else {
-		// Reserve any pool subnet already used by a pre-existing network so we never
-		// hand out an overlapping one (best-effort; skipped when Docker is offline).
+		// Best-effort reservation of existing subnets so the allocator never hands out an overlap.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = subnetAllocator.ImportExisting(ctx, dockerClient, 0)
 		ipv6Active = ipv6Enabled(ctx, dockerClient, cfg)
@@ -461,9 +437,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	networkService := network.NewService(networkRepo, dockerClient)
 	networkService.SetQuota(quotaService)
 	networkService.SetAllocator(subnetAllocator)
-	// Cluster mode: a workspace network is a swarm overlay (spans nodes) instead of
-	// a node-local bridge, and existing bridges are converted when the admin enables
-	// cluster networking. Off (the single-node default), everything stays a bridge.
+	// In cluster mode workspace networks are swarm overlays; existing bridges convert when cluster networking is enabled.
 	networkService.SetCluster(clusterService)
 	clusterService.SetNodeJoinedHook(func(ctx context.Context, _ uint, nodeName string, dc docker.Client) {
 		networkService.PruneStaleBridges(ctx, dc, nodeName)
@@ -482,10 +456,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	workspaceService.SetPlans(planRepo)
 	workspaceService.SetQuota(quotaService)
-	// Per-user workspace-count limit. The platform value is the default an organization that sets
-	// none falls back to; the org's own cap wins, and the per-user override (User.WorkspaceLimit)
-	// wins over both but only with the Enterprise user_workspace_limit entitlement. The fallback
-	// mirrors the seeded default so a missing row behaves like a fresh install.
+	// Per-user override (Enterprise) beats org cap beats platform default; fallback mirrors the seeded default.
 	workspaceService.SetLimits(
 		func() int {
 			return settingsProvider.Int(settings.KeyMaxWorkspacesPerUser, settings.DefaultMaxWorkspacesPerUser)
@@ -499,24 +470,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		return ""
 	})
 	workspaceService.SetCreationPolicy(workspaceCreationMode)
-	// Per-user membership limit (workspaces JOINED as a non-owner member): global
-	// max_workspace_memberships_per_user is OSS; the per-user override is gated by
-	// the Enterprise user_workspace_membership_limit entitlement.
+	// The per-user override needs the Enterprise user_workspace_membership_limit entitlement.
 	workspaceService.SetMembershipLimits(
 		func() int {
 			return settingsProvider.Int(settings.KeyMaxWorkspaceMembershipsPerUser, settings.DefaultMaxWorkspaceMembershipsPerUser)
 		},
 		func() bool { return ee.Has(enterprise.FlagUserWorkspaceMembershipLimit) },
 	)
-	// SSO auto-join respects the same membership limit (over-limit users just
-	// aren't auto-joined; directory/SCIM sync is exempt — it is authoritative).
+	// Over-limit users are just not auto-joined; directory/SCIM sync is exempt since it is authoritative.
 	oauthService.SetMembershipGate(workspaceService.CanJoinAnother)
 	// Crypto-shred a workspace's encryption keys on delete (reuses the live keyring).
 	if sh, ok := crypto.CurrentKeyring().(workspace.KeyShredder); ok {
 		workspaceService.SetKeyShredder(sh)
 	}
-	// Seed the built-in plan catalog (Pro + the System-owned Unlimited) first, so
-	// EnsureSystem can pin the Miabi System workspace to Unlimited. Idempotent.
+	// Must run before EnsureSystem so the System workspace can be pinned to Unlimited.
 	if err := dbstorage.SeedPlans(db); err != nil {
 		logger.Warn("failed to seed default plans", "error", err)
 	}
@@ -524,8 +491,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	if _, err := dbstorage.SeedDefaultOrganization(db); err != nil {
 		logger.Warn("failed to seed default organization", "error", err)
 	}
-	// Seed the platform admin on first boot and ensure it owns the Miabi System
-	// workspace. Idempotent; a no-op once any user exists.
 	if admin, err := dbstorage.SeedAdmin(db, cfg.AdminEmail, cfg.AdminPassword, cfg.ValidateAdminSeed); err != nil {
 		if errors.Is(err, dbstorage.ErrAdminSeedInvalid) {
 			logger.Fatal("refusing to start without a platform admin", "error", err)
@@ -535,8 +500,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		if _, err := workspaceService.EnsureSystem(admin.ID); err != nil {
 			logger.Error("failed to provision Miabi System workspace", "error", err)
 		}
-		// The default organization predates every user, so it takes its owner here rather than at
-		// creation: the first platform admin, not whoever happens to sign in first.
+		// The default org predates every user, so its owner is the first platform admin, not the first sign-in.
 		if err := dbstorage.AdoptDefaultOrganizationOwner(db, admin.ID); err != nil {
 			logger.Warn("failed to set the default organization's owner", "error", err)
 		}
@@ -567,9 +531,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	})
 	eventsService := events.NewService(appEventRepo, bus)
 	nodeClients := nodeManager.Clients()
-	// GPU inventory + scheduling: discovers each node's GPUs via a probe over the
-	// Docker API (no agent change), gates requests behind the AllowGPU capability +
-	// MaxGPUs quota, and resolves an app's request to concrete devices at deploy.
+	// GPUs are discovered by a probe over the Docker API, so no agent change is needed.
 	gpuService := gpu.NewService(repositories.NewGPUDeviceRepository(db), serverRepo, appRepo, nodeClients, gpu.Config{
 		Enabled:       cfg.GPUEnabled,
 		NvidiaRuntime: cfg.NvidiaRuntime,
@@ -581,8 +543,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetPortBindings(portBindingRepo)
 	storageService := storage.NewService(volumeRepo, appRepo, nodeClients)
 	portBindingService := portbinding.NewService(portBindingRepo, appRepo, appPortRepo, workspaceRepo, cfg.HostPortMin, cfg.HostPortMax)
-	// Check host-port conflicts against ports actually published on the node
-	// (incl. non-Miabi containers), not just the binding table.
+	// Checks ports actually published on the node, including non-Miabi containers.
 	portBindingService.SetDocker(nodeClients)
 	securityService := secpolicy.NewService(repositories.NewSecurityPolicyRepository(db), workspaceRepo, ee, cfg.SecurityPolicies)
 	securityService.SetAudit(auditLogger)
@@ -604,13 +565,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Node housekeeping: reclaim disk + reconcile drift between Docker and the DB.
 	housekeepingService := housekeeping.NewService(nodeClients, appRepo, dbRepo, stackRepo, volumeRepo)
 	routeService := route.NewService(routeRepo, middlewareRepo, appRepo, releaseRepo, serverRepo, proxyMgr)
-	// Attach/detach an app from the shared proxy network as its routes come and go
-	// (only route-exposed apps stay on it), reconciled live without a redeploy.
+	// Only route-exposed apps stay on the proxy network, reconciled live without a redeploy.
 	proxyReconciler := worker.NewProxyNetworkReconciler(appRepo, releaseRepo, nodeClients)
 	routeService.SetProxyAttacher(proxyReconciler)
-	// Durability for cluster ingress: re-assert the central gateway's attachment to the shared
-	// ingress overlay on every cluster refresh, so a gateway recreate can't leave clustered apps
-	// publicly dark — plus once now, so a fresh boot doesn't wait a whole refresh interval.
+	// Re-asserted on every refresh so a gateway recreate cannot leave clustered apps dark, and once now at boot.
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
 	// A swarm outside the default cluster is served by its own ingress node's gateway.
 	routeService.SetCluster(clusterService)
@@ -625,13 +583,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			edgegateway.AdoptCentral(context.Background(), dockerClient, nodeService, local)
 		}
 	}()
-	// Config encryption is global, so a node running an imported gateway — one Miabi never redeploys,
-	// and therefore never hands the key to — serves routes it cannot decrypt. Name those nodes.
+	// Imported gateways never receive the global key, so they serve routes they cannot decrypt; name those nodes.
 	if list, lerr := serverRepo.List(); lerr == nil {
 		edgegateway.WarnMissingConfigKey(cfg.GomaConfigEncryptionKey, list)
 	}
-	// After a workspace proxy sync, tell affected edge-gateway nodes to pull their
-	// config immediately instead of waiting for the HTTP-provider poll interval.
 	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway))
 	// Canary traffic changes re-sync the proxy route without a redeploy.
 	appService.SetRouteSyncer(routeService)
@@ -641,9 +596,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	organizationService.SetClusters(clusterRepo)
 	organizationService.SetWorkspaces(workspaceRepo)
 	workspaceService.SetOrgs(organizationService)
-	// Organization-scoped workspace limits are Enterprise: with the licence the org's own caps
-	// decide, without it the platform defaults do. A stored cap goes inert rather than binding an
-	// operator who can no longer edit it.
+	// Without the license a stored org cap goes inert rather than binding an operator who can no longer edit it.
 	workspaceService.SetOrgLimitsEntitled(func() bool { return ee.Has(enterprise.FlagOrganizations) })
 	// A cordon binds Miabi's placement; Swarm schedules service tasks itself and has to be told too.
 	nodeService.SetSwarmCordon(clusterService.MirrorCordon)
@@ -660,16 +613,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetClusterCap(clusterService) // gate "service" runtime apps on cluster mode
 	// Names the organization a dedicated cluster belongs to, for the console's badge.
 	clusterService.SetOrgLabels(organizationService.Labels)
-	// A cluster changing hands moves the organization's default location with it, so the default
-	// never goes on naming hardware the organization may no longer place in.
+	// Keeps the org default from naming hardware the org may no longer place in.
 	clusterService.SetOrgDefaultAligner(organizationService.AlignDefaultCluster)
 	housekeepingService.SetSwarmManagers(clusterService)
 	housekeepingService.SetNodes(nodeService) // reach a node's swarm manager, to remove an orphaned service
-	// The referenced-image guard: what apps, rollback-able releases, databases and node gateways name
-	// is never reclaimable, however long it has sat on the node without a container.
+	// Images named by apps, releases, databases or node gateways are never reclaimable however long unused.
 	housekeepingService.SetImageRefs(appRepo, releaseRepo, dbRepo, serverRepo)
-	// A "missing" row on a node's housekeeping page is now actionable: redeploying goes through the ordinary
-	// deploy path, which refuses an app whose data volume is gone.
+	// Redeploy uses the ordinary deploy path, which refuses an app whose data volume is gone.
 	housekeepingService.SetRedeployer(appService, appRepo)
 	appService.SetGrantsEnabled(cfg.ContainerGrantsEnabled)
 	appService.SetNetworkEnsurer(networkService) // apps always join the workspace's default network (self-heals a missing one)
@@ -677,9 +627,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	storageService.SetServerInfo(nodeService)
 	storageService.SetQuota(quotaService)
 	storageService.SetWorkspacePrivilege(workspaceRepo) // gate host-path volumes on the privileged flag
-	// Middlewares are published as part of their workspace's proxy re-render (the
-	// route service owns the single per-workspace Goma file), so the middleware
-	// service drives the route service rather than the proxy directly.
+	// The route service owns the per-workspace Goma file, so middlewares publish through it.
 	middlewareService := mwservice.NewService(middlewareRepo, routeService)
 	// New workspaces are seeded with a default security-policy set (best-effort).
 	workspaceService.SetMiddlewareSeeder(middlewareService)
@@ -687,14 +635,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupSetRepo := repositories.NewDatabaseBackupSetRepository(db)
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
-	// Watches for workloads that disappeared from their node or cluster, and for volumes whose data is gone.
-	// It runs on the cron manager, so only the leading control plane sweeps. The backup histories are what a
-	// report of lost data points at: Miabi never restores one unattended.
+	// Runs on the cron manager so only the leader sweeps; Miabi never restores a backup unattended.
 	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, eventsService, settingsProvider)
 	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
-	// Enforcement, which only runs when control_manager_mode is "enforce": redeploy through the ordinary deploy
-	// path so the app goes back on its own node, never onto a cordoned one, and never while it is missing
-	// something it needs — its data, or a config it mounts.
+	// Redeploys via the ordinary path so the app never lands on a cordoned node or runs missing data or configs.
 	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
 	// Gateways are watched too
 	controlManager.SetGateways(nodeService, nodeGateway.Ensurer(nodeService, nodeClients))
@@ -715,8 +659,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	databaseSizeRepo := repositories.NewDatabaseSizeRepository(db)
 	databaseService.SetSizeCatalog(databaseSizeRepo)
 
-	// Account teardown: stop a disabled user's workloads, and cascade-delete all
-	// of a deleted user's owned-workspace resources.
 	accountService := account.NewService(userRepo, workspaceRepo, appRepo, dbRepo, stackRepo, appService, databaseService, stackService, storageService)
 	accountService.SetDeletionGuard(billingService.GuardWorkspaceDeletion)
 	accountService.SetWorkspaceDeletedHook(billingService.WorkspaceDeleted)
@@ -763,8 +705,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Error("failed to register workspace restriction expiry job", "error", err)
 	}
 
-	// Daily release check: one request to versions.miabi.io covers every component. The minute is arbitrary
-	// but not :00, so installs don't all converge on one minute.
+	// The minute is arbitrary but not :00 so installs do not all converge on one minute.
 	updateService := updatecheck.NewService(db, config.Version, cfg.UpdateCheck)
 	agentUpdateService := updatecheck.NewAgentService(db, cfg.UpdateCheck)
 	runnerUpdateService := updatecheck.NewComponentService(db, updatecheck.ComponentRunner, cfg.UpdateCheck)
@@ -789,9 +730,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	registerTelemetry(cronManager, telemetryService)
 	databaseService.SetNetworkProvider(networkService) // DBs run on the workspace's default network, alongside its apps
 	databaseService.SetSwarmNetworks(clusterService)
-	// Delete guard: refuse to orphan a volume/database whose owning app/database/
-	// stack still exists (records its owner in metadata; see models.Owner). A
-	// stale owner (already deleted) returns false here and does not block.
+	// A stale owner (already deleted) returns false and does not block.
 	ownerExists := func(kind string, id, workspaceID uint) bool {
 		switch kind {
 		case models.OwnerApp:
@@ -854,8 +793,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			}
 		}
 
-		// Decisions are also in the audit log, which has its own retention; this table only feeds the
-		// Security Center's recent-activity views.
+		// Decisions also live in the audit log with its own retention; this table only feeds the Security Center views.
 		if err := cronManager.RegisterTask("security_events_prune", 0, "Security Center event prune", "15 3 * * *", func() error {
 			n, err := securityService.PruneEvents(180 * 24 * time.Hour)
 			if err == nil && n > 0 {
@@ -878,8 +816,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to schedule audit log prune", "error", err)
 		}
-		// Enterprise SIEM streaming: ship new audit events to external sinks. A no-op
-		// unless the siem_stream entitlement is present; off the request path.
+		// A no-op unless the siem_stream entitlement is present.
 		if err := cronManager.RegisterTask("siem_stream", 1, "SIEM audit streaming", "@every 30s", func() error {
 			return siemStreamer.Tick(context.Background())
 		}); err != nil {
@@ -907,20 +844,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupSettingsService := backupsettings.NewService(backupSettingsRepo)
 	// The operator identity on the sign-in page and in the console chrome.
 	brandingService := branding.NewService(settingRepo, repositories.NewBrandAssetRepository(db))
-	// Deployment-config image catalog: resolver over settings, with env config as
-	// the built-in default for the gateway/relay images. Wired into every service
-	// that runs a platform image.
 	imageResolver := platformimage.New(settingsProvider, map[string]string{
 		platformimage.KeyGoma:  cfg.NodeGatewayImage,
 		platformimage.KeyRelay: cfg.ForwardRelayImage,
 	})
 	databaseService.SetImageResolver(imageResolver)
-	// The network check runs socat probe containers on each node; it reuses the
-	// port-forward relay image rather than introducing another one to pull.
+	// Reuses the port-forward relay image rather than adding another one to pull.
 	clusterService.SetNetCheckImage(imageResolver, cfg.ForwardRelayImage)
-	// The global agent service: Swarm carries the agent to every worker, each agent
-	// registers itself from the swarm node id its own engine reports, and the manager
-	// verifies that id against its own membership before trusting the shared token.
+	// The manager verifies each agent's self-reported swarm node id against its membership before trusting the shared token.
 	clusterService.SetAgentDeps(
 		nodeService,
 		cfg.ControlURL,
@@ -959,8 +890,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	platformBackupService.SetFingerprinter(crypto.DeriveToken)
 	platformBackupService.SetKeyFingerprinter(crypto.DeriveTokenFrom)
 	platformBackupService.SetEnv(cfg.PlatformBackup)
-	// Tenant capture: point the existing per-database backup machinery at the
-	// platform's own bucket rather than growing a second copy of it here.
+	// Reuses the per-database backup machinery against the platform bucket rather than duplicating it.
 	platformBackupService.EnableTenantCapture(db, backupService)
 
 	platformBackupService.SetAppStopper(platformbackup.NewMountAppStopper(appRepo, appService))
@@ -989,8 +919,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}()
 	}
 	nodeStatsService.SetAgentStats(cfg.NodeStatsAgent)
-	// Storage classes decide WHERE on a node a volume's data lands. The built-in "default" class is
-	// seeded here so every install — and every pre-existing volume, which backfills to it — has one.
+	// The built-in "default" class is seeded so every install, and every backfilled volume, has one.
 	storageClassService := storageclass.NewService(repositories.NewStorageClassRepository(db), nodeClients)
 	storageClassService.SetImageResolver(imageResolver)
 	storageClassService.SetServerInfo(nodeService)
@@ -998,8 +927,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("failed to seed the built-in storage class", "error", err)
 	}
 	storageService.SetStorageClasses(storageClassService)
-	// A database's data volume is placed by the same rules as a workspace volume, plan binding and
-	// all, rather than always landing on Docker's data root.
+	// Database volumes follow the same placement rules as workspace volumes, plan binding included.
 	databaseService.SetStorageClasses(storageService)
 
 	go storageService.AuditSharedVolumes()
@@ -1022,8 +950,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	marketplaceRemote.SetEntitlements(ee, config.OfficialMarketplaceURL)
 	marketplaceService.SetRemote(marketplaceRemote)
 	if marketplaceRemote.Enabled() {
-		// Serve any previously-synced bundle immediately, then refresh in the
-		// background so startup never blocks on the network.
+		// Serve the cached bundle first so startup never blocks on the network.
 		if err := marketplaceRemote.LoadCache(context.Background()); err != nil {
 			logger.Warn("marketplace: failed to load cached bundle", "error", err)
 		}
@@ -1041,8 +968,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 	registryService := registry.NewService(repositories.NewRegistryRepository(db))
-	// A credential may hold a `${{ secrets.NAME }}` reference instead of its own
-	// copy of the password, resolved from the vault at every use.
 	registryService.SetSecrets(secretService)
 	// Built-in Docker registry (distinct from the external-creds registryService).
 	registryServerService := registryserver.NewService(
@@ -1050,9 +975,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		imageResolver, clusterService, apiKeyService, workspaceRepo,
 		proxyMgr, cfg.ProxyNetwork, cfg.ControlURL, cfg.Registry,
 	)
-	// S3 storage is an Enterprise entitlement, and the environment is now its only
-	// source — so the license is checked where the driver is used (boot, GC), not
-	// at an API that can no longer select it.
+	// S3 is env-only now, so the license is checked where the driver is used (boot, GC), not at an API.
 	registryServerService.SetInternalNetwork(cfg.InternalNetwork)
 	registryServerService.SetEntitlements(ee)
 	registryServerService.SetStorageClasses(storageClassService)
@@ -1071,13 +994,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Domains under a console-pushed zone connect to that provider and verify themselves.
 	domainService.SetConsoleDNS(dnsProviderService)
 	billingService.SetConsoleDNS(dnsProviderService, domainService)
-	// Re-render a workspace's gateway config when a domain's verification changes,
-	// so its routes go live (on verify) or offline (on drift) automatically.
+	// Routes go live on verify or offline on drift automatically.
 	domainService.SetProxyResyncer(routeService)
 	// Keep app A/AAAA/CNAME records in sync with routed hosts.
 	routeService.SetDNSAddresser(dnsProviderService)
-	// Managed certificates: issue + auto-renew TLS certs via ACME DNS-01 using a
-	// connected DNS provider, stored in workspace Certificates.
 	renewWithin := time.Duration(cfg.CertRenewDays) * 24 * time.Hour
 	if renewWithin <= 0 {
 		renewWithin = 30 * 24 * time.Hour
@@ -1106,16 +1026,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register dns reconcile task", "error", err)
 		}
-		// Drift detection: re-check verified manual domains and un-verify any whose
-		// ownership TXT has gone missing, dropping their routes offline.
 		if err := cronManager.RegisterTask("domain_reverify", 1, "Domain ownership drift re-verification", fmt.Sprintf("@every %dm", reconcileEvery), func() error {
 			return domainService.Reverify(context.Background())
 		}); err != nil {
 			logger.Warn("failed to register domain reverify task", "error", err)
 		}
 	}
-	// Storage-usage sweep: cache real per-volume disk usage so the UI can show
-	// declared-vs-used without a live `docker system df` on every read.
+	// Cached so the UI shows declared-vs-used without a live `docker system df` per read.
 	if cfg.StorageUsageEnabled && cronManager != nil {
 		usageEvery := cfg.StorageUsageMinutes
 		if usageEvery <= 0 {
@@ -1126,22 +1043,18 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register storage usage task", "error", err)
 		}
-		// Node capacity and load, measured on each node and stored on its row. Everything that wants
-		// fleet figures then reads the database instead of fanning out to every node.
+		// Stored per node so fleet figures read the database instead of fanning out to every node.
 		if err := cronManager.RegisterTask("node_capacity", 0, "Measure node capacity and load", fmt.Sprintf("@every %dm", usageEvery), func() error {
 			return nodeStatsService.Sweep(context.Background())
 		}); err != nil {
 			logger.Warn("failed to register node capacity task", "error", err)
 		}
-		// A class's free space is what tells an operator which disk to send the next volume to, so
-		// it rides the same interval as the per-volume sweep.
 		if err := cronManager.RegisterTask("storage_class_capacity", 0, "Measure storage class capacity", fmt.Sprintf("@every %dm", usageEvery), func() error {
 			return storageClassService.MeasureCapacity(context.Background())
 		}); err != nil {
 			logger.Warn("failed to register storage class capacity task", "error", err)
 		}
-		// Seed after boot so a fresh install shows numbers without waiting a full
-		// interval. Off the startup path.
+		// Seed after boot so a fresh install shows numbers without waiting a full interval.
 		go func() {
 			time.Sleep(30 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -1151,9 +1064,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}()
 	}
 
-	// GPU inventory sweep: probe each node for its physical GPUs and upsert the
-	// device rows the admin enables. Only when GPU support is switched on, so a
-	// no-GPU fleet pays nothing.
+	// Only when GPU support is on, so a no-GPU fleet pays nothing.
 	if cfg.GPUEnabled && cronManager != nil {
 		gpuEvery := cfg.GPUInventoryMinutes
 		if gpuEvery <= 0 {
@@ -1164,8 +1075,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register gpu inventory task", "error", err)
 		}
-		// Seed shortly after boot (off the startup path) so discovered cards show
-		// up without waiting a full interval.
 		go func() {
 			time.Sleep(45 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -1173,18 +1082,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			_ = gpuService.Inventory(ctx)
 		}()
 	}
-	// Gate user-created route hostnames on a registered domain (generated
-	// external-access routes bypass route.Service.Create, so they're exempt).
+	// Generated external-access routes bypass route.Service.Create, so they are exempt.
 	routeService.SetDomains(domainRepo)
-	// Privileged workspaces may expose routes under registered-but-unverified
-	// domains (a banned domain is still blocked).
+	// A banned domain is still blocked.
 	routeService.SetWorkspacePolicy(workspaceRepo)
 	// Same signal, read-only: the domains UI reports which unverified domains serve anyway.
 	domainService.SetWorkspacePolicy(workspaceRepo)
 	// Gate custom-certificate imports on the workspace's registered domains.
 	certificateService.SetDomains(domainRepo)
-	// Mirrors the route serve gate: a privileged workspace may hold a cert for a domain it has not
-	// verified, because it is allowed to serve one.
+	// Mirrors the route serve gate: a privileged workspace may serve, so may hold a cert for, an unverified domain.
 	certificateService.SetWorkspacePrivilege(workspaceRepo)
 	// A cluster may serve its generated URLs from one certificate in the system workspace, usually a wildcard.
 	certificateService.SetSystemWorkspace(workspaceRepo)
@@ -1217,8 +1123,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService.SetCluster(clusterService)
 	applyService.SetPlacer(placementService)
 	applyService.SetCertificates(certificateService)
-	// Declarative Application port exposure: externalAccess (reverse-proxy URLs,
-	// over the app's cluster domain) and publish/hostPort (host-port bindings).
 	applyService.SetPortExposure(portBindingService)
 	// Wired once every route service dependency is, since a pinned domain that changed re-hosts routes right away.
 	clusterService.SetExternalAccessListener(func(ctx context.Context, clusterID uint) {
@@ -1241,23 +1145,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// CI/CD pipelines: definitions + runs on the internal runner (worker).
 	pipelineService := pipeline.NewService(repositories.NewPipelineRepository(db), producer)
 	pipelineService.SetRestriction(restrictedDeploy)
-	// Repository-owned pipelines: adopting a repo's .miabi/pipeline.yaml and
-	// re-reading it before each run needs the app's clone URL and credential.
 	pipelineService.SetGitRepos(gitRepoService)
 	pipelineService.SetApps(appRepo)
-	// …and the app service routes a deploy through that pipeline when one exists.
-	// Wired here rather than at construction because the two services are mutually
-	// dependent: pipelines resolve apps, apps trigger pipelines.
+	// Wired here because the two services are mutually dependent.
 	appService.SetPipelines(pipelineService)
 	// Built-image catalog: provenance written by pipeline builds; list + GC here.
 	imageService := image.NewService(repositories.NewImageRepository(db), releaseRepo)
-	// Deleting a registry tag must not pull an image out from under a running
-	// release: the registry service asks the image catalog which digests are held
-	// by a live deployment or a pinned release — the same set GC exempts.
+	// Deleting a tag must not pull an image held by a live deployment or pinned release, the same set GC exempts.
 	registryServerService.SetCatalog(imageService)
-	// The identity a recovery point seals: the master encryption key and JWT secret this platform
-	// runs on, plus enough identity to rebuild the stack around a restored database. Without it a
-	// dump on a fresh host is ciphertext under a key that died with the old machine.
+	// Without the sealed identity a dump on a fresh host is ciphertext under a key that died with the old machine.
 	platformBackupService.SetIdentitySource(func() (*dr.Identity, error) {
 		id := &dr.Identity{
 			InstallID:           installID,
@@ -1278,30 +1174,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 		return id, nil
 	})
-	// Refuse an app whose image points into another workspace's namespace in the built-in registry,
-	// at the moment it is saved. The deploy worker enforces the same boundary; this makes it a
-	// validation error on the form rather than a failed deployment.
+	// Same boundary the deploy worker enforces, surfaced as a form validation error instead of a failed deploy.
 	appService.SetImageGuard(registryServerService)
-	// Version policies: each building run reserves its image version before it is queued, and the
-	// dispatcher tags the published digest with it once the run succeeds.
+	// Versions are reserved before queueing; the digest is tagged only once the run succeeds.
 	versionService := versioning.NewService(repositories.NewVersionRepository(db), appRepo, repositories.NewPipelineRepository(db))
 	versionService.SetRegistry(registryServerService)
 	versionService.SetImages(imageService)
 	pipelineService.SetVersions(versionService)
-	// Runner job dispatch: sends a build to a runner over its tunnel, mints the
-	// per-job credentials, and streams report frames back onto the run. Returned
-	// so the caller can wire it into the pipeline worker (which holds the tunnels).
+	// Returned so the caller can wire it into the pipeline worker, which holds the tunnels.
 	runnerMinter := runners.NewCredentialMinter(apiKeyService, cfg.JobAPITokenEnabled)
 	runnerDispatcher := runners.NewDispatcher(
 		runnerService, runnerManager, runnerMinter,
 		repositories.NewPipelineRepository(db), imageService, bus,
 		time.Duration(cfg.BuildTimeoutMinutes)*time.Minute,
 	)
-	// Externalize each pipeline step's full log on terminal (bounded tail in the
-	// DB), so a finished run's logs survive past the live SSE stream.
+	// Full logs are externalized so a finished run's logs outlive the live SSE stream.
 	runnerDispatcher.SetLogStore(logStore)
-	// A succeeded runner build with a deploy step rolls out by digest: create a
-	// deployment of the pushed image and enqueue it to the app's node.
 	runnerDispatcher.SetDeployer(worker.NewPipelineDeployer(appRepo, deploymentRepo, producer))
 	// Pipeline env may reference workspace secrets; resolved on this side, never by a runner.
 	runnerDispatcher.SetSecrets(secretService)
@@ -1310,9 +1198,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	environmentRepo := repositories.NewEnvironmentRepository(db)
 	environmentService := environment.NewService(environmentRepo)
 	releaseService := releasesvc.NewService(releaseRepo, appRepo, environmentRepo, appService)
-	// Portable workspace backup: export a whole workspace — configuration, secrets, database dumps
-	// and volume archives — to its S3 target as one encrypted bundle, and restore it here or into a
-	// fresh workspace. It drives the platform's own create paths, hence the wide dependency set.
+	// Drives the platform's own create paths, hence the wide dependency set.
 	wsBundleService := wsbackup.NewService(wsbackup.Deps{
 		Repo:        repositories.NewWorkspaceBundleRepository(db),
 		Apps:        appRepo,
@@ -1358,8 +1244,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 
-	// Live location migration (EE): moves an app with its volumes and databases to another location,
-	// streaming the data engine to engine through the control plane.
 	transferService := transfer.New(nodeClients,
 		func() string { return imageResolver.Ref(platformimage.KeySync) },
 		func() string { return imageResolver.Ref(platformimage.KeyRelay) })
@@ -1395,31 +1279,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to schedule GitOps auto-sync sweep", "error", err)
 		}
-		// Nightly image-catalog GC: prune orphaned build images, never collecting
-		// a digest a live deployment or pinned release references.
 		if err := cronManager.RegisterTask("image_gc", 0, "Image catalog GC", "0 4 * * *", func() error {
 			_, err := imageService.GC(context.Background(), image.RetentionPolicy{}, dockerClient)
 			return err
 		}); err != nil {
 			logger.Warn("failed to schedule image catalog GC", "error", err)
 		}
-		// Register `on.schedule` crons for every enabled pipeline and keep them in
-		// sync as pipelines are created/updated/deleted.
 		pipelineService.SetScheduler(pipelineCronScheduler{cron: cronManager, svc: pipelineService})
 	}
 	webhookRepo := repositories.NewWebhookRepository(db)
 	webhookService := webhook.NewService(webhookRepo, repositories.NewWebhookDeliveryRepository(db), producer)
 	notificationService := notify.NewService(repositories.NewNotificationChannelRepository(db), notify.NewRegistry())
-	// Platform mailer: sends Miabi's own emails (password resets, workspace
-	// invitations, account welcomes) over the system SMTP server. A no-op until
-	// MIABI_SMTP_* is configured.
+	// A no-op until MIABI_SMTP_* is configured.
 	platformMailer := mailer.NewService(cfg.SystemSMTP, cfg.AppName, cfg.AppWebURL)
-	// Self-service sign-up: off unless an operator turns it on. It takes the mailer
-	// so it can refuse to open sign-up that needs a verification email nobody can send.
+	// Takes the mailer so it can refuse sign-up that needs a verification email nobody can send.
 	registrationService := registration.NewService(cfg.RegistrationEnabled, settingsProvider, platformMailer)
 
-	// Per-workspace key rotation: register the secret-owning services
-	// as reencryptors with the live keyring, and schedule auto-rotation when on.
 	var keyRotator *keyring.Service
 	if kr, ok := crypto.CurrentKeyring().(*keyring.Service); ok {
 		kr.Register(secretService)
@@ -1459,15 +1334,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	jwtAuth := middlewares.JWTAuth(cfg, sessionStore, userRepo)
 
-	// Platform announcements deliver into the same per-user inbox the alerting
-	// engine writes to, so the bell, the SSE stream and the notifications page need
-	// no announcement-specific handling.
+	// Shares the alerting inbox so bell, SSE and notifications page need no announcement-specific handling.
 	announcementRepo := repositories.NewAnnouncementRepository(db)
 	inboxRepo := repositories.NewNotificationInboxRepository(db)
 	announcementService := announcement.NewService(announcementRepo, inboxRepo, bus)
 	if cronManager != nil {
-		// Scheduled broadcasts only. Expiry is evaluated on every read, so a lapsed
-		// notice stops showing when it lapses rather than when this next runs.
+		// Expiry is evaluated on every read, so a lapsed notice stops showing on time regardless of this tick.
 		if err := cronManager.RegisterTask("announcements", 0, "Publish scheduled announcements", "@every 1m", func() error {
 			return announcementService.Tick()
 		}); err != nil {
@@ -1494,8 +1366,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		systemAdmin:     middlewares.RequireSystemAdmin(userRepo, elevationService),
 		systemAdminRole: middlewares.RequireSystemAdmin(userRepo, nil),
 		freshElevation:  middlewares.RequireFreshElevation(elevationService),
-		// Auth endpoints fall back to a local limiter if Redis is down (brute-force
-		// stays throttled); agent tunnels fail open (availability over throttling).
+		// Auth falls back to a local limiter if Redis is down; agent tunnels fail open (availability over throttling).
 		authRateLimit:       middlewares.RateLimit(redisClient, 10, time.Minute, true),
 		agentRateLimit:      middlewares.RateLimit(redisClient, 120, time.Minute, false),
 		agentStatsRateLimit: middlewares.RateLimit(redisClient, 2400, time.Minute, false),
@@ -1621,19 +1492,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	r.h.auth.SetUserSettings(userSettingsService)
 	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)
-	// A node's connect/disconnect reaches the console as it happens: adding a node no longer means
-	// reloading the page to find out whether the agent came up.
 	nodeManager.AddStatusListener(r.h.node.PublishStatus)
 
-	// Edge gateways buffer their events on the node's own Redis; the agent forwards
-	// them here, so they land in the same stream the consumer already reads.
 	if cfg.AnalyticsEnabled && redisClient != nil {
 		r.h.provider.SetAnalyticsIngest(
 			analytics.NewIngester(redisClient, routeService, cfg.AnalyticsStream),
 			ingestMetrics{},
 			func(srv *models.Server) handlers.AnalyticsForwarderConfig {
-				// Only an edge gateway buffers locally; every other node's traffic is
-				// already served by the manager's gateway.
+				// Every other node's traffic is already served by the manager's gateway.
 				if srv == nil || srv.IsLocal || srv.Connectivity != models.ConnectivityEdgeGateway {
 					return handlers.AnalyticsForwarderConfig{}
 				}
@@ -1655,16 +1521,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.workspace.SetMailer(platformMailer)
 	r.h.adminUser.SetMailer(platformMailer)
 	r.h.adminUser.SetUserGuard(billingService.GuardServiceUser)
-	// "Copy login command": the auth handler mints via password re-auth; the OAuth
-	// handler mints via a forced fresh SSO login and hands off through Redis.
 	r.h.auth.SetLoginTokens(loginTokenService)
 	passkeyRepo := repositories.NewPasskeyRepository(db)
 	r.h.auth.SetPasskeys(newPasskeyService(cfg, redisClient, passkeyRepo), passkeyRepo)
 	r.h.oauthPublic.SetLoginTokens(loginTokenService)
 	r.h.adminUser.SetEnterprise(ee) // gate the per-user workspace-limit override
 
-	// Surface cluster-mode availability as a workspace capability, so any member — not just a
-	// platform admin — can be offered the replicated "service" runtime when creating an app.
+	// Lets any member, not just admins, be offered the service runtime.
 	r.h.usage.SetClusterCap(clusterService)
 	r.h.usage.SetPlacer(placer)
 	billingService.SetAccountDeps(billing.AccountDeps{Workspaces: workspaceService, EE: ee, Meter: r.h.usage,
@@ -1683,8 +1546,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.stack.SetPlacer(placer)
 	r.h.marketplace.SetPlacer(placer)
 
-	// Log reads replay a finished run's full history from the shared store and expose a
-	// full-log download; nil-safe, falling back to the DB tail when disabled.
+	// Nil-safe: falls back to the DB tail when the store is disabled.
 	r.h.app.SetLogStore(logStore)
 	r.h.job.SetLogStore(logStore)
 	r.h.pipeline.SetLogStore(logStore)
@@ -1701,8 +1563,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.auth.SetRegistration(registrationService)
 	r.h.auth.SetCreationPolicy(workspaceService.CreationPolicy)
 	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
-	// An account that never picked an accent follows the operator's; an enforced
-	// brand accent overrides every account. Has, not Mutable: expiry keeps the lock.
+	// Has, not Mutable: license expiry keeps the accent lock.
 	userSettingsService.SetBrandAccent(func() (models.Accent, bool) {
 		if !ee.Has(enterprise.FlagWhiteLabel) {
 			return "", false
@@ -1716,13 +1577,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Wire ACME managed-certificate issuance into the certificate handler.
 	r.h.certificate.SetManaged(managedCertService)
 
-	// Surface network subnet-pool utilization on the admin metrics dashboard.
-	// Guarded so a typed-nil allocator isn't stored as a non-nil interface.
+	// Guarded so a typed-nil allocator is not stored as a non-nil interface.
 	if subnetAllocator != nil {
 		r.h.adminMetrics.SetSubnetAllocator(subnetAllocator)
 	}
-	// The dashboard reads capacity the node sweep has already measured and stored, so it stays a
-	// query no matter how many nodes there are.
+	// Reads stored sweep results so the dashboard stays one query regardless of node count.
 	r.h.adminMetrics.SetNodeCapacity(serverRepo)
 	r.h.cluster.SetCapacityStore(serverRepo)
 	r.h.cluster.SetOrganizations(organizationService, ee)
@@ -1732,8 +1591,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.oauthAdmin.SetWorkspaces(workspaceRepo)
 	r.h.node.SetNodeStats(nodeStatsService)
 
-	// Restrict browser WebSocket upgrades (exec/log/node/runner tunnels) to
-	// same-origin plus the configured allowlist, blocking cross-site hijacking.
+	// Blocks cross-site WebSocket hijacking: same-origin plus the configured allowlist only.
 	wsOrigins := cfg.AllowedBrowserOrigins()
 	r.h.app.SetAllowedOrigins(wsOrigins)
 	r.h.node.SetAllowedOrigins(wsOrigins)
@@ -1748,9 +1606,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.adminRunner.SetEventBus(bus)
 	runnerManager.AddStatusListener(r.h.runner.PublishStatus)
 
-	// Post-restore recovery. `miabi restore` writes a quiesce marker into the database it restores,
-	// so the control plane knows on its first boot that this is a recovery — and holds off on
-	// schedules and redeploys until an operator has read the report and moved DNS.
+	// The quiesce marker holds off schedules and redeploys until an operator has read the report and moved DNS.
 	recoveryService := recovery.New(
 		repositories.NewSettingRepository(db),
 		serverRepo,
@@ -1773,8 +1629,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 		return st.StorageType, st.Enabled
 	})
-	// Workload recovery: start every managed database container, then load the
-	// newest recovery point's tenant dumps and volume archives into them.
 	recoveryService.SetDatabaseRecovery(
 		dbRepo.ListAllInstances,
 		func(ctx context.Context, instanceID uint) error {
@@ -1782,9 +1636,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			if err != nil {
 				return err
 			}
-			// A recovered row names a container on the host that is gone, so starting it can only fail with
-			// "no such container". Recreate from the stored spec — image, volumes, networks and the
-			// encrypted admin password are all in the row — and only start once it is genuinely there.
+			// The recovered row names a container on a dead host, so recreate from the stored spec before starting.
 			if inst.ContainerID != "" {
 				if _, err := dockerClient.InspectContainer(ctx, inst.ContainerID); err == nil {
 					return databaseService.Start(ctx, inst)
@@ -1815,17 +1667,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Warn("this platform was restored from a recovery point and is QUIESCED: schedules are suspended until recovery is completed from Admin → Platform Backup")
 	}
 
-	// Platform backup schedule (Enterprise): re-register the single platform backup cron from stored
-	// settings, only when the schedule is enabled and FlagPlatformBackup is present, so Community
-	// incurs no platform-backup work. Surfaced in /admin/jobs like other crons.
+	// Only when enabled and FlagPlatformBackup is present, so Community incurs no platform-backup work.
 	reschedulePlatformBackup := func(st *models.PlatformBackupSettings) {
 		cronManager.UnregisterTask("platform-backup", 1)
 		if st == nil || !st.ScheduleEnabled || st.ScheduleCron == "" || !r.ee.Has(enterprise.FlagPlatformBackup) {
 			return
 		}
-		// A platform that is still recovering does not take backups. Backing up a
-		// half-reconciled restore would overwrite good recovery points with a
-		// snapshot of a platform that is not yet itself.
+		// Backing up a half-reconciled restore would overwrite good recovery points.
 		if recoveryService.Pending() {
 			logger.Warn("platform backup schedule suspended: this platform is recovering from a restore")
 			return
@@ -1841,17 +1689,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		reschedulePlatformBackup(st)
 	}
 
-	// Built-in registry: apply settings to the container on demand (after a
-	// settings change) and once on boot, best-effort. Gated by Enabled inside
-	// Ensure, so a disabled registry is a no-op on single-node installs.
+	// Ensure checks Enabled, so a disabled registry is a no-op.
 	r.h.adminRegistry.SetEnsure(func(ctx context.Context) error {
 		return registryServerService.Ensure(ctx, dockerClient)
 	})
 	r.h.adminRegistry.SetGC(func(ctx context.Context) error {
 		return registryServerService.GarbageCollect(ctx, dockerClient)
 	})
-	// Live container state + resource usage for the admin overview, and the
-	// repository count that decides whether a storage change strands images.
+	// The repository count decides whether a storage change strands images.
 	r.h.adminRegistry.SetRuntime(func(ctx context.Context) (*registryserver.Runtime, error) {
 		return registryServerService.RuntimeStatus(ctx, dockerClient)
 	})
@@ -1861,28 +1706,24 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			logger.Warn("internal registry ensure on boot failed", "error", err)
 		}
 	}()
-	// Daily registry garbage collection (no-op unless the registry is enabled with
-	// deletes on; flips read-only for the collect, then restores read-write).
+	// No-op unless enabled with deletes on; flips read-only during collection.
 	if err := cronManager.RegisterTask("registry_gc", 0, "Registry garbage collection", "0 4 * * *", func() error {
 		return registryServerService.GarbageCollect(context.Background(), dockerClient)
 	}); err != nil {
 		logger.Error("failed to register registry GC cron", "error", err)
 	}
 
-	// Gate node container-log streaming by workspace membership: a platform admin
-	// can list/operate containers, but not read another workspace's container logs.
+	// A platform admin can operate containers but not read another workspace's container logs.
 	r.h.node.SetMembership(workspaceRepo)
 	r.h.cluster.SetConnectivityApplier(r.h.node.ApplyConnectivity)
 	r.h.node.SetPoolLabeler(clusterService.SyncPoolLabel)
-	// Block stop/remove of managed containers from the admin node view unless the
-	// operator has explicitly disabled security enforcement (break-glass).
+	// Break-glass: only an explicit security-enforcement opt-out allows it.
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)
 	r.h.node.SetAgentReleases(agentUpdateService)
 	// GPU inventory + admin device policy on the node detail page.
 	r.h.node.SetGPU(gpuService)
 
-	// Platform admins are always exempt — a misconfigured IdP must never lock the
-	// whole instance out.
+	// A misconfigured IdP must never lock the whole instance out.
 	ssoEnforced := func(user *models.User) bool {
 		if user.IsAdmin() {
 			return false
@@ -1892,8 +1733,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 	r.h.auth.SetSSOEnforcement(ssoEnforced)
 	r.h.register.SetInvitations(workspaceService, ssoEnforced)
-	// Enterprise LDAP/AD fall-through on the primary login endpoint. No-op in
-	// Community (directoryService.Login returns (nil,nil) when ee.LDAP() is nil).
+	// No-op in Community: Login returns (nil, nil) when ee.LDAP() is nil.
 	r.h.auth.SetDirectoryLogin(directoryService.Login)
 
 	// Maintenance mode (admins and auth endpoints excepted).
@@ -1969,18 +1809,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.register(r.samlPublicRoutes()...)
 	r.register(r.scimRoutes()...)
 
-	// Serve the built web UI as an SPA. Registered last so API routes win; Okapi auto-excludes their
-	// top-level segments (/api, /healthz) so those keep returning JSON. The UI is embedded in the
-	// binary and served by default; MIABI_WEB_DIR overrides it to serve from disk.
+	// Registered last so API routes win; Okapi auto-excludes their top-level segments.
 	if cfg.WebDir != "" {
 		r.app.Web("/", cfg.WebDir, okapi.WebConfig{MaxAge: time.Hour})
 	} else {
 		r.app.WebFS("/", web.Assets, okapi.WebConfig{Root: "dist", MaxAge: time.Hour})
 	}
 
-	// Publish the current desired proxy state into the per-workspace file layout,
-	// synchronously here before the server accepts traffic, so Goma's debounced
-	// file watcher sees the converged state in a single reload.
+	// Synchronous before serving so Goma's debounced watcher sees the converged state in one reload.
 	if err := routeService.ResyncAllProxy(context.Background()); err != nil {
 		logger.Warn("proxy startup resync failed", "err", err)
 	}
@@ -1993,15 +1829,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 
-	// The bundle service goes back to the caller so the embedded worker can run
-	// export/restore tasks against this exact service graph — the one with every
-	// guard, quota and provisioning path wired.
+	// Returned so the embedded worker runs bundle tasks against this fully wired service graph.
 	return forwardService, runnerDispatcher, runnerManager, wsBundleService, migrationService
 }
 
-// RegisterFallbacks wires NoRoute/NoMethod handlers so router-level errors use
-// the standard {success,data,error} envelope. Must be called before the server
-// starts (Okapi binds these during applyCommon at startup), i.e. before RunServer.
+// Must be called before RunServer: Okapi binds these during applyCommon at startup.
 func RegisterFallbacks(app *okapi.Okapi) {
 	app.NoRoute(func(c *okapi.Context) error { return c.AbortNotFound("route not found") })
 	app.NoMethod(func(c *okapi.Context) error { return c.AbortMethodNotAllowed("method not allowed") })
@@ -2054,9 +1886,7 @@ func (r *Router) infoRoute() okapi.RouteDefinition {
 	}
 }
 
-// urlHost extracts the hostname from a configured base URL, so a recovery point
-// records the panel's domain rather than its full URL. Returns the input when it
-// is already a bare host.
+// A recovery point records the panel's domain rather than its full URL.
 func urlHost(raw string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -2078,10 +1908,7 @@ type ingestMetrics struct{}
 func (ingestMetrics) IngestAccepted(node string, n int) { metrics.IngestAccepted(node, n) }
 func (ingestMetrics) IngestRejected(node string, n int) { metrics.IngestRejected(node, n) }
 
-// ipv6Enabled resolves whether Miabi-created networks are dual-stack. It refuses to enable on an
-// engine that cannot assign an IPv6 range itself, because every network create would fail and take
-// deploys with it — unless the operator pinned a ULA prefix, in which case Miabi supplies the subnet
-// and the engine's own support is enough.
+// Refuses on engines that cannot auto-assign IPv6, or every network create fails, unless a ULA prefix is pinned.
 func ipv6Enabled(ctx context.Context, dc docker.Client, cfg *config.Config) bool {
 	if !cfg.NetworkIPv6 {
 		return false
@@ -2103,16 +1930,13 @@ func ipv6Enabled(ctx context.Context, dc docker.Client, cfg *config.Config) bool
 	return false
 }
 
-// engineSupportsAutoIPv6 reports whether the engine assigns a ULA /64 to an IPv6-enabled network on
-// its own — Docker 26 and later. Below that a network created without an explicit v6 subnet fails.
+// Docker 26+ assigns a ULA /64 itself; older engines fail without an explicit v6 subnet.
 func engineSupportsAutoIPv6(version string) bool {
 	major := strings.SplitN(strings.TrimSpace(version), ".", 2)[0]
 	n, err := strconv.Atoi(major)
 	return err == nil && n >= 26
 }
 
-// registerTelemetry announces telemetry once at boot, schedules the daily event, and sends the startup event
-// off the startup path.
 func registerTelemetry(cronManager *cronpkg.Manager, svc *telemetry.Service) {
 	if !svc.Enabled() {
 		logger.Debug("anonymous telemetry is disabled")
@@ -2135,8 +1959,7 @@ func registerTelemetry(cronManager *cronpkg.Manager, svc *telemetry.Service) {
 	go svc.SendStartup(context.Background())
 }
 
-// registerUpdateCheck schedules the daily release check and seeds the cache shortly after boot, so a fresh
-// install does not wait a day for its first answer.
+// Seeds the cache shortly after boot so a fresh install does not wait a day.
 func registerUpdateCheck(cronManager *cronpkg.Manager, checker *updatecheck.Checker) {
 	if !checker.Enabled() {
 		return
@@ -2161,8 +1984,7 @@ func registerUpdateCheck(cronManager *cronpkg.Manager, checker *updatecheck.Chec
 	}()
 }
 
-// newPasskeyService binds passkeys to the console's public URL; without one they stay off, since a
-// passkey is tied to an origin.
+// Passkeys are tied to an origin, so without a public URL they stay off.
 func newPasskeyService(cfg *config.Config, rdb *redis.Client, repo *repositories.PasskeyRepository) *passkey.Service {
 	if !cfg.PasskeysEnabled {
 		logger.Info("passkeys disabled: MIABI_PASSKEYS_ENABLED=false")

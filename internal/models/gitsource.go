@@ -44,9 +44,7 @@ const (
 	GitSourceDegraded GitSourceStatus = "degraded"
 )
 
-// GitSource binds a Git path of miabi.io/v1 manifests to a workspace as a
-// continuously-reconciled desired-state source — the GitOps half of the declarative model:
-// Git -> (sync) -> Postgres desired -> (reconciler) -> Docker.
+// GitSource binds a Git path of manifests to a workspace as a continuously reconciled desired-state source.
 type GitSource struct {
 	UIDModel
 	ID          uint `json:"id" gorm:"primaryKey"`
@@ -60,8 +58,7 @@ type GitSource struct {
 	Ref     string `json:"ref" gorm:"not null;default:main"` // branch, tag or commit
 	Path    string `json:"path" gorm:"not null;default:."`   // manifest subdirectory
 
-	// GitRepositoryID optionally references stored credentials (token/SSH) for a
-	// private repository. nil means the repo is public.
+	// nil means the repo is public.
 	GitRepositoryID *uint `json:"git_repository_id,omitempty" gorm:"index"`
 
 	SyncPolicy GitSyncPolicy `json:"sync_policy" gorm:"not null;default:manual"`
@@ -69,19 +66,12 @@ type GitSource struct {
 	Prune bool `json:"prune" gorm:"not null;default:false"`
 	// SelfHeal re-applies when the live state drifts from Git.
 	SelfHeal bool `json:"self_heal" gorm:"not null;default:false"`
-	// AllowEmpty permits an empty manifest set to prune ALL managed resources (intentional
-	// teardown). Off by default, so a wrong path or a wiped repo cannot tear down a deployment.
-	// A missing path is always an error. Only meaningful together with Prune.
+	// Off by default so a wrong path or wiped repo cannot tear down a deployment; only meaningful with Prune.
 	AllowEmpty bool `json:"allow_empty" gorm:"not null;default:false"`
-	// RequireSealedSecrets refuses a sync whose manifests carry a Secret with a plaintext value, so a
-	// credential can't land in the repository by mistake. SealedSecret and generated Secrets still pass.
-	RequireSealedSecrets bool `json:"require_sealed_secrets" gorm:"not null;default:false"`
-	// DeletePolicy is what deleting the source does to the resources it created: orphan leaves them
-	// running, cascade tears them down. It applies when a manifest prunes a declared source.
-	DeletePolicy string `json:"delete_policy" gorm:"not null;default:orphan"`
+	// SealedSecret and generated Secrets still pass.
+	RequireSealedSecrets bool   `json:"require_sealed_secrets" gorm:"not null;default:false"`
+	DeletePolicy         string `json:"delete_policy" gorm:"not null;default:orphan"`
 
-	// Metadata holds labels; "miabi.io/" keys are platform-managed (managed-by, and the parent
-	// project's gitops-source for a nested source).
 	Metadata    Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
 	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
 

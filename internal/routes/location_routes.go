@@ -28,8 +28,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// locationRoutes registers where a workspace's resources can run: any member lists its locations,
-// and workspace admins set the default one.
 func (r *Router) locationRoutes() []okapi.RouteDefinition {
 	ws := r.v1.Group("/workspaces").WithTagInfo(okapi.GroupTag{Name: "Locations", Description: "The locations a workspace can place resources in."})
 	scoped := func(min models.WorkspaceRole) []okapi.Middleware {

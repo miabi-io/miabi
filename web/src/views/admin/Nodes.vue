@@ -25,8 +25,7 @@ const nodes = ref<Server[]>([])
 const loading = ref(false)
 const agentImage = ref('ghcr.io/miabi-io/agent:latest')
 
-// Edition node cap (-1 = unlimited), control plane excluded. Count comes from the live list so it
-// stays accurate after add/remove. Enforced server-side; this just surfaces it.
+// -1 = unlimited, control plane excluded; enforced server-side, this only surfaces it.
 const nodeLimit = computed(() => license.view?.node_usage?.limit ?? -1)
 const nodeCount = computed(() => nodes.value.filter((n) => !n.is_local).length)
 const limited = computed(() => nodeLimit.value >= 0)
@@ -47,8 +46,7 @@ function clusterNodeCount(clusterID: number): number {
   return nodes.value.filter((n) => n.cluster_id === clusterID).length
 }
 
-// mergeList folds an incoming list into nodes while keeping the existing row objects, so a
-// reconcile patches only what changed rather than re-rendering — and flickering — every row.
+// Keeps existing row objects so a reconcile patches only what changed instead of re-rendering every row.
 function mergeList(incoming: Server[]) {
   const byId = new Map(nodes.value.map((n) => [n.id, n]))
   nodes.value = incoming.map((item) => {
@@ -58,9 +56,7 @@ function mergeList(incoming: Server[]) {
   })
 }
 
-// A status event for a node the list does not hold yet pulls the list in, debounced: the stream
-// opens with a snapshot of every node, which would otherwise mean one list call per node while the
-// first load is still in flight.
+// Debounced because the stream opens with a snapshot of every node, which would mean a list call per node.
 let unknownNodeTimer: ReturnType<typeof setTimeout> | null = null
 
 async function load(quiet = false) {
@@ -75,8 +71,7 @@ async function load(quiet = false) {
   }
 }
 
-// applyStatus patches one row from a live transition. A status for a node we do not have yet — added
-// from another session — pulls the list in rather than inventing a row from a status event.
+// A status for an unknown node pulls the list rather than inventing a row.
 function reconcileSoon() {
   if (unknownNodeTimer) clearTimeout(unknownNodeTimer)
   unknownNodeTimer = setTimeout(() => load(true), 400)
@@ -120,9 +115,7 @@ const blankForm = (): CreateNodePayload => ({
 })
 const form = ref<CreateNodePayload>(blankForm())
 const createdToken = ref<string | null>(null)
-// The node the dialog is showing a join command for, so the same live stream that drives the list
-// can tell the operator their agent dialled back — the minutes right after pasting the command are
-// exactly when there was nothing to watch but a static page.
+// Lets the dialog show the agent dialling back via the same live stream.
 const createdNodeId = ref<number | null>(null)
 const createdNodeOnline = computed(
   () => !!createdNodeId.value && !!nodes.value.find((n) => n.id === createdNodeId.value)?.agent_connected,
@@ -176,8 +169,7 @@ async function submit() {
       notify.success('Node added — connecting…')
     }
   } catch (e) {
-    // The node cap is an edition limit: surface an upgrade-oriented message and
-    // reveal the in-modal upgrade banner rather than a bare error toast.
+    // The node cap is an edition limit, so show the upgrade banner rather than a bare error.
     if (decodeApiError(e).code === 'NODE_LIMIT_REACHED') {
       license.load(true)
       notify.error(t('notify.nodes.communityEditionIsLimitedTo', { value: nodeLimit.value }),
@@ -194,20 +186,13 @@ async function submit() {
 const ACCESS_LABELS: Record<string, string> = { socket: 'Local socket', agent: 'Agent', api: 'Docker API' }
 function accessLabel(m?: string): string { return ACCESS_LABELS[m || 'agent'] || m || '—' }
 
-// The join command is built by the server, so it carries the configured
-// MIABI_CONTROL_URL — the address the node must dial back on, which is not
-// necessarily the address this browser reached the panel at. Building it here
-// from window.location.origin enrolled agents against whatever host the admin
-// happened to open (an internal IP, a port-forward, a proxy that is not the
-// control plane), and the node then silently failed to connect.
+// Server-built so it carries MIABI_CONTROL_URL; the browser origin may not be an address the node can dial.
 const agentCommand = ref('')
 const scriptCommand = ref('')
 const joinMethod = ref<'docker' | 'script'>('docker')
 const shownCommand = computed(() => (joinMethod.value === 'script' ? scriptCommand.value : agentCommand.value))
 
-// localAgentCommand is the fallback used only when the server's command cannot
-// be fetched. The token is shown exactly once, so an empty dialog would lose it
-// — a command with a best-guess URL is recoverable, a missing one is not.
+// Fallback only: the token is shown once, so a best-guess URL beats losing it in an empty dialog.
 function localScriptCommand(token: string): string {
   return (
     `curl -fsSL https://get.miabi.io/agent | \\\n` +
@@ -225,9 +210,7 @@ function localAgentCommand(token: string): string {
   )
 }
 
-// The server returns the command with a <JOIN_TOKEN> placeholder (the token is
-// never in a GET response); the real one is spliced in here so it stays
-// copy-paste ready.
+// The token is never in a GET response, so it replaces the <JOIN_TOKEN> placeholder here.
 async function loadAgentCommand(nodeId: number, token: string) {
   try {
     const jc = (await nodesApi.joinCommand(nodeId)).data.data
@@ -267,8 +250,7 @@ function agentLabel(n: Server): string {
   return n.agent_version || (n.agent_connected ? 'connected' : '—')
 }
 
-// An agent badge per row is invisible on a fleet, so the count goes in the header and the rows
-// explain it. Unsupported is listed separately: it is a different problem with a deadline.
+// Per-row badges vanish on a fleet, so counts go in the header; unsupported has a deadline, so it is separate.
 const outdatedAgents = computed(() => nodes.value.filter((n) => n.agent_state === 'outdated').length)
 const unsupportedAgents = computed(() => nodes.value.filter((n) => n.agent_state === 'unsupported').length)
 
@@ -414,8 +396,7 @@ function swarmClass(n: Server): string {
         <template v-if="!createdToken">
           <form @submit.prevent="submit">
             <div class="modal-body">
-              <!-- Edition node cap reached: nodes are a paid scale dimension.
-                   Block the add and point to the upgrade page. -->
+              <!-- Nodes are a paid scale dimension. -->
               <div v-if="atNodeLimit" class="app-banner app-banner--warning">
                 <span class="mdi mdi-lock-outline app-banner-icon"></span>
                 <div class="app-banner-content">

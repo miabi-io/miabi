@@ -26,8 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// An account the provider creates is the provider's to name, so it is stamped with the
-// auth source that makes self-service profile edits refuse.
+// Provider-created accounts are the provider's to name, so self-service profile edits refuse.
 func TestAuthenticate_StampsTheOAuthAuthSource(t *testing.T) {
 	s, db, idp := registerService(t, "new@acme.test")
 
@@ -51,8 +50,7 @@ func TestAuthenticate_StampsTheOAuthAuthSource(t *testing.T) {
 	}
 }
 
-// Matching an existing account by email is account linking, not provisioning: a local
-// user who also signs in through SSO keeps an editable profile.
+// Email matching is linking, not provisioning: a local user who also uses SSO keeps an editable profile.
 func TestAuthenticate_LeavesAnExistingAccountsAuthSource(t *testing.T) {
 	s, db, idp := registerService(t, "local@acme.test")
 

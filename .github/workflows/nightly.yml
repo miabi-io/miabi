@@ -8,16 +8,13 @@ on:
 permissions:
   contents: read
 
-# Only the newest push matters when the tag is rolling — cancel a build that a
-# later commit has already superseded.
+# The tag is rolling, so only the newest push matters.
 concurrency:
   group: nightly
   cancel-in-progress: true
 
 jobs:
-  # A nightly is meant to be installable, so it does not publish untested code.
-  # CI does not run on this branch (it watches main and dev), which would
-  # otherwise leave the nightly image the only unverified artifact we ship.
+  # CI does not run on this branch, so test here rather than publish an unverified nightly.
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -44,8 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # No git tag to read a version from, so it is derived: the date says how
-      # old a nightly is at a glance, and the commit says exactly what it is.
+      # No git tag to read, so the version is derived from the date and commit.
       - name: Set version
         run: |
           echo "VERSION=nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_ENV"

@@ -34,13 +34,7 @@ func ContainerNameOf(c docker.Container) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// FindCentral returns the platform's own gateway on the node: the Goma container the Miabi stack installs
-// and owns, which serves every app of the default cluster.
-//
-// It is matched by role label first — a compose project prefix or a rename cannot hide it that way — and by
-// the conventional container name second, for stacks installed before the label existed. Miabi never
-// recreates this container: the stack owns its spec. Finding it is what lets Miabi adopt it as the manager's
-// gateway instead of asking an operator to import it by hand after every fresh install.
+// FindCentral matches by role label first, then by conventional name for stacks predating the label.
 func FindCentral(ctx context.Context, dc docker.Client) (docker.Container, bool) {
 	list, err := dc.ListContainers(ctx, true)
 	if err != nil {

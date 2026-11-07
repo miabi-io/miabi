@@ -33,9 +33,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// CustomRoleHandler manages admin-defined roles and their assignment to members.
-// Writes are gated on the custom_roles entitlement; resolution/enforcement of
-// already-assigned roles is open-source (handled in WorkspaceScope).
+// Writes are gated on custom_roles; enforcement of already-assigned roles is open-source.
 type CustomRoleHandler struct {
 	svc        *customrole.Service
 	workspaces *workspace.Service
@@ -120,9 +118,7 @@ func (h *CustomRoleHandler) Delete(c *okapi.Context) error {
 	return message(c, "role deleted")
 }
 
-// AssignMember puts a member on a custom role. Gated custom_roles; the assigner may not grant
-// permissions they lack, a base rank above their own, or touch a member who outranks them,
-// and the last owner may not be moved off an owner-rank role.
+// The assigner may not grant beyond their own rank, and the last owner may not lose owner rank.
 func (h *CustomRoleHandler) AssignMember(c *okapi.Context, req *AssignCustomRoleRequest) error {
 	if err := h.ee.RequireMutable(enterprise.FlagCustomRoles); err != nil {
 		return entitlementAbort(c, err)

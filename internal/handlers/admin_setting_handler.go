@@ -77,8 +77,6 @@ func (h *AdminSettingHandler) SetAuthAccess(reg *registration.Service, passwordR
 	h.reg, h.passwordReset = reg, passwordReset
 }
 
-// AuthAccessStatus reports the auth controls an admin cannot change from here,
-// so the settings screen can show them beside the ones they can.
 type AuthAccessStatus struct {
 	RegistrationEnabled  bool   `json:"registration_enabled"`
 	PasswordResetEnabled bool   `json:"password_reset_enabled"`
@@ -124,9 +122,7 @@ func (h *AdminSettingHandler) List(c *okapi.Context) error {
 	return ok(c, out)
 }
 
-// Update upserts the supplied settings and refreshes the cache.
-// savedKeys names what an update touched, so the audit trail can answer which setting changed
-// rather than only how many did.
+// savedKeys lets the audit trail say which setting changed, not only how many.
 func savedKeys(rows []models.Setting) []string {
 	out := make([]string, 0, len(rows))
 	for _, r := range rows {
@@ -157,9 +153,7 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 		if t == "" {
 			t = models.SettingTypeString
 		}
-		// A value that does not parse is worse than a rejected one: Provider.Int falls back to the
-		// code default, so a typo in a limit silently re-imposes the default while the console keeps
-		// displaying what was typed.
+		// Provider.Int falls back to the default on a bad parse, so a typo would silently re-impose it.
 		if t == models.SettingTypeInt && strings.TrimSpace(s.Value) != "" {
 			if _, err := strconv.Atoi(strings.TrimSpace(s.Value)); err != nil {
 				return c.AbortBadRequest(fmt.Sprintf("%s must be a whole number", key))

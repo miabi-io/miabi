@@ -3,15 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { MiddlewareField } from '@/api/types'
 import GenerateButton from '@/components/GenerateButton.vue'
 
-// Recursive renderer for one middleware rule field. It mutates model[field.key]
-// in place (matching the form's direct-binding style), and recurses for nested
-// object groups and list rows — so header maps, CORS blocks, cookies and the
-// error-interceptor list are all editable from the form with no raw YAML.
-//
-// Column labels, placeholders and the "+ Add" noun come from the schema, not
-// from this file: a setHeaders row is "Header → value" while a JWT
-// forwardHeaders row is "Header → claim path", and one hardcoded placeholder for
-// both taught the wrong thing about whichever it didn't describe.
+// Labels and placeholders come from the schema since the same row type means different things per middleware.
 const props = defineProps<{
   field: MiddlewareField
   model: Record<string, any>
@@ -42,9 +34,7 @@ function removeUser(i: number) {
   userRows().splice(i, 1)
 }
 
-// --- map editor (map<string,string>) ---
-// Kept as an ordered pair list locally; written back to the model object on edit
-// so key renames and empty values (the "delete header" sentinel) round-trip.
+// An ordered pair list so key renames and empty values (the "delete header" sentinel) round-trip.
 const pairs = reactive<Array<{ k: string; v: string }>>(
   f.type === 'map' ? Object.entries(props.model[f.key] || {}).map(([k, v]) => ({ k, v: String(v) })) : [],
 )
@@ -62,10 +52,7 @@ function removePair(i: number) {
 }
 watch(pairs, syncMap, { deep: true })
 
-// --- mapping editor (Goma's "source: target" string list) ---
-// Stored as strings because that is Goma's wire format, but edited as two
-// inputs — the colon convention is an implementation detail, not something a
-// form should make you know. A blank target means "keep the same name".
+// Stored as "source: target" strings (Goma's wire format) but edited as two inputs; a blank target keeps the name.
 const maps = reactive<Array<{ from: string; to: string }>>(
   f.type === 'pairs'
     ? ((props.model[f.key] as string[]) || []).map((s) => {
@@ -107,11 +94,7 @@ function removeRow(i: number) {
   rows().splice(i, 1)
 }
 
-// --- tag editor (string[] / int[]) ---
-// Entries are chips, not a comma-separated string. The old version re-rendered
-// the input from the parsed array on every keystroke, so typing a comma parsed
-// to a trailing empty entry, got filtered out, and the comma vanished as you
-// typed it — you could not enter a second value at all.
+// Chips, not a comma string: re-rendering a parsed string per keystroke swallowed the comma.
 const draft = ref('')
 function tags(): Array<string | number> {
   const v = props.model[f.key]
@@ -129,8 +112,7 @@ function commitDraft() {
   const existing = tags().map(String)
   const parsed: Array<string | number> =
     f.type === 'int[]' ? parts.map(Number).filter((n) => !Number.isNaN(n)) : parts
-  // Adding the same value twice is always a mistake, and silently ignoring it
-  // beats a duplicate chip the user has to hunt down.
+  // A duplicate is always a mistake; ignoring it beats a duplicate chip the user must hunt down.
   const add = parsed.filter((x) => !existing.includes(String(x)))
   if (add.length) props.model[f.key] = [...tags(), ...add]
   draft.value = ''

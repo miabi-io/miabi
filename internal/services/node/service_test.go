@@ -31,15 +31,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// serverRow is a minimal stand-in for models.Server so the "servers" table can be created under sqlite.
-// The real model defaults its uid column to the Postgres-only gen_random_uuid(), which sqlite cannot
-// parse; the cap only reads the row count, so id + name is enough here (mirrors the account_test pattern).
+// Stand-in because the real model's gen_random_uuid() default cannot be parsed by sqlite.
 type serverRow struct {
 	ID      uint `gorm:"primaryKey"`
 	Name    string
 	IsLocal bool
-	// Capacity columns the repository writes on create; the tests never read them, but the insert
-	// names them, so the stand-in has to carry them.
+	// The insert names these columns, so the stand-in must carry them.
 	CPUCores         int
 	MemoryBytes      int64
 	StorageBytes     int64
@@ -72,22 +69,16 @@ func newRepoWithNodes(t *testing.T, n int, withControlPlane bool) *repositories.
 	return repositories.NewServerRepository(db)
 }
 
-// swarmRow adds the swarm_node_id column to the minimal servers stand-in so
-// NameBySwarmNodeID's swarm-id → name correlation can be exercised under sqlite.
 type swarmRow struct {
 	ID          uint `gorm:"primaryKey"`
 	Name        string
 	SwarmNodeID string
-	// GORM stamps updated_at on a column-scoped Update (the real model embeds
-	// gorm.Model), so the stand-in table needs it or the write fails.
+	// GORM stamps updated_at on a column-scoped Update, so the table needs it.
 	UpdatedAt time.Time
 }
 
 func (swarmRow) TableName() string { return "servers" }
 
-// TestNameBySwarmNodeID checks the swarm-id → display-name correlation used to
-// show a cluster app's real replica placement: a matching node resolves to its
-// name; an empty or unknown id resolves to "".
 func TestNameBySwarmNodeID(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -112,8 +103,6 @@ func TestNameBySwarmNodeID(t *testing.T) {
 	}
 }
 
-// TestCheckNodeLimit covers the edition cap decision: blocked at/over the limit
-// with a typed, coded error; allowed below it.
 func TestCheckNodeLimit(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -149,8 +138,7 @@ func TestCheckNodeLimit(t *testing.T) {
 	}
 }
 
-// TestCheckNodeLimitUnconfigured verifies a nil cap closure imposes no limit and
-// never touches the repository (so a nil repo is safe).
+// A nil cap closure must never touch the repository, so a nil repo is safe.
 func TestCheckNodeLimitUnconfigured(t *testing.T) {
 	s := NewService(nil, nil) // no SetNodeLimit, no repo
 	if err := s.checkNodeLimit(); err != nil {
@@ -168,9 +156,7 @@ func TestNodeLimitErrorEnvelope(t *testing.T) {
 	}
 }
 
-// nameRow is the servers stand-in for the naming contract. The real model does not AutoMigrate under
-// sqlite (its index DDL is Postgres-flavoured), which is why the tests in this file use stand-ins; this
-// one carries every column the create/update path writes.
+// The real model does not AutoMigrate under sqlite (Postgres-flavoured index DDL).
 type nameRow struct {
 	ID                      uint `gorm:"primaryKey"`
 	UID                     string
@@ -233,9 +219,7 @@ func nameRepo(t *testing.T) *repositories.ServerRepository {
 	return repositories.NewServerRepository(db)
 }
 
-// The handle is derived from the label unless one is supplied, and a second node
-// with the same label gets a distinct handle rather than colliding on the unique
-// index.
+// A second node with the same label gets a distinct handle rather than colliding on the unique index.
 func TestCreateNodeDerivesHandleFromDisplayName(t *testing.T) {
 	s := NewService(nameRepo(t), nil)
 
@@ -293,8 +277,7 @@ func TestRetiredConnectivityIsRefused(t *testing.T) {
 	}
 }
 
-// The label is editable; the handle is not settable at all, so a rename can never
-// move the URL an edge gateway polls.
+// The handle is not settable, so a rename can never move the URL an edge gateway polls.
 func TestUpdateNodeRenamesLabelOnly(t *testing.T) {
 	s := NewService(nameRepo(t), nil)
 	srv, _, err := s.CreateNode(NodeInput{DisplayName: "Frankfurt Edge"})
@@ -323,8 +306,7 @@ func TestUpdateNodeRenamesLabelOnly(t *testing.T) {
 	}
 }
 
-// The manager's label is editable like any other node's — it is not the handle,
-// so nothing resolves through it. Its Docker access stays fixed.
+// The manager's label is not its handle, so it is editable; its Docker access stays fixed.
 func TestUpdateManagerRenamesLabel(t *testing.T) {
 	repo := nameRepo(t)
 	local, err := repo.EnsureLocal("manager", "unix:///var/run/docker.sock")
@@ -351,8 +333,7 @@ func TestUpdateManagerRenamesLabel(t *testing.T) {
 	}
 }
 
-// A cordon is mirrored to the swarm scheduler, and a mirror that fails still saves the flag — but says
-// so, because a cordon Swarm never heard about keeps taking service tasks.
+// A failed mirror still saves the flag but says so: Swarm would otherwise keep placing service tasks.
 func TestSetCordonedMirrorsToTheSwarmScheduler(t *testing.T) {
 	repo := nameRepo(t)
 	srv := &models.Server{Name: "worker-a"}

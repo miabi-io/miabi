@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// ReviewNotifier tells the platform admins a binding is waiting on them. Without
-// it a request sits in the queue until somebody thinks to look, which is how a
-// developer ends up blocked for a week on a one-click approval.
+// Without it a request sits unseen and a developer stays blocked on a one-click approval.
 type ReviewNotifier interface {
 	NotifyAdmins(n models.Notification) error
 }
@@ -36,8 +34,7 @@ type ReviewNotifier interface {
 // SetReviewNotifier wires admin notification for pending requests (nil-safe).
 func (s *Service) SetReviewNotifier(n ReviewNotifier) { s.notify = n }
 
-// notifyPending raises one inbox item per platform admin. Best-effort: a request
-// that cannot be announced is still a valid request.
+// Best-effort: a request that cannot be announced is still valid.
 func (s *Service) notifyPending(b *models.PortBinding) {
 	if s.notify == nil || b == nil || b.Status != models.PortBindingPending {
 		return

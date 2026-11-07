@@ -26,9 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// The switch is off unless an operator turns it on, and off means off — including
-// in the system workspace, which every other rule in this file treats as the most
-// privileged place on the platform.
+// Off means off, even in the system workspace.
 func TestGrantsRefusedWhenTheSwitchIsOff(t *testing.T) {
 	s := &Service{} // grantsEnabled false, as a platform that never opted in
 
@@ -40,8 +38,7 @@ func TestGrantsRefusedWhenTheSwitchIsOff(t *testing.T) {
 	}
 }
 
-// The switch is checked before the workspace is even read, so no workspace flag
-// can reach past it.
+// The switch is checked before the workspace is read, so no workspace flag can reach past it.
 func TestNoWorkspaceCanPassASwitchThatIsOff(t *testing.T) {
 	s := &Service{} // no workspace repository wired at all
 	for _, tier := range []models.CapabilityTier{models.TierCommon, models.TierElevated} {
@@ -51,8 +48,6 @@ func TestNoWorkspaceCanPassASwitchThatIsOff(t *testing.T) {
 	}
 }
 
-// An app that asks for nothing is unaffected, which is every app on a platform
-// that leaves the switch alone.
 func TestNoGrantsRequestedIsFineWithTheSwitchOff(t *testing.T) {
 	s := &Service{}
 	caps, err := s.validCapabilities(1, nil)

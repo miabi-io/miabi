@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command gen prints the supported-providers table for the docs, so the page cannot
-// drift from the catalog. Run: go run ./internal/dnscatalog/gen
+// Command gen prints the docs' supported-providers table so it cannot drift from the catalog.
 package main
 
 import (

@@ -1,6 +1,4 @@
-// safeNext returns raw when it is a path on this site ("/apps?workspace=prod"), else "": a
-// post-login destination must never send the browser to another origin. Mirrors the server's
-// handlers.SafeNext.
+// A post-login destination must never leave this origin; mirrors handlers.SafeNext.
 export function safeNext(raw: unknown): string {
   if (typeof raw !== 'string') return ''
   const s = raw.trim()

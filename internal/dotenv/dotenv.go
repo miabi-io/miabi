@@ -17,8 +17,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dotenv parses .env-style KEY=VALUE text into ordered pairs, for bulk
-// importing application and stack environment variables.
 package dotenv
 
 import "strings"
@@ -29,9 +27,7 @@ type KeyValue struct {
 	Value string
 }
 
-// Parse reads .env-style content and returns the variables in file order. It skips blank lines
-// and # comments, tolerates an optional `export ` prefix, and strips matching quotes. Duplicate
-// keys are returned in order for the caller to resolve; lines without an `=` are ignored.
+// Parse returns duplicate keys in order for the caller to resolve; lines without `=` are ignored.
 func Parse(content string) []KeyValue {
 	var out []KeyValue
 	for _, raw := range strings.Split(content, "\n") {

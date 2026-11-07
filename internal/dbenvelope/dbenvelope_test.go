@@ -73,8 +73,7 @@ func TestOpenRejectsTheWrongPassphrase(t *testing.T) {
 	}
 }
 
-// The header is authenticated as additional data, so editing it must fail to open
-// rather than decrypt to nonsense.
+// The header is authenticated data, so editing it must fail to open rather than decrypt to nonsense.
 func TestOpenRejectsATamperedEnvelope(t *testing.T) {
 	sealed, err := Seal("the-key", pass)
 	if err != nil {
@@ -132,8 +131,6 @@ func TestOpenRefusesAnUnknownFormatVersion(t *testing.T) {
 	}
 }
 
-// The point of the whole indirection: rotating the passphrase rewrites the
-// envelope and leaves the data key — and therefore every artifact — untouched.
 func TestRewrapKeepsTheDataKey(t *testing.T) {
 	key, err := NewDataKey()
 	if err != nil {

@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package platformimage is the deployment-config image catalog: the single source of truth for every
-// container image the platform itself runs. Built-in defaults live in code; admins override them at runtime
-// via the settings store, and an optional global registry mirror repoints all of them at a private registry.
+// Package platformimage is the single source of truth for platform images: code defaults, admin overrides, optional mirror.
 package platformimage
 
 import (
@@ -48,13 +46,10 @@ const (
 	KeyHelper   = "util.helper"
 	KeyAgent    = "agent"
 	KeyRegistry = "util.registry"
-	// KeySync carries rsync, which location migration runs on both ends of a volume copy. Built from
-	// github.com/miabi-io/sync.
+	// Built from github.com/miabi-io/sync.
 	KeySync = "util.sync"
 
-	// KeyPack is the one-shot helper image that runs the `pack` CLI to build an
-	// app from source with Cloud Native Buildpacks. KeyBuildpackBuilder is the
-	// default builder image pack uses when an app does not override it.
+	// KeyBuildpackBuilder is the default pack builder when an app does not override it.
 	KeyPack             = "build.pack"
 	KeyBuildpackBuilder = "build.buildpack-builder"
 
@@ -62,8 +57,7 @@ const (
 	keyMirror     = "image.registry_mirror"
 )
 
-// Default refs of the *-bkup images, pinned per tool: a floating tag would roll every tool
-// release out to every install the moment it is published.
+// Pinned per tool: a floating tag would roll every release to every install the moment it is published.
 const (
 	DefaultPgBkup      = "jkaninda/pg-bkup:v2.0.1"
 	DefaultMySQLBkup   = "jkaninda/mysql-bkup:v2.0.1"
@@ -72,8 +66,6 @@ const (
 	DefaultVolumeBkup  = "jkaninda/volume-bkup:v0.1.0"
 )
 
-// Entry describes a platform image: a stable key, a human label, a category, the
-// built-in default ref, and what it's used for.
 type Entry struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
@@ -82,7 +74,6 @@ type Entry struct {
 	Description string `json:"description"`
 }
 
-// baseCatalog is the static set of platform images with their built-in defaults.
 // Gateway/relay defaults are seeded from config at construction (see New).
 func baseCatalog() []Entry {
 	return []Entry{
@@ -113,16 +104,13 @@ type Store interface {
 	String(key, def string) string
 }
 
-// Resolver resolves a catalog key to an effective image ref (admin override ->
-// built-in default), applying the global registry mirror.
+// Resolver applies admin override, then built-in default, then the global registry mirror.
 type Resolver struct {
 	store    Store
 	defaults map[string]Entry
 }
 
-// New builds a resolver. configDefaults overrides built-in defaults for specific
-// keys (e.g. the gateway/relay images from env config), so env-based config
-// keeps acting as the default with admin overrides layered on top.
+// configDefaults keeps env config as the default, with admin overrides layered on top.
 func New(store Store, configDefaults map[string]string) *Resolver {
 	defaults := map[string]Entry{}
 	for _, e := range baseCatalog() {
@@ -160,16 +148,12 @@ func (r *Resolver) applyMirror(ref string) string {
 	return mirror + "/" + ref
 }
 
-// CatalogItem is a catalog entry resolved against the current settings, for the
-// admin API.
 type CatalogItem struct {
 	Entry
 	Override  string `json:"override"`  // raw admin override ("" = none)
 	Effective string `json:"effective"` // what the platform will actually run
 }
 
-// Catalog returns every image with its default, override, and effective ref,
-// ordered as defined.
 func (r *Resolver) Catalog() []CatalogItem {
 	out := make([]CatalogItem, 0, len(r.defaults))
 	for _, e := range baseCatalog() {
@@ -196,9 +180,7 @@ func SettingKey(key string) string { return settingPrefix + key }
 // MirrorSettingKey is the settings-store key for the registry mirror.
 func MirrorSettingKey() string { return keyMirror }
 
-// RepoTag splits an image ref into its repository and tag. A missing tag
-// defaults to "latest". Handles a registry host:port (the colon before a port
-// is not the tag separator).
+// RepoTag defaults a missing tag to "latest" and handles registry host:port colons.
 func RepoTag(ref string) (repo, tag string) {
 	lastSlash := strings.LastIndex(ref, "/")
 	lastColon := strings.LastIndex(ref, ":")
@@ -208,8 +190,7 @@ func RepoTag(ref string) (repo, tag string) {
 	return ref, "latest"
 }
 
-// isQualified reports whether a ref's first path segment looks like a registry
-// host (contains a "." or ":"), in which case the mirror prefix is not applied.
+// Qualified refs (first segment has "." or ":") skip the mirror prefix.
 func isQualified(ref string) bool {
 	i := strings.Index(ref, "/")
 	if i < 0 {

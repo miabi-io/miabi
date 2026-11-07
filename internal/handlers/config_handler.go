@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/config"
 )
 
-// ConfigHandler exposes workspace configuration files. A sensitive config's
-// content is returned only through the explicit, admin-only, audited reveal
-// endpoint; the list and detail views carry keys and digests but no content.
+// Sensitive content is returned only through the admin-only, audited reveal endpoint.
 type ConfigHandler struct {
 	svc   *config.Service
 	audit *audit.Logger
@@ -57,8 +55,7 @@ type CreateConfigRequest struct {
 
 type UpdateConfigRequest struct {
 	Body struct {
-		// Data is optional: omitting it keeps the stored files (a metadata-only
-		// edit); sending it replaces them wholesale.
+		// Omitting Data keeps the stored files; sending it replaces them wholesale.
 		Data        map[string]string `json:"data"`
 		DisplayName string            `json:"display_name"`
 		Description string            `json:"description"`
@@ -67,8 +64,7 @@ type UpdateConfigRequest struct {
 	} `json:"body"`
 }
 
-// configView is the safe projection of a config: never content, always the file
-// keys and their sizes so the UI can render without a reveal.
+// Never content, always file keys and sizes so the UI can render without a reveal.
 type configView struct {
 	*models.Config
 	Keys  []string       `json:"keys"`
@@ -154,8 +150,7 @@ func (h *ConfigHandler) Update(c *okapi.Context, req *UpdateConfigRequest) error
 	return ok(c, v)
 }
 
-// Reveal returns a config's decrypted files. Audited, and gated on app:admin the
-// same way a secret reveal is.
+// Audited, and gated on app:admin like a secret reveal.
 func (h *ConfigHandler) Reveal(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 	cfg, err := h.svc.Get(wsID, h.id(c))

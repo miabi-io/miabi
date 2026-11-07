@@ -54,8 +54,7 @@ func (s *TelegramSender) Send(ctx context.Context, ch *models.NotificationChanne
 	return s.sendMessage(ctx, token, chatID, formatMessage(e))
 }
 
-// Validate confirms the bot token is valid and the chat is reachable by sending
-// a confirmation message.
+// Validate sends a confirmation message to prove the token is valid and the chat reachable.
 func (s *TelegramSender) Validate(ctx context.Context, ch *models.NotificationChannel) error {
 	token, chatID, err := s.creds(ch)
 	if err != nil {
@@ -101,8 +100,7 @@ func (s *TelegramSender) sendMessage(ctx context.Context, token, chatID, text st
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		// Surface the API's description (e.g. "chat not found") for the test
-		// endpoint without leaking the token (which is only in the URL).
+		// Surface the API description without leaking the token, which is only in the URL.
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("telegram API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}

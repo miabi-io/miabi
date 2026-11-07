@@ -29,11 +29,9 @@ import (
 
 // ChannelSender delivers a rendered event message over one transport.
 type ChannelSender interface {
-	// Send delivers the event to the channel. Returning an error signals the
-	// worker to retry.
+	// An error signals the worker to retry.
 	Send(ctx context.Context, ch *models.NotificationChannel, e *models.AppEvent) error
-	// Validate checks the channel's configuration by performing a live probe
-	// (used by the test endpoint).
+	// Validate performs a live probe (used by the test endpoint).
 	Validate(ctx context.Context, ch *models.NotificationChannel) error
 }
 
@@ -77,9 +75,7 @@ func (r *Registry) Validate(ctx context.Context, ch *models.NotificationChannel)
 	return s.Validate(ctx, ch)
 }
 
-// formatMessage renders a human-readable notification body from an event. The
-// first line leads with the resource name so a glance answers "what, and to
-// which app"; the detail and timestamp follow.
+// The first line leads with the resource name so a glance answers what and which app.
 func formatMessage(e *models.AppEvent) string {
 	var b strings.Builder
 	b.WriteString(eventEmoji(e.Type))
@@ -98,9 +94,7 @@ func formatMessage(e *models.AppEvent) string {
 	return b.String()
 }
 
-// subjectLabel returns the best available human label for the event's subject: its name when
-// enrichment populated it, otherwise a "#id" fallback (e.g. the resource was deleted before
-// delivery), or empty when the event names no subject.
+// Falls back to "#id" when the resource was deleted before delivery; empty when the event names no subject.
 func subjectLabel(e *models.AppEvent) string {
 	subject, id := e.Subject()
 	if id == 0 {

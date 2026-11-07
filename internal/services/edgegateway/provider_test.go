@@ -26,8 +26,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// httpProviderConfig is a manager gateway switched to poll the control plane
-// instead of watching the providers volume.
 const httpProviderConfig = `
 version: 2
 gateway:
@@ -37,9 +35,7 @@ gateway:
       endpoint: https://miabi.example.com/api/v1/provider/manager
 `
 
-// Where a gateway runs and how it learns its routes are separate questions. The
-// manager shares the control plane's Redis whichever provider it uses — the
-// Redis choice follows the node, not the config.
+// The Redis choice follows the node, not the route provider.
 func TestManagerSharesPlatformRedisOnEitherProvider(t *testing.T) {
 	s := analyticsService(t, "goma:analytics", "miabi-redis:6379")
 
@@ -55,8 +51,7 @@ func TestManagerSharesPlatformRedisOnEitherProvider(t *testing.T) {
 		}
 	}
 
-	// A remote edge node uses its own Redis, and publishes analytics into it: the
-	// agent drains that stream and forwards it to the manager.
+	// The agent drains the node's own stream and forwards it to the manager.
 	edge := &models.Server{Name: "edge-1"}
 	if got := s.redisAddrFor(edge); got != RedisContainer+":6379" {
 		t.Errorf("edge redis = %q, want the per-node Redis", got)
@@ -66,9 +61,7 @@ func TestManagerSharesPlatformRedisOnEitherProvider(t *testing.T) {
 	}
 }
 
-// The manager can only watch route files if Miabi can hand it the volume it writes them to. A stack
-// install owns that volume; a manual install's mounts were made by the operator, so Miabi cannot name
-// one — and a gateway watching a directory nothing writes to would serve no routes. It polls instead.
+// Without a Miabi-owned volume the gateway would watch a directory nothing writes to, so it polls.
 func TestManagerFallsBackToHTTPWithoutAKnownVolume(t *testing.T) {
 	manager := &models.Server{Name: "manager", IsLocal: true}
 
@@ -100,11 +93,7 @@ func TestManagerFallsBackToHTTPWithoutAKnownVolume(t *testing.T) {
 	}
 }
 
-// The runtime plumbing that depends on the provider follows the gateway's actual
-// config, so a manager switched to HTTP polling is treated like any poller.
 func TestEffectiveFileProviderFollowsTheStoredConfig(t *testing.T) {
-	// A stack install: Miabi knows the volume backing its route directory, so the
-	// manager's default is the file provider.
 	s := NewService(nil, "https://miabi.example.com", "goma:latest", "miabi", "ops@example.com")
 	s.SetProvidersVolume("mb-platform-gateway-providers")
 
@@ -121,8 +110,7 @@ func TestEffectiveFileProviderFollowsTheStoredConfig(t *testing.T) {
 			&models.Server{GatewayConfigYAML: "version: 2\ngateway:\n  providers:\n    file:\n      enabled: true\n"},
 			true,
 		},
-		// The config is validated on save, so this only covers one edited by hand
-		// outside the API: fall back to the node's default rather than guessing.
+		// Configs are validated on save, so this covers only hand edits outside the API.
 		{"unparseable config falls back", &models.Server{IsLocal: true, GatewayConfigYAML: "\tnot: [yaml"}, true},
 		{"config with no provider block falls back", &models.Server{GatewayConfigYAML: "version: 2\n"}, false},
 	}
@@ -135,8 +123,6 @@ func TestEffectiveFileProviderFollowsTheStoredConfig(t *testing.T) {
 	}
 }
 
-// A polling gateway needs the reload token to accept the on-demand nudge —
-// including a manager that polls, which previously never got one.
 func TestReloadTokenFollowsTheProvider(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "goma:latest", "miabi", "ops@example.com")
 	s.SetProvidersVolume("mb-platform-gateway-providers") // stack install
@@ -160,11 +146,7 @@ func TestReloadTokenFollowsTheProvider(t *testing.T) {
 	}
 }
 
-// The manager's server record carries no address — it is "here" — so a reload must reach its
-// gateway over the shared proxy network by container name rather than failing for want of an
-// address. It must be the COMPOSE gateway's name: the manager does not run the per-node gateway
-// Miabi deploys, so ContainerName resolves to nothing there and every manager reload was silently
-// falling through to the poll interval.
+// The manager has no address and runs the compose gateway, so reloads must target its container name.
 func TestReloadHostForTheManager(t *testing.T) {
 	s := NewService(nil, "https://miabi.example.com", "goma:latest", "miabi", "ops@example.com")
 

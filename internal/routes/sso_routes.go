@@ -27,9 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 )
 
-// ssoAdminRoutes registers the identity-realm admin endpoints: the organization
-// enforced-SSO toggle and SAML connection CRUD. SAML routes are gated on the
-// sso_saml entitlement inside the handler (402 when unlicensed).
+// SAML routes are gated on sso_saml inside the handler (402 when unlicensed).
 func (r *Router) ssoAdminRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/admin").WithTagInfo(okapi.GroupTag{Name: "SSO", Description: "Identity realm: enforced SSO and SAML 2.0 connections."})
 	admin := []okapi.Middleware{r.authenticate, r.systemAdmin}
@@ -176,9 +174,7 @@ func (r *Router) ssoAdminRoutes() []okapi.RouteDefinition {
 	}
 }
 
-// scimRoutes registers the SCIM 2.0 provisioning endpoints at /scim/v2 (the
-// well-known SCIM base, outside /api/v1). Auth is the SCIM bearer token, checked
-// inside the handler. The seam is nil in Community → 402.
+// Outside /api/v1 at the well-known SCIM base; bearer auth is checked in the handler; 402 in Community.
 func (r *Router) scimRoutes() []okapi.RouteDefinition {
 	g := r.app.Group("/scim/v2").WithTagInfo(okapi.GroupTag{Name: "SCIM", Description: "SCIM 2.0 user provisioning (Enterprise)."})
 	return []okapi.RouteDefinition{
@@ -264,9 +260,7 @@ func (r *Router) scimGroups(c *okapi.Context) error {
 	return sp.Groups(c)
 }
 
-// samlPublicRoutes registers the unauthenticated SAML SP endpoints. They exist in
-// every build; in Community (or when sso_saml is not entitled) the seam handler is
-// nil and the wrappers return 402.
+// Present in every build; without sso_saml the seam is nil and the wrappers return 402.
 func (r *Router) samlPublicRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/auth/saml").WithTagInfo(okapi.GroupTag{Name: "SAML", Description: "SAML 2.0 service-provider login flow (Enterprise)."})
 	return []okapi.RouteDefinition{

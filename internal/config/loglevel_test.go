@@ -26,8 +26,7 @@ import (
 	"github.com/jkaninda/logger"
 )
 
-// Empty must keep exactly the behaviour that existed before the level was
-// configurable, or upgrading silently changes how noisy every install is.
+// Empty must keep the pre-configurable behaviour, or upgrading silently changes log noise.
 func TestLogLevelDefaultsByEnvironment(t *testing.T) {
 	for _, c := range []struct {
 		dev  bool
@@ -66,9 +65,7 @@ func TestLogLevelParsing(t *testing.T) {
 	}
 }
 
-// "off" is rejected on purpose: logger.LevelOff makes logger.New() install a discard handler
-// on its own instance and return BEFORE assigning the package-level logger, so it silences
-// Okapi's logger while every bare logger.Info() in Miabi keeps printing.
+// logger.LevelOff returns before assigning the package logger, so bare logger calls would keep printing.
 func TestOffIsRejectedBecauseTheLibraryCannotHonourIt(t *testing.T) {
 	for _, off := range []string{"off", "none", "silent"} {
 		_, err := (&Config{LogLevel: off}).LogLevelFor()
@@ -82,8 +79,7 @@ func TestOffIsRejectedBecauseTheLibraryCannotHonourIt(t *testing.T) {
 	}
 }
 
-// A typo must fail loudly. Falling back to info would leave an operator watching
-// logs for something they believe they enabled, with nothing to tell them otherwise.
+// A typo must fail loudly rather than silently fall back to info.
 func TestUnknownLogLevelIsRejected(t *testing.T) {
 	for _, bad := range []string{"verbose", "trace", "warnings", "1"} {
 		_, err := (&Config{LogLevel: bad}).LogLevelFor()
@@ -97,9 +93,7 @@ func TestUnknownLogLevelIsRejected(t *testing.T) {
 	}
 }
 
-// The level must reach the PACKAGE-LEVEL logger, not only the one handed to Okapi: almost
-// every log line in Miabi is a bare logger.Info(...) resolving through logger.Default(). A
-// level that applied only to Okapi's logger would look wired up and do nothing.
+// The level must reach the package-level logger, which almost every Miabi log line uses.
 func TestInitLoggerInstallsThePackageDefault(t *testing.T) {
 	c := &Config{LogLevel: "error"}
 	l, err := c.initLogger()

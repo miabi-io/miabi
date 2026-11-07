@@ -27,9 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestDefaultToServiceRuntime pins the cluster-mode create default: an unspecified runtime becomes a
-// service only when cluster mode is on AND the create is interactive. Any explicit choice opts out,
-// and declarative sources are excluded so they stay deterministic.
+// Declarative sources are excluded so they stay deterministic.
 func TestDefaultToServiceRuntime(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -54,8 +52,6 @@ func TestDefaultToServiceRuntime(t *testing.T) {
 	}
 }
 
-// TestHasNodeLocalStorageHostBind covers the volume-free branches (a privileged
-// host bind is node-local; no mounts is not) without needing a volume repo.
 func TestHasNodeLocalStorageHostBind(t *testing.T) {
 	s := &Service{}
 	if !s.hasNodeLocalStorage(&models.Application{Mounts: []models.AppMount{{HostPreset: "docker-sock", Path: "/x"}}}) {
@@ -66,9 +62,6 @@ func TestHasNodeLocalStorageHostBind(t *testing.T) {
 	}
 }
 
-// TestRequireSharedStorageHostBind covers the host-bind rejection for a service
-// (any replica count) and the container/no-mount no-ops — none touch the volume
-// repo, so a zero-value Service is enough.
 func TestRequireSharedStorageHostBind(t *testing.T) {
 	s := &Service{}
 	svcWithBind := &models.Application{
@@ -124,8 +117,6 @@ func serviceApp(replicas int, volumeID uint) *models.Application {
 	}
 }
 
-// TestRequireSharedStorageVolumeAccessMode pins the replication guard over managed
-// volumes: rwx may be replicated, rwo may not, and one replica is always fine.
 func TestRequireSharedStorageVolumeAccessMode(t *testing.T) {
 	vols := fakeVolumes{byID: map[uint]*models.Volume{
 		1: {ID: 1, AccessMode: models.AccessRWO},
@@ -168,10 +159,7 @@ func TestRequireSharedStorageFailsClosed(t *testing.T) {
 	}
 }
 
-// TestAttachVolumeDistinguishesMissingFromUnreadable pins the two failures apart on the
-// attach path, which previously reported both as "volume not found": a row that is gone
-// stays ErrVolumeNotFound (404), one that could not be read is ErrVolumeUnverifiable.
-// Both return before the app is touched, so a zero-value Service is enough.
+// A missing row stays ErrVolumeNotFound (404); an unreadable one is ErrVolumeUnverifiable.
 func TestAttachVolumeDistinguishesMissingFromUnreadable(t *testing.T) {
 	app := serviceApp(1, 1)
 	missing := &Service{volumes: fakeVolumes{byID: map[uint]*models.Volume{}}}
@@ -202,8 +190,7 @@ func TestHasNodeLocalStorageFailsClosed(t *testing.T) {
 	}
 }
 
-// TestAttachVolumeNodeRules pins where a volume may be mounted from. An empty path is the check that
-// follows placement, so ErrMountPathRequired means the placement checks passed.
+// ErrMountPathRequired means the placement checks passed, since the path check follows them.
 func TestAttachVolumeNodeRules(t *testing.T) {
 	vols := fakeVolumes{byID: map[uint]*models.Volume{
 		1: {ID: 1, ClusterID: 2, ServerID: 10, AccessMode: models.AccessRWO},

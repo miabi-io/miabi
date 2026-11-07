@@ -27,8 +27,7 @@ export interface Accent {
   swatch: string
 }
 
-// Read from the same JSON the stylesheets are generated from, so the picker cannot
-// offer an accent that has no CSS and cannot miss one that does.
+// Read from the JSON the stylesheets are generated from, so picker and CSS cannot diverge.
 export const ACCENTS: Accent[] = data.accents.map((a) => ({
   code: a.code as AccentCode,
   label: a.label,

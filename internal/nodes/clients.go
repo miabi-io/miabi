@@ -17,8 +17,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package nodes manages the control plane's view of cluster nodes: the per-node
-// Docker client registry and the agent connection manager.
 package nodes
 
 import (
@@ -31,16 +29,12 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/selfcontainer"
 )
 
-// ErrNodeOffline is returned when a Docker client is requested for a node whose
-// agent is not currently connected.
 var ErrNodeOffline = errors.New("node is offline (no connected agent)")
 
 // SwarmManagers resolves the client that drives a cluster's swarm. Implemented by the cluster service.
 type SwarmManagers func(ctx context.Context, clusterID uint) (docker.Client, error)
 
-// Clients resolves a Docker client for a given server/node id: the local node uses the direct
-// engine client, remote nodes a tunneled client registered when their agent connects. A server id
-// of 0 resolves to the local node, so paths that don't carry placement still work single-node.
+// Server id 0 resolves to the local node so paths without placement still work single-node.
 type Clients struct {
 	mu      sync.RWMutex
 	localID uint
@@ -49,14 +43,11 @@ type Clients struct {
 	// connectedAt is when each remote client was registered: a fresh agent's view can still be partial.
 	connectedAt map[uint]time.Time
 
-	// Container IDs of Miabi's own runtime, used to stop these from being killed via the admin containers
-	// list. localSelf is the control-plane (manager) container; remoteSelf holds each connected node's agent
-	// container, as reported by the agent at connect time.
+	// Miabi's own containers, protected from being killed via the admin containers list.
 	localSelf  string
 	remoteSelf map[uint]string
 
-	// managers reaches a cluster's swarm manager. nil falls back to the local engine, which
-	// manages only the default cluster's swarm.
+	// nil falls back to the local engine, which manages only the default cluster's swarm.
 	managers SwarmManagers
 }
 
@@ -65,24 +56,18 @@ func NewClients(localID uint, local docker.Client) *Clients {
 	return &Clients{localID: localID, local: local, remote: map[uint]docker.Client{}, connectedAt: map[uint]time.Time{}, remoteSelf: map[uint]string{}}
 }
 
-// SetSwarmManagers wires how a cluster's swarm manager is reached, so a service in any cluster
-// is checked against its own swarm.
 func (c *Clients) SetSwarmManagers(fn SwarmManagers) {
 	c.mu.Lock()
 	c.managers = fn
 	c.mu.Unlock()
 }
 
-// SetLocalSelf records the control-plane's own container ID (detected at
-// startup) so it is protected from removal on the local node.
 func (c *Clients) SetLocalSelf(id string) {
 	c.mu.Lock()
 	c.localSelf = id
 	c.mu.Unlock()
 }
 
-// SetRemoteSelf records a connected node's agent container ID (reported by the
-// agent) so it is protected from removal on that node.
 func (c *Clients) SetRemoteSelf(serverID uint, id string) {
 	if id == "" {
 		return
@@ -92,9 +77,6 @@ func (c *Clients) SetRemoteSelf(serverID uint, id string) {
 	c.mu.Unlock()
 }
 
-// SelfContainerID returns Miabi's own runtime container ID on the node — the
-// control plane locally, or the node's agent — or "" when unknown (e.g. an
-// offline agent or detection that found nothing).
 func (c *Clients) SelfContainerID(serverID uint) string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -104,8 +86,6 @@ func (c *Clients) SelfContainerID(serverID uint) string {
 	return c.remoteSelf[serverID]
 }
 
-// IsSelfContainer reports whether containerID is Miabi's own runtime
-// container on the given node (the control plane locally, or that node's agent).
 func (c *Clients) IsSelfContainer(serverID uint, containerID string) bool {
 	c.mu.RLock()
 	self := c.remoteSelf[serverID]
@@ -127,8 +107,6 @@ func (c *Clients) IsLocal(serverID uint) bool {
 	return serverID == 0 || serverID == c.localID
 }
 
-// For returns the Docker client for a node, or ErrNodeOffline if a remote node
-// has no connected agent.
 func (c *Clients) For(serverID uint) (docker.Client, error) {
 	if c.IsLocal(serverID) {
 		return c.local, nil
@@ -142,14 +120,10 @@ func (c *Clients) For(serverID uint) (docker.Client, error) {
 	return cl, nil
 }
 
-// ErrTaskUnreachable is returned when a swarm service HAS a running task but no engine we hold a
-// client for can see its container — Swarm placed it on a node with no Miabi agent. It is
-// distinct from docker.ErrNotFound: reporting "nothing running" for a 1/1 service is simply false.
+// Distinct from ErrNotFound: reporting "nothing running" for a 1/1 service would be false.
 var ErrTaskUnreachable = errors.New("the service's task runs on a swarm node with no Miabi agent")
 
-// ForServiceTask resolves the engine and container id of a task of the named swarm service in the
-// given cluster, wherever the scheduler placed it. Correlating the task's swarm node id is unreliable,
-// so it asks the engines directly — local first, then each connected node. Exactly one node runs the task.
+// Asks each engine directly because correlating the task's swarm node id is unreliable.
 func (c *Clients) ForServiceTask(ctx context.Context, clusterID uint, serviceName string) (docker.Client, string, error) {
 	c.mu.RLock()
 	engines := make([]docker.Client, 0, len(c.remote)+1)
@@ -167,8 +141,7 @@ func (c *Clients) ForServiceTask(ctx context.Context, clusterID uint, serviceNam
 			return dc, cid, nil
 		}
 	}
-	// No engine has it. Ask the service's own swarm manager whether it is running anyway: if it
-	// is, the task sits on a node we hold no client for, and saying "nothing is running" would be a lie.
+	// If the manager says it runs, the task is on a node we have no client for; "nothing running" would be a lie.
 	mgr := c.local
 	if managers != nil {
 		mgr = nil
@@ -195,8 +168,6 @@ func (c *Clients) Connected(serverID uint) bool {
 	return ok
 }
 
-// RemoteIDs returns the ids of remote nodes that currently have a live client
-// (the local node is excluded). Used by the health sweep to probe each tunnel.
 func (c *Clients) RemoteIDs() []uint {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -207,8 +178,6 @@ func (c *Clients) RemoteIDs() []uint {
 	return ids
 }
 
-// SetRemote registers (or replaces) a remote node's client when its agent
-// connects.
 func (c *Clients) SetRemote(serverID uint, cl docker.Client) {
 	c.mu.Lock()
 	c.remote[serverID] = cl
@@ -216,8 +185,7 @@ func (c *Clients) SetRemote(serverID uint, cl docker.Client) {
 	c.mu.Unlock()
 }
 
-// ConnectedSince reports when a remote node's client was registered, and whether the node has one at all. The
-// local engine is always reachable, so it reports the zero time.
+// The local engine is always reachable, so it reports the zero time.
 func (c *Clients) ConnectedSince(serverID uint) (time.Time, bool) {
 	if c.IsLocal(serverID) {
 		return time.Time{}, true

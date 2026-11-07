@@ -32,8 +32,7 @@ import (
 type EnvOptions struct {
 	// Gateway edits the gateway's environment instead of the control plane's.
 	Gateway bool
-	// Apply converges right after saving. Off by default, so several edits cost one recreate
-	// through Apply rather than one each.
+	// Off by default so several edits cost one recreate through Apply.
 	Apply bool
 	Yes   bool
 }
@@ -47,8 +46,7 @@ func EnvList(path string, o EnvOptions) (map[string]string, string, error) {
 	return envOf(m, o.Gateway), envBlock(o.Gateway), nil
 }
 
-// EnvGet returns one variable's value. found is false when the manifest does not carry it, which the
-// caller should report as such rather than printing an empty line.
+// found=false should be reported as such rather than printed as an empty line.
 func EnvGet(path, key string, o EnvOptions) (value string, found bool, err error) {
 	m, lerr := stack.Load(path)
 	if lerr != nil {
@@ -58,9 +56,7 @@ func EnvGet(path, key string, o EnvOptions) (value string, found bool, err error
 	return v, ok, nil
 }
 
-// EnvSet writes KEY=VALUE pairs into the manifest, converging only with o.Apply. Validation is Normalize's: invalid
-// names, variables Miabi sets itself, and settings that belong to their own spec section are all
-// refused there, with an error that names where the value really lives.
+// Validation is Normalize's, whose errors name where a refused value really lives.
 func EnvSet(ctx context.Context, svc *stack.Service, path string, assignments []string, o EnvOptions, ui UI) error {
 	if len(assignments) == 0 {
 		return errors.New("nothing to set (pass KEY=VALUE)")
@@ -80,9 +76,7 @@ func EnvSet(ctx context.Context, svc *stack.Service, path string, assignments []
 	})
 }
 
-// EnvUnset removes variables. A key Miabi seeds into the manifest comes back at its default rather
-// than disappearing, and the caller is told so — otherwise the operator diffs the file and finds the
-// variable still there.
+// A seeded key comes back at its default rather than disappearing, and the caller is told so.
 func EnvUnset(ctx context.Context, svc *stack.Service, path string, keys []string, o EnvOptions, ui UI) error {
 	if len(keys) == 0 {
 		return errors.New("nothing to unset (pass a variable name)")
@@ -101,9 +95,7 @@ func EnvUnset(ctx context.Context, svc *stack.Service, path string, keys []strin
 	})
 }
 
-// editEnv is the shared body: load, mutate, normalize (which validates), show what changes, save, and
-// converge when asked. Saving before converging matches the rest of stackcmd — the file must describe what was
-// asked for even if bringing the stack to it fails.
+// Saves before converging so the file describes what was asked for even if converge fails.
 func editEnv(ctx context.Context, svc *stack.Service, path string, o EnvOptions, ui UI, removed []string, mutate func(map[string]string) error) error {
 	m, err := stack.Load(path)
 	if err != nil {
@@ -163,8 +155,7 @@ func editEnv(ctx context.Context, svc *stack.Service, path string, o EnvOptions,
 	return stack.Save(path, m)
 }
 
-// reportPending says the edit is saved but not live, and which components applying it will recreate.
-// Best-effort: svc is nil when there is no engine to ask, and the hint is still worth printing.
+// Best-effort: svc is nil when there is no engine to ask.
 func reportPending(ctx context.Context, svc *stack.Service, m *stack.Manifest, ui UI) {
 	ui.Warn("Saved, not applied — the running stack still has the old values.")
 	if svc != nil {
@@ -175,8 +166,6 @@ func reportPending(ctx context.Context, svc *stack.Service, m *stack.Manifest, u
 	ui.Info("Run `sudo miabi stack apply` when you are done editing.")
 }
 
-// reportReseeded explains a variable that is still present after being unset: Normalize seeds a small
-// number of them, so unsetting one restores its default rather than removing it.
 func reportReseeded(ui UI, removed []string, after map[string]string) {
 	for _, k := range removed {
 		if v, still := after[k]; still {

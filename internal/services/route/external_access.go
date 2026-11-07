@@ -32,12 +32,8 @@ import (
 	"github.com/miabi-io/miabi/internal/slug"
 )
 
-// ErrExternalAccessDisabled is returned when one-click external access is used
-// in a cluster that has no external domain.
 var ErrExternalAccessDisabled = errors.New("external access is off in this app's location (a platform admin sets the cluster's external domain)")
 
-// ExternalDomains resolves the wildcard domain and certManager provider for generated routes in a cluster.
-// Implemented by services/cluster.
 type ExternalDomains interface {
 	ExternalAccess(clusterID uint) (domain, provider string)
 }
@@ -45,14 +41,11 @@ type ExternalDomains interface {
 // SetExternalDomains wires per-cluster external access; unset, external access is off everywhere.
 func (s *Service) SetExternalDomains(d ExternalDomains) { s.external = d }
 
-// ExternalCertificates resolves the certificate a cluster serves its generated URLs from, normally a wildcard
-// for its external domain. Implemented by services/cluster.
 type ExternalCertificates interface {
 	ExternalCertificatePair(clusterID uint) (certPEM, keyPEM string, ok bool)
 }
 
-// SetExternalCertificates wires per-cluster certificates for generated URLs; unset, every generated URL
-// gets its own certificate from the cluster's certManager provider.
+// SetExternalCertificates wires per-cluster certificates; unset, each generated URL gets its own from certManager.
 func (s *Service) SetExternalCertificates(c ExternalCertificates) { s.externalCerts = c }
 
 type externalCert struct {
@@ -60,9 +53,7 @@ type externalCert struct {
 	ok   bool
 }
 
-// withExternalCert serves a generated route from its cluster's certificate when it has a usable one. The
-// provider is dropped so the gateway presents that certificate instead of requesting one for the host.
-// cache holds one lookup per cluster for a render pass.
+// The provider is dropped so the gateway presents the cluster certificate instead of requesting one.
 func (s *Service) withExternalCert(rr *proxy.RenderedRoute, rt *models.Route, app *models.Application, cache map[uint]externalCert) {
 	if !rt.Generated || s.externalCerts == nil {
 		return
@@ -102,9 +93,6 @@ type ExternalAccess struct {
 	Ports      []ExternalPort `json:"ports"` // currently exposed ports
 }
 
-// GetExternalAccess reports an app's external-access state: whether its cluster
-// has an external domain, its subdomain label, and the ports currently exposed
-// (derived from the app's generated routes).
 func (s *Service) GetExternalAccess(workspaceID, appID uint) (*ExternalAccess, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -135,10 +123,7 @@ func (s *Service) GetExternalAccess(workspaceID, appID uint) (*ExternalAccess, e
 	return out, nil
 }
 
-// SetExternalAccess reconciles the app's exposed ports: it generates a managed Route per selected port
-// (host `<label>[-<port>].<base>` under the app's cluster domain, HTTPS via the cluster's certManager provider) and
-// removes generated routes for ports no longer selected. The primary port gets the bare `<label>.<base>` host.
-// Idempotent.
+// SetExternalAccess reconciles generated routes per selected port; the primary port gets the bare label host.
 func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint, ports []int) (*ExternalAccess, error) {
 	app, err := s.apps.FindInWorkspace(workspaceID, appID)
 	if err != nil {
@@ -151,8 +136,7 @@ func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint
 		}
 	}
 	base, provider := s.externalConfig(app)
-	// Exposing requires a base domain; disabling (no ports) must always proceed so the generated
-	// routes can be cleaned up even if the base domain was later cleared.
+	// Disabling must always proceed so generated routes can be cleaned up even after the base domain is cleared.
 	if len(want) > 0 {
 		if base == "" {
 			return nil, ErrExternalAccessDisabled
@@ -212,14 +196,11 @@ func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint
 			_ = s.routes.Delete(rt.ID)
 		}
 	}
-	// SyncRoute re-renders the workspace file from the current DB state, so deleted
-	// generated routes drop out and newly-created ones appear together.
 	_ = s.SyncRoute(ctx, appID)
 	return s.GetExternalAccess(workspaceID, appID)
 }
 
-// RehostCluster moves the generated URLs of every app in a cluster onto the cluster's current external domain and
-// certificate provider, or removes them when the cluster no longer has a domain. Other routes are left alone.
+// RehostCluster moves a cluster's generated URLs onto its current external domain, or removes them if it has none.
 func (s *Service) RehostCluster(ctx context.Context, clusterID uint) {
 	apps, err := s.apps.ListByCluster(clusterID)
 	if err != nil {
@@ -251,9 +232,6 @@ func (s *Service) RehostCluster(ctx context.Context, clusterID uint) {
 	}
 }
 
-// defaultExternalLabel derives a stable, DNS-safe subdomain label for an app:
-// `<slug>-<alias-token>` (the alias token is stable and random), e.g.
-// "blog-eqi3tlf2".
 func (s *Service) defaultExternalLabel(app *models.Application) string {
 	base := slug.Make(app.Name, "app")
 	if base == "" {
@@ -274,8 +252,6 @@ func aliasToken(alias string) string {
 	return ""
 }
 
-// primaryPort picks the bare-host port: the app's declared port when it is in the
-// selected set, else the lowest selected port (0 when none).
 func primaryPort(appPort int, want map[int]bool) int {
 	if want[appPort] {
 		return appPort
@@ -289,8 +265,6 @@ func primaryPort(appPort int, want map[int]bool) int {
 	return primary
 }
 
-// sanitizeBase normalizes a configured base domain: trims spaces and a leading
-// "*." / "." so "*.apps.example.com" and "apps.example.com" are equivalent.
 func sanitizeBase(domain string) string {
 	d := strings.TrimSpace(domain)
 	d = strings.TrimPrefix(d, "*.")

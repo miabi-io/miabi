@@ -21,9 +21,7 @@ package hostmount
 
 import "testing"
 
-// TestValidateCustomHostPath is the security core of host-path volumes: only a
-// clean absolute subpath strictly under /mnt is accepted; everything else (the
-// root itself, traversal, other trees, relative/empty) is refused.
+// Security core of host-path volumes: only a clean absolute subpath strictly under /mnt is accepted.
 func TestValidateCustomHostPath(t *testing.T) {
 	ok := []struct{ in, want string }{
 		{"/mnt/nas/app", "/mnt/nas/app"},

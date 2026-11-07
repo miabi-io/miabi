@@ -76,8 +76,7 @@ func (s *Service) SetSSO(repo *repositories.OAuthProviderRepository, resolve fun
 	s.ssoRepo, s.ssoResolve, s.ssoAPIBase = repo, resolve, strings.TrimRight(apiBase, "/")
 }
 
-// UpsertSSOProvider creates or updates the console-managed provider, adopting a hand-configured
-// provider with the same issuer so its users stay linked.
+// Adopts a hand-configured provider with the same issuer so its users stay linked.
 func (s *Service) UpsertSSOProvider(ctx context.Context, in SSOProviderInput) (*SSOProvider, error) {
 	if s.ssoRepo == nil {
 		return nil, ErrSSOUnavailable
@@ -160,9 +159,7 @@ func (s *Service) UpsertSSOProvider(ctx context.Context, in SSOProviderInput) (*
 	return s.renderSSO(p, groupSync, adopted), nil
 }
 
-// consoleProvider finds the provider the console's push applies to: the one already named
-// miabi-console, else a hand-configured one with the same issuer (adopted). A different provider
-// holding the name is refused rather than overwritten.
+// A different provider holding the name is refused rather than overwritten.
 func (s *Service) consoleProvider(issuer string) (*models.OAuthProvider, bool, error) {
 	byName, err := s.ssoRepo.FindByName(models.ConsoleOAuthProviderName)
 	switch {
@@ -222,8 +219,6 @@ func (s *Service) renderSSO(p *models.OAuthProvider, groupSync string, adopted b
 	}
 }
 
-// wouldLockOut reports whether removing the console provider leaves the actor without a way in: an
-// SSO-only account whose only enabled provider link is the console's.
 func (s *Service) wouldLockOut(actorID uint) (bool, error) {
 	if actorID == 0 || s.users == nil {
 		return false, nil

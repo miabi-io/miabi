@@ -24,9 +24,7 @@ import (
 	"github.com/miabi-io/miabi/internal/logstore"
 )
 
-// BuildLogStore constructs the shared execution-log store from configuration. It returns a
-// disabled (nil) store when the backend is "off" or the directory can't be prepared — the
-// store is never a hard boot dependency, so producers fall back to DB-tail-only behavior.
+// BuildLogStore returns nil when disabled or the dir can't be prepared; the store is never a hard boot dependency.
 func (c *Config) BuildLogStore() *logstore.Store {
 	l := c.LogStore
 	if !l.Enabled() {

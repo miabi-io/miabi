@@ -35,8 +35,6 @@ func (f fakeEE) Has(flag string) bool { return f[flag] }
 func licensed() fakeEE   { return fakeEE{enterprise.FlagRegistryS3: true} }
 func unlicensed() fakeEE { return fakeEE{} }
 
-// MIABI_REGISTRY_STORAGE pins the driver when it is set; where the environment
-// is silent the stored value — what the console writes — decides.
 func TestStorageFollowsEnvOnlyWhenSet(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -68,9 +66,6 @@ func TestStorageFollowsEnvOnlyWhenSet(t *testing.T) {
 	}
 }
 
-// The S3 connection details come from the environment too, with the same
-// one-way override: a set value pins the field, an unset one leaves the legacy
-// stored value alone.
 func TestS3FieldsFollowEnv(t *testing.T) {
 	svc := &Service{cfg: config.RegistryConfig{
 		StorageType: "s3",
@@ -95,8 +90,7 @@ func TestS3FieldsFollowEnv(t *testing.T) {
 	if !st.S3ForcePathStyle {
 		t.Error("S3ForcePathStyle = false, want the env value to win")
 	}
-	// Silent in the env ⇒ the stored value stands, so an upgraded install keeps
-	// reading from the backend its images already live in.
+	// An upgraded install must keep reading from the backend its images already live in.
 	if st.S3Endpoint != "https://minio.internal" {
 		t.Errorf("S3Endpoint = %q, want the stored value to survive", st.S3Endpoint)
 	}
@@ -105,9 +99,7 @@ func TestS3FieldsFollowEnv(t *testing.T) {
 	}
 }
 
-// The entitlement is what decides whether S3 storage may be used at all. This is
-// the check that closes the bypass: with storage configured from the environment,
-// there is no API call left to gate.
+// With storage configured from the environment there is no API call left to gate, so the entitlement must decide.
 func TestStorageUnavailableReason(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -136,8 +128,7 @@ func TestStorageUnavailableReason(t *testing.T) {
 			true, "Enterprise license",
 		},
 		{
-			// The bucket can be set from the console or the environment, so the
-			// reason names the missing thing rather than one way to supply it.
+			// The bucket can come from the console or the env, so the reason names the missing thing, not one source.
 			"licensed s3 without a bucket is refused",
 			licensed(),
 			&models.RegistrySettings{StorageType: models.RegistryStorageS3},
@@ -164,8 +155,7 @@ func TestStorageUnavailableReason(t *testing.T) {
 	}
 }
 
-// renderEnv is the last gate before the container runs with an S3 config, so it
-// refuses independently of the callers that already checked.
+// renderEnv is the last gate before the container runs, so it refuses independently of callers.
 func TestRenderEnvRefusesUnlicensedS3(t *testing.T) {
 	st := &models.RegistrySettings{StorageType: models.RegistryStorageS3, S3Bucket: "b"}
 
@@ -195,8 +185,7 @@ func TestRenderEnvFilesystemNeedsNoLicense(t *testing.T) {
 	}
 }
 
-// A deploy that cannot push must name the license as the cause, not surface a
-// connection error against a registry that was never started.
+// A deploy that cannot push must name the license as the cause, not a connection error.
 func TestDistributionReportsUnlicensedStorage(t *testing.T) {
 	svc := &Service{
 		ee:       unlicensed(),

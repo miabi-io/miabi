@@ -46,8 +46,6 @@ type dbURLDBFixture struct {
 
 func (dbURLDBFixture) TableName() string { return "databases" }
 
-// An injected DATABASE_URL gains a DB_URL twin (prefixed or not); one a user
-// typed by hand, or an app that already has DB_URL, is left alone.
 func TestDBURLEnvStep(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

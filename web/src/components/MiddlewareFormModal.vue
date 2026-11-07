@@ -10,10 +10,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import MiddlewareField from '@/components/MiddlewareField.vue'
 import type { Middleware, MiddlewareCatalog, MiddlewareDescriptor, MiddlewareField as MwField, MiddlewarePreset } from '@/api/types'
 
-// Shared create/edit modal for Goma middlewares, driven by the server catalog:
-// a curated type picker + schema form for known types, with a raw-YAML "advanced"
-// fallback for uncatalogued types. Secret fields are masked and round-trip a
-// redaction sentinel so editing a policy never wipes its stored password.
+// Secret fields round-trip a redaction sentinel so editing a policy never wipes its stored password.
 const props = defineProps<{ open: boolean; workspaceId: number | null; editing: Middleware | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', m: Middleware): void }>()
 
@@ -35,16 +32,11 @@ const saving = ref(false)
 const descriptors = computed(() => catalog.value?.types ?? [])
 const presets = computed(() => catalog.value?.presets ?? [])
 const descriptor = computed<MiddlewareDescriptor | undefined>(() => descriptors.value.find((d) => d.type === form.value.type))
-// Fields rendered in the schema form. A free-form object with no sub-schema has
-// no form editor; it is left out of the form and its stored value is preserved
-// unchanged on save. Every catalogued type now declares a sub-schema, so this
-// only bites an uncatalogued rule edited through the advanced box.
+// A free-form object with no sub-schema is left out of the form and preserved unchanged on save.
 const isBareObject = (f: MwField) => f.type === 'object' && !(f.fields && f.fields.length)
 const fields = computed<MwField[]>(() => (descriptor.value?.fields ?? []).filter((f) => !isBareObject(f)))
 const isCatalogued = computed(() => !!descriptor.value)
-// Raw YAML is never offered as a choice; it is the automatic fallback only when a
-// type has no catalog descriptor (which the type picker cannot select — reachable
-// only when editing a pre-existing uncatalogued middleware).
+// Raw YAML is only the fallback for an uncatalogued middleware, which the type picker cannot select.
 const showAdvanced = computed(() => !isCatalogued.value)
 
 const categories = ['access', 'security', 'traffic', 'transform', 'observability']
@@ -96,10 +88,7 @@ watch(
   },
 )
 
-// Closing a form that has been edited asks first. The backdrop no longer
-// dismisses anything, so this only fires on Escape, Cancel, or the close icon —
-// all deliberate — but a policy can take a while to fill in and a stray Escape
-// should not be the end of it.
+// A policy takes a while to fill in, so a stray Escape should not discard it.
 const { dirty, reset: resetDirty } = useDirtyGuard(() => ({
   form: form.value,
   rule: rule.value,
@@ -136,8 +125,6 @@ function splitCsv(s: string): string[] {
   return s.split(',').map((x) => x.trim()).filter(Boolean)
 }
 
-// isEmpty reports whether a built value should be dropped from a non-required
-// field: blank string, empty list, or an object/map with no keys.
 function isEmpty(v: unknown): boolean {
   if (v === undefined || v === null) return true
   if (typeof v === 'string') return v.trim() === ''
@@ -146,10 +133,7 @@ function isEmpty(v: unknown): boolean {
   return false
 }
 
-// buildRule produces the rule to submit. In form mode the fields already hold the
-// correct shapes (MiddlewareField coerces ints, lists, maps and nested groups as
-// it edits), so this only prunes empty non-required top-level fields and drops
-// blank basicAuth users. Advanced mode parses the raw YAML box verbatim.
+// Form fields already hold the right shapes, so this only prunes empty optional fields and blank basicAuth users.
 function buildRule(): Record<string, unknown> {
   if (showAdvanced.value) return ruleText.value.trim() ? parseYaml(ruleText.value) : {}
   const out: Record<string, any> = JSON.parse(JSON.stringify(rule.value))
@@ -224,9 +208,7 @@ async function save() {
               <option v-if="!isCatalogued" :value="form.type">{{ form.type }} (advanced)</option>
             </select>
             <p v-if="descriptor" class="form-hint">{{ descriptor.description }}</p>
-            <!-- Advisory: Miabi does not read the gateway's version, so this says
-                 what the type needs rather than pretending to have checked. A
-                 route referencing a type an older gateway lacks fails at load. -->
+            <!-- Advisory: Miabi does not read the gateway version; a route using a type an older gateway lacks fails at load. -->
             <p v-if="descriptor?.min_gateway_version" class="form-hint gateway-req">
               <span class="mdi mdi-information-outline"></span>
               Needs Goma Gateway {{ descriptor.min_gateway_version }} or newer. On an older gateway the route
@@ -237,8 +219,7 @@ async function save() {
           <div class="form-group">
             <label class="form-label">{{ $t('middlewares.paths') }}<span class="text-muted">{{ $t('middlewares.commaSeparatedRegularExpressionsDefault') }}</span></label>
             <input v-model="form.paths" class="form-input" placeholder="/.*" :aria-label="$t('middlewares.paths')" />
-            <!-- Regexes, not globs: "/admin/*" reads as "zero or more slashes"
-                 after /admin and would not scope the rule the way it looks. -->
+            <!-- Regexes, not globs: "/admin/*" means "zero or more slashes" after /admin. -->
             <i18n-t keypath="middlewares.pathsHint" tag="small" class="form-hint">
               <template #good><code>/admin/.*</code></template>
               <template #bad><code>/admin/*</code></template>
@@ -250,9 +231,6 @@ async function save() {
             <MiddlewareField v-for="f in fields" :key="f.key" :field="f" :model="rule" :editing="!!editing" />
           </template>
 
-          <!-- Raw YAML: automatic fallback only for an uncatalogued type (no
-               form schema exists). Not user-selectable — the type picker only
-               offers catalogued types. -->
           <div v-else class="form-group" style="margin-bottom: 0">
             <label class="form-label">{{ $t('middlewares.rule') }}<span class="text-muted">{{ $t('middlewares.yaml') }}</span></label>
             <textarea v-model="ruleText" class="form-textarea mono" rows="8" spellcheck="false" placeholder="requestsPerUnit: 100&#10;unit: minute" :aria-label="$t('middlewares.ruleYaml')"></textarea>

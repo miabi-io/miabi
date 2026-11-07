@@ -32,8 +32,6 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// eventJSON renders one audit event as a compact JSON object — the wire form for
-// the webhook sink and the syslog "json" format.
 func eventJSON(e *models.AuditLog) ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"id":           e.ID,
@@ -97,8 +95,6 @@ type syslogSink struct {
 	cef     bool
 }
 
-// newSyslogSink parses an endpoint like "tcp://host:514", "udp://host:514", or
-// "host:514" (defaults to udp).
 func newSyslogSink(cfg *models.SIEMConfig) (*syslogSink, error) {
 	network, addr := "udp", strings.TrimSpace(cfg.Endpoint)
 	if addr == "" {

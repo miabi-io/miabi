@@ -52,8 +52,6 @@ func (r *SecretRepository) FindByName(workspaceID uint, name string) (*models.Se
 	return &s, nil
 }
 
-// CountSealedByKeyVersion counts the workspace's secrets set from a sealed value, by the sealing key version
-// that opened them.
 func (r *SecretRepository) CountSealedByKeyVersion(workspaceID uint) (map[int]int, error) {
 	var rows []struct {
 		SealedKeyVersion int
@@ -76,9 +74,7 @@ func (r *SecretRepository) ListByWorkspace(workspaceID uint) ([]models.Secret, e
 	return secrets, err
 }
 
-// ListByWorkspacePaged returns a page of secrets in a workspace, optionally filtered by name or
-// description and by ownership, plus the total count. Ownership is filtered here rather than in
-// the caller because the result is paged: a client-side filter would hide rows the count claims.
+// Ownership is filtered here because the result is paged: a client-side filter would hide rows the count claims.
 func (r *SecretRepository) ListByWorkspacePaged(workspaceID uint, search string, managed *bool, limit, offset int) ([]models.Secret, int64, error) {
 	var (
 		secrets []models.Secret

@@ -1,17 +1,4 @@
-# Okapi Example — reference app for the Okapi Go API framework (middleware,
-# routing, real-time SSE, auto-generated OpenAPI docs at /docs).
-#
-# This is the GitOps form of the `okapi-example` marketplace template: the same
-# app expressed as miabi.io/v1 manifests a GitSource reconciles from Git, instead
-# of a one-click install. Point a GitSource at this folder and Miabi converges
-# the workspace to it on every push / sweep (see ../README.md).
-#
-# Differences from the marketplace template (apply/GitOps vs marketplace):
-#   • {{ .inputs.* }} helpers are marketplace-only. The template auto-generates
-#     jwt_secret; here you set a literal value and list it under `secretEnv` so
-#     Miabi stores it encrypted at rest — CHANGE IT before applying.
-#   • `healthcheck` is a marketplace-only field; container health is managed by
-#     the platform, so it isn't part of the declarative Application spec.
+# GitOps form of the okapi-example template; change the secretEnv jwt_secret before applying.
 apiVersion: miabi.io/v1
 kind: Application
 metadata:
@@ -22,9 +9,7 @@ spec:
   ports:
     - container: 8080
       scheme: http
-      # Publish a public HTTPS URL at `<externalLabel>.<platform-base-domain>`
-      # via the reverse proxy (requires a platform base domain to be configured).
-      # Prefer pinning to a digest in prod; see the Route/Domain alternative below.
+      # Requires a platform base domain; see the Route/Domain alternative below.
       externalAccess: true
   externalLabel: okapi
   env:

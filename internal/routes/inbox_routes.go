@@ -28,8 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// inboxRoutes registers the per-user notification inbox. User-scoped: authenticated only, with
-// no workspace scope — the handler filters to the caller's own items across their workspaces.
+// No workspace scope: the handler filters to the caller's own items across their workspaces.
 func (r *Router) inboxRoutes() []okapi.RouteDefinition {
 	g := r.v1.Group("/notifications").WithTagInfo(okapi.GroupTag{Name: "Inbox", Description: "Per-user notification inbox (bell)."})
 	auth := []okapi.Middleware{r.authenticate}

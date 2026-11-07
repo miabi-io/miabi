@@ -30,11 +30,7 @@ import (
 	"time"
 )
 
-// requireSwarmManager ensures the daemon is a reachable swarm manager, or skips.
-// If the engine is already an active manager it is used as-is (never torn down).
-// Otherwise it initializes a single-node swarm — but only when MIABI_TEST_SWARM=1
-// is set, since that mutates global daemon state; the swarm is left on cleanup.
-// CI's DinD engines set MIABI_TEST_SWARM=1 (see .github/workflows/ci.yml).
+// Initializes a swarm only with MIABI_TEST_SWARM=1 since it mutates global daemon state; it is left on cleanup.
 func requireSwarmManager(t *testing.T, cli Client) SwarmInfo {
 	t.Helper()
 	ctx := bg(t, 30*time.Second)
@@ -63,8 +59,6 @@ func requireSwarmManager(t *testing.T, cli Client) SwarmInfo {
 	return info
 }
 
-// TestSwarmInfoAndNodes covers the read-only swarm surface: state, node id, and
-// that the manager sees itself as a node. Works on any single-node swarm.
 func TestSwarmInfoAndNodes(t *testing.T) {
 	cli := newClient(t)
 	info := requireSwarmManager(t, cli)
@@ -94,11 +88,6 @@ func TestSwarmInfoAndNodes(t *testing.T) {
 	}
 }
 
-// TestSwarmServiceLifecycle is the safety net at single-node scale: it
-// creates a replicated service, scales it, updates it, reads its logs FROM THE
-// MANAGER, restarts it, and removes it — the full cluster-app path that cluster
-// deploys use instead of RunContainer. Multi-node placement is exercised by the
-// DinD swarm in CI; the call surface is identical.
 func TestSwarmServiceLifecycle(t *testing.T) {
 	cli := newClient(t)
 	requireSwarmManager(t, cli)
@@ -194,9 +183,7 @@ func TestSwarmServiceLifecycle(t *testing.T) {
 		t.Fatalf("ServiceRestart: %v", err)
 	}
 
-	// ServiceInspect returns the raw SDK not-found error here — it does NOT normalize
-	// to ErrNotFound the way InspectContainer/CopyFileFromVolume do. Asserting only a
-	// non-nil error locks that asymmetry in so a migration cannot silently change it.
+	// ServiceInspect returns the raw SDK not-found error, not ErrNotFound; this locks that asymmetry in.
 	if err := cli.ServiceRemove(ctx, name); err != nil {
 		t.Fatalf("ServiceRemove: %v", err)
 	}

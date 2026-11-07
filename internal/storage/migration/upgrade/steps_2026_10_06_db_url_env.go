@@ -27,10 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// dbURLEnvStep adds DB_URL next to the DATABASE_URL an attached database
-// injected, now that DATABASE_URL is the deprecated alias. Only a DATABASE_URL
-// that still points at the database's own URL secret is copied, so a value the
-// user or a template wrote by hand is left alone.
+// Only a DATABASE_URL still pointing at the database's own URL secret is copied; hand-written values are left.
 func dbURLEnvStep(ctx context.Context, db *gorm.DB) error {
 	tx := db.WithContext(ctx)
 	var dbs []models.Database

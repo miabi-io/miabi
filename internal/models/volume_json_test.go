@@ -25,9 +25,7 @@ import (
 	"testing"
 )
 
-// The API contract the volume UI reads: the storage class is present, and the host path the volume
-// sits at is not — it is an operator detail a tenant cannot act on, and under a class it would name
-// the disk their workspace landed on.
+// The host path is an operator detail and would reveal which disk the workspace landed on.
 func TestVolumeJSONExposesClassNotMountpoint(t *testing.T) {
 	raw, err := json.Marshal(Volume{
 		Name:             "app-data",

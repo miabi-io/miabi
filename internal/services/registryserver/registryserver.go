@@ -17,10 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package registryserver runs and authorizes the platform's built-in, multi-tenant Docker registry. The
-// registry runs on the platform's private network and requires Basic auth there, which only the gateway
-// holds; a TENANT's request is authorized at the edge by a Goma forwardAuth middleware calling Authorize.
-// Distinct from services/registry (external credentials).
+// Package registryserver runs the built-in multi-tenant registry; tenant requests are authorized via Goma forwardAuth.
 package registryserver
 
 import (
@@ -41,8 +38,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ContainerName / Alias are the registry container's name and its DNS alias on the
-// platform's private network (the route upstream is http://mb-registry:5000).
+// The route upstream is http://mb-registry:5000 on the private network.
 const (
 	ContainerName = "mb-registry"
 	Alias         = "mb-registry"
@@ -52,8 +48,7 @@ const (
 
 type imageResolver interface{ Ref(key string) string }
 
-// externalAccessReader resolves a cluster's external domain and certificate provider (satisfied by services/cluster).
-// The registry is published under the default cluster's.
+// The registry is published under the default cluster's external domain.
 type externalAccessReader interface {
 	ExternalAccess(clusterID uint) (domain, provider string)
 }
@@ -62,16 +57,12 @@ type keyVerifier interface {
 	Verify(plaintext string) (*models.APIKey, error)
 }
 
-// appNamer resolves an application's repository name from its id, so an app-bound job credential can
-// be held to the one repository it was minted for. Satisfied by the application repository; nil
-// means an app-bound key is refused rather than allowed everywhere.
+// nil means an app-bound key is refused rather than allowed everywhere.
 type appNamer interface {
 	FindByID(id uint) (*models.Application, error)
 }
 
-// entitlementChecker reports whether a licensed capability is usable (satisfied
-// by enterprise.EE). A nil checker entitles nothing: the S3 driver is a paid
-// feature, so an unwired checker must fail closed rather than grant it.
+// The S3 driver is paid, so a nil checker must fail closed.
 type entitlementChecker interface{ Has(flag string) bool }
 
 type workspaceFinder interface {
@@ -80,8 +71,6 @@ type workspaceFinder interface {
 	FindMember(workspaceID, userID uint) (*models.WorkspaceMember, error)
 }
 
-// Service manages the registry settings, container lifecycle, and per-request
-// authorization.
 type Service struct {
 	repo     *repositories.RegistrySettingsRepository
 	images   imageResolver
@@ -92,22 +81,15 @@ type Service struct {
 	proxy    proxy.Manager
 	reg      *Client
 	usage    *usageCache
-	// network is the shared proxy network, used only as a fallback: a Compose stack that declares no
-	// private network has no other fabric the gateway can reach the registry on.
+	// Fallback only, for a Compose stack with no private network.
 	network string
-	// internalNetwork is the platform's private network, and the only one the registry joins when it
-	// exists. The control plane calls the registry directly there and the gateway reaches it as a route
-	// backend, while no tenant container can dial it. Empty on a stack that predates the split.
+	// No tenant container can dial the registry here; empty on stacks predating the split.
 	internalNetwork string
 	controlURL      string
 	cfg             config.RegistryConfig
-	// ee gates the licensed S3 storage driver. Checked at every point the driver would actually be used
-	// (container start, GC), not only where it is configured — the configuration now arrives from the
-	// environment, which no API-level check can see.
+	// Checked wherever the driver is used, since env-supplied config bypasses API-level checks.
 	ee entitlementChecker
-	// catalog is what the platform knows about the images it built: the digests a
-	// live deployment or pinned release holds (so a tag delete can't pull an image
-	// out from under a running release), and the build behind a digest. nil-safe.
+	// Lets tag deletes avoid pulling an image from under a running release; nil-safe.
 	catalog Catalog
 	// classes places the filesystem driver's volume on a storage class. nil keeps it in Docker's data root.
 	classes StorageClasses
@@ -120,14 +102,10 @@ type StorageClasses interface {
 	LocalID() uint
 }
 
-// platformTokenLabel keys the derived registry platform credential. Changing it
-// rotates the token (never do so casually — in-flight pulls would need the new
-// value), so it is a stable constant.
+// Changing it rotates the token, breaking in-flight pulls, so it is a stable constant.
 const platformTokenLabel = "registry:platform-token"
 
-// platformToken is the shared secret the platform's build/deploy worker uses to push and pull built images.
-// It resolves lazily so it never depends on construction order relative to crypto.Init: an explicit
-// MIABI_REGISTRY_PLATFORM_TOKEN wins, otherwise it derives deterministically from the master encryption key.
+// Resolves lazily to avoid depending on crypto.Init order; MIABI_REGISTRY_PLATFORM_TOKEN wins over derivation.
 func (s *Service) platformToken() string {
 	if t := strings.TrimSpace(s.cfg.PlatformToken); t != "" {
 		return t
@@ -135,8 +113,7 @@ func (s *Service) platformToken() string {
 	return crypto.DeriveToken(platformTokenLabel)
 }
 
-// NewService wires the registry service. network is the gateway Docker network;
-// controlURL is the address the gateway reaches Miabi at (forwardAuth fallback).
+// controlURL is where the gateway reaches Miabi (forwardAuth fallback).
 func NewService(
 	repo *repositories.RegistrySettingsRepository,
 	images imageResolver,
@@ -154,14 +131,12 @@ func NewService(
 		usage:   newUsageCache(),
 		network: network, controlURL: controlURL, cfg: cfg,
 	}
-	// Built after the struct so the client can close over s: the credential derives from the master
-	// key, which crypto.Init may not have set yet.
+	// Built after the struct so the client can close over s: crypto.Init may not have set the key yet.
 	s.reg = NewClient(fmt.Sprintf("http://%s:%d", Alias, Port), s.upstreamAuthHeader)
 	return s
 }
 
-// SetInternalNetwork names the platform's private network: the only network the registry joins, and how
-// the control plane and gateway reach it. Unset on a stack that has nothing but the proxy network.
+// SetInternalNetwork names the only network the registry joins.
 func (s *Service) SetInternalNetwork(name string) { s.internalNetwork = name }
 
 func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
@@ -169,8 +144,7 @@ func (s *Service) SetEntitlements(ee entitlementChecker) { s.ee = ee }
 // SetStorageClasses wires storage-class placement for the filesystem driver's data volume.
 func (s *Service) SetStorageClasses(c StorageClasses) { s.classes = c }
 
-// SetApps wires the application lookup used to hold an app-bound job credential to its own
-// repository. Without it such a key is refused on push, not waved through.
+// SetApps holds app-bound job credentials to their repository; without it such keys are refused on push.
 func (s *Service) SetApps(a appNamer) { s.apps = a }
 
 // S3Entitled reports whether this install may use the S3 storage driver.
@@ -178,17 +152,14 @@ func (s *Service) S3Entitled() bool {
 	return s.ee != nil && s.ee.Has(enterprise.FlagRegistryS3)
 }
 
-// Get returns the current settings (an empty, disabled default when unset),
-// never exposing the S3 secret — only the S3SecretSet presence flag.
+// Get never exposes the S3 secret, only the S3SecretSet presence flag.
 func (s *Service) Get() (*models.RegistrySettings, error) {
 	var st *models.RegistrySettings
 	var err error
 	if s.repo != nil {
 		st, err = s.repo.Get()
 	} else {
-		// No settings store wired. Enablement and the host come from the
-		// environment regardless, so the service can still answer the questions the
-		// deploy path asks of it (is this ref ours, whose namespace is it).
+		// Env still provides enablement and host, so the deploy path's questions remain answerable.
 		err = gorm.ErrRecordNotFound
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -201,9 +172,7 @@ func (s *Service) Get() (*models.RegistrySettings, error) {
 	return st, nil
 }
 
-// SaveInput carries a settings update. Every field is optional in the sense that
-// an environment-pinned one is ignored — see Locks. Pointers mark "the client
-// sent this"; nil leaves the stored value alone.
+// Env-pinned fields are ignored (see Locks); nil pointers leave the stored value alone.
 type SaveInput struct {
 	DeleteEnabled       bool
 	PerWorkspaceQuotaMB int
@@ -219,21 +188,17 @@ type SaveInput struct {
 	S3Region         *string
 	S3AccessKey      *string
 	S3ForcePathStyle *bool
-	// S3SecretKey rotates the stored secret. Empty (or nil) keeps the current one,
-	// so a form that never reads the value back can be saved without wiping it.
+	// Empty keeps the current secret, so a form that never reads it back doesn't wipe it.
 	S3SecretKey *string
 }
 
-// Locks reports which fields the environment has pinned. A locked field is read-only: Save ignores it, and
-// the admin UI renders it as fixed with the variable that owns it, rather than offering an input whose
-// value the server would discard.
+// Locked fields are read-only: Save ignores them and the UI shows the owning variable.
 type Locks struct {
 	Enabled      bool `json:"enabled"`
 	Host         bool `json:"host"`
 	Storage      bool `json:"storage"`
 	StorageClass bool `json:"storage_class"`
-	// S3 is per-field: an install may pin the bucket in the environment and leave
-	// the credentials to the UI, or the reverse.
+	// Per-field: an install may pin the bucket in env and leave credentials to the UI, or the reverse.
 	S3Endpoint  bool `json:"s3_endpoint"`
 	S3Bucket    bool `json:"s3_bucket"`
 	S3Region    bool `json:"s3_region"`
@@ -265,9 +230,7 @@ func (s *Service) Locks() Locks {
 	}
 }
 
-// Save persists the settings an admin may change, skipping every field the environment pins, so an install
-// configured by compose or Helm keeps behaving as declared. Validating a *change* — S3 entitlement, host
-// usability, whether switching storage strands blobs — belongs to the caller, where confirmation happens.
+// Save skips env-pinned fields; validating a change (entitlement, host, stranded blobs) is the caller's job.
 func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	st, err := s.repo.Get()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -305,8 +268,7 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	if in.S3ForcePathStyle != nil && !locks.S3ForcePath {
 		st.S3ForcePathStyle = *in.S3ForcePathStyle
 	}
-	// A blank secret means "keep what is stored": the API never returns the value,
-	// so a form round-trip carries nothing to re-send.
+	// The API never returns the secret, so a blank means keep what is stored.
 	if in.S3SecretKey != nil && !locks.S3SecretKey && strings.TrimSpace(*in.S3SecretKey) != "" {
 		enc, eErr := crypto.Encrypt(strings.TrimSpace(*in.S3SecretKey))
 		if eErr != nil {
@@ -322,16 +284,13 @@ func (s *Service) Save(in SaveInput) (*models.RegistrySettings, error) {
 	if err := s.repo.Upsert(st); err != nil {
 		return nil, err
 	}
-	// Return the same env-layered view a read would give, so the caller renders
-	// the effective configuration rather than the bare row.
+	// Return the env-layered view so the caller renders the effective configuration.
 	s.applyEnvConfig(st)
 	st.S3SecretSet = st.S3SecretKeyEnc != ""
 	return st, nil
 }
 
-// normalizeStorage maps a driver name to a known one, defaulting to the filesystem driver. It is silent by
-// design — it runs on every settings read. An unrecognized MIABI_REGISTRY_STORAGE is caught once, loudly,
-// at boot (config.validateRegistry) rather than warned about on every call.
+// Silent by design since it runs on every read; config.validateRegistry flags bad values once at boot.
 func normalizeStorage(t string) string {
 	if strings.ToLower(strings.TrimSpace(t)) == models.RegistryStorageS3 {
 		return models.RegistryStorageS3
@@ -339,9 +298,7 @@ func normalizeStorage(t string) string {
 	return models.RegistryStorageFilesystem
 }
 
-// envHost is the validated MIABI_REGISTRY_HOST, or "" when unset or malformed. A malformed host is dropped
-// rather than used: it is the string every image reference is matched against, and a value matching nothing
-// would leave the tenant check silently inert while the registry still served traffic. Boot refuses it too.
+// A malformed host is dropped: matching nothing would leave the tenant check silently inert.
 func (s *Service) envHost() string {
 	host, err := NormalizeHost(s.cfg.Host)
 	if err != nil {
@@ -351,13 +308,10 @@ func (s *Service) envHost() string {
 	return host
 }
 
-// applyEnvConfig layers the boot environment over the stored settings. The environment wins wherever it speaks,
-// and only there, so a compose- or Helm-declared install stays authoritative while one that sets none of these
-// is configured from the UI. Locks reports which fields are pinned, so Save ignores them and the UI shows why.
+// Env wins only where it speaks, so declared installs stay authoritative and others are configured from the UI.
 func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	c := s.cfg
-	// Only an explicitly-set variable pins enablement: absent means the stored
-	// value (i.e. the admin UI's switch) decides.
+	// Only an explicitly set variable pins enablement; absent leaves it to the admin UI.
 	if c.EnabledSet {
 		st.Enabled = c.Enabled
 	}
@@ -367,8 +321,7 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	if c.StorageType != "" {
 		st.StorageType = normalizeStorage(c.StorageType)
 	} else {
-		// Normalize the stored value too: it may predate the driver names, and an
-		// unrecognized one must not read as "not filesystem" anywhere downstream.
+		// Stored values may predate driver names; an unrecognized one must not read as "not filesystem".
 		st.StorageType = normalizeStorage(st.StorageType)
 	}
 	if c.S3Endpoint != "" {
@@ -400,8 +353,7 @@ func (s *Service) applyEnvConfig(st *models.RegistrySettings) {
 	st.VolumeName = st.DataVolume()
 }
 
-// ValidateStorageClass checks that a class can hold the registry's data: it exists, is enabled, and
-// lives on the control-plane node the registry runs on (or is shared).
+// The class must exist, be enabled, and live on the control-plane node (or be shared).
 func (s *Service) ValidateStorageClass(name string) error {
 	name = models.NormalizeRegistryStorageClass(name)
 	if name == "" {
@@ -414,8 +366,7 @@ func (s *Service) ValidateStorageClass(name string) error {
 	return err
 }
 
-// StorageClassUser names the registry when it keeps its blobs on the named class, so the class cannot be
-// deleted out from under it. Its volume is not a workspace volume, so the class's own count misses it.
+// The registry volume is not a workspace volume, so the class's own count misses it.
 func (s *Service) StorageClassUser(name string) string {
 	st, err := s.Get()
 	if err != nil || st.UsesS3() || st.StorageClass == "" || st.StorageClass != name {
@@ -424,9 +375,6 @@ func (s *Service) StorageClassUser(name string) string {
 	return "the built-in container registry"
 }
 
-// StorageSource names where the effective storage driver came from, so the admin UI can say why a field is
-// fixed or which value it is editing: "env" (MIABI_REGISTRY_STORAGE pins it), "stored" (configured in the
-// console), or "default" (the filesystem driver, nothing configured).
 func (s *Service) StorageSource(st *models.RegistrySettings) string {
 	if strings.TrimSpace(s.cfg.StorageType) != "" {
 		return "env"
@@ -437,8 +385,6 @@ func (s *Service) StorageSource(st *models.RegistrySettings) string {
 	return "default"
 }
 
-// StorageUnavailableReason returns "" when the configured storage driver can be
-// used, else a sentence naming exactly what is wrong.
 func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
 	if st == nil || !st.UsesS3() {
 		return ""
@@ -453,16 +399,12 @@ func (s *Service) StorageUnavailableReason(st *models.RegistrySettings) string {
 	return ""
 }
 
-// HostFor returns the effective registry hostname: MIABI_REGISTRY_HOST, else registry.<default cluster's external
-// domain>, else empty. Both candidates are validated — an unusable host resolves to "", so distribution reports
-// itself unavailable with a reason rather than silently failing to match any image reference.
+// HostFor validates both candidates; an unusable host resolves to "" so distribution reports why.
 func (s *Service) HostFor(st *models.RegistrySettings) string {
 	if host := s.envHost(); host != "" {
 		return host
 	}
-	// A legacy value stored back when the host was UI-editable. Still honored so an
-	// upgraded install keeps serving on the name its images already reference, but
-	// it is no longer writable — the admin API and UI treat the host as read-only.
+	// Legacy stored host, still honored so upgraded installs keep serving the name their images reference; read-only now.
 	if host, err := NormalizeHost(st.Host); err == nil && host != "" {
 		return host
 	}
@@ -481,9 +423,6 @@ func (s *Service) HostFor(st *models.RegistrySettings) string {
 	return host
 }
 
-// HostSource names where the effective host came from: "env" (pinned by
-// MIABI_REGISTRY_HOST), "stored" (set in the console), "base_domain" (derived
-// from the platform's external base domain), or "unset".
 func (s *Service) HostSource(st *models.RegistrySettings) string {
 	if s.envHost() != "" {
 		return "env"
@@ -510,9 +449,7 @@ func (s *Service) image() string {
 	return "registry:3"
 }
 
-// renderEnv builds the registry container env from the storage settings. When
-// readonly is set, storage maintenance read-only mode is enabled so the registry
-// keeps serving pulls while a garbage-collect runs against the same storage.
+// readonly lets the registry keep serving pulls while garbage-collect runs on the same storage.
 func (s *Service) renderEnv(st *models.RegistrySettings, readonly bool) ([]string, error) {
 	env := []string{fmt.Sprintf("REGISTRY_HTTP_ADDR=:%d", Port)}
 	if st.DeleteEnabled {
@@ -522,8 +459,7 @@ func (s *Service) renderEnv(st *models.RegistrySettings, readonly bool) ([]strin
 		env = append(env, "REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED=true")
 	}
 	if st.UsesS3() {
-		// Defense in depth: no caller may render an S3 config this install is not
-		// licensed for, whichever path got here.
+		// Defense in depth: no path may render an S3 config this install is not licensed for.
 		if reason := s.StorageUnavailableReason(st); reason != "" {
 			return nil, errors.New(reason)
 		}
@@ -558,9 +494,7 @@ func (s *Service) renderEnv(st *models.RegistrySettings, readonly bool) ([]strin
 	return env, nil
 }
 
-// Ensure (re)creates the registry container per the current settings on the
-// platform's private network and seeds its gateway route. Idempotent. A no-op
-// (teardown) when disabled. dc is the control-plane Docker client.
+// Ensure is idempotent and tears down when disabled.
 func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	st, err := s.Get()
 	if err != nil {
@@ -570,9 +504,7 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 		s.warnIfDisabledByLock()
 		return s.Teardown(ctx, dc)
 	}
-	// Refuse to bring up storage this install may not use, tearing down first: an install whose license lapsed may
-	// already have a registry serving from that bucket, and leaving it running would make the check advisory.
-	// Data in the bucket is untouched — only the container serving it stops.
+	// Tear down unlicensed storage: a lapsed install may already be serving from the bucket; data is untouched.
 	if reason := s.StorageUnavailableReason(st); reason != "" {
 		logger.Error("internal registry not started: " + reason)
 		if err := s.Teardown(ctx, dc); err != nil {
@@ -581,16 +513,13 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 		return errors.New(reason)
 	}
 	if s.HostFor(st) == "" {
-		// The container can run, but nothing can reach it: the gateway route below
-		// is what terminates TLS and enforces forwardAuth, and it needs a hostname.
-		// Say so plainly — otherwise the only symptom is pulls failing on nodes.
+		// The gateway route terminates TLS and enforces forwardAuth and needs a hostname; otherwise pulls just fail.
 		logger.Error("internal registry is enabled but has no usable hostname — set MIABI_REGISTRY_HOST or the default cluster's external domain; no gateway route is published until then")
 	}
 	if err := s.startContainer(ctx, dc, st, false); err != nil {
 		return err
 	}
-	// Seed the gateway route + middlewares (HTTPS redirect, forwardAuth, namespace
-	// rewrite). Best-effort: the container is up regardless of a gateway hiccup.
+	// Best-effort: the container is up regardless of a gateway hiccup.
 	if s.proxy != nil {
 		if err := s.proxy.SyncRegistry(ctx, s.proxyConfig(st, true)); err != nil {
 			logger.Warn("registry: seed gateway route failed", "error", err)
@@ -600,9 +529,7 @@ func (s *Service) Ensure(ctx context.Context, dc docker.Client) error {
 	return nil
 }
 
-// warnIfDisabledByLock reports a registry switched on in the console but held off by the environment. Honouring
-// the environment is correct, but doing so silently is not: the console shows a registry that never comes up and
-// git-source deploys fail with no clue. Only fires when the variable is explicitly false, not when absent.
+// Silently honoring an explicit env false leaves the console showing a registry that never comes up.
 func (s *Service) warnIfDisabledByLock() {
 	if !s.cfg.EnabledSet || s.cfg.Enabled || s.repo == nil {
 		return
@@ -623,8 +550,7 @@ func (s *Service) volumeMounts(st *models.RegistrySettings) map[string]string {
 	return map[string]string{st.DataVolume(): dataPath}
 }
 
-// ensureDataVolume creates the filesystem driver's volume, on its storage class when one is set. An
-// existing volume is reused as-is: a class an admin later disables keeps serving what it already holds.
+// An existing volume is reused, so a later-disabled class keeps serving what it holds.
 func (s *Service) ensureDataVolume(ctx context.Context, dc docker.Client, st *models.RegistrySettings) error {
 	name := st.DataVolume()
 	if _, err := dc.InspectVolume(ctx, name); err == nil {
@@ -653,8 +579,6 @@ func (s *Service) ensureDataVolume(ctx context.Context, dc docker.Client, st *mo
 	return nil
 }
 
-// startContainer pulls the image and (re)creates the registry container with the
-// rendered storage env, read-write or read-only. Idempotent.
 func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *models.RegistrySettings, readonly bool) error {
 	nets, err := s.networks(ctx, dc)
 	if err != nil {
@@ -697,22 +621,14 @@ func (s *Service) startContainer(ctx context.Context, dc docker.Client, st *mode
 	return nil
 }
 
-// ErrNoInternalNetwork refuses to start the registry when the platform has no private network to put
-// it on. It used to fall back to the shared proxy network with a warning, which meant every app
-// container could pull any workspace's images from http://mb-registry:5000 with no credential —
-// the warning was the only thing standing between a Compose install and a cross-tenant image leak.
+// The old shared-network fallback let any app container pull any workspace's images without a credential.
 var ErrNoInternalNetwork = errors.New(
 	"refusing to start the internal registry: it has no private network to join, and the shared proxy " +
 		"network is not a substitute — it is reachable by every app container. Add the platform's private " +
 		"network to your stack (labelled " + docker.LabelRole + "=" + docker.RolePlatformInternal + "), or " +
 		"name it explicitly with MIABI_INTERNAL_NETWORK")
 
-// networks is the one fabric the registry container joins: the platform's private network, which only
-// the platform's own components share.
-//
-// The name is discovered from the engine by LABEL when MIABI_INTERNAL_NETWORK is unset, because the
-// variable defaults to empty and most installs never edit it. Nothing to discover means nothing to
-// start: see ErrNoInternalNetwork.
+// Discovered by label when MIABI_INTERNAL_NETWORK is unset; nothing found means not starting (see ErrNoInternalNetwork).
 func (s *Service) networks(ctx context.Context, dc docker.Client) ([]string, error) {
 	name := s.internalNetwork
 	if name == "" {
@@ -727,9 +643,7 @@ func (s *Service) networks(ctx context.Context, dc docker.Client) ([]string, err
 	return []string{name}, nil
 }
 
-// discoverInternalNetwork finds the platform's private network by its role label, so an install that
-// has one gets it without configuring anything. Returns "" when the engine has none — including when
-// it cannot be listed, which is treated as "no" rather than falling back to a shared fabric.
+// A listing failure counts as "none" rather than falling back to a shared fabric.
 func discoverInternalNetwork(ctx context.Context, dc docker.Client) string {
 	nets, err := dc.ListNetworks(ctx)
 	if err != nil {
@@ -743,13 +657,10 @@ func discoverInternalNetwork(ctx context.Context, dc docker.Client) string {
 	return ""
 }
 
-// gcScript runs the collector against whichever default config the image ships:
-// Distribution v3 (registry:3) moved it from /etc/docker/registry to /etc/distribution.
+// Distribution v3 (registry:3) moved the default config from /etc/docker/registry to /etc/distribution.
 const gcScript = `cfg=/etc/distribution/config.yml; [ -f "$cfg" ] || cfg=/etc/docker/registry/config.yml; exec registry garbage-collect "$cfg"`
 
-// GarbageCollect reclaims storage from deleted or overwritten manifests. To run safely it flips the
-// registry read-only (pulls keep working, pushes pause), runs `registry garbage-collect` as a one-shot
-// against the same storage, then restores read-write. A no-op unless the registry is enabled with deletes on.
+// GarbageCollect flips the registry read-only (pulls work, pushes pause) while collecting; needs deletes enabled.
 func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 	st, err := s.Get()
 	if err != nil {
@@ -773,8 +684,7 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 		}
 	}()
 
-	// Override the image entrypoint, which would otherwise `serve`, to run the
-	// garbage-collect subcommand against the same storage.
+	// Override the entrypoint, which would otherwise `serve`.
 	env, err := s.renderEnv(st, false)
 	if err != nil {
 		return err
@@ -798,8 +708,7 @@ func (s *Service) GarbageCollect(ctx context.Context, dc docker.Client) error {
 	return nil
 }
 
-// Teardown removes the registry container and its gateway route (best-effort).
-// Data volumes are kept.
+// Teardown keeps data volumes.
 func (s *Service) Teardown(ctx context.Context, dc docker.Client) error {
 	if s.proxy != nil {
 		if err := s.proxy.SyncRegistry(ctx, proxy.RegistryProxy{Enabled: false}); err != nil {
@@ -812,8 +721,6 @@ func (s *Service) Teardown(ctx context.Context, dc docker.Client) error {
 	return nil
 }
 
-// authURL is the forwardAuth target: the configured override, else the control
-// URL, with the auth path appended.
 func (s *Service) authURL() string {
 	base := strings.TrimRight(firstNonEmpty(s.cfg.AuthURL, s.controlURL), "/")
 	if base == "" {
@@ -822,8 +729,7 @@ func (s *Service) authURL() string {
 	return base + "/internal/registry/auth"
 }
 
-// SyncGateway re-publishes the registry's gateway route, so a change to the default cluster's external domain or
-// certificate provider takes effect without a restart.
+// SyncGateway lets domain or certificate provider changes apply without a restart.
 func (s *Service) SyncGateway(ctx context.Context) error {
 	if s.proxy == nil {
 		return nil
@@ -854,8 +760,7 @@ func (s *Service) proxyConfig(st *models.RegistrySettings, enabled bool) proxy.R
 		AuthURL:      s.authURL(),
 		TLSProvider:  s.certProvider(),
 		UpstreamAuth: s.upstreamAuthHeader(),
-		// Off only for an install behind a TLS terminator with no trusted proxies
-		// configured on the gateway, where the redirect would loop.
+		// Off only behind a TLS terminator with no trusted proxies configured, where the redirect would loop.
 		HTTPSRedirect: s.cfg.HTTPSRedirect,
 	}
 }

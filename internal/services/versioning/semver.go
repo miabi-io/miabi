@@ -210,8 +210,6 @@ func bumpRank(b models.VersionBump) int {
 	return 0
 }
 
-// First is the opening version of a series that has none: start when it lies on the series, else the
-// fixed parts followed by zeros (1.4.x → 1.4.0, 2.x.x → 2.0.0, x.x.x → 1.0.0).
 func (s Series) First(start string) Version {
 	if v, err := ParseVersion(start); err == nil && v.Pre == "" && s.Contains(v) {
 		return v

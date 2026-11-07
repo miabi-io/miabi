@@ -31,43 +31,32 @@ const capsOn = ref(false)
 const error = ref('')
 const loading = ref(false)
 
-// Two-step login: once credentials are accepted for a 2FA account, the form
-// switches to collecting the authenticator (or recovery) code.
 const step = ref<'credentials' | 'twofactor'>('credentials')
 const twoFactorCode = ref('')
-// An SSO sign-in the callback parked for this account's second factor; the code goes to the SSO
-// endpoint instead of the password login.
+// The code goes to the SSO endpoint instead of the password login.
 const ssoTwoFactor = ref(false)
 
-// Focus the relevant field on load and on step change — the `autofocus`
-// attribute only fires on the initial document render, not when the 2FA step is
-// mounted dynamically.
+// `autofocus` only fires on initial render, not when the 2FA step mounts dynamically.
 const identifierInput = ref<HTMLInputElement | null>(null)
 const twoFactorInput = ref<HTMLInputElement | null>(null)
 watch(step, (s) => {
   nextTick(() => (s === 'twofactor' ? twoFactorInput : identifierInput).value?.focus())
 })
 
-// Surface a Caps Lock warning while typing the password — a common cause of
-// "invalid credentials" on the first try.
 function onCaps(e: KeyboardEvent) {
   capsOn.value = e.getModifierState?.('CapsLock') ?? false
 }
 
 const providers = ref<PublicProvider[]>([])
 
-// "Continue with SSO": some providers are hidden from the login buttons and are
-// reached by typing an email whose domain the platform maps to a provider.
-// ssoAvailable is true when at least one hidden provider exists; ssoMode switches
-// the form to the email-discovery step.
+// Hidden providers are reached by typing an email whose domain maps to a provider.
 const ssoAvailable = ref(false)
 const ssoMode = ref(false)
 const ssoEmail = ref('')
 const ssoLoading = ref(false)
 const ssoEmailInput = ref<HTMLInputElement | null>(null)
 
-// Self-service password reset is admin-gated; the "Forgot password?" link only
-// shows when the platform advertises it as enabled.
+// Self-service reset is admin-gated, so the link only shows when the platform advertises it.
 const passwordResetEnabled = ref(false)
 // Sign-up is off by default, so the link only exists where an operator opened it.
 const registrationEnabled = ref(false)
@@ -75,8 +64,7 @@ const passkeysEnabled = ref(false)
 const passkeyAvailable = computed(() => passkeysEnabled.value && passkeysSupported())
 const passkeyLoading = ref(false)
 const brand = ref<Brand>({})
-// Empty fields fall back to Miabi's own identity, so Community and an Enterprise
-// install that has set nothing look identical.
+// Empty fields fall back to Miabi's own identity, so Community and an unbranded Enterprise look identical.
 const brandName = computed(() => brand.value.name?.trim() || 'Miabi')
 const brandLogo = computed(() => (theme.isDark && brand.value.logo_dark_url?.trim()) || brand.value.logo_url?.trim() || '/brand/miabi-mark.svg')
 const brandLinks = computed(() => brand.value.links ?? [])
@@ -201,8 +189,6 @@ function signInWith(slug: string) {
   window.location.href = authorizeUrl(slug, undefined, [], next.value)
 }
 
-// Switch to the "Continue with SSO" email step, prefilling the email if the user
-// already typed one into the identifier field.
 function enterSSOMode() {
   error.value = ''
   ssoEmail.value = identifier.value.includes('@') ? identifier.value.trim() : ''
@@ -215,8 +201,7 @@ function exitSSOMode() {
   error.value = ''
 }
 
-// Resolve the provider for the entered email's domain and hand off to its
-// authorize redirect. A 404 means no provider matches — fall back to password.
+// A 404 means no provider matches; fall back to password.
 async function continueWithSSO() {
   error.value = ''
   ssoLoading.value = true
@@ -417,8 +402,7 @@ function providerIcon(type: string): string {
           <template v-else>{{ $t('login.noAccountContactAdmin') }}</template>
         </p>
 
-        <!-- Operator links. rel="noopener noreferrer" on every one: these are
-             admin-supplied URLs on a page shown to unauthenticated visitors. -->
+        <!-- Admin-supplied URLs on a page shown to unauthenticated visitors, hence noopener noreferrer. -->
         <nav v-if="brandLinks.length" class="auth-links" :aria-label="$t('login.siteLinks')">
           <a
             v-for="l in brandLinks"

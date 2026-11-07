@@ -30,20 +30,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// APIVersion is the only apiVersion an install document may carry. It is deliberately not the
-// miabi.io/v1 of workspace resources: that schema publishes its kinds as a generated enum, so a
-// ControlPlane inside it would read as something the apply API accepts, which it never will.
+// Deliberately not miabi.io/v1, whose generated kind enum would make ControlPlane look apply-able.
 const APIVersion = "install.miabi.io/v1"
 
 // KindControlPlane is the install document's only kind today.
 const KindControlPlane = "ControlPlane"
 
-// defaultDocumentName names the singleton. One install per host, so it identifies nothing and is
-// carried only so the dialect matches miabi.io/v1 and `stack status` has something to print.
+// One install per host, so the name identifies nothing; it is kept for dialect parity and `stack status`.
 const defaultDocumentName = "miabi"
 
-// apiVersionPrefix is what a document of a FUTURE version still shares with this one, which is how
-// "you need a newer CLI" is told apart from "this is not an install document at all".
+// Lets "you need a newer CLI" be told apart from "not an install document".
 const apiVersionPrefix = "install.miabi.io/"
 
 // ErrNoDocument is returned for input that parses as YAML but holds no install document.
@@ -52,8 +48,7 @@ var ErrNoDocument = errors.New("no ControlPlane document found")
 // documentNameRe mirrors the workspace dialect's metadata.name rule.
 var documentNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// Document is the install manifest's on-disk form. Manifest stays the internal representation: both
-// this and the flat schema convert into it, so nothing downstream learns which shape was read.
+// Both this and the flat schema convert into Manifest, so nothing downstream learns which shape was read.
 type Document struct {
 	APIVersion string       `yaml:"apiVersion"`
 	Kind       string       `yaml:"kind"`
@@ -61,15 +56,11 @@ type Document struct {
 	Spec       Spec         `yaml:"spec"`
 }
 
-// DocumentMeta identifies the install. There is one per host, so the name is decoration: it labels
-// `miabi stack status` output and nothing else. Renaming it renames nothing.
 type DocumentMeta struct {
 	Name string `yaml:"name,omitempty"`
 }
 
-// Spec is the ControlPlane's desired state. Optional scalars that pin a console-owned setting are
-// pointers: an emitted environment variable locks the field in the UI, so "unset" and "set to the
-// zero value" have to stay distinguishable.
+// Pointers because an emitted env var locks the field in the UI, so "unset" and "zero" must differ.
 type Spec struct {
 	Domain      string         `yaml:"domain"`
 	Endpoints   Endpoints      `yaml:"endpoints,omitempty"`
@@ -87,32 +78,24 @@ type Spec struct {
 	RunnerImage string         `yaml:"runnerImage,omitempty"`
 }
 
-// Endpoints are the URLs the platform answers on. Control is where nodes, agents and runners dial
-// back, and is separate from Web because a node on a private network may reach the control plane at
-// an address the public panel URL never resolves to.
+// Control is separate from Web because a private-network node may reach the control plane at another address.
 type Endpoints struct {
 	Web     string `yaml:"web,omitempty"`
 	Control string `yaml:"control,omitempty"`
 }
 
-// ACME is the certificate authority used for every acme-managed host on this install. Email is the
-// contact Let's Encrypt sends expiry notices to, and doubles as the admin login when none is given.
+// Email doubles as the admin login when none is given.
 type ACME struct {
 	Email        string `yaml:"email,omitempty"`
 	DirectoryURL string `yaml:"directoryUrl,omitempty"`
 }
 
-// ServerSpec is the control plane's own container: the image it runs, the read-only host /proc bind
-// that lets the Nodes page report real host CPU and memory, and any variable Miabi reads that this
-// document does not already model.
 type ServerSpec struct {
 	Image string `yaml:"image,omitempty"`
 	// HostProc is a pointer because absent must mean on.
 	HostProc  *bool  `yaml:"hostProc,omitempty"`
 	DockerGid string `yaml:"dockerGid,omitempty"`
-	// TrustedProxies are the IPs or CIDRs the control plane believes X-Forwarded-For and X-Real-IP from.
-	// Defaults to the private network, the only one the gateway reaches it on; change it with that
-	// network's subnet.
+	// Defaults to the private network, the only one the gateway reaches it on.
 	TrustedProxies []string          `yaml:"trustedProxies,omitempty"`
 	Env            map[string]string `yaml:"env,omitempty"`
 }
@@ -122,55 +105,42 @@ type ImageSpec struct {
 	Image string `yaml:"image,omitempty"`
 }
 
-// GatewaySpec is Goma Gateway: the image, the config file bind-mounted read-only from beside this
-// manifest, and anything that config interpolates.
 type GatewaySpec struct {
 	Image  string `yaml:"image,omitempty"`
 	Config string `yaml:"config,omitempty"`
-	// ConfigSha is written by Miabi, never by the operator: it records the digest of the DEFAULT
-	// config last written, which is what keeps a customized goma.yml from being overwritten.
+	// Written by Miabi only: the digest of the default config, which keeps a customized goma.yml from being overwritten.
 	ConfigSha string            `yaml:"configSha,omitempty"`
 	Env       map[string]string `yaml:"env,omitempty"`
-	// TrustedProxies are the IPs or CIDRs of the proxies in front of the gateway — a CDN such as
-	// Cloudflare, or a TLS-terminating load balancer. Only connections from these may set the client IP
-	// through forwarded headers; leave it unset when the gateway faces the internet directly.
+	// Only connections from these may set the client IP via forwarded headers; unset when facing the internet directly.
 	TrustedProxies []string `yaml:"trustedProxies,omitempty"`
-	// CountryHeader sends each client's ISO country code to every app in the X-Goma-Country request
-	// header. It needs a GeoIP database beside goma.yml; without one the header is simply never set.
+	// Needs a GeoIP database beside goma.yml; without one the header is never set.
 	CountryHeader bool `yaml:"countryHeader,omitempty"`
 }
 
-// RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has
-// recorded and decides which workspace owns an image, which is why the console shows it read-only.
+// The host anchors every recorded image ref and decides workspace ownership, hence read-only in the console.
 type RegistrySpec struct {
 	Enabled bool   `yaml:"enabled"`
 	Host    string `yaml:"host,omitempty"`
 	Storage string `yaml:"storage,omitempty"`
 }
 
-// AdminSpec is the first admin account. Only the address: the password is generated into
-// spec.secrets, because this is an identity and that is a credential.
+// Only the address: the password is a credential and is generated into spec.secrets.
 type AdminSpec struct {
 	Email string `yaml:"email,omitempty"`
 }
 
-// SecretsSpec holds the install's secrets in plaintext, as the flat schema always has. The file is
-// mode 0600 on a root-owned host, and anyone who can read it already holds the Docker socket.
+// Plaintext, but the file is 0600 and anyone who can read it already holds the Docker socket.
 type SecretsSpec struct {
 	DBPassword    string `yaml:"dbPassword,omitempty"`
 	RedisPassword string `yaml:"redisPassword,omitempty"`
 	JWTSecret     string `yaml:"jwtSecret,omitempty"`
 	EncryptionKey string `yaml:"encryptionKey,omitempty"`
 	AdminPassword string `yaml:"adminPassword,omitempty"`
-	// GomaConfigEncryptionKey is the one secret here that is safe to lose: the gateway config it
-	// protects is rendered from the database on every sync, so rotating it costs a converge.
+	// Safe to lose: the gateway config is re-rendered from the database on every sync.
 	GomaConfigEncryptionKey string `yaml:"gomaConfigEncryptionKey,omitempty"`
 	RegistryPlatformToken   string `yaml:"registryPlatformToken,omitempty"`
 }
 
-// NetworkingSpec covers the two Docker fabrics and the address policy around them: the shared proxy
-// network routed apps join, the private one the platform talks over, and the pools and ranges Miabi
-// allocates from. Named as a topic rather than a plural because only two of its fields are networks.
 type NetworkingSpec struct {
 	Proxy     NetworkConfig `yaml:"proxy,omitempty"`
 	Internal  NetworkConfig `yaml:"internal,omitempty"`
@@ -180,9 +150,7 @@ type NetworkingSpec struct {
 	DNS       DNSSpec       `yaml:"dns,omitempty"`
 }
 
-// PoolSpec is the CIDR Miabi carves every managed network out of, handed to Docker as explicit IPAM
-// so its own small default pools cannot exhaust. It must not overlap the proxy network, your LAN or
-// a VPN.
+// Explicit IPAM so Docker's small default pools cannot exhaust; must not overlap the proxy network, LAN or VPN.
 type PoolSpec struct {
 	CIDR          string `yaml:"cidr,omitempty"`
 	SubnetPrefix  int    `yaml:"subnetPrefix,omitempty"`
@@ -195,8 +163,7 @@ type HostPortsSpec struct {
 	Max int `yaml:"max,omitempty"`
 }
 
-// ExternalSpec is the wildcard domain one-click application URLs are published under on the default
-// cluster. Setting it here pins it; leave it empty to manage it from Clusters.
+// Setting it here pins it; leave it empty to manage it from Clusters.
 type ExternalSpec struct {
 	BaseDomain   string `yaml:"baseDomain,omitempty"`
 	CertProvider string `yaml:"certProvider,omitempty"`
@@ -207,8 +174,7 @@ type DNSSpec struct {
 	ReconcileMinutes int `yaml:"reconcileMinutes,omitempty"`
 }
 
-// BackupSpec is the platform's own backup (Enterprise). Stating any of it pins the console's
-// corresponding fields, which is the point on an install described by infrastructure-as-code.
+// Stating any field pins the console's corresponding field.
 type BackupSpec struct {
 	Schedule          string            `yaml:"schedule,omitempty"`
 	Destination       BackupDestination `yaml:"destination,omitempty"`
@@ -217,8 +183,7 @@ type BackupSpec struct {
 	Retention         BackupRetention   `yaml:"retention,omitempty"`
 }
 
-// BackupDestination is the S3-compatible target. Bucket, accessKey and secretKey are all-or-nothing:
-// with any one missing the control plane ignores the whole block and leaves the console in charge.
+// All-or-nothing: with bucket, accessKey or secretKey missing the control plane ignores the block.
 type BackupDestination struct {
 	Endpoint       string `yaml:"endpoint,omitempty"`
 	Bucket         string `yaml:"bucket,omitempty"`
@@ -232,10 +197,7 @@ type BackupDestination struct {
 	VolumePath     string `yaml:"volumePath,omitempty"`
 }
 
-// BackupEncryption seals the recovery point. The passphrase is NOT the platform's master key and
-// must never be set to it: it protects the database that would otherwise be the only place it lived,
-// and a real disaster is exactly when the in-platform copy is unreachable. includeIdentity seals the
-// master key in, which is what a restore onto fresh hardware needs.
+// Never set the passphrase to the master key; includeIdentity seals the master key in for fresh-hardware restores.
 type BackupEncryption struct {
 	Passphrase      string `yaml:"passphrase,omitempty"`
 	Encrypt         *bool  `yaml:"encrypt,omitempty"`
@@ -248,14 +210,12 @@ type BackupRetention struct {
 	Days int `yaml:"days,omitempty"`
 }
 
-// LicenseSpec points at a signed Enterprise license on disk. It is installed only when the database
-// holds none: a license added through the console takes precedence.
+// Installed only when the database holds none: a console-added license takes precedence.
 type LicenseSpec struct {
 	File string `yaml:"file,omitempty"`
 }
 
-// InstallSettings carries what only the kinded document models. It is not serialized: the flat
-// schema never had these, and the document writer maps them field by field.
+// Not serialized: the flat schema never had these, and the document writer maps them field by field.
 type InstallSettings struct {
 	ACMEDirectoryURL      string
 	RegistryStorage       string
@@ -271,9 +231,7 @@ type InstallSettings struct {
 	ServerTrustedProxies  []string
 }
 
-// ParseDocument reads an install document. Unknown fields are refused — every other manifest parser
-// in the platform does the same, and a silently ignored `acme_emial:` is an install with no ACME
-// contact and no error.
+// Unknown fields are refused: a silently ignored typo like `acme_emial:` would be an install with no ACME contact.
 func ParseDocument(b []byte) (*Document, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
@@ -306,9 +264,7 @@ func ParseDocument(b []byte) (*Document, error) {
 	return found, nil
 }
 
-// IsDocument reports whether b looks like a kinded install document rather than the flat schema. It
-// keys off apiVersion alone, so a malformed document is still reported as one and gets its own error
-// rather than "this is not a Miabi stack manifest".
+// Keys off apiVersion alone so a malformed document still gets its own error.
 func IsDocument(b []byte) bool {
 	var probe struct {
 		APIVersion string `yaml:"apiVersion"`
@@ -316,9 +272,7 @@ func IsDocument(b []byte) bool {
 	if err := yaml.Unmarshal(b, &probe); err == nil {
 		return strings.TrimSpace(probe.APIVersion) != ""
 	}
-	// A document too broken to unmarshal is still a document. Answering "false" here would report a
-	// YAML error as "this is not a Miabi stack manifest", which sends the operator looking at the
-	// wrong thing entirely.
+	// Answering false would report a YAML error as "not a Miabi stack manifest".
 	for _, line := range strings.Split(string(b), "\n") {
 		if strings.HasPrefix(line, "apiVersion:") {
 			return true
@@ -363,8 +317,6 @@ func MarshalDocument(d *Document) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Manifest converts the document into the internal representation. Every consumer downstream of
-// Load sees a Manifest and never learns which on-disk shape produced it.
 func (d *Document) Manifest() *Manifest {
 	m := &Manifest{
 		Version: CurrentVersion,
@@ -415,9 +367,7 @@ func (d *Document) Manifest() *Manifest {
 			ServerTrustedProxies:  slices.Clone(d.Spec.Server.TrustedProxies),
 		},
 	}
-	// The document keeps the gateway key with the other secrets; the manifest keeps it where the
-	// gateway and control-plane specs already read it from. One value either way, so the two sides
-	// cannot disagree.
+	// Single value in either location, so the two sides cannot disagree.
 	if k := d.Spec.Secrets.GomaConfigEncryptionKey; k != "" {
 		if m.Gateway.Env == nil {
 			m.Gateway.Env = map[string]string{}

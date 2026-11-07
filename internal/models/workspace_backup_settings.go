@@ -39,21 +39,14 @@ type WorkspaceBackupSettings struct {
 	VolumeBackupPath   string `json:"volume_backup_path,omitempty"`
 	BundlePath         string `json:"bundle_path,omitempty"`
 
-	// BundlePassphraseEnc is the bundle passphrase at rest, encrypted with the
-	// workspace's data-encryption key.
 	BundlePassphraseEnc string `json:"-" gorm:"column:bundle_passphrase_enc"`
 
-	// BackupPassphraseEnc encrypts database backup artifacts, at rest itself under the
-	// workspace's data-encryption key. Set means every new database backup leaves the
-	// platform as GPG ciphertext; unset preserves the previous cleartext behaviour.
+	// Unset preserves the previous cleartext behaviour.
 	BackupPassphraseEnc string `json:"-" gorm:"column:backup_passphrase_enc"`
-	// BackupEncryption picks how database and volume backups are encrypted: "" or "gpg" uses the
-	// backup passphrase; "age" encrypts to AgeRecipients, so taking a backup needs no secret and
-	// only the holder of the matching identity can read it back.
+	// "age" needs no secret to take a backup; only the identity holder can read it back.
 	BackupEncryption string `json:"backup_encryption,omitempty"`
 	// AgeRecipients are the age public keys (age1…, ssh-ed25519 …), one per line.
 	AgeRecipients string `json:"age_recipients,omitempty" gorm:"type:text"`
-	// AgeIdentityEnc is the age identity at rest, under the workspace's data-encryption key.
 	// Optional: without it the platform cannot restore or verify age backups on its own.
 	AgeIdentityEnc string `json:"-" gorm:"column:age_identity_enc;type:text"`
 	// SkipBackupVerify turns off reading each backup back right after it is written.
@@ -62,8 +55,6 @@ type WorkspaceBackupSettings struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// S3SecretSet reports whether a secret key is stored, without exposing it.
-	// Not persisted; populated on read so the UI can render "••••• (set)".
 	S3SecretSet         bool `json:"s3_secret_set" gorm:"-"`
 	BundlePassphraseSet bool `json:"bundle_passphrase_set" gorm:"-"`
 	BackupPassphraseSet bool `json:"backup_passphrase_set" gorm:"-"`

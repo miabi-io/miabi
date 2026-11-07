@@ -21,9 +21,7 @@ package models
 
 import "time"
 
-// SAMLConfig is a SAML 2.0 identity-provider connection for an organization. The
-// table is migrated in every build but is only read/written by the enterprise
-// SAML handler (gated on the sso_saml entitlement); it stays empty in Community.
+// SAMLConfig is migrated in every build but only used by the enterprise SAML handler (sso_saml); empty in Community.
 type SAMLConfig struct {
 	ID             uint  `json:"id" gorm:"primaryKey"`
 	OrganizationID *uint `json:"organization_id" gorm:"index"`
@@ -36,12 +34,10 @@ type SAMLConfig struct {
 	IDPMetadataURL string `json:"idp_metadata_url"`
 	IDPMetadataXML string `json:"idp_metadata_xml" gorm:"type:text"`
 
-	// SPEntityID overrides the service-provider entity ID (defaults to the SP
-	// metadata URL when blank).
+	// Defaults to the SP metadata URL when blank.
 	SPEntityID string `json:"sp_entity_id"`
 
-	// Attribute names mapping the assertion onto the user. Blank falls back to
-	// the standard "email" / "displayName" (and the NameID for email).
+	// Blank falls back to "email" / "displayName" (and the NameID for email).
 	AttrEmail string `json:"attr_email"`
 	AttrName  string `json:"attr_name"`
 

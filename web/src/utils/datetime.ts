@@ -19,9 +19,7 @@
 
 import { activeLanguage } from '@/i18n'
 
-// Locale-aware formatting for code that cannot reach $d/$n: utils, stores, and views not
-// yet migrated. A bare toLocaleDateString() takes the browser's language, not the chosen
-// one. Migrated views should prefer $d/$n, which read the same formats.
+// A bare toLocaleDateString() uses the browser's language, not the chosen one; views should prefer $d/$n.
 
 const EM_DASH = '—'
 

@@ -42,8 +42,7 @@ spec:
 ` + spec + "\n"
 }
 
-// The gap this closes: tls: custom could not be declared at all, because the manifest had no way to
-// name the certificate and apply refuses a custom route without one.
+// A custom TLS route must name its certificate, or apply refuses it.
 func TestCustomTLSNamesItsCertificate(t *testing.T) {
 	set, err := d.Parse([]byte(routeTLS("  tls: custom\n  certificate: shop-wildcard")))
 	if err != nil {
@@ -55,8 +54,7 @@ func TestCustomTLSNamesItsCertificate(t *testing.T) {
 	}
 }
 
-// Either half alone reads as deliberate and behaves as a mistake, so both are refused at parse
-// rather than at apply — or worse, silently.
+// Either TLS field alone behaves as a mistake, so both are refused at parse.
 func TestTLSFieldsMustAgree(t *testing.T) {
 	cases := []struct{ name, spec, want string }{
 		{"custom without a certificate", "  tls: custom", "needs certificate"},
@@ -81,8 +79,7 @@ func TestACMEWithAProviderIsValid(t *testing.T) {
 	}
 }
 
-// Swapping the certificate a route serves is a real change, and the plan has to say so — otherwise
-// rotating a cert through Git would appear to do nothing.
+// Swapping the served certificate must plan, or rotating a cert through Git would do nothing.
 func TestCertificateChangeConverges(t *testing.T) {
 	mk := func(cert string) *d.ResourceSet {
 		set, err := d.Parse([]byte(routeTLS("  tls: custom\n  certificate: " + cert)))
@@ -99,8 +96,6 @@ func TestCertificateChangeConverges(t *testing.T) {
 	}
 }
 
-// A certificate name has to be resolvable, so it follows the same rule every other cross-resource
-// reference does.
 func TestCertificateNameIsValidated(t *testing.T) {
 	_, err := d.Parse([]byte(routeTLS("  tls: custom\n  certificate: Not A Name")))
 	if err == nil || !strings.Contains(err.Error(), "must be a resource name") {

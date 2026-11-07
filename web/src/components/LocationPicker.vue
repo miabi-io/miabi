@@ -6,8 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { locationLabel } from '@/utils/locations'
 
-// v-model is the location name ('' = the workspace default); v-model:server-id pins a node of that
-// location, which only platform admins may do.
+// '' means the workspace default; only platform admins may pin a node via server-id.
 const props = defineProps<{ modelValue: string; serverId?: number; allowPin?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void

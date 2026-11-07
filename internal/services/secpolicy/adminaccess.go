@@ -43,8 +43,7 @@ type AdminAccessSpec struct {
 	SensitiveWindow string   `json:"sensitive_window,omitempty"`
 	MaxAttempts     int      `json:"max_attempts,omitempty"`
 	Lockout         string   `json:"lockout,omitempty"`
-	// AllowedIPs restricts the unlock and the admin API (API keys included) to these addresses or
-	// CIDRs. It trusts the client IP the platform resolves, so it is only as good as the proxy setup.
+	// Trusts the client IP the platform resolves, so it is only as good as the proxy setup.
 	AllowedIPs []string `json:"allowed_ips,omitempty"`
 }
 
@@ -137,7 +136,6 @@ func parsePrefix(s string) (netip.Prefix, error) {
 	return netip.PrefixFrom(a, a.BitLen()), nil
 }
 
-// AdminAccessPolicy returns the enforced admin_access rule, or ok=false when none is in force.
 // Only the platform scope counts: the console is one per platform.
 func (s *Service) AdminAccessPolicy() (AdminAccess, bool) {
 	if !s.Active() {

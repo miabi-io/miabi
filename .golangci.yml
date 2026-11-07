@@ -1,13 +1,9 @@
-# golangci-lint v2 configuration.
-# The default "standard" set is used: errcheck, govet, ineffassign, staticcheck,
-# unused. We keep the bug-catching staticcheck (SA*) and simplifications (S*),
-# and only silence advisory noise so a green run means "no real issues".
+# Default "standard" set; only advisory noise is silenced so a green run means no real issues.
 version: "2"
 
 linters:
   enable:
-    # Only internal/docker (the adapter) may import a Docker/Moby SDK; every other
-    # package depends on the docker.Client interface and Miabi's own domain types.
+    # Only internal/docker may import a Docker/Moby SDK.
     - depguard
   settings:
     depguard:
@@ -26,16 +22,14 @@ linters:
     staticcheck:
       checks:
         - all
-        # The ST* stylecheck naming/comment conventions are disabled by default
-        # (kept off here — they are opinionated style, not correctness).
+        # ST* checks are opinionated style, not correctness.
         - -ST1000
         - -ST1003
         - -ST1016
         - -ST1020
         - -ST1021
         - -ST1022
-        # SA1019 (use of deprecated APIs) is tracked and migrated on its own
-        # schedule; a deprecation is not a CI-blocking defect.
+        # Deprecations are migrated on their own schedule, not CI-blocking.
         - -SA1019
         # QF* are "quickfix" style suggestions (auto-fixable refactors), not bugs.
         - -QF1001

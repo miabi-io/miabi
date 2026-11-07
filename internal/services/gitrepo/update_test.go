@@ -32,8 +32,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// gitRepoRow is a sqlite-friendly stand-in for the git_repositories table.
-// Reads and writes still go through the real models.GitRepository schema.
 type gitRepoRow struct {
 	ID                  uint `gorm:"primaryKey"`
 	WorkspaceID         uint
@@ -73,15 +71,11 @@ func newUpdateService(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatalf("seed: %v", err)
 	}
 	svc := NewService(repositories.NewGitRepoRepository(db))
-	// Never reach the network from a unit test: a create or a credential change
-	// probes the remote, and a fixture URL is not somewhere to send a request.
+	// A create or credential change probes the remote, and a fixture URL is not somewhere to send a request.
 	svc.SetDialer(func(context.Context, *models.GitRepository) error { return nil })
 	return svc, db
 }
 
-// The name identifies the credential wherever it is referenced — by the apps
-// that clone through it, and by pipelines that bind to it as their source — so
-// it is an identity, not a label.
 func TestUpdateRejectsRename(t *testing.T) {
 	svc, db := newUpdateService(t)
 
@@ -99,8 +93,7 @@ func TestUpdateRejectsRename(t *testing.T) {
 	}
 }
 
-// A rename onto a name that is merely taken must still report immutability:
-// "already exists" would read as "pick another name", which is not the rule.
+// "Already exists" would read as "pick another name", which is not the rule.
 func TestUpdateRejectsRenameToATakenName(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	if _, err := svc.Update(1, 1, Input{Name: "acme-web"}); !errors.Is(err, ErrNameImmutable) {
@@ -121,8 +114,6 @@ func TestUpdateAcceptsTheCurrentName(t *testing.T) {
 	}
 }
 
-// The name is normalized before comparison, so a differently-cased or spaced
-// spelling of the same handle is a no-op rather than a refusal.
 func TestUpdateAcceptsTheCurrentNameUnnormalized(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	if _, err := svc.Update(1, 1, Input{Name: "  Acme-API  "}); err != nil {
@@ -130,8 +121,6 @@ func TestUpdateAcceptsTheCurrentNameUnnormalized(t *testing.T) {
 	}
 }
 
-// An omitted name is not a rename attempt — a partial update must not trip the
-// refusal.
 func TestUpdateWithoutANameIsNotARename(t *testing.T) {
 	svc, _ := newUpdateService(t)
 	if _, err := svc.Update(1, 1, Input{URL: "https://github.com/acme/api"}); err != nil {

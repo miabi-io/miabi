@@ -2,8 +2,7 @@
 import { computed } from 'vue'
 import type { AlertSeverity } from '@/api/inbox'
 
-// The banner's presentation on its own, so the admin form can show an operator
-// what a broadcast will look like using the same markup that will render it.
+// Separate so the admin form previews a broadcast with the same markup that renders it.
 const props = defineProps<{
   severity: AlertSeverity
   title: string

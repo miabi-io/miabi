@@ -47,8 +47,7 @@ func (r *DomainRepository) FindInWorkspace(workspaceID, id uint) (*models.Domain
 	return &d, nil
 }
 
-// FindByID looks up a domain by id alone (used by the DNS reconcile cron, which
-// works from the record ledger and has no workspace in hand).
+// Unscoped: the DNS reconcile cron works from the record ledger with no workspace in hand.
 func (r *DomainRepository) FindByID(id uint) (*models.Domain, error) {
 	var d models.Domain
 	if err := r.db.First(&d, id).Error; err != nil {
@@ -63,9 +62,6 @@ func (r *DomainRepository) ListByWorkspace(workspaceID uint) ([]models.Domain, e
 	return out, err
 }
 
-// ListPagedAll lists domains across every workspace for the platform-admin table,
-// optionally filtered by a name search, a presentational status ("verified",
-// "failed", "pending"), and a specific workspace. Newest first.
 func (r *DomainRepository) ListPagedAll(search, status string, workspaceID *uint, limit, offset int) ([]models.Domain, int64, error) {
 	q := r.db.Model(&models.Domain{})
 	if s := strings.TrimSpace(search); s != "" {
@@ -94,18 +90,14 @@ func (r *DomainRepository) ListPagedAll(search, status string, workspaceID *uint
 	return out, total, err
 }
 
-// ListVerifiedManual returns every verified domain that is NOT provider-automated
-// (dns_provider_id is null). The drift cron re-checks these by hand; automated
-// domains have their records reasserted by the DNS reconcile cron instead.
+// Automated domains have their records reasserted by the DNS reconcile cron instead.
 func (r *DomainRepository) ListVerifiedManual() ([]models.Domain, error) {
 	var out []models.Domain
 	err := r.db.Where("verified = ? AND banned = ? AND dns_provider_id IS NULL", true, false).Find(&out).Error
 	return out, err
 }
 
-// ListVerifiedElsewhere returns verified, non-banned domains owned by workspaces other than the
-// given one, enforcing that a hostname is verified by at most one workspace platform-wide. A
-// banned domain is never served, so it doesn't block another workspace from claiming the name.
+// A banned domain is never served, so it doesn't block another workspace from claiming the name.
 func (r *DomainRepository) ListVerifiedElsewhere(excludeWorkspaceID uint) ([]models.Domain, error) {
 	var out []models.Domain
 	err := r.db.Where("verified = ? AND banned = ? AND workspace_id <> ?", true, false, excludeWorkspaceID).

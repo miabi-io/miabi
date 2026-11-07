@@ -31,9 +31,7 @@ const InfoExt = ".xml"
 // InfoSchema is the info file's version.
 const InfoSchema = 1
 
-// InfoNotice is stamped into every info file so whoever finds one in a bucket can tell what it is.
-// The file is deliberately readable: it is the index a restore consults before it has opened
-// anything. It carries no secret — those live in the sealed state file beside it.
+// The info file is deliberately readable and carries no secret; secrets live in the sealed state file.
 const (
 	InfoNotice      = "Miabi portable workspace bundle index. The state file beside it is encrypted with the backup passphrase."
 	PlainInfoNotice = "Miabi portable workspace bundle index. This bundle is NOT encrypted: the state file beside it holds the workspace's secrets in cleartext."
@@ -41,9 +39,7 @@ const (
 
 // Artifact subjects.
 const (
-	// SubjectState is the sealed state file: the workspace's configuration and
-	// its secrets. Exactly one per bundle, and the one artifact without which a
-	// bundle restores nothing.
+	// Exactly one per bundle; without it a bundle restores nothing.
 	SubjectState = "state"
 	// SubjectDatabase is one logical database's dump.
 	SubjectDatabase = "database"
@@ -51,9 +47,7 @@ const (
 	SubjectVolume = "volume"
 )
 
-// Info is a bundle's self-description, written to the bucket in cleartext beside the sealed state
-// file. It exists so a restore is possible with nothing but the bucket and the passphrase: the
-// same facts live in the platform's database, which is what a migration leaves behind.
+// Info lets a restore work with only the bucket and the passphrase, even after the source DB is gone.
 type Info struct {
 	XMLName xml.Name `json:"-" xml:"workspaceBundle"`
 
@@ -62,12 +56,9 @@ type Info struct {
 	Schema int    `json:"schema" xml:"schema,attr"`
 	Ref    string `json:"ref" xml:"ref,attr"`
 
-	// Workspace is the source workspace's handle — the natural key everything in
-	// the state file hangs off, and the default name a restore recreates it under.
 	Workspace   string `json:"workspace" xml:"workspace"`
 	DisplayName string `json:"display_name,omitempty" xml:"displayName,omitempty"`
-	// SourceInstall identifies the install that produced the bundle. Informational:
-	// a bundle is portable by design, so a restore never requires a match.
+	// Informational: bundles are portable, so a restore never requires a match.
 	SourceInstall string `json:"source_install,omitempty" xml:"sourceInstall,omitempty"`
 	MiabiVersion  string `json:"miabi_version,omitempty" xml:"miabiVersion,omitempty"`
 	Encrypted     bool   `json:"encrypted" xml:"encrypted"`
@@ -76,18 +67,13 @@ type Info struct {
 	// Prefix is the object prefix the bundle's own branch lives under.
 	Prefix string `json:"prefix,omitempty" xml:"prefix,omitempty"`
 
-	// Counts summarize the configuration carried in the sealed state file, which
-	// cannot be inspected without the passphrase. They are what makes a bucket
-	// listing informative rather than a list of opaque refs.
-	Apps      int `json:"apps" xml:"apps,omitempty"`
-	Databases int `json:"databases" xml:"databases,omitempty"`
-	Volumes   int `json:"volumes" xml:"volumes,omitempty"`
-	Secrets   int `json:"secrets" xml:"secrets,omitempty"`
-	Configs   int `json:"configs" xml:"configs,omitempty"`
-	Routes    int `json:"routes" xml:"routes,omitempty"`
-	// Certificates, Pipelines and GitOpsSources are counted separately because
-	// they are the classes an operator most often wants to confirm travelled
-	// before trusting a bundle as a migration rather than a data backup.
+	// The sealed state file can't be inspected without the passphrase, so these counts make a listing informative.
+	Apps          int `json:"apps" xml:"apps,omitempty"`
+	Databases     int `json:"databases" xml:"databases,omitempty"`
+	Volumes       int `json:"volumes" xml:"volumes,omitempty"`
+	Secrets       int `json:"secrets" xml:"secrets,omitempty"`
+	Configs       int `json:"configs" xml:"configs,omitempty"`
+	Routes        int `json:"routes" xml:"routes,omitempty"`
 	Certificates  int `json:"certificates" xml:"certificates,omitempty"`
 	Pipelines     int `json:"pipelines" xml:"pipelines,omitempty"`
 	GitOpsSources int `json:"gitops_sources" xml:"gitopsSources,omitempty"`
@@ -99,27 +85,20 @@ type Info struct {
 // Artifact is one file in a bundle.
 type Artifact struct {
 	// Subject is "state", "database" or "volume".
-	Subject string `json:"subject" xml:"subject,attr"`
-	// Database is the logical database name a dump restores into
-	// (subject=database), and Instance the managed instance that hosts it.
+	Subject  string `json:"subject" xml:"subject,attr"`
 	Database string `json:"database,omitempty" xml:"database,omitempty"`
 	Instance string `json:"instance,omitempty" xml:"instance,omitempty"`
 	// Engine decides which restore tool can read a dump back.
 	Engine string `json:"engine,omitempty" xml:"engine,omitempty"`
-	// Volume is the workspace volume an archive restores into (subject=volume),
-	// by its Miabi name — never the Docker name, which the target mints itself.
+	// By Miabi name, never the Docker name, which the target mints itself.
 	Volume string `json:"volume,omitempty" xml:"volume,omitempty"`
 	// File is the artifact's name as the *-bkup tools record it, relative to Path.
 	File string `json:"file" xml:"file"`
-	// Path is the object prefix this artifact was written under, recorded per artifact because a
-	// restore must find it again without re-deriving a layout. Two implementations of one layout is
-	// how a restore ends up looking in a path nothing was ever written to.
+	// Recorded per artifact so a restore never re-derives the layout and looks where nothing was written.
 	Path      string `json:"path,omitempty" xml:"path,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty" xml:"sizeBytes,omitempty"`
 	Encrypted bool   `json:"encrypted,omitempty" xml:"encrypted,omitempty"`
-	// Error records why an artifact is missing from an otherwise complete bundle.
-	// A bundle that lists what it failed to capture is honest; one that silently
-	// omits it looks complete until the day it is needed.
+	// A bundle that lists what it failed to capture is honest; silently omitting it looks complete.
 	Error string `json:"error,omitempty" xml:"error,omitempty"`
 }
 
@@ -169,9 +148,7 @@ func (i *Info) Validate() error {
 	return nil
 }
 
-// EncodeInfo renders an info file for upload. It stamps the schema defensively, but callers should
-// set it at construction: anything that validates before encoding sees a zero. Validate does not
-// assign it — a validator that repairs what it checks cannot report a genuine mismatch.
+// Validate does not assign the schema: a validator that repairs what it checks cannot report a mismatch.
 func EncodeInfo(i *Info) ([]byte, error) {
 	i.Schema = InfoSchema
 	i.Notice = InfoNotice

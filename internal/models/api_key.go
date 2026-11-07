@@ -21,8 +21,7 @@ package models
 
 import "time"
 
-// API key scopes gate what an API-key caller may do. An empty scope set means
-// read-only (least privilege); "*" grants everything.
+// An empty scope set means read-only; "*" grants everything.
 const (
 	ScopeRead          = "read"           // read-only access to resources
 	ScopeWrite         = "write"          // create/update/delete resources
@@ -31,12 +30,9 @@ const (
 	ScopeAll           = "*"              // all scopes
 	ScopeRegistryRead  = "registry_read"  // pull from the container registry
 	ScopeRegistryWrite = "registry_write" // push to the container registry
-	// ScopeBilling is the Billing API only. It is not in ValidScopes (billing keys are minted by
-	// the enrolment, never by users) and "*" does not imply it: an ordinary all-powerful key must
-	// not be able to suspend every customer.
+	// "*" does not imply billing: an all-powerful key must not be able to suspend every customer.
 	ScopeBilling = "billing"
-	// ScopeMigration lets another install pull one workspace (or, for a platform admin's key, any)
-	// with every secret value in it. Minted by its own action, never chosen, and implied by nothing.
+	// Carries every secret value: minted by its own action, never chosen, and implied by nothing.
 	ScopeMigration = "migration"
 )
 
@@ -75,9 +71,7 @@ var scopeImplies = map[string]map[string]bool{
 	ScopeMigration: {ScopeMigration: true},
 }
 
-// ScopeSatisfies reports whether a key granting these scopes may perform an operation that
-// requires `required`, following the ladder above. An empty grant means read-only, the same
-// least-privilege default HasScope applies. An empty requirement is satisfied by anything.
+// An empty grant means read-only; an empty requirement is satisfied by anything.
 func ScopeSatisfies(granted []string, required string) bool {
 	if required == "" {
 		return true
@@ -93,10 +87,7 @@ func ScopeSatisfies(granted []string, required string) bool {
 	return false
 }
 
-// Purpose reports what the key may be presented to: a key with the billing scope is for the
-// Billing API only, a key with neither a general nor the billing scope is for the container
-// registry only, and anything else is general. An empty scope set defaults to read, a general
-// scope.
+// A key with neither a general nor the billing scope is registry-only; empty scopes count as read.
 func (k *APIKey) Purpose() string {
 	if len(k.Scopes) == 0 {
 		return KeyPurposeGeneral
@@ -117,8 +108,6 @@ func (k *APIKey) Purpose() string {
 	return KeyPurposeRegistry
 }
 
-// APIKey is a long-lived bearer credential for programmatic access, scoped to a
-// user and (optionally) a workspace.
 type APIKey struct {
 	ID            uint       `json:"id" gorm:"primaryKey"`
 	UserID        uint       `json:"user_id" gorm:"index;not null"`
@@ -136,15 +125,11 @@ type APIKey struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
-// BoundToApp reports whether the key is restricted to a single application. A
-// caller enforcing the deploy route uses this to reject a job key acting on any
-// app other than the one it was minted for.
 func (k *APIKey) BoundToApp(appID uint) bool {
 	return k.ApplicationID != nil && *k.ApplicationID == appID
 }
 
-// HasScope reports whether the key grants the given scope. An empty scope set
-// defaults to read-only; "*" grants everything.
+// An empty scope set defaults to read-only; "*" grants everything.
 func (k *APIKey) HasScope(s string) bool {
 	if len(k.Scopes) == 0 {
 		return s == ScopeRead

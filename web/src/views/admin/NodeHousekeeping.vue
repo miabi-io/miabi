@@ -20,8 +20,7 @@ const hkLoading = ref(false)
 // Selection state.
 const hkReclaim = ref<ReclaimSelection>({ dangling_images: false, build_cache: false, unused_images: false, unused_volumes: false })
 const hkOrphans = ref<Set<string>>(new Set()) // selected orphan keys "kind:ref"
-// Missing workloads are selectable too: redeploying goes through the ordinary deploy path, which refuses an
-// app whose data volume is gone rather than starting it on an empty one.
+// Redeploy goes through the normal deploy path, which refuses an app whose data volume is gone.
 const hkMissing = ref<Set<string>>(new Set())
 const hkPlan = ref<HousekeepingPlan | null>(null)
 const hkBusy = ref(false)
@@ -109,8 +108,7 @@ const driftCount = computed(() => {
 const hkAnyReclaim = computed(() => Object.values(hkReclaim.value).some(Boolean))
 const hkHasSelection = computed(() => hkAnyReclaim.value || hkOrphans.value.size > 0 || hkMissing.value.size > 0)
 
-// What housekeeping can actually reclaim, as opposed to what `docker system df` calls reclaimable:
-// an image a stopped app or a rollback still needs, and any volume Miabi owns, are excluded.
+// Excludes images a stopped app or rollback needs and any Miabi-owned volume, unlike `docker system df`.
 const hkReclaimable = computed(() => {
   const r = housekeeping.value?.reclaim
   if (!r) return 0
@@ -150,8 +148,7 @@ async function applyHousekeeping() {
     if (freed > 0) parts.push(`freed ${fmtSize(freed)}`)
     if (res.orphans_removed?.length) parts.push(`removed ${res.orphans_removed.length} orphan(s)`)
     if (res.redeployed?.length) parts.push(`redeployed ${res.redeployed.length}`)
-    // A selection that changed nothing is not a success: say so rather than let the toast imply the
-    // node was cleaned while the report comes back identical.
+    // A no-op selection is not a success, so don't imply the node was cleaned.
     if (parts.length) notify.success(`Housekeeping: ${parts.join(', ')}`)
     else if (!res.errors?.length) notify.info('Housekeeping made no changes — nothing selected was still reclaimable.')
     if (res.errors?.length) res.errors.forEach((m: string) => notify.error(m))

@@ -37,25 +37,18 @@ import (
 	"github.com/miabi-io/runner/proto"
 )
 
-// ErrRunnerOffline is returned when the scheduler picked a runner whose tunnel
-// dropped between selection and dispatch (the run should be requeued).
+// The run should be requeued.
 var ErrRunnerOffline = errors.New("selected runner is offline")
 
-// runTopic is the eventbus topic a pipeline run's live logs/status stream on.
-// It MUST match worker.PipelineTopic (the SSE endpoint subscribes to it); kept
-// local so this package need not import (and cycle with) the worker.
+// Must match worker.PipelineTopic; kept local to avoid an import cycle with the worker.
 func runTopic(runID uint) string { return fmt.Sprintf("pipeline:%d", runID) }
 
-// RunStore persists a run and its steps as report frames arrive. Satisfied by
-// *repositories.PipelineRepository.
 type RunStore interface {
 	UpdateRun(*models.PipelineRun) error
 	UpdateStep(*models.PipelineStepRun) error
 	SetRunImage(runID, imageID uint) error
 }
 
-// ImageRecorder stamps provenance for an image a runner built and pushed by
-// digest. Satisfied by *image.Service.
 type ImageRecorder interface {
 	Record(in imagesvc.RecordInput) (*models.Image, error)
 }
@@ -65,22 +58,16 @@ type Publisher interface {
 	Publish(topic string, e eventbus.Event)
 }
 
-// VersionSettler finishes a run's reserved version once the run is terminal: tagged and published on
-// success, released otherwise. Satisfied by *versioning.Service; nil-safe.
+// Nil-safe.
 type VersionSettler interface {
 	Settle(ctx context.Context, run *models.PipelineRun, digest, repository string, log func(string))
 }
 
-// Deployer performs a deploy-by-digest: it creates a deployment of the image a runner built and
-// enqueues it to the target node, which pulls and runs it — the node never builds. Implemented by
-// the worker's pipeline deployer; nil-safe (unset = a build-only pipeline that never deploys).
+// The node pulls and runs the digest, never builds; nil means a build-only pipeline.
 type Deployer interface {
 	DeployByDigest(run *models.PipelineRun, appID uint, imageRef string) error
 }
 
-// Dispatcher runs a pipeline run on a runner: it selects and leases one, opens a stream over its
-// tunnel, sends the JobSpec, and applies the report frames back onto the run. This is the
-// control-plane counterpart to the runner's job loop, over the shared runner/proto contract.
 type Dispatcher struct {
 	runners  *runner.Service
 	sessions *Manager
@@ -95,40 +82,30 @@ type Dispatcher struct {
 	timeout  time.Duration   // per-job deadline (0 = none)
 }
 
-// SetDeployer wires the deploy-by-digest hook, so a pipeline's terminal deploy
-// step rolls the runner-built image out to the target node (nil-safe).
 func (d *Dispatcher) SetDeployer(dep Deployer) { d.deployer = dep }
 
 // SetVersions wires version settling, so a succeeded build is tagged with its version before it deploys.
 func (d *Dispatcher) SetVersions(v VersionSettler) { d.versions = v }
 
-// SetSecrets wires the workspace vault used to resolve ${{ secrets.NAME }} in a
-// pipeline's env. Without it, a pipeline that references one fails to dispatch.
+// Without it, a pipeline that references a secret fails to dispatch.
 func (d *Dispatcher) SetSecrets(r SecretResolver) { d.secrets = r }
 
-// SetLogStore wires the shared log store so a pipeline step's full log is
-// externalized (with a bounded DB tail) when the run reaches a terminal state.
-// Without it, only the bounded tail is kept in the step's DB row. nil-safe.
+// Without it only the bounded DB tail is kept; nil-safe.
 func (d *Dispatcher) SetLogStore(s *logstore.Store) { d.logs = s }
 
-// RunnerWaitReason explains why no runner is currently available for a build in
-// workspaceID, for the deploy's "waiting for a runner" message. "" means one is
-// actually available.
+// "" means a runner is actually available.
 func (d *Dispatcher) RunnerWaitReason(workspaceID uint) string {
 	return d.runners.AvailabilityReason(runner.Job{WorkspaceID: workspaceID})
 }
 
-// WaitReason explains why no runner can take the pipeline run right now, counting what its steps need, such
-// as a runner that builds for several platforms. "" means one is actually available.
+// "" means a runner is actually available.
 func (d *Dispatcher) WaitReason(in JobInputs) string {
 	return d.runners.AvailabilityReason(runner.Job{
 		WorkspaceID: in.Run.WorkspaceID, RequiredFeatures: requiredFeatures(in.Steps), MinVersion: requiredRunnerVersion(in.Steps),
 	})
 }
 
-// SweepExpiredLeases releases every active lease whose deadline has passed and returns them. A
-// runner that died mid-job never runs the lease's release defer, so without this the lease counts
-// against its concurrency forever and starves it. The affected runs re-attempt on their own.
+// A runner that died mid-job never releases its lease, which would otherwise starve its concurrency forever.
 func (d *Dispatcher) SweepExpiredLeases(now time.Time) ([]models.RunnerLease, error) {
 	return d.runners.SweepExpiredLeases(now)
 }
@@ -146,9 +123,7 @@ type dispatchMeta struct {
 	builtDigest string   // digest the build step pushed (set as frames arrive)
 }
 
-// Dispatch selects and leases a runner for the run, mints its per-job credentials, sends the job,
-// and processes the report stream to completion, revoking credentials and releasing the lease on
-// the way out. ErrNoRunner and ErrRunnerOffline are returned unchanged so the caller can requeue.
+// ErrNoRunner and ErrRunnerOffline are returned unchanged so the caller can requeue.
 func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels []string, subjectUserID uint) error {
 	run := in.Run
 	rn, err := d.runners.SelectRunner(runner.Job{
@@ -171,8 +146,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	spec, mask := BuildJobSpec(in)
 	spec.Env = append(spec.Env, kv("MIABI_RUNNER_NAME", rn.Name))
 
-	// Resolve on the control plane: a runner never touches the vault, and a
-	// missing secret must fail before a build burns its minutes.
+	// A runner never touches the vault, and a missing secret must fail before a build burns its minutes.
 	secretMask, err := resolveJobSecrets(d.secrets, run.WorkspaceID, &spec)
 	if err != nil {
 		return err
@@ -197,9 +171,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	}
 	defer func() { _ = stream.Close() }()
 
-	// processFrames blocks on stream reads (json.Decode); a read has no deadline of its own, so a cancelled
-	// ctx (per-job timeout) wouldn't take effect until the runner sent bytes. Trip the stream's read deadline
-	// on cancellation to unblock the pending read so the job actually times out.
+	// Decode reads have no deadline, so trip the stream's read deadline on cancel or the job never times out.
 	stopWatch := make(chan struct{})
 	defer close(stopWatch)
 	go func() {
@@ -220,8 +192,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in JobInputs, requiredLabels 
 	return err
 }
 
-// deadline returns the absolute per-job deadline, or the zero time when no
-// timeout is configured.
 func (d *Dispatcher) deadline() time.Time {
 	if d.timeout <= 0 {
 		return time.Time{}
@@ -229,17 +199,13 @@ func (d *Dispatcher) deadline() time.Time {
 	return time.Now().Add(d.timeout)
 }
 
-// processFrames applies the runner's report stream onto the run: live logs and status go to the
-// eventbus, step transitions and the built digest are persisted, and the terminal frame sets the
-// final status. Returns an error if the stream ended before a terminal frame (a dead runner).
+// Returns an error if the stream ended before a terminal frame (a dead runner).
 func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models.PipelineRun, steps []models.PipelineStepRun, meta dispatchMeta) (models.PipelineRunStatus, error) {
 	byOrdinal := make(map[int]*models.PipelineStepRun, len(steps))
 	for i := range steps {
 		byOrdinal[steps[i].Ordinal] = &steps[i]
 	}
-	// Accumulate each step's log so it can be persisted (externalized + a DB tail)
-	// when the run finishes — the live publish below only feeds the SSE stream,
-	// which is gone once the run is terminal. Keyed by the frame's step ordinal.
+	// The live publish only feeds SSE, which is gone once the run is terminal, so logs are accumulated here.
 	stepLogs := make(map[int]*strings.Builder)
 	dec := json.NewDecoder(r)
 	for {
@@ -248,9 +214,7 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 		}
 		var f proto.Frame
 		if err := dec.Decode(&f); err != nil {
-			// Stream ended without a terminal frame (dead/disconnected runner). The
-			// caller fails the run, so persist whatever the steps logged first —
-			// otherwise the failed run has no logs to explain why it failed.
+			// Persist logs first or the failed run has nothing to explain why it failed.
 			d.persistStepLogs(run, byOrdinal, stepLogs)
 			return "", fmt.Errorf("runner stream ended before completion: %w", err)
 		}
@@ -294,8 +258,7 @@ func (d *Dispatcher) processFrames(ctx context.Context, r io.Reader, run *models
 // settleTimeout bounds the registry calls that tag a published version.
 const settleTimeout = 30 * time.Second
 
-// settleVersion runs on a fresh context: the job's own may already be past its deadline, and the tag must
-// still be written for a build that succeeded.
+// Fresh context: the job's own may be past its deadline, and a successful build must still get its tag.
 func (d *Dispatcher) settleVersion(run *models.PipelineRun, meta dispatchMeta) {
 	if d.versions == nil {
 		return
@@ -314,9 +277,7 @@ func buf(m map[int]*strings.Builder, ordinal int) *strings.Builder {
 	return b
 }
 
-// persistStepLogs writes each step's accumulated log to its DB row so it survives the run: the
-// full log to the log store with a bounded tail in the Logs column, or just the tail when the
-// store is disabled. Externalize is nil-safe, so this works either way. Best-effort.
+// Best-effort; Externalize is nil-safe so this works with the store disabled.
 func (d *Dispatcher) persistStepLogs(run *models.PipelineRun, byOrdinal map[int]*models.PipelineStepRun, stepLogs map[int]*strings.Builder) {
 	for ordinal, b := range stepLogs {
 		st := byOrdinal[ordinal]
@@ -339,8 +300,6 @@ func (d *Dispatcher) persistStepLogs(run *models.PipelineRun, byOrdinal map[int]
 	}
 }
 
-// recordImage stamps provenance for a digest the runner pushed, linking it to the
-// run and marking which runner built it, then points the run at it.
 func (d *Dispatcher) recordImage(run *models.PipelineRun, meta dispatchMeta, digest string) {
 	if digest == "" || d.images == nil {
 		return
@@ -363,8 +322,6 @@ func (d *Dispatcher) recordImage(run *models.PipelineRun, meta dispatchMeta, dig
 	_ = d.runs.SetRunImage(run.ID, img.ID)
 }
 
-// redact replaces every secret value in a log line with a fixed mask, so a step
-// that echoes an injected credential prints ••••.
 func redact(line string, secrets []string) string {
 	for _, s := range secrets {
 		if s != "" {
@@ -374,9 +331,6 @@ func redact(line string, secrets []string) string {
 	return line
 }
 
-// maybeDeploy enqueues a deploy-by-digest for a succeeded run that built an image and has a deploy
-// step, so the target node pulls and runs the exact digest the runner produced. A build-only
-// pipeline is a no-op.
 func (d *Dispatcher) maybeDeploy(run *models.PipelineRun, steps []models.PipelineStepRun, meta dispatchMeta) {
 	if d.deployer == nil || meta.appID == nil || meta.builtDigest == "" || meta.repository == "" || !hasDeployStep(steps) {
 		return
@@ -419,8 +373,7 @@ func (d *Dispatcher) publishRun(r *models.PipelineRun) {
 	d.bus.Publish(fmt.Sprintf("pipeline:ws:%d", r.WorkspaceID), eventbus.Event{Type: "run", Data: ev})
 }
 
-// finish stamps the terminal timestamp before saving. Without it the run has no
-// end, and every duration in the UI counts up from its start forever.
+// Without an end timestamp every UI duration counts up from the start forever.
 func (d *Dispatcher) finish(r *models.PipelineRun) {
 	now := time.Now()
 	r.FinishedAt = &now
@@ -428,8 +381,7 @@ func (d *Dispatcher) finish(r *models.PipelineRun) {
 	d.publishRun(r)
 }
 
-// mapStatus maps a runner's status string onto the control plane's run status,
-// defaulting an unknown value to failed (fail safe).
+// Unknown values map to failed (fail safe).
 func mapStatus(s string) models.PipelineRunStatus {
 	switch s {
 	case "running":

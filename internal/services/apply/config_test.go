@@ -25,8 +25,7 @@ import (
 	"github.com/miabi-io/miabi/internal/declarative"
 )
 
-// Mounted content is invisible to every other diffed field, so this fingerprint
-// is the only thing that makes a config edit converge as an app update.
+// Mounted content is invisible to every other diffed field.
 func TestConfigFingerprintTracksContent(t *testing.T) {
 	mounts := []declarative.MountSpec{{Config: "conf", Path: "/etc/app.conf"}}
 	before := configFingerprint(mounts, map[string]string{"conf": "digest-one"})
@@ -60,8 +59,7 @@ func TestConfigFingerprintTracksPath(t *testing.T) {
 	}
 }
 
-// An app mounting nothing must produce equal (empty) fingerprints on both sides,
-// or every config-less app would show permanent drift.
+// Otherwise every config-less app would show permanent drift.
 func TestConfigFingerprintEmptyWithoutConfigMounts(t *testing.T) {
 	got := configFingerprint([]declarative.MountSpec{{Volume: "data", Path: "/data"}}, map[string]string{})
 	if got != "" {

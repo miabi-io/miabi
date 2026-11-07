@@ -66,8 +66,7 @@ func TestDieIsStop(t *testing.T) {
 		{"sigterm exit is a stop", "143", false, true},
 		{"crash while running is not a stop", "1", false, false},
 		{"sigkill while running is not a stop", "137", false, false},
-		// A user-initiated stop is a stop regardless of exit code — Git/buildpack
-		// images get SIGKILLed (137) because /bin/sh doesn't forward SIGTERM.
+		// Git/buildpack images get SIGKILLed (137) because /bin/sh doesn't forward SIGTERM.
 		{"sigkill of a stopped resource is a stop", "137", true, true},
 		{"any code of a stopped resource is a stop", "1", true, true},
 	}
@@ -80,8 +79,7 @@ func TestDieIsStop(t *testing.T) {
 	}
 }
 
-// TestClassify pins the classification shared by the app and database paths: only the
-// stop/crash split varies, and it varies with userStopped alone.
+// Only the stop/crash split varies between app and database paths, and only with userStopped.
 func TestClassify(t *testing.T) {
 	ev := func(action, exit string) docker.EngineEvent {
 		return docker.EngineEvent{Action: action, Attributes: map[string]string{"exitCode": exit}}
