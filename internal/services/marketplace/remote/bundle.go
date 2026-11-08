@@ -23,6 +23,7 @@ package remote
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 
 	"github.com/miabi-io/miabi/internal/services/marketplace/manifest"
@@ -44,24 +45,47 @@ type BundleTemplate struct {
 	Name     string          `json:"name"`
 	Source   string          `json:"source"` // official | community
 	Versions []BundleVersion `json:"versions"`
+	Deprecation
+}
+
+// Deprecation retires a template: hidden from browsing and new installs, existing installs keep working.
+type Deprecation struct {
+	Deprecated      bool   `json:"deprecated,omitempty"`
+	DeprecationNote string `json:"deprecation_note,omitempty"`
+	ReplacedBy      string `json:"replaced_by,omitempty"`
 }
 
 type BundleVersion struct {
-	Version  string `json:"version"`
-	Digest   string `json:"digest"`   // sha256 of Manifest, "sha256:…" (manifest.Digest format)
-	Manifest string `json:"manifest"` // raw template.yaml to install
+	Version  string   `json:"version"`
+	Digest   string   `json:"digest"`   // sha256 of Manifest, "sha256:…" (manifest.Digest format)
+	Manifest string   `json:"manifest"` // raw template.yaml to install
+	Release  *Release `json:"release,omitempty"`
+}
+
+// Release is a version's release.yaml; the registry ships it outside the manifest so older Miabi versions ignore it.
+type Release struct {
+	Released string `json:"released,omitempty"`
+	Notes    string `json:"notes,omitempty"`
+	Breaking bool   `json:"breaking,omitempty"`
+	// RequiresFrom is the oldest installed version allowed to upgrade straight to this one.
+	RequiresFrom    string `json:"requires_from,omitempty"`
+	Deprecated      bool   `json:"deprecated,omitempty"`
+	DeprecationNote string `json:"deprecation_note,omitempty"`
+	// Images pins a template app name to the digest its tag resolved to when the version was published.
+	Images map[string]string `json:"images,omitempty"`
 }
 
 type DecodedTemplate struct {
 	Name     string
 	Source   string
 	Versions []DecodedVersion
+	Deprecation
 }
 
-// DecodedVersion pairs a version string with its parsed manifest.
 type DecodedVersion struct {
 	Version  string
 	Manifest *manifest.Manifest
+	Release  Release
 }
 
 // Fail-closed: versions with a digest mismatch, parse error or name mismatch are dropped.
@@ -76,7 +100,7 @@ func decode(data []byte) ([]DecodedTemplate, error) {
 		if t.Source == SourceCommunity {
 			source = SourceCommunity
 		}
-		dt := DecodedTemplate{Name: t.Name, Source: source}
+		dt := DecodedTemplate{Name: t.Name, Source: source, Deprecation: t.Deprecation}
 		for _, v := range t.Versions {
 			raw := []byte(v.Manifest)
 			if v.Digest != "" && manifest.Digest(raw) != v.Digest {
@@ -90,7 +114,11 @@ func decode(data []byte) ([]DecodedTemplate, error) {
 			if m.Metadata.Name != t.Name {
 				continue
 			}
-			dt.Versions = append(dt.Versions, DecodedVersion{Version: m.Metadata.Version, Manifest: m})
+			dv := DecodedVersion{Version: m.Metadata.Version, Manifest: m}
+			if v.Release != nil {
+				dv.Release = sanitizeRelease(*v.Release)
+			}
+			dt.Versions = append(dt.Versions, dv)
 		}
 		if len(dt.Versions) == 0 {
 			continue
@@ -101,4 +129,16 @@ func decode(data []byte) ([]DecodedTemplate, error) {
 		out = append(out, dt)
 	}
 	return out, nil
+}
+
+var digestRe = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+// A malformed pin is dropped rather than failing the version, since an image without a pin still installs by tag.
+func sanitizeRelease(r Release) Release {
+	for app, d := range r.Images {
+		if !digestRe.MatchString(d) {
+			delete(r.Images, app)
+		}
+	}
+	return r
 }

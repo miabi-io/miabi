@@ -274,10 +274,18 @@ func (s *Service) Install(ctx context.Context, workspaceID uint, in InstallInput
 
 // report is nil on the synchronous path.
 func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput, report *reporter) (*InstallResult, error) {
-	m, source, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
+	version := in.Version
+	if version == "" {
+		version = s.installable(workspaceID, in.Name)
+	}
+	m, source, ok := s.resolveManifest(workspaceID, in.Name, version)
 	if !ok {
 		return nil, ErrTemplateNotFound
 	}
+	if err := s.checkInstallable(m.Metadata.Name, source, m.Metadata.Version); err != nil {
+		return nil, err
+	}
+	pins := s.releaseOf(m.Metadata.Name, source, m.Metadata.Version).Images
 
 	inputs, kept, err := resolveInputs(m, in.Inputs)
 	if err != nil {
@@ -391,7 +399,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	created := make([]*models.Application, 0, len(m.Applications))
 	appViews := map[string]manifest.AppView{}
 	for _, spec := range m.Applications {
-		app, err := s.createApp(workspaceID, m, spec, result.DisplayName, stackID, targetNode)
+		app, err := s.createApp(workspaceID, m, spec, result.DisplayName, stackID, targetNode, pins[spec.Name])
 		if err != nil {
 			return nil, fmt.Errorf("create application %q: %w", spec.Name, err)
 		}
@@ -599,7 +607,8 @@ func (s *Service) configName(workspaceID uint, installName, localName string) (s
 	})
 }
 
-func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint) (*models.Application, error) {
+// digest, when set, pins the image so the install runs exactly what the registry published.
+func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint, digest string) (*models.Application, error) {
 
 	name := baseName
 	if len(m.Applications) > 1 {
@@ -620,6 +629,9 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 			models.MetaTemplate, m.Metadata.Name,
 			models.MetaTemplateVersion, m.Metadata.Version,
 		),
+	}
+	if digest != "" {
+		in.Metadata = models.SetBuiltin(in.Metadata, models.MetaDigest, digest)
 	}
 	for _, p := range spec.Ports {
 		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Protocol: "tcp", Scheme: p.Scheme})

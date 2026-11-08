@@ -2205,7 +2205,19 @@
     "upgrade": "Mettre à niveau",
     "version": "Version",
     "website": "Site web",
-    "willCreateHint": "Cela créera les éléments suivants dans {workspace} :"
+    "willCreateHint": "Cela créera les éléments suivants dans {workspace} :",
+    "deprecated": "Obsolète",
+    "deprecatedTitle": "Ce modèle est obsolète",
+    "deprecatedNoNewInstalls": "Les nouvelles installations sont désactivées. Les installations existantes continuent de fonctionner et peuvent toujours être mises à niveau.",
+    "replacedBy": "Utilisez {name} à la place.",
+    "deprecatedVersion": "obsolète",
+    "submitToMarketplace": "Proposer au marketplace",
+    "submitCopied": "Le manifeste est trop long pour être prérempli ; il a été copié dans le presse-papiers. Collez-le dans le formulaire.",
+    "releaseNotes": "Notes de version",
+    "breakingUpgrade": "Cette mise à niveau inclut une version incompatible. Lisez les notes et sauvegardez vos données avant de mettre à niveau.",
+    "steppedUpgrade": "La v{latest} exige que cette installation passe d’abord par la v{to}. Mettez à niveau une nouvelle fois ensuite pour atteindre la v{latest}.",
+    "updatedOn": "Mis à jour le {date}",
+    "breaking": "Incompatible"
   },
   "metadata": {
     "builtInPlatformManagedRead": "Intégré — géré par la plateforme (lecture seule)",

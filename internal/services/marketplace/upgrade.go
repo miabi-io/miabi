@@ -62,6 +62,18 @@ type UpgradePlan struct {
 	RemovedApps  []string         `json:"removed_apps"` // installed, dropped by the new version
 	NewInputs    []manifest.Input `json:"new_inputs"`
 	Warnings     []string         `json:"warnings"`
+	// Releases are the notes of every version the upgrade crosses, oldest first.
+	Releases []ReleaseNote `json:"releases"`
+	Breaking bool          `json:"breaking"`
+	// LatestVersion differs from ToVersion when a requiresFrom rule makes the install step through ToVersion first.
+	LatestVersion string `json:"latest_version"`
+}
+
+type upgradeInfo struct {
+	releases []ReleaseNote
+	breaking bool
+	latest   string
+	pins     map[string]string
 }
 
 // UpgradeApplyResult records what an apply actually did, per item.
@@ -75,18 +87,40 @@ type UpgradeApplyResult struct {
 	Warnings    []string `json:"warnings"`    // items surfaced but not applied
 }
 
-// target "" means the latest available version.
-func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (rec *models.TemplateInstall, newM, oldM *manifest.Manifest, byName map[string]uint, err error) {
+// target "" means the latest installable version, or the furthest one a requiresFrom rule lets the install reach.
+func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (rec *models.TemplateInstall, newM, oldM *manifest.Manifest, byName map[string]uint, info upgradeInfo, err error) {
 	rec, e := s.installs.FindInWorkspace(workspaceID, installID)
 	if e != nil {
-		return nil, nil, nil, nil, ErrInstallNotFound
+		return nil, nil, nil, nil, info, ErrInstallNotFound
 	}
-	m, _, ok := s.resolveManifest(workspaceID, rec.TemplateName, target)
+	explicit := target != ""
+	if !explicit {
+		target = s.installable(workspaceID, rec.TemplateName)
+	}
+	m, source, ok := s.resolveManifest(workspaceID, rec.TemplateName, target)
 	if !ok {
-		return nil, nil, nil, nil, ErrTemplateNotFound
+		return nil, nil, nil, nil, info, ErrTemplateNotFound
+	}
+	info.latest = m.Metadata.Version
+	if t, found := s.remoteTemplate(rec.TemplateName, source); found {
+		reachable, blocked := upgradePath(t, rec.Version, m.Metadata.Version)
+		if blocked != nil {
+			if explicit || reachable == rec.Version {
+				return nil, nil, nil, nil, info, fmt.Errorf("%w: %s %s requires upgrading from %s or later first; this install is on %s",
+					ErrUpgradeBlocked, rec.TemplateName, blocked.Version, blocked.Release.RequiresFrom, rec.Version)
+			}
+			if m, _, ok = s.resolveManifest(workspaceID, rec.TemplateName, reachable); !ok {
+				return nil, nil, nil, nil, info, ErrTemplateNotFound
+			}
+		}
+		info.releases = releaseNotes(t, rec.Version, m.Metadata.Version)
+		for _, r := range info.releases {
+			info.breaking = info.breaking || r.Breaking
+		}
+		info.pins = s.releaseOf(rec.TemplateName, source, m.Metadata.Version).Images
 	}
 	if !isNewer(m.Metadata.Version, rec.Version) {
-		return nil, nil, nil, nil, ErrAlreadyLatest
+		return nil, nil, nil, nil, info, ErrAlreadyLatest
 	}
 	// Tolerate a pruned old version by diffing against an empty manifest.
 	old, _, _ := s.resolveManifest(workspaceID, rec.TemplateName, rec.Version)
@@ -104,26 +138,32 @@ func (s *Service) resolveUpgrade(workspaceID, installID uint, target string) (re
 			byName[app.Name] = rec.AppIDs[i]
 		}
 	}
-	return rec, m, old, byName, nil
+	return rec, m, old, byName, info, nil
 }
 
 func (s *Service) PlanUpgrade(workspaceID, installID uint, target string) (*UpgradePlan, error) {
-	rec, newM, oldM, byName, err := s.resolveUpgrade(workspaceID, installID, target)
+	rec, newM, oldM, byName, info, err := s.resolveUpgrade(workspaceID, installID, target)
 	if err != nil {
 		return nil, err
 	}
 	plan := &UpgradePlan{
-		FromVersion:  rec.Version,
-		ToVersion:    newM.Metadata.Version,
-		Apps:         []AppChange{},
-		StackEnv:     []EnvChange{},
-		NewVolumes:   []string{},
-		NewConfigs:   []string{},
-		NewDatabases: []string{},
-		AddedApps:    []string{},
-		RemovedApps:  []string{},
-		NewInputs:    []manifest.Input{},
-		Warnings:     []string{},
+		FromVersion:   rec.Version,
+		ToVersion:     newM.Metadata.Version,
+		LatestVersion: info.latest,
+		Releases:      info.releases,
+		Breaking:      info.breaking,
+		Apps:          []AppChange{},
+		StackEnv:      []EnvChange{},
+		NewVolumes:    []string{},
+		NewConfigs:    []string{},
+		NewDatabases:  []string{},
+		AddedApps:     []string{},
+		RemovedApps:   []string{},
+		NewInputs:     []manifest.Input{},
+		Warnings:      []string{},
+	}
+	if info.latest != plan.ToVersion {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s can't be reached from %s in one step; this upgrades to %s, then upgrade again", info.latest, rec.Version, plan.ToVersion))
 	}
 
 	oldApps := specsByName(oldM)
@@ -185,7 +225,7 @@ func (s *Service) upgradeNode(workspaceID uint, appIDs []uint) uint {
 
 // Changed or removed env, new databases and structural app changes are only warnings, never applied.
 func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint, target string, newInputs map[string]string) (*UpgradeApplyResult, error) {
-	rec, newM, oldM, byName, err := s.resolveUpgrade(workspaceID, installID, target)
+	rec, newM, oldM, byName, info, err := s.resolveUpgrade(workspaceID, installID, target)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +304,9 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 		imageChanged := imageRef(os) != imageRef(ns)
 		if imageChanged {
 			app.Image, app.Tag = ns.Image, ns.Tag
+		}
+		if pinChanged := setPin(app, info.pins[name], imageChanged); pinChanged {
+			imageChanged = true
 		}
 		if uerr := s.apps.Update(app); uerr != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("update %q: %v", name, uerr))
@@ -740,4 +783,20 @@ func renderEnvValue(r *manifest.Renderer, appName, key, tmpl string) (string, er
 		return "", err
 	}
 	return rendered[key], nil
+}
+
+// setPin moves the digest pin with the template; an unchanged image only redeploys when an existing pin moved.
+func setPin(app *models.Application, pin string, imageChanged bool) bool {
+	cur := app.Metadata[models.MetaDigest]
+	switch {
+	case pin == cur:
+		return false
+	case pin == "" && imageChanged:
+		delete(app.Metadata, models.MetaDigest)
+		return false
+	case pin == "":
+		return false
+	}
+	app.Metadata = models.SetBuiltin(app.Metadata, models.MetaDigest, pin)
+	return cur != "" && !imageChanged
 }

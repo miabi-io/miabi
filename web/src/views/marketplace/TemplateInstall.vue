@@ -11,6 +11,8 @@ import { displayFor, resourceName } from '@/utils/installNames'
 import type { DatabaseInstance } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import LocationPicker from '@/components/LocationPicker.vue'
+import { submitTemplateURL } from '@/utils/marketplaceSubmit'
+import { copyText } from '@/utils/clipboard'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -329,6 +331,30 @@ const reviewGroups = computed<Record<string, Provision[]>>(() => {
 // ---- custom-template edit / delete (custom source only) ----
 const isCustom = computed(() => entry.value?.source === 'custom')
 
+const isDeprecatedVersion = computed(() => !!entry.value?.deprecated_versions?.includes(version.value || entry.value.version))
+const installBlocked = computed(() => !!entry.value?.deprecated || isDeprecatedVersion.value)
+
+// The tab opens before the copy settles: a blocked popup is worse than a clipboard fallback.
+async function submitToMarketplace() {
+  if (!entry.value || !ws.currentWorkspaceId) return
+  const tab = window.open('', '_blank')
+  if (tab) tab.opener = null
+  try {
+    const raw = (await marketplaceApi.templateRaw(ws.currentWorkspaceId, entry.value.name, version.value || entry.value.version)).data.data
+    const yaml = raw?.yaml ?? ''
+    const { url, prefilled } = submitTemplateURL(yaml, entry.value.name)
+    if (!prefilled) {
+      await copyText(yaml)
+      notify.info(t('marketplace.submitCopied'))
+    }
+    if (tab) tab.location.href = url
+    else window.open(url, '_blank', 'noopener')
+  } catch (e) {
+    tab?.close()
+    notify.apiError(e)
+  }
+}
+
 const editOpen = ref(false)
 const editYaml = ref('')
 const editLoading = ref(false)
@@ -496,6 +522,8 @@ onUnmounted(stopJobStream)
         <h1>{{ entry ? entry.display_name : 'Install template' }}</h1>
       </div>
       <div v-if="entry && isCustom && ws.canEdit" class="header-actions">
+        <button class="btn btn-ghost" @click="submitToMarketplace">
+          <span class="mdi mdi-github"></span>{{ $t('marketplace.submitToMarketplace') }}</button>
         <button class="btn btn-secondary" @click="openEdit">
           <span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
         <button class="btn btn-danger" @click="deleteOpen = true">
@@ -535,9 +563,10 @@ onUnmounted(stopJobStream)
           <div class="info-section">
             <div class="info-label">{{ $t('marketplace.version') }}</div>
             <select v-if="entry.versions.length > 1" class="form-select" :value="version || entry.version" @change="onVersionChange" :aria-label="$t('marketplace.version')">
-              <option v-for="v in entry.versions" :key="v" :value="v">v{{ v }}</option>
+              <option v-for="v in entry.versions" :key="v" :value="v">v{{ v }}<template v-if="entry.deprecated_versions?.includes(v)"> ({{ $t('marketplace.deprecatedVersion') }})</template></option>
             </select>
             <div v-else class="info-value">v{{ version || entry.version }}</div>
+            <div v-if="entry.updated" class="cell-sub" style="margin-top: 4px">{{ $t('marketplace.updatedOn', { date: entry.updated }) }}</div>
           </div>
 
           <div class="info-section">
@@ -600,6 +629,17 @@ onUnmounted(stopJobStream)
       <section class="card form-card">
         <div class="card-body">
           <h3 class="form-title">{{ $t('marketplace.configureInstall') }}</h3>
+          <div v-if="installBlocked" class="warning-note" style="margin: 0 0 14px">
+            <span class="mdi mdi-archive-alert-outline"></span>
+            <div>
+              <strong>{{ $t('marketplace.deprecatedTitle') }}</strong>
+              <div v-if="entry.deprecation_note">{{ entry.deprecation_note }}</div>
+              <div>{{ $t('marketplace.deprecatedNoNewInstalls') }}</div>
+              <i18n-t v-if="entry.replaced_by" keypath="marketplace.replacedBy" tag="div">
+                <template #name><router-link :to="{ name: 'template-install', params: { slug: entry.replaced_by } }">{{ entry.replaced_by }}</router-link></template>
+              </i18n-t>
+            </div>
+          </div>
           <form @submit.prevent="review">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
@@ -646,7 +686,7 @@ onUnmounted(stopJobStream)
 
             <div class="form-actions">
               <button type="button" class="btn btn-secondary" @click="router.push({ name: 'marketplace' })">{{ $t('action.cancel') }}</button>
-              <button type="submit" class="btn btn-primary" :disabled="installing || !ws.canEdit">{{ $t('marketplace.install') }}</button>
+              <button type="submit" class="btn btn-primary" :disabled="installing || !ws.canEdit || installBlocked">{{ $t('marketplace.install') }}</button>
             </div>
           </form>
         </div>
@@ -784,6 +824,25 @@ onUnmounted(stopJobStream)
             <p class="text-sm" style="margin-bottom: 12px">
               <code>v{{ upgradePlan.from_version }}</code> → <code>v{{ upgradePlan.to_version }}</code>
             </p>
+
+            <div v-if="upgradePlan.breaking" class="danger-note" style="margin-bottom: 12px">
+              <span class="mdi mdi-alert-octagon-outline"></span><div>{{ $t('marketplace.breakingUpgrade') }}</div>
+            </div>
+            <div v-if="upgradePlan.latest_version && upgradePlan.latest_version !== upgradePlan.to_version" class="warning-note" style="margin: 0 0 12px">
+              <span class="mdi mdi-stairs-up"></span>
+              <div>{{ $t('marketplace.steppedUpgrade', { latest: upgradePlan.latest_version, to: upgradePlan.to_version }) }}</div>
+            </div>
+            <div v-if="upgradePlan.releases?.length" class="upg-releases">
+              <p class="text-sm" style="font-weight: 600">{{ $t('marketplace.releaseNotes') }}</p>
+              <div v-for="r in upgradePlan.releases" :key="r.version" class="upg-release">
+                <div class="upg-release-head">
+                  <code>v{{ r.version }}</code>
+                  <span v-if="r.breaking" class="badge badge-danger">{{ $t('marketplace.breaking') }}</span>
+                  <span v-if="r.released" class="cell-sub">{{ r.released }}</span>
+                </div>
+                <div v-if="r.notes" class="upg-release-notes">{{ r.notes }}</div>
+              </div>
+            </div>
 
             <div v-for="a in upgradePlan.apps" :key="a.name" class="upg-app">
               <div class="upg-app-name"><span class="mdi mdi-cube-outline"></span> {{ a.name }}</div>
@@ -1161,6 +1220,28 @@ onUnmounted(stopJobStream)
 }
 .upg-list .badge {
   margin-left: 4px;
+}
+.upg-releases {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.upg-release + .upg-release {
+  margin-top: 8px;
+}
+.upg-release-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Notes are authored as Markdown but rendered as text, so their line breaks must survive. */
+.upg-release-notes {
+  margin-top: 4px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text-secondary);
 }
 .upg-inputs {
   margin-top: 12px;

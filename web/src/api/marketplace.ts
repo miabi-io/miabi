@@ -42,6 +42,11 @@ export interface CatalogEntry {
   configs: number
   db_only: boolean
   inputs?: TemplateInput[]
+  updated?: string
+  deprecated?: boolean
+  deprecation_note?: string
+  replaced_by?: string
+  deprecated_versions?: string[]
 }
 
 export interface ManifestDatabase {
@@ -208,6 +213,17 @@ export interface UpgradePlan {
   removed_apps: string[]
   new_inputs: UpgradeInput[]
   warnings: string[]
+  releases?: ReleaseNote[]
+  breaking?: boolean
+  latest_version?: string
+}
+
+export interface ReleaseNote {
+  version: string
+  released?: string
+  notes?: string
+  breaking?: boolean
+  requires_from?: string
 }
 
 export interface UpgradeApplyResult {

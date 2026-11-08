@@ -104,7 +104,11 @@ func applySourceInput(app *models.Application, in SourceInput) error {
 		if strings.TrimSpace(in.Image) == "" {
 			return ErrImageRequired
 		}
-		app.Image, app.Tag = normalizeImageTag(in.Image, in.Tag)
+		image, tag := normalizeImageTag(in.Image, in.Tag)
+		if image != app.Image || tag != app.Tag {
+			delete(app.Metadata, models.MetaDigest)
+		}
+		app.Image, app.Tag = image, tag
 		app.RegistryID = in.RegistryID
 		// Git fields, including build config, mean nothing for a pulled image.
 		app.GitRepo, app.GitRef, app.GitRepositoryID = "", "", nil
