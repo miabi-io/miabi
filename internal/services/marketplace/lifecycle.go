@@ -51,8 +51,23 @@ type InstallView struct {
 
 // Custom imports are preferred; "" means the template is no longer in any catalog.
 func (s *Service) latestVersion(workspaceID uint, slug string) string {
+	if v := s.installable(workspaceID, slug); v != "" {
+		return v
+	}
 	if m, _, ok := s.resolveManifest(workspaceID, slug, ""); ok {
 		return m.Metadata.Version
+	}
+	return ""
+}
+
+// installable skips registry versions marked deprecated; "" leaves the choice to plain latest resolution.
+func (s *Service) installable(workspaceID uint, slug string) string {
+	_, source, ok := s.resolveManifest(workspaceID, slug, "")
+	if !ok {
+		return ""
+	}
+	if t, found := s.remoteTemplate(slug, source); found {
+		return installableVersion(t)
 	}
 	return ""
 }

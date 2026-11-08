@@ -54,6 +54,12 @@ type CatalogEntry struct {
 	Configs      int              `json:"configs"`          // configuration files it ships
 	DBOnly       bool             `json:"db_only"`          // provisions only a database
 	Inputs       []manifest.Input `json:"inputs,omitempty"` // install-wizard questions
+	// Lifecycle fields come from the synced registry; the embedded floor and custom imports leave them empty.
+	Updated            string   `json:"updated,omitempty"`
+	Deprecated         bool     `json:"deprecated,omitempty"`
+	DeprecationNote    string   `json:"deprecation_note,omitempty"`
+	ReplacedBy         string   `json:"replaced_by,omitempty"`
+	DeprecatedVersions []string `json:"deprecated_versions,omitempty"`
 }
 
 type indexFile struct {

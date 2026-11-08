@@ -90,6 +90,7 @@ func (h *MarketplaceHandler) Install(c *okapi.Context, req *InstallRequest) erro
 			return c.AbortNotFound("template not found")
 		case errors.Is(err, marketplace.ErrMissingInput),
 			errors.Is(err, marketplace.ErrInvalidInput),
+			errors.Is(err, marketplace.ErrTemplateDeprecated),
 			errors.Is(err, marketplace.ErrNoSharedInstance):
 			return c.AbortBadRequest(err.Error())
 		default:
@@ -126,6 +127,7 @@ func (h *MarketplaceHandler) StartInstall(c *okapi.Context, req *InstallRequest)
 			return c.AbortNotFound("template not found")
 		case errors.Is(err, marketplace.ErrMissingInput),
 			errors.Is(err, marketplace.ErrInvalidInput),
+			errors.Is(err, marketplace.ErrTemplateDeprecated),
 			errors.Is(err, marketplace.ErrNoSharedInstance):
 			return c.AbortBadRequest(err.Error())
 		default:
@@ -317,7 +319,7 @@ func (h *MarketplaceHandler) mapUpgradeErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, marketplace.ErrInstallNotFound), errors.Is(err, marketplace.ErrTemplateNotFound):
 		return c.AbortNotFound(err.Error())
-	case errors.Is(err, marketplace.ErrAlreadyLatest), errors.Is(err, marketplace.ErrStructuralChange):
+	case errors.Is(err, marketplace.ErrAlreadyLatest), errors.Is(err, marketplace.ErrStructuralChange), errors.Is(err, marketplace.ErrUpgradeBlocked):
 		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("upgrade failed", err)

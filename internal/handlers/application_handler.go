@@ -247,6 +247,10 @@ func (b *UpdateAppBody) changesSource(app *models.Application) bool {
 
 // applyTo writes the update's fields onto app. Fields the client left out keep their stored value.
 func (b *UpdateAppBody) applyTo(app *models.Application) {
+	// A digest pin wins over the tag at deploy, so a stale pin would silently ignore the new image.
+	if b.changesSource(app) {
+		delete(app.Metadata, models.MetaDigest)
+	}
 	if b.Image != "" {
 		app.Image = b.Image
 	}

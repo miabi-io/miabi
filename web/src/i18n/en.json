@@ -2205,7 +2205,19 @@
     "upgrade": "Upgrade",
     "version": "Version",
     "website": "Website",
-    "willCreateHint": "This will create the following in {workspace}:"
+    "willCreateHint": "This will create the following in {workspace}:",
+    "deprecated": "Deprecated",
+    "deprecatedTitle": "This template is deprecated",
+    "deprecatedNoNewInstalls": "New installs are disabled. Existing installs keep running and can still be upgraded.",
+    "replacedBy": "Use {name} instead.",
+    "deprecatedVersion": "deprecated",
+    "submitToMarketplace": "Submit to marketplace",
+    "submitCopied": "The manifest is too long to prefill, so it was copied to your clipboard. Paste it into the form.",
+    "releaseNotes": "Release notes",
+    "breakingUpgrade": "This upgrade includes a breaking release. Read the notes and back up your data before upgrading.",
+    "steppedUpgrade": "v{latest} needs this install to step through v{to} first. Upgrade again afterwards to reach v{latest}.",
+    "updatedOn": "Updated {date}",
+    "breaking": "Breaking"
   },
   "metadata": {
     "builtInPlatformManagedRead": "Built-in — platform-managed (read-only)",

@@ -182,9 +182,15 @@ func (s *Service) publishJob(snap InstallJob) {
 
 // StartInstall validates synchronously so bad input fails fast, then installs in the background.
 func (s *Service) StartInstall(workspaceID uint, in InstallInput) (InstallJob, error) {
-	m, _, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
+	if in.Version == "" {
+		in.Version = s.installable(workspaceID, in.Name)
+	}
+	m, source, ok := s.resolveManifest(workspaceID, in.Name, in.Version)
 	if !ok {
 		return InstallJob{}, ErrTemplateNotFound
+	}
+	if err := s.checkInstallable(m.Metadata.Name, source, m.Metadata.Version); err != nil {
+		return InstallJob{}, err
 	}
 	if _, _, err := resolveInputs(m, in.Inputs); err != nil {
 		return InstallJob{}, err

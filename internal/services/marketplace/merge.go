@@ -115,9 +115,11 @@ func (s *Service) officialAndCommunity() []CatalogEntry {
 
 	out := make([]CatalogEntry, 0, len(officials)+len(community))
 	for _, a := range officials {
-		out = append(out, entryFromManifest(a.latest, SourceOfficial, sortedVersions(a.versions)))
+		out = append(out, s.decorate(entryFromManifest(a.latest, SourceOfficial, sortedVersions(a.versions))))
 	}
-	out = append(out, community...)
+	for _, e := range community {
+		out = append(out, s.decorate(e))
+	}
 	sortByDisplayName(out)
 	return out
 }

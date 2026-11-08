@@ -28,8 +28,7 @@ function legacyCopy(text: string): boolean {
   }
 }
 
-// copyLoaded hands the clipboard a pending value so Safari keeps the click's user activation across the fetch.
-// It rejects only when load does, so callers can report that error themselves.
+// Hands the clipboard a pending value so Safari keeps the click's user activation across the fetch.
 export async function copyLoaded(load: () => Promise<string>): Promise<boolean> {
   const value = load()
   if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {

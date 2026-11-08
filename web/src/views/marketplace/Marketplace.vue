@@ -7,6 +7,8 @@ import { useNotificationStore } from '@/stores/notification'
 import { marketplaceApi } from '@/api/marketplace'
 import type { CatalogEntry, TemplateInstallView, UninstallResult } from '@/api/marketplace'
 import AppModal from '@/components/AppModal.vue'
+import { submitTemplateURL, manifestName } from '@/utils/marketplaceSubmit'
+import { copyText } from '@/utils/clipboard'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -30,9 +32,12 @@ const loading = ref(false)
 const searchBy = ref<Record<BrowseSource, string>>({ all: '', official: '', community: '', custom: '' })
 const pageBy = ref<Record<BrowseSource, number>>({ all: 1, official: 1, community: 1, custom: 1 })
 
+// Deprecated templates stay resolvable for existing installs but are never offered for a new one.
+const browsable = computed(() => templates.value.filter((t) => !t.deprecated))
+
 const sourceCounts = computed(() => {
-  const c = { all: templates.value.length, official: 0, custom: 0, community: 0 }
-  for (const t of templates.value) {
+  const c = { all: browsable.value.length, official: 0, custom: 0, community: 0 }
+  for (const t of browsable.value) {
     if (t.source === 'official') c.official++
     else if (t.source === 'custom') c.custom++
     else if (t.source === 'community') c.community++
@@ -78,7 +83,7 @@ const activeList = computed(() => {
   if (!isBrowse.value) return []
   const src = tab.value as BrowseSource
   const q = searchBy.value[src].trim().toLowerCase()
-  return templates.value.filter((t) => (src === 'all' || t.source === src) && matchesSearch(t, q))
+  return browsable.value.filter((t) => (src === 'all' || t.source === src) && matchesSearch(t, q))
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(activeList.value.length / PER_PAGE)))
@@ -204,6 +209,16 @@ async function doImport() {
   } finally {
     importing.value = false
   }
+}
+
+// The copy starts before the new tab opens: once focus moves away, the clipboard write is refused.
+function submitImport() {
+  const { url, prefilled } = submitTemplateURL(importYaml.value, manifestName(importYaml.value))
+  if (!prefilled) {
+    void copyText(importYaml.value)
+    notify.info(t('marketplace.submitCopied'))
+  }
+  window.open(url, '_blank', 'noopener')
 }
 
 // ---- installed lifecycle ----
@@ -540,6 +555,8 @@ async function confirmUninstall() {
             ></textarea>
           </div>
           <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" style="margin-right: auto" :disabled="!importYaml.trim()" @click="submitImport">
+              <span class="mdi mdi-github"></span>{{ $t('marketplace.submitToMarketplace') }}</button>
             <button type="button" class="btn btn-secondary" @click="importOpen = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="importing || !importYaml.trim()">
               {{ importing ? 'Importing…' : 'Import' }}
