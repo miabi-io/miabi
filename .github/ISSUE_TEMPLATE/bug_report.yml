@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Miabi does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Search the [existing issues](https://github.com/miabi-io/miabi/issues) first.
+        **Do not report security vulnerabilities here**: email security@miabi.io instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Deploy ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Miabi version
+      description: Shown in the web console.
+      placeholder: v1.2.3
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Install script (get.miabi.io)
+        - Docker Compose
+        - Existing server
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Host OS and Docker version
+      placeholder: Ubuntu 24.04, Docker 28.1
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `sudo miabi stack status` and relevant container logs. Remove secrets, tokens and private hostnames first.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, configuration, or anything else that helps.

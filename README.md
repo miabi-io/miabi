@@ -372,7 +372,7 @@ Miabi is part of a family of self-hosting tools by the same author:
 
 - **Docs** — <https://docs.miabi.io>
 - **Questions & ideas** — [GitHub Discussions](https://github.com/miabi-io/miabi/discussions)
-- **Bugs & features** — [open an issue](https://github.com/miabi-io/miabi/issues). Please open one before submitting a pull request, so the approach can be agreed first
+- **Bugs & features** — [open an issue](https://github.com/miabi-io/miabi/issues). External pull requests are not accepted at the moment; see [CONTRIBUTING.md](./CONTRIBUTING.md)
 - **Security** — report vulnerabilities privately to <security@miabi.io>. Please don't file public issues for security problems
 
 If Miabi is useful to you, starring the repo genuinely helps other people find it.
