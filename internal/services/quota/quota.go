@@ -519,7 +519,8 @@ func resolveAppResources(l Limits, memoryBytes, nanoCPUs int64) (int64, int64, e
 		if memoryBytes == 0 {
 			missing = append(missing, "memory")
 		}
-		if nanoCPUs == 0 {
+		// Shared CPU (an uncapped plan) has no total to slip past, so only memory is required.
+		if nanoCPUs == 0 && l.MaxCPUCores >= 0 {
 			missing = append(missing, "CPU")
 		}
 		if len(missing) > 0 {

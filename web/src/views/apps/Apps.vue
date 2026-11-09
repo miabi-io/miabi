@@ -50,7 +50,7 @@ const creating = ref(false)
 // Whether any location the workspace may use runs a swarm; the fallback when locations cannot be read.
 const anySwarm = ref(false)
 const servicePlanAllowed = ref(true)
-const planResources = ref({ required: false, cpuMillicores: 0, memoryMB: 0 })
+const planResources = ref({ required: false, cpuRequired: false, cpuMillicores: 0, memoryMB: 0 })
 const locations = ref<Location[]>([])
 
 interface AppForm {
@@ -204,6 +204,7 @@ async function load(id: number | null) {
       const caps = usage?.capabilities
       planResources.value = {
         required: usage?.enforced === true && usage.limits?.require_resource_limits === true,
+        cpuRequired: usage?.enforced === true && usage.limits?.require_resource_limits === true && (usage.limits?.max_cpu_cores ?? 0) >= 0,
         cpuMillicores: usage?.limits?.default_cpu_millicores ?? 0,
         memoryMB: usage?.limits?.default_memory_mb ?? 0,
       }
@@ -372,14 +373,14 @@ function formatCreated(ts?: string) {
             <div v-if="planResources.required" class="form-row">
               <div class="form-group" style="flex: 1">
                 <label class="form-label">{{ $t('appDetail.cpuLimitCores') }}</label>
-                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.1" class="form-input" required />
+                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.1" class="form-input" :required="planResources.cpuRequired" />
               </div>
               <div class="form-group" style="flex: 1">
                 <label class="form-label">{{ $t('appDetail.memoryLimitMb') }}</label>
                 <input v-model.number="form.memory_mb" type="number" min="0" step="64" class="form-input" required />
               </div>
             </div>
-            <p v-if="planResources.required" class="form-hint" style="margin-top: -8px">{{ $t('apps.form.resourcesRequired') }}</p>
+            <p v-if="planResources.required" class="form-hint" style="margin-top: -8px">{{ $t(planResources.cpuRequired ? 'apps.form.resourcesRequired' : 'apps.form.memoryRequired') }}</p>
             <!-- Cluster runtime: only offered when cluster mode is enabled. -->
             <div v-if="clusterEnabled" class="form-row">
               <div class="form-group" style="flex: 2; margin-bottom: 0">

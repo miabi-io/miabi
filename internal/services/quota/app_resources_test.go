@@ -43,6 +43,8 @@ func TestResolveAppResources(t *testing.T) {
 		{"required, set by the app", Limits{RequireResourceLimits: true}, 64 * mb, core, 64 * mb, core, false},
 		{"required, no default for CPU", Limits{RequireResourceLimits: true, DefaultMemoryMB: 128}, 0, 0, 128 * mb, 0, true},
 		{"required, nothing set", Limits{RequireResourceLimits: true}, 0, 0, 0, 0, true},
+		{"required, shared CPU needs memory only", Limits{RequireResourceLimits: true, MaxCPUCores: -1}, 64 * mb, 0, 64 * mb, 0, false},
+		{"required, shared CPU still needs memory", Limits{RequireResourceLimits: true, MaxCPUCores: -1}, 0, 0, 0, 0, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

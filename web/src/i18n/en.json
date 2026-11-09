@@ -743,7 +743,8 @@
       "cpu": "{value} cores",
       "memory": "{value} MB",
       "filled": "A value left at 0 is set to the plan's default ({defaults}) when you save.",
-      "required": "This plan requires a CPU and a memory limit."
+      "required": "This plan requires a CPU and a memory limit.",
+      "memoryRequired": "This plan requires a memory limit. CPU is shared, so a CPU limit is optional."
     },
     "pipelineLink": "Pipeline bound to this application",
     "morePipelines": "+{count} more"
@@ -810,7 +811,8 @@
       "sourceImage": "Docker image",
       "tag": "Tag",
       "usesSaved": "Uses the saved repository's URL and credentials.",
-      "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app."
+      "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app.",
+      "memoryRequired": "This workspace's plan requires a memory limit on every app. CPU is shared, so a CPU limit is optional."
     },
     "searchLabel": "Search applications",
     "searchPlaceholder": "Search applications by name, image, repo, or node…"

@@ -743,7 +743,8 @@
       "cpu": "{value} cœurs",
       "memory": "{value} Mo",
       "filled": "Une valeur laissée à 0 prend la valeur par défaut du plan ({defaults}) à l’enregistrement.",
-      "required": "Ce plan exige une limite CPU et une limite mémoire."
+      "required": "Ce plan exige une limite CPU et une limite mémoire.",
+      "memoryRequired": "Ce plan exige une limite mémoire. Le CPU est partagé : une limite CPU est facultative."
     },
     "pipelineLink": "Pipeline lié à cette application",
     "morePipelines": "+{count} de plus"
@@ -810,7 +811,8 @@
       "sourceImage": "Image Docker",
       "tag": "Tag",
       "usesSaved": "Utilise l’URL et les identifiants du dépôt enregistré.",
-      "resourcesRequired": "Le plan de cet espace de travail exige une limite CPU et une limite mémoire sur chaque application."
+      "resourcesRequired": "Le plan de cet espace de travail exige une limite CPU et une limite mémoire sur chaque application.",
+      "memoryRequired": "Le plan de cet espace de travail exige une limite mémoire sur chaque application. Le CPU est partagé : une limite CPU est facultative."
     },
     "searchLabel": "Rechercher des applications",
     "searchPlaceholder": "Rechercher par nom, image, dépôt ou nœud…"

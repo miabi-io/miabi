@@ -916,6 +916,7 @@ async function loadApp() {
     serviceRuntimeAllowed.value = !!usage.capabilities.service_runtime
     planResources.value = {
       required: usage.enforced && !!usage.limits.require_resource_limits,
+      cpuRequired: usage.enforced && !!usage.limits.require_resource_limits && (usage.limits.max_cpu_cores ?? 0) >= 0,
       cpuMillicores: usage.limits.default_cpu_millicores ?? 0,
       memoryMB: usage.limits.default_memory_mb ?? 0,
     }
@@ -1781,14 +1782,14 @@ const nodePlacementLabel = computed(() =>
   nodePlacement.value.map((n: NodePlacement) => `${n.name} (${n.tasks})`).join(' · '),
 )
 // The plan's app resource defaults, shown under the Resources inputs: an empty value is filled from them.
-const planResources = ref({ required: false, cpuMillicores: 0, memoryMB: 0 })
+const planResources = ref({ required: false, cpuRequired: false, cpuMillicores: 0, memoryMB: 0 })
 const planResourcesHint = computed(() => {
   const p = planResources.value
   const parts: string[] = []
   if (p.cpuMillicores > 0) parts.push(t('appDetail.planDefaults.cpu', { value: p.cpuMillicores / 1000 }))
   if (p.memoryMB > 0) parts.push(t('appDetail.planDefaults.memory', { value: p.memoryMB }))
   if (parts.length) return t('appDetail.planDefaults.filled', { defaults: parts.join(', ') })
-  return p.required ? t('appDetail.planDefaults.required') : ''
+  return p.required ? t(p.cpuRequired ? 'appDetail.planDefaults.required' : 'appDetail.planDefaults.memoryRequired') : ''
 })
 
 // Runtime switch (Settings → Runtime): a dry run on every change, then a redeploy that hands over.
