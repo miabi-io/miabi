@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/miabi-io/miabi/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.
+  - name: Security vulnerability
+    url: https://github.com/miabi-io/miabi/blob/main/SECURITY.md
+    about: Report vulnerabilities privately to security@miabi.io, never in a public issue.
+  - name: Documentation
+    url: https://docs.miabi.io
+    about: Guides and reference for installing and running Miabi.
