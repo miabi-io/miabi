@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	nameRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	portNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 	// configKeyRe matches a relative file key, optionally nested in subdirectories.
 	configKeyRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)

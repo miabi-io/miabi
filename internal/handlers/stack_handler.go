@@ -76,6 +76,8 @@ type ImportStackRequest struct {
 	Body struct {
 		Name    string `json:"name" required:"true"`
 		Compose string `json:"compose" required:"true"`
+		// Env is the .env beside the Compose file: it fills ${VAR} references and env_file: .env.
+		Env string `json:"env"`
 		// Location is where the stack and everything it imports run; empty uses the workspace's default.
 		Location string `json:"location"`
 	} `json:"body"`
@@ -358,7 +360,7 @@ func (h *StackHandler) Import(c *okapi.Context, req *ImportStackRequest) error {
 		}
 		return c.AbortInternalServerError("failed to place the stack", err)
 	}
-	result, err := h.svc.ImportCompose(c.Request().Context(), wsID, middlewares.UserID(c), req.Body.Name, req.Body.Compose,
+	result, err := h.svc.ImportCompose(c.Request().Context(), wsID, middlewares.UserID(c), req.Body.Name, req.Body.Compose, req.Body.Env,
 		stack.ImportPlacement{ClusterID: placed.ClusterID, ServerID: placed.ServerID})
 	if err != nil {
 		return h.mapErr(c, err)

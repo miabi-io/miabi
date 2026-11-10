@@ -46,6 +46,7 @@ type composeService struct {
 	Environment composeEnv     `yaml:"environment"`
 	Command     composeList    `yaml:"command"`
 	Volumes     composeVolumes `yaml:"volumes"`
+	EnvFile     composeEnvFile `yaml:"env_file"`
 }
 
 // composePorts reads the short and long syntax, turning a long entry into its short equivalent.
@@ -181,6 +182,8 @@ type ImportResult struct {
 	PortRequests  int            `json:"port_requests"`
 	PortConflicts []PortConflict `json:"port_conflicts"`
 	Skipped       []ImportSkip   `json:"skipped"`
+	// Warnings name the variables the file references that the .env did not set.
+	Warnings []string `json:"warnings"`
 }
 
 // ImportPlacement is where an imported stack runs: its location and the single node its apps and volumes share.
@@ -189,9 +192,18 @@ type ImportPlacement struct {
 	ServerID  uint
 }
 
-func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, name, composeYAML string, at ImportPlacement) (*ImportResult, error) {
+// ImportCompose creates a stack from a Compose file; dotEnv, when given, plays the part of the .env beside it.
+func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, name, composeYAML, dotEnv string, at ImportPlacement) (*ImportResult, error) {
+	vars := newComposeVars(dotEnv)
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(composeYAML), &doc); err != nil {
+		return nil, ErrComposeInvalid
+	}
+	if err := vars.interpolateNode(&doc); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrComposeInvalid, err)
+	}
 	var cf composeFile
-	if err := yaml.Unmarshal([]byte(composeYAML), &cf); err != nil {
+	if err := doc.Decode(&cf); err != nil {
 		return nil, ErrComposeInvalid
 	}
 	if len(cf.Services) == 0 {
@@ -208,7 +220,8 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 	}
 
 	// Empty lists, not nil: a nil slice encodes as null, which the console reads as a list.
-	result := &ImportResult{Stack: st, Created: []string{}, Volumes: []string{}, PortConflicts: []PortConflict{}, Skipped: []ImportSkip{}}
+	result := &ImportResult{Stack: st, Created: []string{}, Volumes: []string{}, PortConflicts: []PortConflict{}, Skipped: []ImportSkip{},
+		Warnings: vars.warnings()}
 	// Named volumes are shared across services, so provision each once and reuse.
 	volumes := map[string]*models.Volume{}
 
@@ -241,6 +254,20 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 		if err != nil {
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: err.Error()})
 			continue
+		}
+		// env_file goes first so the service's own environment wins, as in Compose.
+		for _, ref := range def.EnvFile {
+			switch {
+			case isDotEnvPath(ref.Path) && strings.TrimSpace(dotEnv) != "":
+				for _, kv := range vars.pairs() {
+					_ = s.app.SetEnvVar(app.ID, kv.Key, kv.Value, false)
+				}
+			case !ref.Required:
+			case isDotEnvPath(ref.Path):
+				result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "env_file .env: no .env was provided"})
+			default:
+				result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "env_file " + ref.Path + ": only .env can be provided"})
+			}
 		}
 		for _, kv := range def.Environment {
 			_ = s.app.SetEnvVar(app.ID, kv.Key, kv.Value, false)

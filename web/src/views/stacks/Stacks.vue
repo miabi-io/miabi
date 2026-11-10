@@ -35,7 +35,7 @@ const showImport = ref(false)
 const saving = ref(false)
 const importing = ref(false)
 const form = ref({ name: '', description: '', location: '' })
-const importForm = ref({ name: '', compose: '', location: '' })
+const importForm = ref({ name: '', compose: '', location: '', env: '' })
 
 function stackBadge(s: Stack) {
   const total = s.status?.total ?? 0
@@ -85,7 +85,7 @@ async function create() {
 }
 
 function openImport() {
-  importForm.value = { name: '', compose: '', location: '' }
+  importForm.value = { name: '', compose: '', location: '', env: '' }
   showImport.value = true
 }
 
@@ -93,7 +93,7 @@ async function runImport() {
   if (!currentWorkspaceId.value) return
   importing.value = true
   try {
-    const res = (await stackApi.import(currentWorkspaceId.value, importForm.value.name.trim(), importForm.value.compose, importForm.value.location)).data.data
+    const res = (await stackApi.import(currentWorkspaceId.value, importForm.value.name.trim(), importForm.value.compose, importForm.value.location, importForm.value.env)).data.data
     const created = res?.created?.length ?? 0
     const vols = res?.volumes?.length ?? 0
     const reqs = res?.port_requests ?? 0
@@ -109,6 +109,7 @@ async function runImport() {
       const lines = conflicts.map((c) => `${c.host_port}/${c.protocol} (in use by ${c.used_by})`).join(', ')
       notify.error(t('notify.stacks.theseHostPortsAreAlready', { lines: lines }), 'Port conflicts')
     }
+    if (res?.warnings?.length) notify.info(res.warnings.join('; '), t('stacks.importWarnings'))
     showImport.value = false
     if (res?.stack) router.push(`/stacks/${res.stack.id}`)
     else load(currentWorkspaceId.value)
@@ -234,6 +235,11 @@ async function runImport() {
               <label class="form-label">docker-compose.yml</label>
               <textarea v-model="importForm.compose" class="form-input" rows="12" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="services:&#10;  web:&#10;    image: nginx:1.25&#10;    ports:&#10;      - 80&#10;    environment:&#10;      FOO: bar" :aria-label="$t('stacks.dockerComposeYml')" required></textarea>
               <p class="form-hint">{{ $t('stacks.importHint') }}</p>
+            </div>
+            <div class="form-group" style="margin: 16px 0 0">
+              <label class="form-label">.env <span class="text-muted">{{ $t('stacks.optional') }}</span></label>
+              <textarea v-model="importForm.env" class="form-input" rows="5" spellcheck="false" autocomplete="off" style="font-family: monospace; font-size: 12px" placeholder="TAG=1.25&#10;DB_PASSWORD=change-me" :aria-label="$t('stacks.dotEnv')"></textarea>
+              <p class="form-hint">{{ $t('stacks.dotEnvHint') }}</p>
             </div>
           </div>
           <div class="modal-footer">

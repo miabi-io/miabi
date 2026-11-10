@@ -35,6 +35,7 @@ export interface StackImportResult {
   port_requests: number
   port_conflicts: { service: string; host_port: number; protocol: string; used_by: string }[]
   skipped: { service: string; reason: string }[]
+  warnings?: string[]
 }
 
 const base = (ws: number) => `/workspaces/${ws}/stacks`
@@ -71,6 +72,6 @@ export const stackApi = {
     api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}/env/${encodeURIComponent(key)}`),
   remove: (ws: number, id: number, withApps = false) =>
     api.delete<ApiResponse<{ message: string }>>(`${base(ws)}/${id}${withApps ? '?with_apps=true' : ''}`),
-  import: (ws: number, name: string, compose: string, location?: string) =>
-    api.post<ApiResponse<StackImportResult>>(`${base(ws)}/import`, { name, compose, location: location || undefined }),
+  import: (ws: number, name: string, compose: string, location?: string, env?: string) =>
+    api.post<ApiResponse<StackImportResult>>(`${base(ws)}/import`, { name, compose, location: location || undefined, env: env || undefined }),
 }
