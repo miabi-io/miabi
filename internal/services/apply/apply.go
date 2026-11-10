@@ -2783,11 +2783,14 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileEnv(app.ID, spec); err != nil {
 			return err
 		}
+		// Before exposure, which binds and routes only ports the app declares.
+		if len(spec.Ports) > 0 {
+			if err := s.apps.ReconcilePorts(app, portSpecsOf(spec)); err != nil {
+				return fmt.Errorf("ports: %w", err)
+			}
+		}
 		if err := s.reconcileExposure(ctx, workspaceID, app, spec); err != nil {
 			return err
-		}
-		if err := s.apps.NamePorts(app, portNamesOf(spec)); err != nil {
-			return fmt.Errorf("port names: %w", err)
 		}
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
@@ -2984,21 +2987,17 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		in.NanoCPUs, _ = spec.Resources.NanoCPUs()
 		in.GPUCount, in.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
 	}
-	for _, p := range spec.Ports {
-		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol, Name: p.Name})
-		if in.Port == 0 {
-			in.Port = p.Container
-		}
+	in.Ports = portSpecsOf(spec)
+	if len(spec.Ports) > 0 {
+		in.Port = spec.Ports[0].Container
 	}
 	return in
 }
 
-func portNamesOf(spec *declarative.ApplicationSpec) []application.PortSpec {
-	var out []application.PortSpec
+func portSpecsOf(spec *declarative.ApplicationSpec) []application.PortSpec {
+	out := make([]application.PortSpec, 0, len(spec.Ports))
 	for _, p := range spec.Ports {
-		if p.Name != "" {
-			out = append(out, application.PortSpec{ContainerPort: p.Container, Protocol: p.Protocol, Name: p.Name})
-		}
+		out = append(out, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol, Name: p.Name})
 	}
 	return out
 }

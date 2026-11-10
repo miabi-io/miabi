@@ -327,7 +327,30 @@ var optionalWhenUnset = map[string]bool{
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
 	"healthcheck.type": true, "healthcheck.path": true, "healthcheck.port": true, "healthcheck.command": true,
 	"healthcheck.intervalSeconds": true, "healthcheck.timeoutSeconds": true, "healthcheck.retries": true,
-	"healthcheck.startPeriodSeconds": true, "stack": true,
+	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true,
+}
+
+// Order-independent, and keyed like the app service stores ports: number, protocol and scheme.
+func portList(ports []PortSpec) string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ports))
+	for _, p := range ports {
+		proto := p.Protocol
+		if proto != "udp" {
+			proto = "tcp"
+		}
+		scheme := p.Scheme
+		if scheme != "https" {
+			scheme = "http"
+		}
+		k := fmt.Sprintf("%d/%s/%s", p.Container, proto, scheme)
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
 }
 
 // A database's limits may come from the console or plan defaults, so a silent manifest leaves them be.
@@ -576,6 +599,10 @@ func specFields(r Resource) map[string]string {
 				continue
 			}
 			f["env."+k] = v
+		}
+		// Only compared when stated, so a manifest without ports keeps the ones set in the console.
+		if len(a.Ports) > 0 {
+			f["ports"] = portList(a.Ports)
 		}
 		for _, p := range a.Ports {
 			if p.ExternalAccess {
