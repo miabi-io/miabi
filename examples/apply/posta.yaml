@@ -100,4 +100,5 @@ spec:
         hosts: [posta.example.com]
         app: posta
         port: 9000
-        tls: acme                # acme | custom | off
+        tls:
+          enabled: true          # false serves plain HTTP; certificate: <name> serves an imported one

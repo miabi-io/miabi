@@ -19,7 +19,13 @@
 
 package declarative
 
-import "gopkg.in/yaml.v3"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	"gopkg.in/yaml.v3"
+)
 
 // Location is the location the app names, or "" when it names none.
 func (a *ApplicationSpec) Location() string {
@@ -153,4 +159,129 @@ func (p *DatabasePlacementSpec) UnmarshalYAML(n *yaml.Node) error {
 	}
 	type plain DatabasePlacementSpec
 	return decodeSpec(n, (*plain)(p))
+}
+
+// UnmarshalYAML reads the block, or the bare acme|custom|off string the field held before it became one.
+func (t *RouteTLSSpec) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		t.legacyMode = n.Value
+		return nil
+	}
+	type plain RouteTLSSpec
+	return decodeSpec(n, (*plain)(t))
+}
+
+// TLSMode is acme, custom or off, read from the block or its old string form.
+func (r *RouteSpec) TLSMode() string {
+	if r.TLS != nil {
+		if r.TLS.Enabled != nil && !*r.TLS.Enabled {
+			return "off"
+		}
+		if r.TLS.legacyMode != "" {
+			return r.TLS.legacyMode
+		}
+	}
+	if r.TLSCertificate() != "" {
+		return "custom"
+	}
+	return "acme"
+}
+
+// TLSCertificate is the imported certificate the route serves, or "".
+func (r *RouteSpec) TLSCertificate() string {
+	if r.TLS != nil && r.TLS.Certificate != "" {
+		return r.TLS.Certificate
+	}
+	return r.DeprecatedCertificate
+}
+
+// TLSProvider is the gateway certificate provider for an ACME route, or "" for the default.
+func (r *RouteSpec) TLSProvider() string {
+	if r.TLS != nil && r.TLS.Provider != "" {
+		return r.TLS.Provider
+	}
+	return r.DeprecatedTLSProvider
+}
+
+// IsZero lets omitempty drop an unset port.
+func (p RoutePort) IsZero() bool { return p.Number == 0 && p.Name == "" }
+
+func (p RoutePort) String() string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return strconv.Itoa(p.Number)
+}
+
+func (p *RoutePort) set(v string) {
+	// A quoted number is still a number, so "8080" never becomes a port name.
+	if n, err := strconv.Atoi(v); err == nil {
+		p.Number, p.Name = n, ""
+		return
+	}
+	p.Number, p.Name = 0, v
+}
+
+func (p *RoutePort) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.ScalarNode {
+		return fmt.Errorf("line %d: port must be a number or a port name", n.Line)
+	}
+	p.set(n.Value)
+	return nil
+}
+
+func (p RoutePort) MarshalYAML() (any, error) {
+	if p.Name != "" {
+		return p.Name, nil
+	}
+	return p.Number, nil
+}
+
+func (p *RoutePort) UnmarshalJSON(b []byte) error {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	switch x := v.(type) {
+	case float64:
+		p.Number, p.Name = int(x), ""
+	case string:
+		p.set(x)
+	case nil:
+		*p = RoutePort{}
+	default:
+		return fmt.Errorf("port must be a number or a port name")
+	}
+	return nil
+}
+
+func (p RoutePort) MarshalJSON() ([]byte, error) {
+	if p.Name != "" {
+		return json.Marshal(p.Name)
+	}
+	return json.Marshal(p.Number)
+}
+
+// RouteTLSOf builds the block a stored route exports as, from its acme|custom|off mode.
+func RouteTLSOf(mode, provider, certificate string) *RouteTLSSpec {
+	switch mode {
+	case "off":
+		off := false
+		return &RouteTLSSpec{Enabled: &off}
+	case "custom":
+		if certificate == "" {
+			// Keeps the live mode visible to the plan when the certificate was deleted.
+			return &RouteTLSSpec{legacyMode: "custom"}
+		}
+		return &RouteTLSSpec{Certificate: certificate}
+	}
+	if provider != "" {
+		return &RouteTLSSpec{Provider: provider}
+	}
+	return nil
+}
+
+// ValidPortName refuses a digit-only name, which a Route would read as a port number.
+func ValidPortName(name string) bool {
+	return len(name) <= 63 && portNameRe.MatchString(name) && !isDigits(name)
 }

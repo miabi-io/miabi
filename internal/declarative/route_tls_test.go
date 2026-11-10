@@ -49,19 +49,26 @@ func TestCustomTLSNamesItsCertificate(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := set.Get("Route/web")
-	if r.Route.Certificate != "shop-wildcard" {
-		t.Errorf("certificate = %q", r.Route.Certificate)
+	if r.Route.TLSCertificate() != "shop-wildcard" || r.Route.TLSMode() != "custom" {
+		t.Errorf("certificate = %q, mode = %q", r.Route.TLSCertificate(), r.Route.TLSMode())
 	}
 }
 
 // Either TLS field alone behaves as a mistake, so both are refused at parse.
 func TestTLSFieldsMustAgree(t *testing.T) {
 	cases := []struct{ name, spec, want string }{
-		{"custom without a certificate", "  tls: custom", "needs certificate"},
+		{"custom without a certificate", "  tls: custom", "needs a certificate"},
 		{"certificate on an acme route", "  tls: acme\n  certificate: shop-wildcard", "applies to tls: custom"},
-		{"certificate with tls off", "  tls: off\n  certificate: shop-wildcard", "applies to tls: custom"},
-		{"provider on a custom route", "  tls: custom\n  certificate: c\n  tlsProvider: internal-ca", "applies to tls: acme"},
-		{"provider with tls off", "  tls: off\n  tlsProvider: internal-ca", "applies to tls: acme"},
+		{"certificate with tls off", "  tls: off\n  certificate: shop-wildcard", "turns TLS off"},
+		{"provider on a custom route", "  tls: custom\n  certificate: c\n  tlsProvider: internal-ca", "applies to ACME certificates"},
+		{"provider with tls off", "  tls: off\n  tlsProvider: internal-ca", "turns TLS off"},
+		{"block: certificate with TLS off", "  tls: { enabled: false, certificate: c }", "turns TLS off"},
+		{"block: provider with TLS off", "  tls: { enabled: false, provider: internal-ca }", "turns TLS off"},
+		{"block: provider and certificate", "  tls: { provider: internal-ca, certificate: c }", "applies to ACME certificates"},
+		{"both certificate spellings", "  tls: { certificate: a }\n  certificate: b", "old spelling of tls.certificate"},
+		{"both provider spellings", "  tls: { provider: a }\n  tlsProvider: b", "old spelling of tls.provider"},
+		{"unknown old mode", "  tls: letsencrypt", "tls must be a block"},
+		{"unknown block field", "  tls: { mode: acme }", "field mode not found"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,5 +107,57 @@ func TestCertificateNameIsValidated(t *testing.T) {
 	_, err := d.Parse([]byte(routeTLS("  tls: custom\n  certificate: Not A Name")))
 	if err == nil || !strings.Contains(err.Error(), "must be a resource name") {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// The block and the old string form must plan the same, or upgrading a manifest would churn routes.
+func TestTLSBlockMatchesTheOldForm(t *testing.T) {
+	cases := []struct{ name, old, block, mode, cert, provider string }{
+		{"acme by default", "", "  tls: {}", "acme", "", ""},
+		{"acme", "  tls: acme", "  tls: { enabled: true }", "acme", "", ""},
+		{"acme with a provider", "  tls: acme\n  tlsProvider: internal-ca", "  tls: { provider: internal-ca }", "acme", "", "internal-ca"},
+		{"custom", "  tls: custom\n  certificate: shop", "  tls: { certificate: shop }", "custom", "shop", ""},
+		{"off", "  tls: off", "  tls: { enabled: false }", "off", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			parse := func(spec string) *d.ResourceSet {
+				set, err := d.Parse([]byte(routeTLS(spec)))
+				if err != nil {
+					t.Fatalf("%q: %v", spec, err)
+				}
+				return set
+			}
+			oldSet, newSet := parse(tc.old), parse(tc.block)
+			r, _ := newSet.Get("Route/web")
+			if r.Route.TLSMode() != tc.mode || r.Route.TLSCertificate() != tc.cert || r.Route.TLSProvider() != tc.provider {
+				t.Errorf("block read as mode=%q cert=%q provider=%q", r.Route.TLSMode(), r.Route.TLSCertificate(), r.Route.TLSProvider())
+			}
+			if d.BuildPlan(newSet, oldSet, d.PlanOptions{}).HasChanges() {
+				t.Error("the block planned a change against the old form")
+			}
+		})
+	}
+}
+
+// Marshal writes the block, so an old manifest round-trips into the new spelling.
+func TestOldTLSFormMarshalsAsTheBlock(t *testing.T) {
+	set, err := d.Parse([]byte(routeTLS("  tls: off")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := d.Marshal(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "enabled: false") {
+		t.Errorf("tls: off did not marshal as the block:\n%s", out)
+	}
+	again, err := d.Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := again.Get("Route/web"); r.Route.TLSMode() != "off" {
+		t.Errorf("round trip lost tls off: %q", r.Route.TLSMode())
 	}
 }

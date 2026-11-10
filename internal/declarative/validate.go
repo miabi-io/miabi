@@ -42,6 +42,7 @@ const (
 
 var (
 	nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	portNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 	// configKeyRe matches a relative file key, optionally nested in subdirectories.
 	configKeyRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*)?(/[A-Za-z0-9._-]+)*$`)
 	hostnameRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
@@ -95,9 +96,7 @@ func (r *Resource) normalize() {
 			d.Instance = "auto"
 		}
 	case r.Route != nil:
-		if r.Route.TLS == "" {
-			r.Route.TLS = "acme"
-		}
+		r.Route.adoptDeprecated()
 		if r.Route.Path == "" {
 			r.Route.Path = "/"
 		}
@@ -153,6 +152,25 @@ func (a *ApplicationSpec) adoptDeprecated() {
 			sec.Capabilities = &CapabilitiesSpec{}
 		}
 		sec.Capabilities.Add, sec.DeprecatedAddCapabilities = sec.DeprecatedAddCapabilities, nil
+	}
+}
+
+func (r *RouteSpec) adoptDeprecated() {
+	if t := r.TLS; t != nil && t.legacyMode == "off" && t.Enabled == nil {
+		off := false
+		t.Enabled = &off
+	}
+	if r.DeprecatedCertificate == "" && r.DeprecatedTLSProvider == "" {
+		return
+	}
+	if r.TLS == nil {
+		r.TLS = &RouteTLSSpec{}
+	}
+	if r.DeprecatedCertificate != "" && r.TLS.Certificate == "" {
+		r.TLS.Certificate, r.DeprecatedCertificate = r.DeprecatedCertificate, ""
+	}
+	if r.DeprecatedTLSProvider != "" && r.TLS.Provider == "" {
+		r.TLS.Provider, r.DeprecatedTLSProvider = r.DeprecatedTLSProvider, ""
 	}
 }
 
@@ -450,9 +468,20 @@ func (r *Resource) validateApplication() error {
 	if a.Digest != "" && !strings.HasPrefix(a.Digest, "sha256:") {
 		return fmt.Errorf("application %q: digest must be a sha256: reference", r.Metadata.Name)
 	}
+	portNames := map[string]int{}
 	for _, p := range a.Ports {
 		if p.Container <= 0 || p.Container > 65535 {
 			return fmt.Errorf("application %q: invalid container port %d", r.Metadata.Name, p.Container)
+		}
+		if p.Name != "" {
+			if !ValidPortName(p.Name) {
+				return fmt.Errorf("application %q: port %d name %q must be lowercase letters, digits and dashes, with at least one letter", r.Metadata.Name, p.Container, p.Name)
+			}
+			// One container port may serve tcp and udp under the same name.
+			if other, dup := portNames[p.Name]; dup && other != p.Container {
+				return fmt.Errorf("application %q: port name %q is used by ports %d and %d", r.Metadata.Name, p.Name, other, p.Container)
+			}
+			portNames[p.Name] = p.Container
 		}
 		if p.Scheme != "http" && p.Scheme != "https" {
 			return fmt.Errorf("application %q: port %d scheme must be http or https", r.Metadata.Name, p.Container)
@@ -623,22 +652,11 @@ func (r *Resource) validateRoute() error {
 	if strings.TrimSpace(rt.App) == "" {
 		return fmt.Errorf("route %q: app target is required", r.Metadata.Name)
 	}
-	if !validTLS[rt.TLS] {
-		return fmt.Errorf("route %q: tls must be acme, custom or off", r.Metadata.Name)
+	if err := r.validateRoutePort(); err != nil {
+		return err
 	}
-
-	switch {
-	case rt.TLS == "custom" && strings.TrimSpace(rt.Certificate) == "":
-		return fmt.Errorf("route %q: tls: custom needs certificate: <name> — the certificate to serve for its hosts", r.Metadata.Name)
-	case rt.TLS != "custom" && rt.Certificate != "":
-		return fmt.Errorf("route %q: certificate %q applies to tls: custom, but this route is tls: %s", r.Metadata.Name, rt.Certificate, rt.TLS)
-	}
-	if rt.Certificate != "" && !nameRe.MatchString(rt.Certificate) {
-		return fmt.Errorf("route %q: certificate %q must be a resource name matching %s", r.Metadata.Name, rt.Certificate, nameRe)
-	}
-
-	if rt.TLSProvider != "" && rt.TLS != "acme" {
-		return fmt.Errorf("route %q: tlsProvider applies to tls: acme, but this route is tls: %s", r.Metadata.Name, rt.TLS)
+	if err := r.validateRouteTLS(); err != nil {
+		return err
 	}
 	for _, m := range rt.Methods {
 		if !validHTTPMethod[strings.ToUpper(strings.TrimSpace(m))] {
@@ -661,6 +679,61 @@ func (r *Resource) validateRoute() error {
 }
 
 // Key/mode without a config is an error rather than ignored, matching strict decoding.
+func (r *Resource) validateRoutePort() error {
+	p := r.Route.Port
+	if p.Number < 0 || p.Number > 65535 {
+		return fmt.Errorf("route %q: port %d out of range", r.Metadata.Name, p.Number)
+	}
+	if p.Name != "" && !portNameRe.MatchString(p.Name) {
+		return fmt.Errorf("route %q: port %q must be a number or the name of one of the app's ports", r.Metadata.Name, p.Name)
+	}
+	return nil
+}
+
+func (r *Resource) validateRouteTLS() error {
+	rt, name := r.Route, r.Metadata.Name
+	legacy := ""
+	if rt.TLS != nil {
+		legacy = rt.TLS.legacyMode
+	}
+	if legacy != "" && !validTLS[legacy] {
+		return fmt.Errorf("route %q: tls must be a block (enabled, provider, certificate), or the old acme, custom or off", name)
+	}
+	// Left over only when both spellings were set.
+	if rt.DeprecatedCertificate != "" {
+		return fmt.Errorf("route %q: certificate is the old spelling of tls.certificate; set only tls.certificate", name)
+	}
+	if rt.DeprecatedTLSProvider != "" {
+		return fmt.Errorf("route %q: tlsProvider is the old spelling of tls.provider; set only tls.provider", name)
+	}
+	mode, cert, provider := rt.TLSMode(), rt.TLSCertificate(), rt.TLSProvider()
+	switch {
+	case legacy == "custom" && strings.TrimSpace(cert) == "":
+		return fmt.Errorf("route %q: tls: custom needs a certificate; set tls.certificate to the certificate to serve for its hosts", name)
+	case legacy == "acme" && cert != "":
+		return fmt.Errorf("route %q: certificate %q applies to tls: custom, but this route is tls: acme", name, cert)
+	case mode == "off" && cert != "":
+		return fmt.Errorf("route %q: tls.certificate %q needs TLS, but this route turns TLS off", name, cert)
+	case mode == "off" && provider != "":
+		return fmt.Errorf("route %q: tls.provider %q needs TLS, but this route turns TLS off", name, provider)
+	case cert != "" && provider != "":
+		return fmt.Errorf("route %q: tls.provider applies to ACME certificates, but this route serves tls.certificate %q; set one of them", name, cert)
+	}
+	if cert != "" && !nameRe.MatchString(cert) {
+		return fmt.Errorf("route %q: certificate %q must be a resource name matching %s", name, cert, nameRe)
+	}
+	return nil
+}
+
+func isDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
 func (r Resource) validateMount(mt MountSpec) error {
 	name := r.Metadata.Name
 	switch {
@@ -811,12 +884,31 @@ func (s *ResourceSet) validateReferences() error {
 				return fmt.Errorf("application %q: references unknown stack %q", r.Metadata.Name, r.Application.Stack)
 			}
 		case r.Route != nil:
-			if !s.Has(KindApplication, r.Route.App) {
+			app, ok := s.Get(string(KindApplication) + "/" + r.Route.App)
+			if !ok {
 				return fmt.Errorf("route %q: targets unknown application %q", r.Metadata.Name, r.Route.App)
+			}
+			if err := resolvePortName(r, app); err != nil {
+				return err
 			}
 		}
 	}
 	return nil
+}
+
+// Resolved to the number at parse so plans compare it with the port the live route stores.
+func resolvePortName(route, app Resource) error {
+	name := route.Route.Port.Name
+	if name == "" {
+		return nil
+	}
+	for _, p := range app.Application.Ports {
+		if p.Name == name {
+			route.Route.Port = RoutePort{Number: p.Container}
+			return nil
+		}
+	}
+	return fmt.Errorf("route %q: port %q is not a port name of application %q", route.Metadata.Name, name, app.Metadata.Name)
 }
 
 func (rs *ResourceSpec) MemoryBytes() (int64, error) {

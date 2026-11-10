@@ -288,6 +288,14 @@ func diffFields(actual, desired Resource) []FieldDiff {
 			delete(av, f)
 		}
 	}
+	// Port names are compared only when stated, so a name set in the console survives a silent manifest.
+	for f := range av {
+		if strings.HasPrefix(f, "port.") && strings.HasSuffix(f, ".name") {
+			if _, stated := dv[f]; !stated {
+				delete(av, f)
+			}
+		}
+	}
 	// Stack env is compared only when stated, so console-set variables survive an older manifest.
 	if desired.Stack != nil && desired.Stack.Env == nil {
 		for f := range av {
@@ -576,6 +584,9 @@ func specFields(r Resource) map[string]string {
 			if p.Publish || p.HostPort > 0 {
 				f[fmt.Sprintf("port.%d.published", p.Container)] = "true"
 			}
+			if p.Name != "" {
+				f[fmt.Sprintf("port.%d.name", p.Container)] = p.Name
+			}
 		}
 	case r.Database != nil:
 		f["engine"] = r.Database.Engine
@@ -620,10 +631,10 @@ func specFields(r Resource) map[string]string {
 		f["hosts"] = strings.Join(hosts, ",")
 		f["app"] = r.Route.App
 		f["path"] = r.Route.Path
-		f["tls"] = r.Route.TLS
-		f["certificate"] = r.Route.Certificate
-		f["tlsProvider"] = r.Route.TLSProvider
-		f["port"] = fmt.Sprintf("%d", r.Route.Port)
+		f["tls"] = r.Route.TLSMode()
+		f["certificate"] = r.Route.TLSCertificate()
+		f["tlsProvider"] = r.Route.TLSProvider()
+		f["port"] = r.Route.Port.String()
 		f["rewrite"] = r.Route.Rewrite
 		// The gateway matches methods by membership, so order is not a change.
 		methods := append([]string(nil), r.Route.Methods...)

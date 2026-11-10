@@ -177,6 +177,15 @@ func (g *schemaGen) object(t reflect.Type) map[string]any {
 }
 
 func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]any {
+	if owner.Name()+"."+f.Name == "RouteSpec.Port" {
+		return map[string]any{
+			"description": g.docs["RouteSpec.Port"],
+			"oneOf": []any{
+				map[string]any{"type": "integer", "minimum": 1, "maximum": 65535},
+				map[string]any{"type": "string", "pattern": portNameRe.String()},
+			},
+		}
+	}
 	out := g.typeOf(f.Type)
 	if doc := g.docs[owner.Name()+"."+f.Name]; doc != "" {
 		out["description"] = doc
@@ -185,15 +194,14 @@ func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]
 		out["enum"] = vals
 	}
 	// The field was a string before it became a block, and the parser still reads that spelling.
-	if owner.Name()+"."+f.Name == "DatabaseSpec.Placement" {
+	legacy := map[string]map[string]any{
+		"DatabaseSpec.Placement": {"type": "string", "enum": sortedKeys(placements), "description": "Deprecated: use instance."},
+		"RouteSpec.TLS":          {"type": "string", "enum": sortedKeys(validTLS), "description": "Deprecated: use the tls block."},
+	}
+	if old, ok := legacy[owner.Name()+"."+f.Name]; ok {
 		desc := out["description"]
 		delete(out, "description")
-		out = map[string]any{
-			"description": desc,
-			"oneOf": []any{out, map[string]any{
-				"type": "string", "enum": sortedKeys(placements), "description": "Deprecated: use instance.",
-			}},
-		}
+		out = map[string]any{"description": desc, "oneOf": []any{out, old}}
 	}
 	return out
 }
@@ -251,8 +259,6 @@ func yamlName(f reflect.StructField) (string, yamlOpts, bool) {
 // Uses this package's own sets, so renaming one breaks the build instead of leaving the schema permissive.
 func enumFor(typeName, field string) []string {
 	switch typeName + "." + field {
-	case "RouteSpec.TLS":
-		return sortedKeys(validTLS)
 	case "DomainSpec.TLS":
 		return sortedKeys(validDomainTLS)
 	case "DatabaseSpec.Instance":
