@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/declarative"
@@ -531,6 +532,36 @@ func withRunOptions(ctx context.Context, opts Options) context.Context {
 	return ctx
 }
 
+type runStateCtxKey struct{}
+
+// runState collects what one apply changed, so work that depends on several changes runs once at the end.
+type runState struct {
+	mu            sync.Mutex
+	changedStacks map[uint]bool
+	deployedApps  map[uint]bool
+}
+
+func withRunState(ctx context.Context) (context.Context, *runState) {
+	st := &runState{changedStacks: map[uint]bool{}, deployedApps: map[uint]bool{}}
+	return context.WithValue(ctx, runStateCtxKey{}, st), st
+}
+
+func stackEnvChanged(ctx context.Context, stackID uint) {
+	if st, ok := ctx.Value(runStateCtxKey{}).(*runState); ok {
+		st.mu.Lock()
+		st.changedStacks[stackID] = true
+		st.mu.Unlock()
+	}
+}
+
+func appDeployed(ctx context.Context, appID uint) {
+	if st, ok := ctx.Value(runStateCtxKey{}).(*runState); ok {
+		st.mu.Lock()
+		st.deployedApps[appID] = true
+		st.mu.Unlock()
+	}
+}
+
 func isAdmin(ctx context.Context) bool {
 	v, _ := ctx.Value(adminCtxKey{}).(bool)
 	return v
@@ -661,6 +692,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 	}
 	// Carry the owning source into execution so created resources get labeled.
 	ctx = withRunOptions(ctx, opts)
+	ctx, run := withRunState(ctx)
 	res := &Result{Plan: plan, WorkspaceID: workspaceID}
 	for _, ch := range plan.Changes {
 		if ch.Action == declarative.ActionNoop {
@@ -675,6 +707,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 		}
 		res.Applied++
 	}
+	res.Failures = append(res.Failures, s.redeployStackMembers(workspaceID, run)...)
 	// Derived from the raw manifest because the change loop has already resolved env templates.
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
@@ -690,6 +723,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 	}
 	key := string(declarative.Kind(kind)) + "/" + name
 	ctx = withRunOptions(ctx, opts)
+	ctx, run := withRunState(ctx)
 	res := &Result{WorkspaceID: workspaceID}
 	for _, ch := range plan.Changes {
 		if string(ch.Kind)+"/"+ch.Name != key {
@@ -705,6 +739,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 			return res, nil
 		}
 		res.Applied++
+		res.Failures = append(res.Failures, s.redeployStackMembers(workspaceID, run)...)
 		// Keep database↔app links in sync when the applied resource is an app/db.
 		if raw, perr := declarative.Parse(manifests); perr == nil {
 			s.linkDatabasesToApps(workspaceID, raw)
@@ -2114,7 +2149,8 @@ func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarati
 		if err != nil {
 			return err
 		}
-		return s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
+		_, err = s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
+		return err
 	case declarative.ActionUpdate:
 		if err := refuseMove(ch); err != nil {
 			return err
@@ -2129,7 +2165,11 @@ func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarati
 		}); err != nil {
 			return err
 		}
-		return s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
+		changed, err := s.reconcileStackEnv(workspaceID, st.ID, desired.Stack)
+		if changed {
+			stackEnvChanged(ctx, st.ID)
+		}
+		return err
 	case declarative.ActionDelete:
 		st, err := s.findStack(workspaceID, ch.Name)
 		if err != nil {
@@ -2708,7 +2748,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
-		_, err = s.apps.Deploy(app, nil, "", "")
+		if _, err = s.apps.Deploy(app, nil, "", ""); err == nil {
+			appDeployed(ctx, app.ID)
+		}
 		return err
 	case declarative.ActionUpdate:
 		if err := refuseMove(ch); err != nil {
@@ -2795,7 +2837,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
-		_, err = s.apps.Deploy(app, nil, "", "")
+		if _, err = s.apps.Deploy(app, nil, "", ""); err == nil {
+			appDeployed(ctx, app.ID)
+		}
 		return err
 	case declarative.ActionDelete:
 		app, err := s.findApp(workspaceID, ch.Name)
@@ -3066,9 +3110,9 @@ func (s *Service) renderStackEnv(workspaceID uint, spec *declarative.StackSpec, 
 }
 
 // A manifest silent on env leaves the stack alone; unchanged values aren't rewritten, as writes trigger redeploys.
-func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative.StackSpec) error {
+func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative.StackSpec) (bool, error) {
 	if spec == nil || spec.Env == nil {
-		return nil
+		return false, nil
 	}
 	secret := map[string]bool{}
 	for _, k := range spec.SecretEnv {
@@ -3076,8 +3120,9 @@ func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative
 	}
 	current, err := s.stacks.ListEnvVars(workspaceID, stackID)
 	if err != nil {
-		return fmt.Errorf("list stack env: %w", err)
+		return false, fmt.Errorf("list stack env: %w", err)
 	}
+	changed := false
 	live := make(map[string]models.StackEnvVar, len(current))
 	for _, ev := range current {
 		live[ev.Key] = ev
@@ -3096,17 +3141,50 @@ func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative
 			}
 		}
 		if _, err := s.stacks.SetEnvVar(workspaceID, stackID, k, v, secret[k]); err != nil {
-			return fmt.Errorf("set stack env %s: %w", k, err)
+			return changed, fmt.Errorf("set stack env %s: %w", k, err)
 		}
+		changed = true
 	}
 	for _, ev := range current {
 		if _, keep := spec.Env[ev.Key]; !keep {
 			if _, err := s.stacks.DeleteEnvVar(workspaceID, stackID, ev.Key); err != nil {
-				return fmt.Errorf("unset stack env %s: %w", ev.Key, err)
+				return changed, fmt.Errorf("unset stack env %s: %w", ev.Key, err)
+			}
+			changed = true
+		}
+	}
+	return changed, nil
+}
+
+func membersToRedeploy(apps []models.Application, deployed map[uint]bool) []*models.Application {
+	out := make([]*models.Application, 0, len(apps))
+	for i := range apps {
+		if !deployed[apps[i].ID] {
+			out = append(out, &apps[i])
+		}
+	}
+	return out
+}
+
+// Stack env is injected at deploy, so members run the old values until redeployed; apps this run deployed already have the new ones.
+func (s *Service) redeployStackMembers(workspaceID uint, run *runState) []Failure {
+	var out []Failure
+	for stackID := range run.changedStacks {
+		st, err := s.stacks.Get(workspaceID, stackID)
+		if err != nil {
+			continue
+		}
+		for _, app := range membersToRedeploy(st.Apps, run.deployedApps) {
+			// Leaves a never-deployed app alone and a stopped one flagged, as a rotated secret does.
+			if _, err := s.apps.AutoRedeploy(app); err != nil {
+				out = append(out, Failure{
+					Kind: string(declarative.KindApplication), Name: app.Name, Action: "redeploy",
+					Error: fmt.Sprintf("stack %q env changed: %v", st.Name, err),
+				})
 			}
 		}
 	}
-	return nil
+	return out
 }
 
 // Secret values are blanked because the diff masks them, comparing only presence and secrecy.
