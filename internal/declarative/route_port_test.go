@@ -131,3 +131,44 @@ func TestPortNamesCompareOnlyWhenStated(t *testing.T) {
 		t.Error("renaming a port planned no change")
 	}
 }
+
+func appPorts(ports string) *d.ResourceSet {
+	doc := `
+apiVersion: miabi.io/v1
+kind: Application
+metadata: { name: web }
+spec:
+  image: nginx
+` + ports + "\n"
+	set, err := d.Parse([]byte(doc))
+	if err != nil {
+		panic(err)
+	}
+	return set
+}
+
+// Adding, removing or changing a port must plan, or the manifest could never converge the app's ports.
+func TestPortChangesPlan(t *testing.T) {
+	live := appPorts("  ports: [{ container: 8080 }]")
+	cases := map[string]string{
+		"added":          "  ports: [{ container: 8080 }, { container: 9090 }]",
+		"removed":        "  ports: [{ container: 9090 }]",
+		"scheme changed": "  ports: [{ container: 8080, scheme: https }]",
+		"protocol added": "  ports: [{ container: 8080 }, { container: 8080, protocol: udp }]",
+	}
+	for name, desired := range cases {
+		if !d.BuildPlan(appPorts(desired), live, d.PlanOptions{}).HasChanges() {
+			t.Errorf("%s: no change planned", name)
+		}
+	}
+}
+
+func TestPortsCompareOnlyWhenStated(t *testing.T) {
+	live := appPorts("  ports: [{ container: 8080 }, { container: 9090 }]")
+	if d.BuildPlan(appPorts(""), live, d.PlanOptions{}).HasChanges() {
+		t.Error("a manifest without ports planned to change them")
+	}
+	if d.BuildPlan(appPorts("  ports: [{ container: 9090 }, { container: 8080 }]"), live, d.PlanOptions{}).HasChanges() {
+		t.Error("reordering ports planned a change")
+	}
+}

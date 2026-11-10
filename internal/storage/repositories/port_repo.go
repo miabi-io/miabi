@@ -53,10 +53,6 @@ func (r *AppPortRepository) ReplaceForApp(appID uint, ports []models.AppPort) er
 	})
 }
 
-func (r *AppPortRepository) SetName(id uint, name string) error {
-	return r.db.Model(&models.AppPort{}).Where("id = ?", id).Update("name", name).Error
-}
-
 type PortBindingRepository struct {
 	db *gorm.DB
 }

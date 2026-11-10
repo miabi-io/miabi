@@ -591,30 +591,46 @@ func (s *Service) SetPorts(app *models.Application, specs []PortSpec) error {
 	return nil
 }
 
-// NamePorts names the app's existing ports; a spec with no name, or for a port the app lacks, changes nothing.
-func (s *Service) NamePorts(app *models.Application, specs []PortSpec) error {
+// ReconcilePorts replaces the app's ports; a spec with no name keeps the name its live port has.
+func (s *Service) ReconcilePorts(app *models.Application, specs []PortSpec) error {
 	live, err := s.ports.ListByApp(app.ID)
 	if err != nil {
 		return err
 	}
-	for _, sp := range specs {
-		if sp.Name == "" {
-			continue
-		}
-		proto := sp.Protocol
-		if proto != "udp" {
-			proto = "tcp"
-		}
-		for i := range live {
-			p := &live[i]
-			if p.ContainerPort == sp.ContainerPort && p.Protocol == proto && p.Name != sp.Name {
-				if err := s.ports.SetName(p.ID, sp.Name); err != nil {
-					return err
-				}
-			}
-		}
+	// Saving the app would otherwise write the preloaded rows back over the replacement.
+	app.Ports = nil
+	if err := s.SetPorts(app, KeepPortNames(specs, live)); err != nil {
+		return err
 	}
-	return nil
+	app.Ports, err = s.ports.ListByApp(app.ID)
+	return err
+}
+
+// KeepPortNames fills each unnamed spec with the name of the live port on the same number and protocol.
+func KeepPortNames(specs []PortSpec, live []models.AppPort) []PortSpec {
+	type key struct {
+		port  int
+		proto string
+	}
+	names := map[key]string{}
+	for _, p := range live {
+		names[key{p.ContainerPort, portProto(p.Protocol)}] = p.Name
+	}
+	out := make([]PortSpec, len(specs))
+	for i, sp := range specs {
+		if sp.Name == "" {
+			sp.Name = names[key{sp.ContainerPort, portProto(sp.Protocol)}]
+		}
+		out[i] = sp
+	}
+	return out
+}
+
+func portProto(p string) string {
+	if p == "udp" {
+		return "udp"
+	}
+	return "tcp"
 }
 
 // Overview is an aggregated summary of an application for the detail page.
