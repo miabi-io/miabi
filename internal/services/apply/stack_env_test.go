@@ -58,14 +58,22 @@ func stackEnvService(t *testing.T) *Service {
 
 func TestReconcileStackEnv(t *testing.T) {
 	s := stackEnvService(t)
-	set := func(env map[string]string, secret ...string) {
+	set := func(env map[string]string, secret ...string) bool {
 		t.Helper()
-		if err := s.reconcileStackEnv(1, 7, &d.StackSpec{Env: env, SecretEnv: secret}); err != nil {
+		changed, err := s.reconcileStackEnv(1, 7, &d.StackSpec{Env: env, SecretEnv: secret})
+		if err != nil {
 			t.Fatal(err)
 		}
+		return changed
 	}
 
-	set(map[string]string{"DB_HOST": "db", "API_KEY": "k1", "OLD": "x"}, "API_KEY")
+	if !set(map[string]string{"DB_HOST": "db", "API_KEY": "k1", "OLD": "x"}, "API_KEY") {
+		t.Error("a first env reported no change")
+	}
+	// Unchanged values must not redeploy the members on every sync.
+	if set(map[string]string{"DB_HOST": "db", "API_KEY": "k1", "OLD": "x"}, "API_KEY") {
+		t.Error("an unchanged env reported a change")
+	}
 	env, secret := s.stackEnvOf(1, 7)
 	if env["DB_HOST"] != "db" || env["OLD"] != "x" || len(secret) != 1 || secret[0] != "API_KEY" {
 		t.Fatalf("after create: env %v, secret %v", env, secret)
@@ -74,7 +82,9 @@ func TestReconcileStackEnv(t *testing.T) {
 		t.Fatalf("API_KEY = %q, %v; want it stored encrypted as k1", v, err)
 	}
 
-	set(map[string]string{"DB_HOST": "db2", "API_KEY": "k2"}, "API_KEY")
+	if !set(map[string]string{"DB_HOST": "db2", "API_KEY": "k2"}, "API_KEY") {
+		t.Error("changed and removed variables reported no change")
+	}
 	env, _ = s.stackEnvOf(1, 7)
 	if env["DB_HOST"] != "db2" {
 		t.Errorf("DB_HOST = %q, want db2", env["DB_HOST"])
@@ -87,8 +97,8 @@ func TestReconcileStackEnv(t *testing.T) {
 	}
 
 	// A manifest silent about env leaves the stack's variables alone.
-	if err := s.reconcileStackEnv(1, 7, &d.StackSpec{}); err != nil {
-		t.Fatal(err)
+	if changed, err := s.reconcileStackEnv(1, 7, &d.StackSpec{}); err != nil || changed {
+		t.Fatalf("omitted env: changed=%v, err=%v", changed, err)
 	}
 	if env, _ = s.stackEnvOf(1, 7); len(env) != 2 {
 		t.Errorf("omitted env changed the stack: %v", env)
@@ -97,6 +107,19 @@ func TestReconcileStackEnv(t *testing.T) {
 	set(map[string]string{})
 	if env, _ = s.stackEnvOf(1, 7); len(env) != 0 {
 		t.Errorf("empty env left %v", env)
+	}
+}
+
+// An app this apply already deployed has the new env, so redeploying it would only roll it twice.
+func TestMembersToRedeploySkipsAppsDeployedThisRun(t *testing.T) {
+	apps := []models.Application{{ID: 1, Name: "web"}, {ID: 2, Name: "worker"}, {ID: 3, Name: "cron"}}
+	got := membersToRedeploy(apps, map[uint]bool{2: true})
+	if len(got) != 2 || got[0].Name != "web" || got[1].Name != "cron" {
+		names := []string{}
+		for _, a := range got {
+			names = append(names, a.Name)
+		}
+		t.Errorf("redeploy %v, want [web cron]", names)
 	}
 }
 
