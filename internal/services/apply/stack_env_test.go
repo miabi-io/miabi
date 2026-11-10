@@ -20,6 +20,7 @@
 package apply
 
 import (
+	"strings"
 	"testing"
 
 	d "github.com/miabi-io/miabi/internal/declarative"
@@ -110,16 +111,20 @@ func TestReconcileStackEnv(t *testing.T) {
 	}
 }
 
-// An app this apply already deployed has the new env, so redeploying it would only roll it twice.
-func TestMembersToRedeploySkipsAppsDeployedThisRun(t *testing.T) {
-	apps := []models.Application{{ID: 1, Name: "web"}, {ID: 2, Name: "worker"}, {ID: 3, Name: "cron"}}
-	got := membersToRedeploy(apps, map[uint]bool{2: true})
-	if len(got) != 2 || got[0].Name != "web" || got[1].Name != "cron" {
-		names := []string{}
-		for _, a := range got {
-			names = append(names, a.Name)
-		}
-		t.Errorf("redeploy %v, want [web cron]", names)
+// An app this apply already deployed has the new values, and one reached by both a stack and a secret rolls once.
+func TestToRedeployDeploysEachAppOnce(t *testing.T) {
+	deployed, seen := map[uint]bool{2: true}, map[uint]bool{}
+	members := []models.Application{{ID: 1, Name: "web"}, {ID: 2, Name: "worker"}, {ID: 3, Name: "cron"}}
+	consumers := []models.Application{{ID: 3, Name: "cron"}, {ID: 4, Name: "api"}}
+	var got []string
+	for _, a := range toRedeploy(members, deployed, seen) {
+		got = append(got, a.Name)
+	}
+	for _, a := range toRedeploy(consumers, deployed, seen) {
+		got = append(got, a.Name)
+	}
+	if strings.Join(got, ",") != "web,cron,api" {
+		t.Errorf("redeploy %v, want [web cron api]", got)
 	}
 }
 
