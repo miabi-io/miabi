@@ -157,27 +157,36 @@ func (s *Service) Update(workspaceID, id uint, value, description string, userID
 
 // A re-seal of an unchanged value only moves the fingerprint: no new version, no redeploy.
 func (s *Service) ApplySealed(workspaceID uint, name, value, fp string, keyVersion int) (*models.Secret, error) {
+	sec, changed, err := s.ApplySealedDeferred(workspaceID, name, value, fp, keyVersion)
+	if err == nil && changed {
+		s.fanOut(sec)
+	}
+	return sec, err
+}
+
+// ApplySealedDeferred reports a changed value instead of redeploying its consumers, for a caller that batches redeploys.
+func (s *Service) ApplySealedDeferred(workspaceID uint, name, value, fp string, keyVersion int) (*models.Secret, bool, error) {
 	sec, err := s.repo.FindByName(workspaceID, name)
 	if err != nil {
 		created, cerr := s.Create(workspaceID, name, value, "", nil)
 		if cerr != nil {
-			return nil, cerr
+			return nil, false, cerr
 		}
 		created.SealedFP, created.SealedKeyVersion = fp, keyVersion
-		return created, s.repo.Update(created)
+		return created, false, s.repo.Update(created)
 	}
 	if value == "" {
-		return nil, ErrNoValue
+		return nil, false, ErrNoValue
 	}
 	if sec.Managed {
-		return nil, ErrManaged
+		return nil, false, ErrManaged
 	}
 	current, derr := crypto.Decrypt(sec.ValueEnc)
 	changed := derr != nil || current != value
 	if changed {
 		enc, eerr := crypto.EncryptWS(workspaceID, value)
 		if eerr != nil {
-			return nil, eerr
+			return nil, false, eerr
 		}
 		sec.ValueEnc = enc
 		sec.Version++
@@ -185,12 +194,9 @@ func (s *Service) ApplySealed(workspaceID uint, name, value, fp string, keyVersi
 	}
 	sec.SealedFP, sec.SealedKeyVersion = fp, keyVersion
 	if err := s.repo.Update(sec); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if changed {
-		s.fanOut(sec)
-	}
-	return sec, nil
+	return sec, changed, nil
 }
 
 // UpsertOwned bypasses name validation for system-generated names; a changed value fans out to consumers.

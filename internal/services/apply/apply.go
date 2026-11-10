@@ -536,14 +536,20 @@ type runStateCtxKey struct{}
 
 // runState collects what one apply changed, so work that depends on several changes runs once at the end.
 type runState struct {
-	mu            sync.Mutex
-	changedStacks map[uint]bool
-	deployedApps  map[uint]bool
+	mu             sync.Mutex
+	changedStacks  map[uint]bool
+	rotatedSecrets map[string]bool
+	deployedApps   map[uint]bool
 }
 
 func withRunState(ctx context.Context) (context.Context, *runState) {
-	st := &runState{changedStacks: map[uint]bool{}, deployedApps: map[uint]bool{}}
+	st := &runState{changedStacks: map[uint]bool{}, rotatedSecrets: map[string]bool{}, deployedApps: map[uint]bool{}}
 	return context.WithValue(ctx, runStateCtxKey{}, st), st
+}
+
+func runStateOf(ctx context.Context) *runState {
+	st, _ := ctx.Value(runStateCtxKey{}).(*runState)
+	return st
 }
 
 func stackEnvChanged(ctx context.Context, stackID uint) {
@@ -707,7 +713,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 		}
 		res.Applied++
 	}
-	res.Failures = append(res.Failures, s.redeployStackMembers(workspaceID, run)...)
+	res.Failures = append(res.Failures, s.redeployChanged(workspaceID, run)...)
 	// Derived from the raw manifest because the change loop has already resolved env templates.
 	if raw, perr := declarative.Parse(manifests); perr == nil {
 		s.linkDatabasesToApps(workspaceID, raw)
@@ -739,7 +745,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 			return res, nil
 		}
 		res.Applied++
-		res.Failures = append(res.Failures, s.redeployStackMembers(workspaceID, run)...)
+		res.Failures = append(res.Failures, s.redeployChanged(workspaceID, run)...)
 		// Keep database↔app links in sync when the applied resource is an app/db.
 		if raw, perr := declarative.Parse(manifests); perr == nil {
 			s.linkDatabasesToApps(workspaceID, raw)
@@ -2058,7 +2064,7 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 	case declarative.KindSecret:
 		return s.applySecret(workspaceID, ch, desired)
 	case declarative.KindSealedSecret:
-		return s.applySealedSecret(workspaceID, ch, desired)
+		return s.applySealedSecret(ctx, workspaceID, ch, desired)
 	case declarative.KindRoute:
 		return s.applyRoute(ctx, workspaceID, ch, desired)
 	case declarative.KindDomain:
@@ -2202,7 +2208,7 @@ func (s *Service) applySecret(workspaceID uint, ch declarative.Change, desired d
 }
 
 // Create and update share a path: an update may be adopting a plain Secret of the same name.
-func (s *Service) applySealedSecret(workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
+func (s *Service) applySealedSecret(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource) error {
 	if ch.Action == declarative.ActionDelete {
 		sec, err := s.findSecret(workspaceID, ch.Name)
 		if err != nil {
@@ -2218,7 +2224,18 @@ func (s *Service) applySealedSecret(workspaceID uint, ch declarative.Change, des
 	if err != nil {
 		return fmt.Errorf("value: %w", err)
 	}
-	_, err = s.secrets.ApplySealed(workspaceID, ch.Name, value, spec.SealedFP, ver)
+	run := runStateOf(ctx)
+	if run == nil {
+		_, err = s.secrets.ApplySealed(workspaceID, ch.Name, value, spec.SealedFP, ver)
+		return err
+	}
+	// Redeployed once at the end of the run, with the apps a changed stack env also needs.
+	_, changed, err := s.secrets.ApplySealedDeferred(workspaceID, ch.Name, value, spec.SealedFP, ver)
+	if changed {
+		run.mu.Lock()
+		run.rotatedSecrets[ch.Name] = true
+		run.mu.Unlock()
+	}
 	return err
 }
 
@@ -3156,33 +3173,44 @@ func (s *Service) reconcileStackEnv(workspaceID, stackID uint, spec *declarative
 	return changed, nil
 }
 
-func membersToRedeploy(apps []models.Application, deployed map[uint]bool) []*models.Application {
+func toRedeploy(apps []models.Application, deployed, seen map[uint]bool) []*models.Application {
 	out := make([]*models.Application, 0, len(apps))
 	for i := range apps {
-		if !deployed[apps[i].ID] {
+		if !deployed[apps[i].ID] && !seen[apps[i].ID] {
+			seen[apps[i].ID] = true
 			out = append(out, &apps[i])
 		}
 	}
 	return out
 }
 
-// Stack env is injected at deploy, so members run the old values until redeployed; apps this run deployed already have the new ones.
-func (s *Service) redeployStackMembers(workspaceID uint, run *runState) []Failure {
+// Stack env and vault secrets are injected at deploy, so each app they reach is redeployed once; apps this run deployed already have the new values.
+func (s *Service) redeployChanged(workspaceID uint, run *runState) []Failure {
 	var out []Failure
-	for stackID := range run.changedStacks {
-		st, err := s.stacks.Get(workspaceID, stackID)
-		if err != nil {
-			continue
-		}
-		for _, app := range membersToRedeploy(st.Apps, run.deployedApps) {
-			// Leaves a never-deployed app alone and a stopped one flagged, as a rotated secret does.
+	seen := map[uint]bool{}
+	redeploy := func(apps []models.Application, reason string) {
+		for _, app := range toRedeploy(apps, run.deployedApps, seen) {
+			// Leaves a never-deployed app alone and a stopped one flagged.
 			if _, err := s.apps.AutoRedeploy(app); err != nil {
 				out = append(out, Failure{
 					Kind: string(declarative.KindApplication), Name: app.Name, Action: "redeploy",
-					Error: fmt.Sprintf("stack %q env changed: %v", st.Name, err),
+					Error: fmt.Sprintf("%s: %v", reason, err),
 				})
 			}
 		}
+	}
+	for stackID := range run.changedStacks {
+		if st, err := s.stacks.Get(workspaceID, stackID); err == nil {
+			redeploy(st.Apps, fmt.Sprintf("stack %q env changed", st.Name))
+		}
+	}
+	for name := range run.rotatedSecrets {
+		apps, err := s.apps.AppsReferencingSecret(workspaceID, name)
+		if err != nil {
+			out = append(out, Failure{Kind: string(declarative.KindSealedSecret), Name: name, Action: "redeploy", Error: err.Error()})
+			continue
+		}
+		redeploy(apps, fmt.Sprintf("secret %q changed", name))
 	}
 	return out
 }
