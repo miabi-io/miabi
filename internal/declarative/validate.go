@@ -442,6 +442,11 @@ func (r *Resource) validateApplication() error {
 			return err
 		}
 	}
+	if _, embedded := models.SplitImageRef(strings.TrimSpace(a.Image)); embedded != "" {
+		if tag := strings.TrimSpace(a.Tag); tag != "" && tag != embedded {
+			return fmt.Errorf("application %q: image %q already carries tag %q; drop it from image or remove tag: %q", r.Metadata.Name, a.Image, embedded, tag)
+		}
+	}
 	if a.Digest != "" && !strings.HasPrefix(a.Digest, "sha256:") {
 		return fmt.Errorf("application %q: digest must be a sha256: reference", r.Metadata.Name)
 	}

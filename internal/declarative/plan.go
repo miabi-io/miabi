@@ -452,6 +452,15 @@ func reservedLabelKey(key string) bool {
 	return false
 }
 
+// The app service stores "nginx:1.25" as image "nginx" + tag "1.25", so the manifest is split the same way.
+func imageAndTag(image, tag string) (string, string) {
+	img, embedded := models.SplitImageRef(strings.TrimSpace(image))
+	if embedded != "" {
+		return img, embedded
+	}
+	return img, strings.TrimSpace(tag)
+}
+
 // Fields named in secretEnv are masked so secret values never appear in a plan.
 func specFields(r Resource) map[string]string {
 	f := map[string]string{}
@@ -459,8 +468,7 @@ func specFields(r Resource) map[string]string {
 	case r.Application != nil:
 
 		a := r.Application
-		f["image"] = a.Image
-		f["tag"] = a.Tag
+		f["image"], f["tag"] = imageAndTag(a.Image, a.Tag)
 		f["digest"] = a.Digest
 		// Repointing the build source at another repo or ref must converge, not sit as invisible drift.
 		if src := a.Source; src != nil {
