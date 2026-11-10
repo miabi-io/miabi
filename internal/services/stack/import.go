@@ -41,11 +41,88 @@ type composeFile struct {
 }
 
 type composeService struct {
-	Image       string      `yaml:"image"`
-	Ports       []string    `yaml:"ports"`
-	Environment composeEnv  `yaml:"environment"`
-	Command     composeList `yaml:"command"`
-	Volumes     []string    `yaml:"volumes"`
+	Image       string         `yaml:"image"`
+	Ports       composePorts   `yaml:"ports"`
+	Environment composeEnv     `yaml:"environment"`
+	Command     composeList    `yaml:"command"`
+	Volumes     composeVolumes `yaml:"volumes"`
+}
+
+// composePorts reads the short and long syntax, turning a long entry into its short equivalent.
+type composePorts []string
+
+func (p *composePorts) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode {
+		return fmt.Errorf("ports must be a list")
+	}
+	for _, n := range node.Content {
+		if n.Kind != yaml.MappingNode {
+			*p = append(*p, n.Value)
+			continue
+		}
+		var long struct {
+			Target    string `yaml:"target"`
+			Published string `yaml:"published"`
+			Protocol  string `yaml:"protocol"`
+			HostIP    string `yaml:"host_ip"`
+		}
+		if err := n.Decode(&long); err != nil {
+			return err
+		}
+		short := long.Target
+		if long.Published != "" {
+			short = long.Published + ":" + short
+			if long.HostIP != "" {
+				short = long.HostIP + ":" + short
+			}
+		}
+		if long.Protocol != "" {
+			short += "/" + long.Protocol
+		}
+		*p = append(*p, short)
+	}
+	return nil
+}
+
+// composeVolume keeps Raw for skip messages; a long-form bind is flagged explicitly because its source may lack a "/".
+type composeVolume struct {
+	Raw   string
+	Mount composeMount
+	OK    bool
+}
+
+type composeVolumes []composeVolume
+
+func (v *composeVolumes) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode {
+		return fmt.Errorf("volumes must be a list")
+	}
+	for _, n := range node.Content {
+		if n.Kind != yaml.MappingNode {
+			m, ok := parseComposeVolume(n.Value)
+			*v = append(*v, composeVolume{Raw: n.Value, Mount: m, OK: ok})
+			continue
+		}
+		var long struct {
+			Type   string `yaml:"type"`
+			Source string `yaml:"source"`
+			Target string `yaml:"target"`
+		}
+		if err := n.Decode(&long); err != nil {
+			return err
+		}
+		raw := strings.TrimPrefix(long.Source+":"+long.Target, ":")
+		m := composeMount{Source: long.Source, Target: long.Target}
+		switch long.Type {
+		case "", "volume":
+		case "bind":
+			m.Bind = true
+		default:
+			m.Unsupported = long.Type
+		}
+		*v = append(*v, composeVolume{Raw: raw, Mount: m, OK: long.Target != ""})
+	}
+	return nil
 }
 
 type composeEnv []struct{ Key, Value string }
@@ -147,7 +224,7 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "no image (build-only not supported)"})
 			continue
 		}
-		mappings := composePortMappings(def.Ports)
+		mappings, badPorts := composePortMappings(def.Ports)
 		app, err := s.app.Create(workspaceID, application.CreateInput{
 			DisplayName: svc,
 			Handle:      svc,
@@ -167,6 +244,9 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 		}
 		for _, kv := range def.Environment {
 			_ = s.app.SetEnvVar(app.ID, kv.Key, kv.Value, false)
+		}
+		for _, bad := range badPorts {
+			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: bad})
 		}
 		s.importVolumes(ctx, workspaceID, at.ServerID, st, svc, app, def.Volumes, volumes, result)
 		s.importPorts(workspaceID, userID, svc, app, mappings, result)
@@ -199,10 +279,14 @@ func (s *Service) importPorts(workspaceID, userID uint, svc string, app *models.
 }
 
 // importVolumes provisions and attaches the named volumes a service declares.
-func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint, st *models.Stack, svc string, app *models.Application, decls []string, volumes map[string]*models.Volume, result *ImportResult) {
-	for _, raw := range decls {
-		m, ok := parseComposeVolume(raw)
-		if !ok {
+func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint, st *models.Stack, svc string, app *models.Application, decls composeVolumes, volumes map[string]*models.Volume, result *ImportResult) {
+	for _, d := range decls {
+		m, raw := d.Mount, d.Raw
+		if !d.OK {
+			continue
+		}
+		if m.Unsupported != "" {
+			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: m.Unsupported + " mount not supported: " + raw})
 			continue
 		}
 		if m.Bind {
@@ -246,6 +330,8 @@ type composeMount struct {
 	Source string // named volume (empty = anonymous volume)
 	Target string // container path
 	Bind   bool   // host bind mount (unsupported)
+	// Unsupported names a long-form mount type Miabi cannot provision, such as tmpfs.
+	Unsupported string
 }
 
 func parseComposeVolume(v string) (composeMount, bool) {
@@ -275,36 +361,86 @@ type portMapping struct {
 	Proto     string
 }
 
-func composePortMappings(ports []string) []portMapping {
+// maxPortRange bounds what one range entry can expand to, so a typo can't declare thousands of ports.
+const maxPortRange = 100
+
+// composePortMappings also returns a skip reason for each entry it cannot import.
+func composePortMappings(ports []string) ([]portMapping, []string) {
 	out := make([]portMapping, 0, len(ports))
+	var bad []string
 	for _, p := range ports {
-		if m, ok := parsePortMapping(p); ok {
-			out = append(out, m)
+		ms, err := parsePortMappings(p)
+		if err != nil {
+			bad = append(bad, fmt.Sprintf("port %s: %v", p, err))
+			continue
 		}
+		out = append(out, ms...)
 	}
-	return out
+	return out, bad
 }
 
-func parsePortMapping(p string) (portMapping, bool) {
+// parsePortMappings expands "8000-8001:9000-9001" pairwise; Host is 0 when the port is only exposed.
+func parsePortMappings(p string) ([]portMapping, error) {
 	proto := "tcp"
-	if v, after, found := strings.Cut(p, "/"); found {
-		p = v
-		if after == "udp" {
+	spec := strings.TrimSpace(p)
+	if v, after, found := strings.Cut(spec, "/"); found {
+		spec = v
+		switch after {
+		case "tcp":
+		case "udp":
 			proto = "udp"
+		default:
+			return nil, fmt.Errorf("unsupported protocol %q", after)
 		}
 	}
-	parts := strings.Split(strings.TrimSpace(p), ":")
-	container, err := strconv.Atoi(strings.TrimSpace(parts[len(parts)-1]))
-	if err != nil || container <= 0 {
-		return portMapping{}, false
-	}
-	host := 0
-	if len(parts) >= 2 { // the segment before the container port is the host port
-		if h, err := strconv.Atoi(strings.TrimSpace(parts[len(parts)-2])); err == nil {
-			host = h
+	// An IPv6 host IP is bracketed and contains colons of its own.
+	if strings.HasPrefix(spec, "[") {
+		if i := strings.Index(spec, "]:"); i >= 0 {
+			spec = spec[i+2:]
 		}
 	}
-	return portMapping{Host: host, Container: container, Proto: proto}, true
+	parts := strings.Split(spec, ":")
+	cFrom, cTo, err := parsePortRange(parts[len(parts)-1])
+	if err != nil {
+		return nil, err
+	}
+	hFrom, hTo := 0, 0
+	if len(parts) >= 2 && parts[len(parts)-2] != "" {
+		if hFrom, hTo, err = parsePortRange(parts[len(parts)-2]); err != nil {
+			return nil, err
+		}
+		if hTo-hFrom != cTo-cFrom {
+			return nil, errors.New("host and container port ranges differ in size")
+		}
+	}
+	if cTo-cFrom+1 > maxPortRange {
+		return nil, fmt.Errorf("range is larger than %d ports", maxPortRange)
+	}
+	out := make([]portMapping, 0, cTo-cFrom+1)
+	for i := 0; i <= cTo-cFrom; i++ {
+		m := portMapping{Container: cFrom + i, Proto: proto}
+		if hFrom != 0 {
+			m.Host = hFrom + i
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func parsePortRange(s string) (int, int, error) {
+	from, to, isRange := strings.Cut(strings.TrimSpace(s), "-")
+	a, err := strconv.Atoi(from)
+	if err != nil || a <= 0 || a > 65535 {
+		return 0, 0, fmt.Errorf("invalid port %q", s)
+	}
+	if !isRange {
+		return a, a, nil
+	}
+	b, err := strconv.Atoi(to)
+	if err != nil || b < a || b > 65535 {
+		return 0, 0, fmt.Errorf("invalid port range %q", s)
+	}
+	return a, b, nil
 }
 
 // portSpecs maps parsed port mappings to declared container ports.
