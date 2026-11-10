@@ -20,35 +20,96 @@
 package stack
 
 import (
+	"slices"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
 
-func TestParsePortMapping(t *testing.T) {
+func TestParsePortMappings(t *testing.T) {
 	cases := []struct {
-		in        string
-		host      int
-		container int
-		proto     string
-		ok        bool
+		in   string
+		want []portMapping
+		ok   bool
 	}{
-		{"9000:9000", 9000, 9000, "tcp", true},
-		{"8080:80", 8080, 80, "tcp", true},
-		{"80", 0, 80, "tcp", true}, // exposed, not published
-		{"53:53/udp", 53, 53, "udp", true},
-		{"127.0.0.1:9000:9000", 9000, 9000, "tcp", true},
-		{"notaport", 0, 0, "", false},
+		{"9000:9000", []portMapping{{9000, 9000, "tcp"}}, true},
+		{"8080:80", []portMapping{{8080, 80, "tcp"}}, true},
+		{"80", []portMapping{{0, 80, "tcp"}}, true}, // exposed, not published
+		{"53:53/udp", []portMapping{{53, 53, "udp"}}, true},
+		{"127.0.0.1:9000:9000", []portMapping{{9000, 9000, "tcp"}}, true},
+		{"[::1]:9000:9000", []portMapping{{9000, 9000, "tcp"}}, true},
+		{"127.0.0.1::80", []portMapping{{0, 80, "tcp"}}, true},
+		{"8000-8002:9000-9002", []portMapping{{8000, 9000, "tcp"}, {8001, 9001, "tcp"}, {8002, 9002, "tcp"}}, true},
+		{"3000-3001", []portMapping{{0, 3000, "tcp"}, {0, 3001, "tcp"}}, true},
+		{"8000-8010:80", nil, false}, // Docker picks one host port; nothing to declare
+		{"1-1000", nil, false},       // over maxPortRange
+		{"80/sctp", nil, false},
+		{"notaport", nil, false},
 	}
 	for _, c := range cases {
-		m, ok := parsePortMapping(c.in)
-		if ok != c.ok {
-			t.Errorf("%q: ok=%v, want %v", c.in, ok, c.ok)
+		got, err := parsePortMappings(c.in)
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err=%v, want ok=%v", c.in, err, c.ok)
 			continue
 		}
-		if ok && (m.Host != c.host || m.Container != c.container || m.Proto != c.proto) {
-			t.Errorf("%q: got %d:%d/%s, want %d:%d/%s", c.in, m.Host, m.Container, m.Proto, c.host, c.container, c.proto)
+		if c.ok && !slices.Equal(got, c.want) {
+			t.Errorf("%q: got %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+func TestComposeUnmarshal_LongForms(t *testing.T) {
+	const y = `
+services:
+  web:
+    image: nginx:1.25
+    ports:
+      - target: 80
+        published: "8080"
+        protocol: tcp
+      - target: 53
+        published: 5353
+        protocol: udp
+        host_ip: 127.0.0.1
+      - target: 9090
+      - "443:443"
+    volumes:
+      - type: volume
+        source: data
+        target: /data
+      - type: bind
+        source: config
+        target: /etc/app
+      - type: tmpfs
+        target: /tmp
+      - cache:/cache
+`
+	var cf composeFile
+	if err := yaml.Unmarshal([]byte(y), &cf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	web := cf.Services["web"]
+	if want := []string{"8080:80/tcp", "127.0.0.1:5353:53/udp", "9090", "443:443"}; !slices.Equal([]string(web.Ports), want) {
+		t.Errorf("ports = %v, want %v", web.Ports, want)
+	}
+	mappings, bad := composePortMappings(web.Ports)
+	if len(bad) != 0 || len(mappings) != 4 || mappings[1] != (portMapping{5353, 53, "udp"}) {
+		t.Errorf("mappings = %v, bad = %v", mappings, bad)
+	}
+	if len(web.Volumes) != 4 {
+		t.Fatalf("volumes = %+v", web.Volumes)
+	}
+	if m := web.Volumes[0].Mount; m.Source != "data" || m.Target != "/data" || m.Bind {
+		t.Errorf("long volume = %+v", m)
+	}
+	if m := web.Volumes[1].Mount; !m.Bind {
+		t.Errorf("a long-form bind with a bare source must stay a bind: %+v", m)
+	}
+	if m := web.Volumes[2].Mount; m.Unsupported != "tmpfs" {
+		t.Errorf("tmpfs = %+v", m)
+	}
+	if v := web.Volumes[3]; !v.OK || v.Mount.Source != "cache" {
+		t.Errorf("short volume = %+v", v)
 	}
 }
 
@@ -100,7 +161,7 @@ volumes:
 		t.Fatalf("unmarshal: %v", err)
 	}
 	db := cf.Services["posta-db"]
-	if len(db.Volumes) != 1 || db.Volumes[0] != "db_data:/var/lib/postgresql/data" {
+	if len(db.Volumes) != 1 || db.Volumes[0].Raw != "db_data:/var/lib/postgresql/data" || db.Volumes[0].Mount.Source != "db_data" {
 		t.Errorf("posta-db volumes = %v", db.Volumes)
 	}
 }
