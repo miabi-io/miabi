@@ -1947,6 +1947,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	}
 	for _, p := range app.Ports {
 		spec.Ports = append(spec.Ports, declarative.PortSpec{
+			Name:           exportPortName(p.Name),
 			Container:      p.ContainerPort,
 			Protocol:       p.Protocol,
 			Scheme:         p.Scheme,
@@ -1986,6 +1987,14 @@ func tlsToSpec(m models.RouteTLSMode) string {
 		return "off"
 	}
 	return string(m)
+}
+
+// A console name a manifest would refuse is left out, so an export always applies.
+func exportPortName(name string) string {
+	if declarative.ValidPortName(name) {
+		return name
+	}
+	return ""
 }
 
 // tlsFromSpec maps the declarative TLS spelling to a route TLS mode.
@@ -2414,12 +2423,13 @@ func (s *Service) routeInput(workspaceID uint, name string, appID uint, spec *de
 	if err != nil {
 		return route.Input{}, err
 	}
+	provider := spec.TLSProvider()
 	return route.Input{
 		Name: name, ApplicationID: appID, Hosts: spec.Hosts,
-		Path: path, TargetPort: spec.Port, TLSMode: tlsFromSpec(spec.TLS),
+		Path: path, TargetPort: spec.Port.Number, TLSMode: tlsFromSpec(spec.TLSMode()),
 		CertificateID: certID,
 		// Always non-nil: clearing the field in the manifest must clear it on the route.
-		TLSProvider: &spec.TLSProvider,
+		TLSProvider: &provider,
 		Middlewares: spec.Middlewares,
 		// route.Update assigns these unconditionally, so omitting them would erase what is stored.
 		Rewrite:           spec.Rewrite,
@@ -2433,7 +2443,8 @@ func (s *Service) routeInput(workspaceID uint, name string, appID uint, spec *de
 
 // An unknown name fails the change rather than creating a custom-TLS route that serves no TLS.
 func (s *Service) resolveCertificate(workspaceID uint, routeName string, spec *declarative.RouteSpec) (*uint, error) {
-	if spec.Certificate == "" {
+	cert := spec.TLSCertificate()
+	if cert == "" {
 		return nil, nil
 	}
 	if s.certificates == nil {
@@ -2444,30 +2455,30 @@ func (s *Service) resolveCertificate(workspaceID uint, routeName string, spec *d
 		return nil, err
 	}
 	for i := range list {
-		if list[i].Name == spec.Certificate {
+		if list[i].Name == cert {
 			id := list[i].ID
 			return &id, nil
 		}
 	}
 	return nil, fmt.Errorf("%w: route %q references certificate %q, which does not exist in this workspace — "+
 		"import it first (certificates hold a private key, so they are not declarable in a manifest)",
-		ErrInvalidManifest, routeName, spec.Certificate)
+		ErrInvalidManifest, routeName, cert)
 }
 
 // Maintenance is emitted only while parked so exports match a manifest that omits it.
 func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string) *declarative.RouteSpec {
+	cert := ""
+	// A deleted certificate leaves the FK nulled, so emit nothing rather than invent a name.
+	if r.CertificateID != nil {
+		cert = certNameByID[*r.CertificateID]
+	}
 	spec := &declarative.RouteSpec{
-		Hosts: append([]string(nil), r.Hosts...), App: app, Port: r.TargetPort,
-		Path: path, TLS: tlsToSpec(r.TLSMode),
+		Hosts: append([]string(nil), r.Hosts...), App: app, Port: declarative.RoutePort{Number: r.TargetPort},
+		Path: path, TLS: declarative.RouteTLSOf(tlsToSpec(r.TLSMode), r.TLSProvider, cert),
 		Middlewares:    append([]string(nil), r.Middlewares...),
 		Rewrite:        r.Rewrite,
 		Methods:        append([]string(nil), r.Methods...),
 		AdvancedConfig: r.AdvancedConfig,
-		TLSProvider:    r.TLSProvider,
-	}
-	// A deleted certificate leaves the FK nulled, so emit nothing rather than invent a name.
-	if r.CertificateID != nil {
-		spec.Certificate = certNameByID[*r.CertificateID]
 	}
 	if r.ExploitProtection {
 		spec.Security = &declarative.RouteSecuritySpec{ExploitProtection: true}
@@ -2775,6 +2786,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileExposure(ctx, workspaceID, app, spec); err != nil {
 			return err
 		}
+		if err := s.apps.NamePorts(app, portNamesOf(spec)); err != nil {
+			return fmt.Errorf("port names: %w", err)
+		}
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
@@ -2971,12 +2985,22 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		in.GPUCount, in.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
 	}
 	for _, p := range spec.Ports {
-		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol})
+		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol, Name: p.Name})
 		if in.Port == 0 {
 			in.Port = p.Container
 		}
 	}
 	return in
+}
+
+func portNamesOf(spec *declarative.ApplicationSpec) []application.PortSpec {
+	var out []application.PortSpec
+	for _, p := range spec.Ports {
+		if p.Name != "" {
+			out = append(out, application.PortSpec{ContainerPort: p.Container, Protocol: p.Protocol, Name: p.Name})
+		}
+	}
+	return out
 }
 
 func updateConfigOf(spec *declarative.ApplicationSpec) *models.ServiceUpdateConfig {

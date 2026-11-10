@@ -649,6 +649,10 @@
         "hostPort": {
           "type": "integer"
         },
+        "name": {
+          "description": "Name lets a Route target the port by name instead of its number.",
+          "type": "string"
+        },
         "protocol": {
           "description": "tcp|udp (default tcp)",
           "enum": [
@@ -770,6 +774,7 @@
           "type": "string"
         },
         "certificate": {
+          "description": "Deprecated: use tls.certificate. Still accepted; setting both is an error.",
           "type": "string"
         },
         "hosts": {
@@ -798,7 +803,18 @@
           "type": "string"
         },
         "port": {
-          "type": "integer"
+          "description": "Port is a container port number, or the name of one of the app's ports.",
+          "oneOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+              "type": "string"
+            }
+          ]
         },
         "rewrite": {
           "type": "string"
@@ -808,15 +824,24 @@
           "description": "Security carries the gateway's per-route switches."
         },
         "tls": {
-          "description": "acme|custom|off (default acme)",
-          "enum": [
-            "acme",
-            "custom",
-            "off"
-          ],
-          "type": "string"
+          "description": "TLS omitted serves HTTPS with a certificate issued by ACME.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RouteTLSSpec"
+            },
+            {
+              "description": "Deprecated: use the tls block.",
+              "enum": [
+                "acme",
+                "custom",
+                "off"
+              ],
+              "type": "string"
+            }
+          ]
         },
         "tlsProvider": {
+          "description": "Deprecated: use tls.provider. Still accepted; setting both is an error.",
           "type": "string"
         }
       },
@@ -824,6 +849,25 @@
         "app",
         "hosts"
       ],
+      "type": "object"
+    },
+    "RouteTLSSpec": {
+      "additionalProperties": false,
+      "description": "RouteTLSSpec also accepts the old string form (tls: acme|custom|off).",
+      "properties": {
+        "certificate": {
+          "description": "Certificate serves an imported certificate instead of an ACME one.",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Enabled false serves plain HTTP; omitted means true.",
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "Provider is the gateway certificate provider that issues the ACME certificate; omitted, the gateway default.",
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "SealedSecretSpec": {

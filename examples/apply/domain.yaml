@@ -23,7 +23,8 @@ spec:
   tag: "1.0.0"
   command: ["server", "--port=8080"]
   ports:
-    - container: 8080
+    - name: http          # lets a Route say port: http
+      container: 8080
       scheme: http
 ---
 # Apex + www on a single Route — one rule can answer on several hostnames.
@@ -35,8 +36,10 @@ spec:
     - shop.example.com
     - www.shop.example.com
   app: shop-web
-  port: 8080
-  tls: acme              # acme | custom | off (default: acme)
+  port: http             # a port name or number
+  tls:                   # omitted: HTTPS with an ACME certificate
+    enabled: true        # false serves plain HTTP
+    # provider: internal-ca   # the gateway certificate provider; omitted, its default
 ---
 # Path-based routing: only /api on the apex host goes to this app.
 apiVersion: miabi.io/v1
@@ -47,9 +50,8 @@ spec:
   path: /api
   app: shop-web
   port: 8080
-  tls: acme
 ---
-# Import the cert/key out of band, never in a manifest; `tls: custom` without a certificate serves no TLS.
+# Import the cert/key out of band, never in a manifest; tls.certificate names it.
 apiVersion: miabi.io/v1
 kind: Route
 metadata: { name: shop-custom-cert }
@@ -57,8 +59,8 @@ spec:
   hosts: [secure.shop.example.com]
   app: shop-web
   port: 8080
-  tls: custom
-  certificate: shop-wildcard
+  tls:
+    certificate: shop-wildcard
 ---
 # maintenance makes the gateway answer with a 503; an apply un-parks a hand-parked route.
 apiVersion: miabi.io/v1
@@ -68,7 +70,6 @@ spec:
   hosts: [admin.shop.example.com]
   app: shop-web
   port: 8080
-  tls: acme
   security:
     exploitProtection: true
   maintenance:
@@ -84,4 +85,5 @@ spec:
   hosts: [internal.shop.example.com]
   app: shop-web
   port: 8080
-  tls: off
+  tls:
+    enabled: false

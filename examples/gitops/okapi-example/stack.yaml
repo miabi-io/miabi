@@ -40,4 +40,3 @@ spec:
 #   hosts: [okapi.example.com]
 #   app: okapi-example
 #   port: 8080
-#   tls: acme

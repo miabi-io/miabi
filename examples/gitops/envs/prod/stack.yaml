@@ -40,4 +40,3 @@ spec:
   hosts: [shop.example.com]
   app: shop-web
   port: 8080
-  tls: acme

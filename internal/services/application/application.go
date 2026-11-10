@@ -591,6 +591,32 @@ func (s *Service) SetPorts(app *models.Application, specs []PortSpec) error {
 	return nil
 }
 
+// NamePorts names the app's existing ports; a spec with no name, or for a port the app lacks, changes nothing.
+func (s *Service) NamePorts(app *models.Application, specs []PortSpec) error {
+	live, err := s.ports.ListByApp(app.ID)
+	if err != nil {
+		return err
+	}
+	for _, sp := range specs {
+		if sp.Name == "" {
+			continue
+		}
+		proto := sp.Protocol
+		if proto != "udp" {
+			proto = "tcp"
+		}
+		for i := range live {
+			p := &live[i]
+			if p.ContainerPort == sp.ContainerPort && p.Protocol == proto && p.Name != sp.Name {
+				if err := s.ports.SetName(p.ID, sp.Name); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // Overview is an aggregated summary of an application for the detail page.
 type Overview struct {
 	Status         models.AppStatus     `json:"status"`

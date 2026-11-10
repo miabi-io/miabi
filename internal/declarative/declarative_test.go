@@ -76,8 +76,8 @@ func TestParseValidSet(t *testing.T) {
 		t.Errorf("port scheme not defaulted: %q", app.Application.Ports[0].Scheme)
 	}
 	dom, _ := set.Get("Route/web-public")
-	if dom.Route.TLS != "acme" {
-		t.Errorf("tls not defaulted: %q", dom.Route.TLS)
+	if got := dom.Route.TLSMode(); got != "acme" {
+		t.Errorf("tls not defaulted: %q", got)
 	}
 }
 

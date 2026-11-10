@@ -22,7 +22,7 @@ package declarative
 import "testing"
 
 func routeRes(name string, mutate func(*RouteSpec)) Resource {
-	spec := &RouteSpec{Hosts: []string{"app.example.com"}, App: "web", Path: "/", TLS: "acme"}
+	spec := &RouteSpec{Hosts: []string{"app.example.com"}, App: "web", Path: "/"}
 	if mutate != nil {
 		mutate(spec)
 	}
@@ -157,5 +157,32 @@ spec:
 	if r.Route.Maintenance == nil || !r.Route.Maintenance.Enabled ||
 		r.Route.Maintenance.StatusCode != 503 || r.Route.Maintenance.Message != "Back at 14:00 UTC" {
 		t.Errorf("maintenance = %+v", r.Route.Maintenance)
+	}
+}
+
+// An exported route must plan equal to the manifest that created it, or every GitOps sync would rewrite it.
+func TestExportedTLSMatchesTheManifest(t *testing.T) {
+	cases := []struct {
+		mode, provider, cert string
+		manifest             *RouteTLSSpec
+	}{
+		{"acme", "", "", nil},
+		{"acme", "internal-ca", "", &RouteTLSSpec{Provider: "internal-ca"}},
+		{"custom", "", "shop", &RouteTLSSpec{Certificate: "shop"}},
+		{"off", "", "", &RouteTLSSpec{Enabled: new(false)}},
+	}
+	for _, tc := range cases {
+		live := routeRes("web", func(s *RouteSpec) { s.TLS = RouteTLSOf(tc.mode, tc.provider, tc.cert) })
+		desired := routeRes("web", func(s *RouteSpec) { s.TLS = tc.manifest })
+		if d := diffFields(live, desired); len(d) != 0 {
+			t.Errorf("%s: drift %v", tc.mode, fieldNames(d))
+		}
+	}
+}
+
+// A custom route whose certificate was deleted must still read as custom, so the plan shows the gap.
+func TestExportedCustomWithoutCertificateStaysCustom(t *testing.T) {
+	if got := (&RouteSpec{TLS: RouteTLSOf("custom", "", "")}).TLSMode(); got != "custom" {
+		t.Errorf("mode = %q", got)
 	}
 }

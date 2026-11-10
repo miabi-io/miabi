@@ -221,6 +221,8 @@ type SourceSpec struct {
 
 // PortSpec exposure knobs are orthogonal: externalAccess is a public HTTPS URL, publish binds a raw node port.
 type PortSpec struct {
+	// Name lets a Route target the port by name instead of its number.
+	Name      string `yaml:"name,omitempty" json:"name,omitempty"`
 	Container int    `yaml:"container" json:"container"`
 	Protocol  string `yaml:"protocol,omitempty" json:"protocol,omitempty"` // tcp|udp (default tcp)
 	Scheme    string `yaml:"scheme,omitempty" json:"scheme,omitempty"`     // http|https (default http)
@@ -323,15 +325,19 @@ func (v *VolumeSpec) SizeBytes() (int64, error) {
 }
 
 type RouteSpec struct {
-	Hosts       []string `yaml:"hosts" json:"hosts"`
-	App         string   `yaml:"app" json:"app"` // target application name
-	Port        int      `yaml:"port,omitempty" json:"port,omitempty"`
-	Path        string   `yaml:"path,omitempty" json:"path,omitempty"`
-	TLS         string   `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom|off (default acme)
-	Certificate string   `yaml:"certificate,omitempty" json:"certificate,omitempty"`
-	TLSProvider string   `yaml:"tlsProvider,omitempty" json:"tlsProvider,omitempty"`
-	Rewrite     string   `yaml:"rewrite,omitempty" json:"rewrite,omitempty"`
-	Methods     []string `yaml:"methods,omitempty" json:"methods,omitempty"`
+	Hosts []string `yaml:"hosts" json:"hosts"`
+	App   string   `yaml:"app" json:"app"` // target application name
+	// Port is a container port number, or the name of one of the app's ports.
+	Port RoutePort `yaml:"port,omitempty" json:"port,omitzero"`
+	Path string    `yaml:"path,omitempty" json:"path,omitempty"`
+	// TLS omitted serves HTTPS with a certificate issued by ACME.
+	TLS *RouteTLSSpec `yaml:"tls,omitempty" json:"tls,omitempty"`
+	// Deprecated: use tls.certificate. Still accepted; setting both is an error.
+	DeprecatedCertificate string `yaml:"certificate,omitempty" json:"certificate,omitempty"`
+	// Deprecated: use tls.provider. Still accepted; setting both is an error.
+	DeprecatedTLSProvider string   `yaml:"tlsProvider,omitempty" json:"tlsProvider,omitempty"`
+	Rewrite               string   `yaml:"rewrite,omitempty" json:"rewrite,omitempty"`
+	Methods               []string `yaml:"methods,omitempty" json:"methods,omitempty"`
 	// AdvancedConfig is raw Goma route YAML that SUPERSEDES the structured fields above.
 	AdvancedConfig string `yaml:"advancedConfig,omitempty" json:"advancedConfig,omitempty"`
 	// Security carries the gateway's per-route switches.
@@ -339,6 +345,24 @@ type RouteSpec struct {
 	// Maintenance omitted means serving, so removing the block resumes traffic.
 	Maintenance *RouteMaintenanceSpec `yaml:"maintenance,omitempty" json:"maintenance,omitempty"`
 	Middlewares []string              `yaml:"middlewares,omitempty" json:"middlewares,omitempty"`
+}
+
+// RoutePort also reads the name of a port the target application declares.
+type RoutePort struct {
+	Number int
+	Name   string
+}
+
+// RouteTLSSpec also accepts the old string form (tls: acme|custom|off).
+type RouteTLSSpec struct {
+	// Enabled false serves plain HTTP; omitted means true.
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	// Provider is the gateway certificate provider that issues the ACME certificate; omitted, the gateway default.
+	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
+	// Certificate serves an imported certificate instead of an ACME one.
+	Certificate string `yaml:"certificate,omitempty" json:"certificate,omitempty"`
+
+	legacyMode string
 }
 
 type RouteSecuritySpec struct {
