@@ -4,15 +4,17 @@ apiVersion: miabi.io/v1
 kind: Domain
 metadata: { name: shop.example.com }
 spec:
-  tls: acme               # acme (Let's Encrypt, default) | custom (cert uploaded out-of-band)
-  wildcard: true          # also covers *.shop.example.com
+  tls:
+    mode: acme            # acme (Let's Encrypt, default) | custom (cert uploaded out-of-band)
+  wildcard: true          # also claims *.shop.example.com for this workspace
 ---
 # A second owned hostname served with a custom certificate.
 apiVersion: miabi.io/v1
 kind: Domain
 metadata: { name: secure.shop.example.com }
 spec:
-  tls: custom
+  tls:
+    mode: custom
 ---
 # The target application the routes below point at.
 apiVersion: miabi.io/v1
