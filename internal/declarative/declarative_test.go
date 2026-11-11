@@ -426,7 +426,7 @@ spec:
 	if doms[0].Metadata.Name != "shop.example.com" {
 		t.Errorf("FQDN name not preserved: %q", doms[0].Metadata.Name)
 	}
-	if doms[0].Domain == nil || doms[0].Domain.TLS != "acme" || !doms[0].Domain.Wildcard {
+	if doms[0].Domain == nil || doms[0].Domain.TLSMode() != "acme" || !doms[0].Domain.Wildcard {
 		t.Errorf("domain spec mismatch: %+v", doms[0].Domain)
 	}
 
@@ -435,7 +435,7 @@ spec:
 	actual.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindDomain,
 		Metadata: d.Meta{Name: "shop.example.com"},
-		Domain:   &d.DomainSpec{TLS: "custom", Wildcard: true},
+		Domain:   &d.DomainSpec{TLS: d.DomainTLSOf("custom"), Wildcard: true},
 	})
 	plan := d.BuildPlan(set, actual, d.PlanOptions{})
 	_, u, _, _ := plan.Counts()
@@ -446,8 +446,45 @@ spec:
 	if _, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Domain\nmetadata: { name: shop.example.com }\nspec: { tls: off }")); err == nil {
 		t.Error("tls: off must be rejected for a Domain")
 	}
+	if _, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Domain\nmetadata: { name: shop.example.com }\nspec: { tls: { mode: off } }")); err == nil {
+		t.Error("tls.mode: off must be rejected for a Domain")
+	}
 	if _, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Domain\nmetadata: { name: NotAHost_name }")); err == nil {
 		t.Error("invalid hostname metadata.name must be rejected")
+	}
+}
+
+func domainDoc(spec string) *d.ResourceSet {
+	set, err := d.Parse([]byte("apiVersion: miabi.io/v1\nkind: Domain\nmetadata: { name: shop.example.com }\n" + spec))
+	if err != nil {
+		panic(err)
+	}
+	return set
+}
+
+// The old string, the block and an omitted tls must converge with what a live domain exports as.
+func TestDomainTLSBlockConverges(t *testing.T) {
+	cases := map[string]struct{ spec, live string }{
+		"block custom":  {"spec: { tls: { mode: custom } }", "custom"},
+		"string custom": {"spec: { tls: custom }", "custom"},
+		"block acme":    {"spec: { tls: { mode: acme } }", "acme"},
+		"string acme":   {"spec: { tls: acme }", "acme"},
+		"omitted":       {"spec: {}", "acme"},
+		"no spec":       {"", "acme"},
+	}
+	for name, c := range cases {
+		live := d.NewResourceSet()
+		live.Add(d.Resource{
+			APIVersion: d.APIVersion, Kind: d.KindDomain,
+			Metadata: d.Meta{Name: "shop.example.com"},
+			Domain:   &d.DomainSpec{TLS: d.DomainTLSOf(c.live)},
+		})
+		if plan := d.BuildPlan(domainDoc(c.spec), live, d.PlanOptions{}); plan.HasChanges() {
+			t.Errorf("%s: planned a change against live %s: %+v", name, c.live, plan.Changes)
+		}
+	}
+	if d.DomainTLSOf("acme") != nil {
+		t.Error("an acme domain must export without a tls block")
 	}
 }
 

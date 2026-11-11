@@ -452,8 +452,16 @@ type JobSpec struct {
 
 // DomainSpec wildcard also covers *.name; ownership verification is a runtime action.
 type DomainSpec struct {
-	TLS      string `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom (default acme)
-	Wildcard bool   `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
+	// TLS omitted means acme.
+	TLS *DomainTLSSpec `yaml:"tls,omitempty" json:"tls,omitempty"`
+	// Wildcard also claims every subdomain against other workspaces; it does not issue a wildcard certificate.
+	Wildcard bool `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
+}
+
+// DomainTLSSpec also accepts the old string form (tls: acme|custom).
+type DomainTLSSpec struct {
+	// Mode is the default certificate policy for routes under the domain.
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
 }
 
 // GitSourceSpec webhook secret is generated on create and never declared.

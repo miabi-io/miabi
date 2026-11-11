@@ -197,6 +197,7 @@ func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]
 	legacy := map[string]map[string]any{
 		"DatabaseSpec.Placement": {"type": "string", "enum": sortedKeys(placements), "description": "Deprecated: use instance."},
 		"RouteSpec.TLS":          {"type": "string", "enum": sortedKeys(validTLS), "description": "Deprecated: use the tls block."},
+		"DomainSpec.TLS":         {"type": "string", "enum": sortedKeys(validDomainTLS), "description": "Deprecated: use tls.mode."},
 	}
 	if old, ok := legacy[owner.Name()+"."+f.Name]; ok {
 		desc := out["description"]
@@ -259,7 +260,7 @@ func yamlName(f reflect.StructField) (string, yamlOpts, bool) {
 // Uses this package's own sets, so renaming one breaks the build instead of leaving the schema permissive.
 func enumFor(typeName, field string) []string {
 	switch typeName + "." + field {
-	case "DomainSpec.TLS":
+	case "DomainTLSSpec.Mode":
 		return sortedKeys(validDomainTLS)
 	case "DatabaseSpec.Instance":
 		return sortedKeys(placements)

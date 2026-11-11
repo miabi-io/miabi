@@ -700,7 +700,7 @@ func specFields(r Resource) map[string]string {
 			f["env."+k] = v
 		}
 	case r.Domain != nil:
-		f["tls"] = r.Domain.TLS
+		f["tls"] = r.Domain.TLSMode()
 		f["wildcard"] = fmt.Sprintf("%t", r.Domain.Wildcard)
 	case r.CronJob != nil:
 		cronJobFields(r.CronJob, f)

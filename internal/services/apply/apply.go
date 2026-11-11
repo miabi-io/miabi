@@ -1854,7 +1854,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindDomain,
 			Metadata: declarative.Meta{Name: d.Name},
-			Domain:   &declarative.DomainSpec{TLS: string(d.TLSMode), Wildcard: d.Wildcard},
+			Domain:   &declarative.DomainSpec{TLS: declarative.DomainTLSOf(string(d.TLSMode)), Wildcard: d.Wildcard},
 		})
 	}
 	if err := s.snapshotJobs(workspaceID, set, appSlugByID, regNameByID); err != nil {
@@ -2094,7 +2094,7 @@ func (s *Service) applyDomain(workspaceID uint, ch declarative.Change, desired d
 	case declarative.ActionCreate:
 		_, err := s.domains.Create(workspaceID, domain.Input{
 			Name:     ch.Name,
-			TLSMode:  models.DomainTLSMode(desired.Domain.TLS),
+			TLSMode:  models.DomainTLSMode(desired.Domain.TLSMode()),
 			Wildcard: desired.Domain.Wildcard,
 		})
 		return err
@@ -2105,7 +2105,7 @@ func (s *Service) applyDomain(workspaceID uint, ch declarative.Change, desired d
 		}
 		_, err = s.domains.Update(workspaceID, d.ID, domain.Input{
 			Name:     ch.Name,
-			TLSMode:  models.DomainTLSMode(desired.Domain.TLS),
+			TLSMode:  models.DomainTLSMode(desired.Domain.TLSMode()),
 			Wildcard: desired.Domain.Wildcard,
 		})
 		return err

@@ -359,15 +359,39 @@
       "description": "DomainSpec wildcard also covers *.name; ownership verification is a runtime action.",
       "properties": {
         "tls": {
-          "description": "acme|custom (default acme)",
+          "description": "TLS omitted means acme.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DomainTLSSpec"
+            },
+            {
+              "description": "Deprecated: use tls.mode.",
+              "enum": [
+                "acme",
+                "custom"
+              ],
+              "type": "string"
+            }
+          ]
+        },
+        "wildcard": {
+          "description": "Wildcard also claims every subdomain against other workspaces; it does not issue a wildcard certificate.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "DomainTLSSpec": {
+      "additionalProperties": false,
+      "description": "DomainTLSSpec also accepts the old string form (tls: acme|custom).",
+      "properties": {
+        "mode": {
+          "description": "Mode is the default certificate policy for routes under the domain.",
           "enum": [
             "acme",
             "custom"
           ],
           "type": "string"
-        },
-        "wildcard": {
-          "type": "boolean"
         }
       },
       "type": "object"
