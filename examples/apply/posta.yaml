@@ -30,7 +30,7 @@ spec:
       metadata: { name: posta }
       spec:
         image: jkaninda/posta
-        tag: "0.11.0"
+        tag: "0.20.0"
         ports:
           - container: 9000
             scheme: http
@@ -90,7 +90,8 @@ spec:
       kind: Domain
       metadata: { name: posta.example.com }
       spec:
-        tls: acme                # acme | custom
+        tls:
+          mode: acme             # acme | custom
 
     # Public HTTPS route for the web UI / API, with automatic Let's Encrypt TLS.
     - apiVersion: miabi.io/v1
