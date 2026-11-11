@@ -239,7 +239,7 @@ func Restore(ctx context.Context, svc *stack.Service, path string, o RestoreOpti
 func resolveBackup(manifestPath, file string) (string, error) {
 	file = strings.TrimSpace(file)
 	if file == "" {
-		return "", errors.New("name the dump to restore — `miabi stack backups` lists them")
+		return "", errors.New("name the dump to restore — `miabi system backups` lists them")
 	}
 	if _, err := os.Stat(file); err == nil {
 		return filepath.Abs(file)
@@ -250,7 +250,7 @@ func resolveBackup(manifestPath, file string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no dump at %s — `miabi stack backups` lists them", file)
+	return "", fmt.Errorf("no dump at %s — `miabi system backups` lists them", file)
 }
 
 // A pinned digest carries no version to compare, hence "digest".

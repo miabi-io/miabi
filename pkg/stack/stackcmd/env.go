@@ -163,7 +163,7 @@ func reportPending(ctx context.Context, svc *stack.Service, m *stack.Manifest, u
 			ui.Info("Pending: %s", strings.Join(pending, ", "))
 		}
 	}
-	ui.Info("Run `sudo miabi stack apply` when you are done editing.")
+	ui.Info("Run `sudo miabi system apply` when you are done editing.")
 }
 
 func reportReseeded(ui UI, removed []string, after map[string]string) {

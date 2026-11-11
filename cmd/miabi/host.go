@@ -91,7 +91,7 @@ func printManageHint(image, manifest string) {
 	fmt.Printf("\n  Manage it:\n\n    %s status\n\n"+
 		"    …and likewise `upgrade` (rolls the stack forward, rolling back if it fails)\n"+
 		"    or `uninstall` (keeps your data; add --volumes to destroy it).\n\n"+
-		"    Or install the miabi CLI for the shorter form: `miabi stack status`.\n", run)
+		"    Or install the miabi CLI for the shorter form: `miabi system status`.\n", run)
 }
 
 func confirm(prompt string) bool {

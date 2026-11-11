@@ -192,7 +192,7 @@ func Load(path string) (*Manifest, error) {
 		if path == DefaultConfigPath {
 			if _, lerr := os.Stat(LegacyConfigPath); lerr == nil {
 				return nil, fmt.Errorf("%w: found it at %s, but Miabi now reads %s\n\n"+
-					"  Rename it:  sudo miabi stack migrate-config\n"+
+					"  Rename it:  sudo miabi system config migrate\n"+
 					"  Or point at it directly:  --file %s",
 					ErrLegacyConfig, LegacyConfigPath, DefaultConfigPath, LegacyConfigPath)
 			}
@@ -304,7 +304,7 @@ const documentHeader = `# Miabi — installed stack manifest (` + APIVersion + `
 # does not already model (SMTP, OAuth, HTTP_PROXY, …). Variables Miabi sets
 # itself are REFUSED there rather than merged.
 #
-#   miabi stack status    show the running stack against this file
+#   miabi system status   show the running stack against this file
 #   miabi setup           converge the stack to this file (safe to re-run)
 #   miabi upgrade         roll the stack forward to a newer image
 #
@@ -320,7 +320,7 @@ const manifestHeader = `# Miabi — installed stack manifest.
 # text, at mode 0600. It is the only copy. Back it up somewhere safe: without it you
 # cannot decrypt the secrets Miabi has stored, and the database is unrecoverable.
 #
-#   miabi stack status    show the running stack against this file
+#   miabi system status   show the running stack against this file
 #   miabi setup           converge the stack to this file (safe to re-run)
 #   miabi upgrade         roll the stack forward to a newer image
 #

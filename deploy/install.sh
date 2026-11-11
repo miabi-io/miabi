@@ -523,9 +523,9 @@ install_stack() {
 
   printf '\n'
   ok "Installed. Manage it with:"
-  echo "    miabi stack status"
+  echo "    miabi system status"
   echo "    miabi upgrade                           # moves Miabi forward, and rolls back if it fails"
-  echo "    miabi stack uninstall                   # keeps your data; add --volumes to destroy it"
+  echo "    miabi system uninstall                  # keeps your data; add --volumes to destroy it"
   printf '\n'
   echo "    Manifest (KEEP A BACKUP — it holds the database password):  ${STACK_ETC}/miabi.yaml"
   exit 0

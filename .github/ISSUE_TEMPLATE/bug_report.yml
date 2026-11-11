@@ -52,7 +52,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Output of `sudo miabi stack status` and relevant container logs. Remove secrets, tokens and private hostnames first.
+      description: Output of `sudo miabi system status` and relevant container logs. Remove secrets, tokens and private hostnames first.
       render: shell
   - type: textarea
     id: context
