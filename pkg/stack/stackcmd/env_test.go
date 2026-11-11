@@ -81,7 +81,7 @@ func TestEnvSetWritesTheVariable(t *testing.T) {
 	if !ui.said("MIABI_SMTP_HOST") {
 		t.Error("the change was applied without showing the operator what changed")
 	}
-	if !ui.said("still has the old values") || !ui.said("miabi stack apply") {
+	if !ui.said("still has the old values") || !ui.said("miabi system apply") {
 		t.Error("a saved-only edit did not say the stack still has the old values and how to apply them")
 	}
 }

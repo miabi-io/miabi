@@ -68,10 +68,10 @@ curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
 The script installs Docker if missing, installs the `miabi` CLI, brings up the stack, and prints the admin password. From there:
 
 ```bash
-sudo miabi stack status
-sudo miabi stack restart
+sudo miabi system status
+sudo miabi system restart
 sudo miabi upgrade
-sudo miabi stack uninstall
+sudo miabi system uninstall
 ```
 
 <details>
@@ -94,7 +94,7 @@ docker run --rm -it \
   miabi/miabi:latest install --domain miabi.example.com --admin-email you@example.com
 ```
 
-`install`, `upgrade`, `restart`, `status`, and `uninstall` on the image are the same commands as `miabi setup` / `miabi upgrade` / `miabi stack …` — [one implementation](./pkg/stack/stackcmd/), two front-ends, so neither can drift from the other. Either way the converge is idempotent: re-run it and only what changed is recreated.
+`install`, `upgrade`, `restart`, `status`, and `uninstall` on the image are the same commands as `miabi setup` / `miabi upgrade` / `miabi system …` — [one implementation](./pkg/stack/stackcmd/), two front-ends, so neither can drift from the other. Either way the converge is idempotent: re-run it and only what changed is recreated.
 
 Prefer to drive Compose yourself? [`examples/compose/`](./examples/compose/) brings up the same stack.
 

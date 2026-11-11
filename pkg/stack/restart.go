@@ -83,7 +83,7 @@ func (s *Service) restartOne(ctx context.Context, m *Manifest, c component) erro
 	spec := c.Build(m, c.Name, *c.Image(m))
 	if want, got := specHash(spec), cur.Labels[docker.LabelSpecHash]; got != "" && got != want {
 		s.log("  %-14s note: the manifest has changed since this container was created — "+
-			"`miabi stack apply` applies that; a restart cannot", c.Name)
+			"`miabi system apply` applies that; a restart cannot", c.Name)
 	}
 
 	s.log("  %-14s restarting", c.Name)

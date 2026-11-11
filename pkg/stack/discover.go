@@ -54,7 +54,7 @@ var stackNames = map[string]int{
 	ContainerGateway:      3,
 }
 
-// By role, so `miabi stack status` describes a Compose install as well as a CLI one.
+// By role, so `miabi system status` describes a Compose install as well as a CLI one.
 func (s *Service) Discover(ctx context.Context) ([]Component, error) {
 	all, err := s.dc.ListContainers(ctx, true)
 	if err != nil {
