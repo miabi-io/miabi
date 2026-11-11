@@ -49,6 +49,7 @@ var (
 	ErrInvalidAction   = errors.New("invalid stack action")
 	ErrKeyRequired     = errors.New("environment variable key is required")
 	ErrEnvVarNotFound  = errors.New("environment variable not found")
+	ErrAppsRunning     = errors.New("stop the stack before deleting it with its applications")
 )
 
 // An interface keeps the stack service unit-testable with a fake.
@@ -60,6 +61,7 @@ type AppService interface {
 	Deploy(app *models.Application, registryOverride *uint, tagOverride string, strategy models.DeployStrategy) (*models.Deployment, error)
 	MarkRedeployRequired(app *models.Application) (bool, error)
 	Delete(ctx context.Context, app *models.Application) error
+	LiveStatus(ctx context.Context, app *models.Application) application.LiveStatus
 	Create(workspaceID uint, in application.CreateInput) (*models.Application, error)
 	SetEnvVar(appID uint, key, value string, isSecret bool) error
 	AttachVolume(app *models.Application, volumeID uint, path string) error
@@ -237,6 +239,9 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, withApps boo
 		return ErrNotFound
 	}
 	if withApps {
+		if running := s.runningApps(ctx, st.Apps); len(running) > 0 {
+			return fmt.Errorf("%w (running: %s)", ErrAppsRunning, strings.Join(running, ", "))
+		}
 		for i := range st.Apps {
 			if derr := s.app.Delete(ctx, &st.Apps[i]); derr != nil {
 				return derr
@@ -259,6 +264,16 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, withApps boo
 }
 
 // An app already in a different stack is rejected rather than silently moved.
+func (s *Service) runningApps(ctx context.Context, apps []models.Application) []string {
+	var names []string
+	for i := range apps {
+		if s.app.LiveStatus(ctx, &apps[i]).Running {
+			names = append(names, apps[i].Name)
+		}
+	}
+	return names
+}
+
 func (s *Service) AddApp(workspaceID, stackID, appID uint) (*models.Stack, error) {
 	st, err := s.repo.FindInWorkspace(workspaceID, stackID)
 	if err != nil {

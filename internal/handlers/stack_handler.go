@@ -27,6 +27,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/services/stack"
@@ -397,7 +398,7 @@ func (h *StackHandler) record(c *okapi.Context, wsID uint, action string, id uin
 func (h *StackHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, stack.ErrNameTaken), errors.Is(err, stack.ErrAppInOtherStack),
-		errors.Is(err, stack.ErrNameImmutable):
+		errors.Is(err, stack.ErrNameImmutable), errors.Is(err, stack.ErrAppsRunning), errors.Is(err, application.ErrAppRunning):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, stack.ErrNameRequired), errors.Is(err, stack.ErrKeyRequired), errors.Is(err, stack.ErrComposeInvalid):
 		return c.AbortBadRequest(err.Error())

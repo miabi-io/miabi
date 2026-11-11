@@ -34,6 +34,7 @@ type fakeApp struct {
 	waited   []uint
 	marked   []uint
 	deployed []uint
+	running  map[uint]bool
 }
 
 func (f *fakeApp) Start(_ context.Context, app *models.Application) (*models.Deployment, error) {
@@ -64,6 +65,9 @@ func (f *fakeApp) MarkRedeployRequired(app *models.Application) (bool, error) {
 	return true, nil
 }
 func (f *fakeApp) Delete(_ context.Context, _ *models.Application) error { return nil }
+func (f *fakeApp) LiveStatus(_ context.Context, app *models.Application) application.LiveStatus {
+	return application.LiveStatus{Running: f.running[app.ID]}
+}
 func (f *fakeApp) Create(_ uint, _ application.CreateInput) (*models.Application, error) {
 	return &models.Application{}, nil
 }
@@ -126,5 +130,18 @@ func TestApplyLifecycle_InvalidAction(t *testing.T) {
 	s := NewService(nil, nil, nil, nil, &fakeApp{}, fakeVols{}, nil, nil)
 	if _, err := s.applyLifecycle(context.Background(), []models.Application{{ID: 1}}, Action("bogus"), false); !errors.Is(err, ErrInvalidAction) {
 		t.Errorf("got %v, want ErrInvalidAction", err)
+	}
+}
+
+// A delete with apps must find every running member before it removes any.
+func TestRunningAppsListsEveryRunningMember(t *testing.T) {
+	s := NewService(nil, nil, nil, nil, &fakeApp{running: map[uint]bool{2: true, 3: true}}, fakeVols{}, nil, nil)
+	apps := []models.Application{{ID: 1, Name: "web"}, {ID: 2, Name: "worker"}, {ID: 3, Name: "cron"}}
+	got := s.runningApps(context.Background(), apps)
+	if len(got) != 2 || got[0] != "worker" || got[1] != "cron" {
+		t.Fatalf("runningApps = %v, want [worker cron]", got)
+	}
+	if got := s.runningApps(context.Background(), apps[:1]); len(got) != 0 {
+		t.Fatalf("a stopped stack reported running apps: %v", got)
 	}
 }
