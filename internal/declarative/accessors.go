@@ -171,6 +171,32 @@ func (t *RouteTLSSpec) UnmarshalYAML(n *yaml.Node) error {
 	return decodeSpec(n, (*plain)(t))
 }
 
+// UnmarshalYAML reads the block, or the bare acme|custom string the field held before it became one.
+func (t *DomainTLSSpec) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		t.Mode = n.Value
+		return nil
+	}
+	type plain DomainTLSSpec
+	return decodeSpec(n, (*plain)(t))
+}
+
+// TLSMode is acme or custom.
+func (d *DomainSpec) TLSMode() string {
+	if d.TLS != nil && d.TLS.Mode != "" {
+		return d.TLS.Mode
+	}
+	return "acme"
+}
+
+// DomainTLSOf builds the block a stored domain exports as; acme, the default, exports as none.
+func DomainTLSOf(mode string) *DomainTLSSpec {
+	if mode == "" || mode == "acme" {
+		return nil
+	}
+	return &DomainTLSSpec{Mode: mode}
+}
+
 // TLSMode is acme, custom or off, read from the block or its old string form.
 func (r *RouteSpec) TLSMode() string {
 	if r.TLS != nil {

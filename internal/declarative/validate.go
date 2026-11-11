@@ -100,10 +100,6 @@ func (r *Resource) normalize() {
 		if r.Route.Path == "" {
 			r.Route.Path = "/"
 		}
-	case r.Domain != nil:
-		if r.Domain.TLS == "" {
-			r.Domain.TLS = "acme"
-		}
 	case r.Registry != nil:
 		r.Registry.Server = normalizeRegistryServer(r.Registry.Server)
 	case r.GitRepository != nil:
@@ -352,8 +348,8 @@ func (r *Resource) validateDomain() error {
 	if r.Domain == nil {
 		return nil // spec is optional; tls defaults to acme
 	}
-	if !validDomainTLS[r.Domain.TLS] {
-		return fmt.Errorf("domain %q: tls must be acme or custom", r.Metadata.Name)
+	if !validDomainTLS[r.Domain.TLSMode()] {
+		return fmt.Errorf("domain %q: tls.mode must be acme or custom", r.Metadata.Name)
 	}
 	return nil
 }
