@@ -74,6 +74,7 @@ type ProvisionDBPayload struct {
 	PrevMemoryBytes int64  `json:"prev_memory_bytes,omitempty"`
 	PrevNanoCPUs    int64  `json:"prev_nano_cpus,omitempty"`
 	PrevSize        string `json:"prev_size,omitempty"`
+	Redeploy        bool   `json:"redeploy,omitempty"`
 }
 
 // UpgradeDBPayload describes a queued database version upgrade.
@@ -216,6 +217,17 @@ func (p *Producer) EnqueueResizeDB(databaseID, serverID uint, previous database.
 		DatabaseID: databaseID, Resize: true, PrevMemoryBytes: previous.MemoryBytes, PrevNanoCPUs: previous.NanoCPUs,
 		PrevSize: previous.Size,
 	})
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeProvisionDB, payload, asynq.Queue(p.nodeQueue(serverID, QueueDefault)), asynq.MaxRetry(0))
+	_, err = p.client.Enqueue(task)
+	return err
+}
+
+// MaxRetry is 0: the job marks the instance failed itself, and the user redeploys again.
+func (p *Producer) EnqueueRedeployDB(databaseID, serverID uint) error {
+	payload, err := json.Marshal(ProvisionDBPayload{DatabaseID: databaseID, Redeploy: true})
 	if err != nil {
 		return err
 	}

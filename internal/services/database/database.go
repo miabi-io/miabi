@@ -160,6 +160,7 @@ type Enqueuer interface {
 	EnqueueProvisionDB(instanceID, serverID uint) error
 	EnqueueUpgradeDB(instanceID, serverID uint, target, path string, stopApps bool) error
 	EnqueueResizeDB(instanceID, serverID uint, previous Resources) error
+	EnqueueRedeployDB(instanceID, serverID uint) error
 }
 
 // NodeDocker resolves the Docker client for a node id (0 = local).
@@ -1107,17 +1108,23 @@ func (s *Service) Start(ctx context.Context, inst *models.DatabaseInstance) erro
 	if inst.Status == models.DBStatusUpgrading {
 		return ErrUpgradeInProgress
 	}
-	if inst.ContainerID == "" {
-		return ErrNoContainer
-	}
 	if err := s.guardData(ctx, inst); err != nil {
 		return err
+	}
+	if inst.ContainerID == "" {
+		if inst.Status == models.DBStatusProvisioning {
+			return ErrInstanceBusy
+		}
+		return s.Redeploy(ctx, inst)
 	}
 	dc, err := s.dockerFor(inst)
 	if err != nil {
 		return err
 	}
 	if err := dc.StartContainer(ctx, inst.ContainerID); err != nil {
+		if containerLost(inst, err) {
+			return s.Redeploy(ctx, inst)
+		}
 		return err
 	}
 	inst.Status = models.DBStatusRunning
@@ -1190,6 +1197,9 @@ func (s *Service) Restart(ctx context.Context, inst *models.DatabaseInstance) er
 		return err
 	}
 	if err := dc.RestartContainer(ctx, inst.ContainerID, 10); err != nil {
+		if containerLost(inst, err) {
+			return s.Redeploy(ctx, inst)
+		}
 		return err
 	}
 	inst.Status = models.DBStatusRunning

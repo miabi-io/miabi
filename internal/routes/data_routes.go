@@ -162,6 +162,14 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Summary:     "Restart the database instance",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{databaseID}/redeploy",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.database.Redeploy,
+			Summary:     "Recreate the database instance's container on its existing data volume",
+		},
+		{
 			Method:      http.MethodPut,
 			Path:        base + "/{databaseID}/resources",
 			Group:       g,

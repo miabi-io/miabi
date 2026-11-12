@@ -69,6 +69,7 @@ export const databaseApi = {
   start: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/start`),
   stop: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/stop`),
   restart: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/restart`),
+  redeploy: (ws: number, id: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/databases/${id}/redeploy`),
   // Sets CPU and memory limits (0 = unlimited); the instance restarts to apply them.
   resize: (ws: number, id: number, memoryMb: number, cpuCores: number, size?: string) =>
     api.put<ApiResponse<DatabaseInstance>>(`${w(ws)}/databases/${id}/resources`, { memory_mb: memoryMb, cpu_cores: cpuCores, size }),
