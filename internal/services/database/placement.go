@@ -57,7 +57,7 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 	switch {
 	// A sized dependency needs an instance of its own: a reused one already runs with another's limits.
 	case !logical, placement == PlacementDedicated, placement == PlacementAuto && res != (Resources{}):
-		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
+		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, dedicatedMeta(meta))
 
 	case placement == PlacementShared:
 		if inst := s.findReusable(workspaceID, engine, version, serverID); inst != nil {
@@ -74,6 +74,20 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 		}
 		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
 	}
+}
+
+// dedicatedMeta copies meta because callers reuse it to tag the logical database.
+func dedicatedMeta(meta models.Metadata) models.Metadata {
+	out := make(models.Metadata, len(meta)+1)
+	for k, v := range meta {
+		out[k] = v
+	}
+	return models.SetBuiltin(out, models.MetaPlacement, models.PlacementValueDedicated)
+}
+
+// isDedicated reports whether inst was provisioned for a single dependency and must not host others.
+func isDedicated(inst *models.DatabaseInstance) bool {
+	return inst.Metadata[models.MetaPlacement] == models.PlacementValueDedicated
 }
 
 // Redis and libSQL host no logical databases, so the app receives the instance connection.
@@ -158,7 +172,7 @@ func (s *Service) reusableIn(workspaceID uint, engine models.DBEngine, version s
 	}
 	version = strings.TrimSpace(version)
 	for i := range list {
-		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning {
+		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning || isDedicated(&list[i]) {
 			continue
 		}
 		if version != "" && list[i].Version != version {
