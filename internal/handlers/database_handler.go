@@ -329,6 +329,19 @@ func (h *DatabaseHandler) Restart(c *okapi.Context) error {
 	return message(c, "database restarted")
 }
 
+// Redeploy recreates a database instance's container on its existing data volume.
+func (h *DatabaseHandler) Redeploy(c *okapi.Context) error {
+	inst, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("database not found")
+	}
+	if err := h.svc.Redeploy(c.Request().Context(), inst); err != nil {
+		return h.mapInstanceErr(c, err)
+	}
+	h.record(c, inst.WorkspaceID, "database.redeploy", inst.ID)
+	return message(c, "database redeploy queued")
+}
+
 // Resize sets the instance's CPU and memory limits; the container is recreated in the background to apply them.
 func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) error {
 	inst, err := h.load(c)
@@ -858,8 +871,12 @@ func (h *DatabaseHandler) dbID(c *okapi.Context) uint {
 }
 
 func (h *DatabaseHandler) mapInstanceErr(c *okapi.Context, err error) error {
-	if errors.Is(err, database.ErrNoContainer) || errors.Is(err, datavolume.ErrLost) {
+	switch {
+	case errors.Is(err, database.ErrNoContainer), errors.Is(err, datavolume.ErrLost), errors.Is(err, database.ErrNodeGone),
+		errors.Is(err, database.ErrUpgradeInProgress), errors.Is(err, database.ErrInstanceBusy):
 		return c.AbortWithError(409, err)
+	case errors.Is(err, database.ErrUnsupportedEngine):
+		return c.AbortBadRequest(err.Error())
 	}
 	return c.AbortInternalServerError("database operation failed", err)
 }

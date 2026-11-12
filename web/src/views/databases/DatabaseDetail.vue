@@ -725,20 +725,20 @@ async function delSchedule(id: number) {
 
 // --- Instance lifecycle ---
 const lifecycleBusy = ref(false)
-async function lifecycle(action: 'start' | 'stop' | 'restart') {
+async function lifecycle(action: 'start' | 'stop' | 'restart' | 'redeploy') {
   if (!wid.value || lifecycleBusy.value) return
   lifecycleBusy.value = true
   try {
     await databaseApi[action](wid.value, instId.value)
     // Three keys, not a participle interpolated into one: it agrees with the subject in French.
-    notify.success(t(action === 'stop' ? 'db.toast.stopped' : action === 'start' ? 'db.toast.started' : 'db.toast.restarted'))
+    notify.success(t({ stop: 'db.toast.stopped', start: 'db.toast.started', restart: 'db.toast.restarted', redeploy: 'db.toast.redeployQueued' }[action]))
     load()
   } catch (e) { notify.apiError(e) }
   finally { lifecycleBusy.value = false }
 }
 
 // --- Confirmation dialog (delete / stop / restart) ---
-type ConfirmKind = 'delete' | 'stop' | 'restart' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'restore-backup-set' | 'upgrade'
+type ConfirmKind = 'delete' | 'stop' | 'restart' | 'redeploy' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'restore-backup-set' | 'upgrade'
 const confirm = ref<{
   kind: ConfirmKind
   title: string
@@ -765,6 +765,13 @@ function askRestart() {
     kind: 'restart', title: t('confirm.title.databaseDetail.restartDatabase'), confirmLabel: t('action.restart'), variant: 'primary',
     message: t('confirm.message.databaseDetail.theContainerWillBe', { engine: inst.value?.engine ?? 'database' }),
     run: () => lifecycle('restart'),
+  }
+}
+function askRedeploy() {
+  confirm.value = {
+    kind: 'redeploy', title: t('confirm.title.databaseDetail.redeployDatabase'), confirmLabel: t('db.redeploy'), variant: 'primary',
+    message: t('confirm.message.databaseDetail.redeployContainer', { engine: inst.value?.engine ?? 'database' }),
+    run: () => lifecycle('redeploy'),
   }
 }
 function askDelete() {
@@ -1691,6 +1698,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div v-if="ws.canEdit" class="card mb-4">
+        <div class="card-header"><h2>{{ $t('db.redeployTitle') }}</h2></div>
+        <div class="card-body flex items-center justify-between gap-3">
+          <div class="cell-sub">{{ $t('db.redeployHint') }}</div>
+          <button class="btn btn-secondary" :disabled="lifecycleBusy || inst.status === 'upgrading'" @click="askRedeploy"><span class="mdi mdi-rocket-launch-outline"></span>{{ $t('db.redeploy') }}</button>
         </div>
       </div>
 

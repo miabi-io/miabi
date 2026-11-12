@@ -44,6 +44,9 @@ func (h *ProvisionDBHandler) ProcessTask(ctx context.Context, task *asynq.Task) 
 	if err := json.Unmarshal(task.Payload(), &p); err != nil {
 		return fmt.Errorf("bad provision payload: %w", err)
 	}
+	if p.Redeploy {
+		return h.dbs.RunRedeploy(ctx, p.DatabaseID)
+	}
 	if p.Resize {
 		return h.dbs.RunResize(ctx, p.DatabaseID, database.Resources{MemoryBytes: p.PrevMemoryBytes, NanoCPUs: p.PrevNanoCPUs, Size: p.PrevSize})
 	}

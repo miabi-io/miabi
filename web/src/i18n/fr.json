@@ -1086,7 +1086,8 @@
         "deleteDatabaseAndIts": "Supprimer la base de données « {name} » et son utilisateur ? Cette action est irréversible.",
         "deleteItsDatabaseBackup": "Supprimer {ref} ? Ses {length} sauvegarde(s) de base de données et leurs artefacts sont retirés.",
         "restoreAllDatabaseS": "Restaurer les {length} base(s) de données depuis {ref} ? Leur contenu actuel sera écrasé.",
-        "theContainerWillBe": "Le conteneur {engine} sera redémarré. Une brève interruption est à prévoir."
+        "theContainerWillBe": "Le conteneur {engine} sera redémarré. Une brève interruption est à prévoir.",
+        "redeployContainer": "Le conteneur {engine} sera supprimé puis recréé sur le même volume de données. Les données et les identifiants sont conservés ; une interruption est à prévoir jusqu’à ce qu’il soit prêt."
       },
       "databaseSizes": {
         "nameWillNoLonger": "\"{name}\" ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
@@ -1277,7 +1278,8 @@
         "restartDatabase": "Redémarrer la base de données",
         "restoreRecoveryPoint": "Restaurer le point de restauration",
         "stopDatabase": "Arrêter la base de données",
-        "upgradeDatabaseVersion": "Mettre à niveau la version de la base de données"
+        "upgradeDatabaseVersion": "Mettre à niveau la version de la base de données",
+        "redeployDatabase": "Redéployer la base de données"
       },
       "deleteApiKey": "Supprimer la clé API",
       "deleteBackup": "Supprimer la sauvegarde",
@@ -1653,7 +1655,8 @@
       "upgradeStarted": "Mise à niveau démarrée",
       "upgradeToCompleted": "Mise à niveau vers {to_version} terminée",
       "readOnlyEnabled": "Utilisateur en lecture seule ajouté.",
-      "readOnlyDisabled": "Utilisateur en lecture seule supprimé."
+      "readOnlyDisabled": "Utilisateur en lecture seule supprimé.",
+      "redeployQueued": "Redéploiement lancé"
     },
     "typeToConfirm": "Saisissez {name} pour confirmer",
     "unlimited": "Illimité",
@@ -1670,7 +1673,10 @@
     "readOnlyEnable": "Ajouter un utilisateur en lecture seule",
     "readOnlyDisable": "Supprimer l'utilisateur en lecture seule",
     "readOnlyHint": "Un second utilisateur avec SELECT sur toutes les tables, actuelles et futures. Ses identifiants sont affichés avec la connexion.",
-    "readOnlyConfirmDisable": "Supprimer l'utilisateur en lecture seule de {name} ? Les applications qui l'utilisent perdent l'accès immédiatement."
+    "readOnlyConfirmDisable": "Supprimer l'utilisateur en lecture seule de {name} ? Les applications qui l'utilisent perdent l'accès immédiatement.",
+    "redeploy": "Redéployer",
+    "redeployTitle": "Redéployer le conteneur",
+    "redeployHint": "Recrée le conteneur à partir de ses paramètres enregistrés, sur le volume de données existant. À utiliser lorsque le conteneur a été supprimé ou ne démarre plus."
   },
   "dedicated": {
     "anOrganization": "une organisation",

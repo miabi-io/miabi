@@ -1086,7 +1086,8 @@
         "deleteDatabaseAndIts": "Delete database \"{name}\" and its user? This cannot be undone.",
         "deleteItsDatabaseBackup": "Delete {ref}? Its {length} database backup(s) and their artifacts are removed.",
         "restoreAllDatabaseS": "Restore all {length} database(s) from {ref}? Their current contents are overwritten.",
-        "theContainerWillBe": "The {engine} container will be restarted. Brief downtime is expected."
+        "theContainerWillBe": "The {engine} container will be restarted. Brief downtime is expected.",
+        "redeployContainer": "The {engine} container will be removed and recreated on the same data volume. Data and credentials are kept; expect downtime until it is ready."
       },
       "databaseSizes": {
         "nameWillNoLonger": "\"{name}\" will no longer be offered. Databases already on it keep their limits."
@@ -1277,7 +1278,8 @@
         "restartDatabase": "Restart database",
         "restoreRecoveryPoint": "Restore recovery point",
         "stopDatabase": "Stop database",
-        "upgradeDatabaseVersion": "Upgrade database version"
+        "upgradeDatabaseVersion": "Upgrade database version",
+        "redeployDatabase": "Redeploy database"
       },
       "deleteApiKey": "Delete API key",
       "deleteBackup": "Delete backup",
@@ -1653,7 +1655,8 @@
       "upgradeStarted": "Upgrade started",
       "upgradeToCompleted": "Upgrade to {to_version} completed",
       "readOnlyEnabled": "Read-only user added.",
-      "readOnlyDisabled": "Read-only user removed."
+      "readOnlyDisabled": "Read-only user removed.",
+      "redeployQueued": "Redeploy started"
     },
     "typeToConfirm": "Type {name} to confirm",
     "unlimited": "Unlimited",
@@ -1670,7 +1673,10 @@
     "readOnlyEnable": "Add a read-only user",
     "readOnlyDisable": "Remove the read-only user",
     "readOnlyHint": "A second user with SELECT on every table, now and future. Its credentials are shown with the connection.",
-    "readOnlyConfirmDisable": "Remove the read-only user of {name}? Apps using it lose access at once."
+    "readOnlyConfirmDisable": "Remove the read-only user of {name}? Apps using it lose access at once.",
+    "redeploy": "Redeploy",
+    "redeployTitle": "Redeploy container",
+    "redeployHint": "Recreates the container from its stored settings on the existing data volume. Use it when the container was removed or will not start."
   },
   "dedicated": {
     "anOrganization": "one organization",
