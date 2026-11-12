@@ -40,6 +40,7 @@ type dbInstRow struct {
 	Version     string
 	Status      string
 	ClusterID   uint
+	Metadata    models.Metadata `gorm:"serializer:json"`
 	CreatedAt   time.Time
 }
 
@@ -170,5 +171,41 @@ func TestFindReusableInstanceMatchesTheVersion(t *testing.T) {
 	}
 	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "", 0); got == nil {
 		t.Error("an unstated version found nothing")
+	}
+}
+
+// An instance provisioned as dedicated serves only its own dependency; later auto/shared ones must look elsewhere.
+func TestFindReusableInstanceSkipsDedicated(t *testing.T) {
+	s, db := newDeclNameSvc(t)
+	const ws = uint(1)
+	running, pg := string(models.DBStatusRunning), string(models.DBEnginePostgres)
+	if err := db.Create(&dbInstRow{
+		ID: 1, UID: "pg-a", WorkspaceID: ws, Name: "a-db", Engine: pg, Version: "17", Status: running,
+		Metadata: dedicatedMeta(nil),
+	}).Error; err != nil {
+		t.Fatalf("seed instance: %v", err)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "17", 0); got != nil {
+		t.Fatalf("reused dedicated instance %q", got.Name)
+	}
+
+	if err := db.Create(&dbInstRow{
+		ID: 2, UID: "pg-b", WorkspaceID: ws, Name: "shared-pg", Engine: pg, Version: "17", Status: running,
+	}).Error; err != nil {
+		t.Fatalf("seed instance: %v", err)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "17", 0); got == nil || got.ID != 2 {
+		t.Errorf("reused %v, want shared-pg", got)
+	}
+}
+
+func TestDedicatedMetaLeavesTheCallersMapAlone(t *testing.T) {
+	meta := models.Metadata{models.MetaManagedBy: models.ManagedByApply}
+	out := dedicatedMeta(meta)
+	if out[models.MetaPlacement] != models.PlacementValueDedicated || out[models.MetaManagedBy] != models.ManagedByApply {
+		t.Fatalf("dedicatedMeta = %v", out)
+	}
+	if _, ok := meta[models.MetaPlacement]; ok {
+		t.Fatal("the caller's metadata was stamped; it also tags the logical database")
 	}
 }

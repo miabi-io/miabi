@@ -44,6 +44,9 @@ const (
 	MetaDeclarativeName = "miabi.io/declarative-name"
 	// Deploys pull image@digest while set; see Application.ImageRef.
 	MetaDigest = "miabi.io/digest"
+	// Set on a database instance provisioned for one dependency, so auto/shared placement never reuses it.
+	MetaPlacement           = "miabi.io/placement"
+	PlacementValueDedicated = "dedicated"
 
 	// Owner is the parent whose lifecycle this follows, distinct from managed-by; stored with name to avoid a join.
 	MetaOwnerKind = "miabi.io/owner-kind" // one of OwnerKind* values
