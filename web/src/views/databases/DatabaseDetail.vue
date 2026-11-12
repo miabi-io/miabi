@@ -67,8 +67,9 @@ const forwardBusy = ref(false)
 
 const supportsLogical = computed(() => inst.value && inst.value.engine !== 'redis')
 // libSQL hosts a single auto-created database; users cannot create more on it.
+const isDedicated = computed(() => inst.value?.metadata?.['miabi.io/placement'] === 'dedicated')
 const canCreateLogical = computed(
-  () => supportsLogical.value && inst.value?.engine !== 'libsql',
+  () => supportsLogical.value && inst.value?.engine !== 'libsql' && !isDedicated.value,
 )
 const attachedCount = computed(() => databases.value.filter((d) => d.application_id).length)
 const deleteBlockedReason = computed(() => {
@@ -738,7 +739,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart' | 'redeploy') {
 }
 
 // --- Confirmation dialog (delete / stop / restart) ---
-type ConfirmKind = 'delete' | 'stop' | 'restart' | 'redeploy' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'restore-backup-set' | 'upgrade'
+type ConfirmKind = 'delete' | 'stop' | 'restart' | 'redeploy' | 'placement' | 'remove-db' | 'remove-backup' | 'remove-backup-set' | 'restore-backup-set' | 'upgrade'
 const confirm = ref<{
   kind: ConfirmKind
   title: string
@@ -765,6 +766,24 @@ function askRestart() {
     kind: 'restart', title: t('confirm.title.databaseDetail.restartDatabase'), confirmLabel: t('action.restart'), variant: 'primary',
     message: t('confirm.message.databaseDetail.theContainerWillBe', { engine: inst.value?.engine ?? 'database' }),
     run: () => lifecycle('restart'),
+  }
+}
+const placementBusy = ref(false)
+async function setDedicated(dedicated: boolean) {
+  if (!wid.value || placementBusy.value) return
+  placementBusy.value = true
+  try {
+    inst.value = (await databaseApi.setPlacement(wid.value, instId.value, dedicated)).data.data
+    notify.success(t(dedicated ? 'db.toast.markedDedicated' : 'db.toast.openedForSharing'))
+  } catch (e) { notify.apiError(e) }
+  finally { placementBusy.value = false }
+}
+function askSetDedicated(dedicated: boolean) {
+  confirm.value = {
+    kind: 'placement', title: t(dedicated ? 'confirm.title.databaseDetail.markDedicated' : 'confirm.title.databaseDetail.allowSharing'),
+    confirmLabel: t(dedicated ? 'db.markDedicated' : 'db.allowSharing'), variant: 'primary',
+    message: t(dedicated ? 'confirm.message.databaseDetail.markDedicated' : 'confirm.message.databaseDetail.allowSharing'),
+    run: () => setDedicated(dedicated),
   }
 }
 function askRedeploy() {
@@ -995,6 +1014,9 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <div>
             <div class="flex items-center gap-2">
               <h1>{{ inst.display_name || inst.name }}</h1>
+              <span v-if="isDedicated" class="badge badge-info" :title="$t('db.dedicatedTitle')">
+                <span class="mdi mdi-lock-outline"></span> {{ $t('db.dedicated') }}
+              </span>
               <span v-if="isOverlayNetwork(inst.network_name)" class="badge badge-neutral" :title="$t('runtime.clusterNetworkTitle')">
                 <span class="mdi mdi-lan"></span> {{ $t('runtime.clusterNetwork') }}
               </span>
@@ -1124,6 +1146,9 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <h2>{{ $t('nav.data.databases') }}</h2>
           <button v-if="ws.canEdit && canCreateLogical" class="btn btn-sm btn-primary" :disabled="inst.status !== 'running'" @click="openCreateDb">
             <span class="mdi mdi-plus"></span>{{ $t('dashboard.quick.newDatabase.label') }}</button>
+        </div>
+        <div v-if="isDedicated" class="card-body text-muted text-sm" style="border-bottom: 1px solid var(--border-primary)">
+          <span class="mdi mdi-lock-outline"></span> {{ $t('db.dedicatedNoNewDatabases') }}
         </div>
         <div v-if="inst.status !== 'running'" class="card-body text-muted text-sm">Instance is {{ inst.status }} — databases can be created once it is running.</div>
         <div v-else-if="databases.length === 0" class="empty-state">
@@ -1698,6 +1723,15 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div v-if="ws.isWorkspaceAdmin && supportsLogical" class="card mb-4">
+        <div class="card-header"><h2>{{ $t('db.placementTitle') }}</h2></div>
+        <div class="card-body flex items-center justify-between gap-3">
+          <div class="cell-sub">{{ isDedicated ? $t('db.placementDedicatedHint') : $t('db.placementSharedHint') }}</div>
+          <button class="btn btn-secondary" :disabled="placementBusy" @click="askSetDedicated(!isDedicated)">
+            <span class="mdi" :class="isDedicated ? 'mdi-lock-open-variant-outline' : 'mdi-lock-outline'"></span>{{ isDedicated ? $t('db.allowSharing') : $t('db.markDedicated') }}</button>
         </div>
       </div>
 

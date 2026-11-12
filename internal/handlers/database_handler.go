@@ -101,6 +101,12 @@ type ResizeDatabaseRequest struct {
 	} `json:"body"`
 }
 
+type SetDatabasePlacementRequest struct {
+	Body struct {
+		Dedicated bool `json:"dedicated"`
+	} `json:"body"`
+}
+
 func databaseResources(memoryMB int, cpuCores float64, size string) database.Resources {
 	return database.Resources{
 		MemoryBytes: int64(memoryMB) * 1024 * 1024, NanoCPUs: int64(math.Round(cpuCores * 1e9)), Size: strings.TrimSpace(size),
@@ -342,6 +348,24 @@ func (h *DatabaseHandler) Redeploy(c *okapi.Context) error {
 	return message(c, "database redeploy queued")
 }
 
+// SetPlacement marks the instance dedicated (never reused by auto/shared placement) or open for sharing.
+func (h *DatabaseHandler) SetPlacement(c *okapi.Context, req *SetDatabasePlacementRequest) error {
+	inst, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("database not found")
+	}
+	updated, err := h.svc.SetDedicated(inst.WorkspaceID, inst.ID, req.Body.Dedicated)
+	if err != nil {
+		return h.mapDBErr(c, err)
+	}
+	action := "database.placement_shared"
+	if req.Body.Dedicated {
+		action = "database.placement_dedicated"
+	}
+	h.record(c, inst.WorkspaceID, action, inst.ID)
+	return ok(c, updated)
+}
+
 // Resize sets the instance's CPU and memory limits; the container is recreated in the background to apply them.
 func (h *DatabaseHandler) Resize(c *okapi.Context, req *ResizeDatabaseRequest) error {
 	inst, err := h.load(c)
@@ -475,6 +499,10 @@ func (h *DatabaseHandler) CreateDatabase(c *okapi.Context, req *CreateLogicalDat
 	inst, err := h.load(c)
 	if err != nil {
 		return c.AbortNotFound("database not found")
+	}
+	// Only manual creation is refused: an explicit instance pin in a manifest goes through the service.
+	if database.IsDedicated(inst) {
+		return h.mapDBErr(c, database.ErrInstanceDedicated)
 	}
 	wsID := inst.WorkspaceID
 	var app *models.Application
@@ -641,6 +669,9 @@ func (h *DatabaseHandler) AttachToApp(c *okapi.Context, req *AttachDatabaseReque
 	}
 	if db.ApplicationID != nil && *db.ApplicationID != uint(appID) {
 		return c.AbortWithError(409, errors.New("this database is already attached to another application"))
+	}
+	if err := h.svc.CheckDedicatedAttach(inst, uint(appID)); err != nil {
+		return h.mapDBErr(c, err)
 	}
 	prefix := sanitizeEnvPrefix(req.Body.EnvPrefix)
 	env, err := h.svc.ResolveEnvLink(wsID, uint(appID), inst.Engine, prefix, req.Body.EnvMap, db.ID, 0)
@@ -850,7 +881,7 @@ func (h *DatabaseHandler) mapNetworkErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound("not found")
 	case errors.Is(err, database.ErrInvalidEnvMap), errors.Is(err, database.ErrLinkLogicalDatabase):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, database.ErrEnvConflict), errors.Is(err, database.ErrInstanceLinked):
+	case errors.Is(err, database.ErrEnvConflict), errors.Is(err, database.ErrInstanceLinked), errors.Is(err, database.ErrInstanceDedicated):
 		return c.AbortWithError(409, err)
 	default:
 		return c.AbortInternalServerError("network operation failed", err)
