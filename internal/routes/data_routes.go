@@ -179,6 +179,15 @@ func (r *Router) databaseRoutes() []okapi.RouteDefinition {
 			Request:     &handlers.ResizeDatabaseRequest{},
 		},
 		{
+			Method:      http.MethodPut,
+			Path:        base + "/{databaseID}/placement",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleAdmin),
+			Handler:     okapi.H(r.h.database.SetPlacement),
+			Summary:     "Mark the database instance dedicated or open for sharing (admin)",
+			Request:     &handlers.SetDatabasePlacementRequest{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        base + "/{databaseID}/sync-sizes",
 			Group:       g,

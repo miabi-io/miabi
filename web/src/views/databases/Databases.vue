@@ -227,7 +227,9 @@ function fmtBytes(n?: number): string {
                 <div class="cell-id">
                   <span class="avatar avatar-sm">{{ (d.display_name || d.name).charAt(0).toUpperCase() }}</span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ d.display_name || d.name }}</span>
+                    <span class="cell-title">{{ d.display_name || d.name }}
+                      <span v-if="d.metadata?.['miabi.io/placement'] === 'dedicated'" class="badge badge-info" style="margin-left: 6px" :title="$t('db.dedicatedTitle')"><span class="mdi mdi-lock-outline"></span> {{ $t('db.dedicated') }}</span>
+                    </span>
                     <span class="cell-sub">{{ d.name }}</span>
                   </span>
                 </div>

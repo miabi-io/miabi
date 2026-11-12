@@ -20,6 +20,7 @@
 package database
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -47,15 +48,16 @@ type dbInstRow struct {
 func (dbInstRow) TableName() string { return "database_instances" }
 
 type logicalDBRow struct {
-	ID          uint `gorm:"primaryKey"`
-	UID         string
-	WorkspaceID uint
-	InstanceID  uint
-	Name        string
-	Username    string
-	Status      string
-	Metadata    models.Metadata `gorm:"serializer:json"`
-	CreatedAt   time.Time
+	ID            uint `gorm:"primaryKey"`
+	UID           string
+	WorkspaceID   uint
+	InstanceID    uint
+	Name          string
+	Username      string
+	Status        string
+	ApplicationID *uint
+	Metadata      models.Metadata `gorm:"serializer:json"`
+	CreatedAt     time.Time
 }
 
 func (logicalDBRow) TableName() string { return "databases" }
@@ -207,5 +209,31 @@ func TestDedicatedMetaLeavesTheCallersMapAlone(t *testing.T) {
 	}
 	if _, ok := meta[models.MetaPlacement]; ok {
 		t.Fatal("the caller's metadata was stamped; it also tags the logical database")
+	}
+}
+
+// A dedicated instance serves one app: a second app may not take a database on it, the app it serves may.
+func TestCheckDedicatedAttach(t *testing.T) {
+	s, db := newDeclNameSvc(t)
+	const ws = uint(1)
+	served := uint(7)
+	running, pg := string(models.DBStatusRunning), string(models.DBEnginePostgres)
+	if err := db.Create(&logicalDBRow{ID: 1, UID: "d1", WorkspaceID: ws, InstanceID: 1, Name: "a", ApplicationID: &served}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&logicalDBRow{ID: 2, UID: "d2", WorkspaceID: ws, InstanceID: 1, Name: "b"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	inst := &models.DatabaseInstance{ID: 1, WorkspaceID: ws, Engine: models.DBEngine(pg), Status: models.DBStatus(running), Metadata: dedicatedMeta(nil)}
+
+	if err := s.CheckDedicatedAttach(inst, 8); !errors.Is(err, ErrInstanceDedicated) {
+		t.Fatalf("second app: err = %v; want ErrInstanceDedicated", err)
+	}
+	if err := s.CheckDedicatedAttach(inst, served); err != nil {
+		t.Fatalf("the app it serves: %v", err)
+	}
+	inst.Metadata = nil
+	if err := s.CheckDedicatedAttach(inst, 8); err != nil {
+		t.Fatalf("shared instance: %v", err)
 	}
 }

@@ -41,6 +41,8 @@ const (
 
 var ErrNoSharedInstance = errors.New("no compatible running database instance to share")
 
+var ErrInstanceDedicated = errors.New("this instance is dedicated to a single dependency and does not host other databases")
+
 // declName stamps the logical database so a declarative reconcile maps a manifest name back to it exactly.
 func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, pinInstance uint, base, declName string, engine models.DBEngine, version string, placement Placement, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
 	logical := models.EngineSupportsLogicalDatabases(engine)
@@ -85,9 +87,42 @@ func dedicatedMeta(meta models.Metadata) models.Metadata {
 	return models.SetBuiltin(out, models.MetaPlacement, models.PlacementValueDedicated)
 }
 
-// isDedicated reports whether inst was provisioned for a single dependency and must not host others.
-func isDedicated(inst *models.DatabaseInstance) bool {
+// IsDedicated reports whether inst was provisioned for a single dependency and must not host others.
+func IsDedicated(inst *models.DatabaseInstance) bool {
 	return inst.Metadata[models.MetaPlacement] == models.PlacementValueDedicated
+}
+
+func (s *Service) SetDedicated(workspaceID, id uint, dedicated bool) (*models.DatabaseInstance, error) {
+	inst, err := s.repo.FindInWorkspace(workspaceID, id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if dedicated {
+		inst.Metadata = models.SetBuiltin(inst.Metadata, models.MetaPlacement, models.PlacementValueDedicated)
+	} else {
+		delete(inst.Metadata, models.MetaPlacement)
+	}
+	if err := s.repo.Update(inst); err != nil {
+		return nil, err
+	}
+	return s.Get(workspaceID, id)
+}
+
+// CheckDedicatedAttach refuses attaching a database on a dedicated instance to an app other than the one it serves.
+func (s *Service) CheckDedicatedAttach(inst *models.DatabaseInstance, appID uint) error {
+	if !IsDedicated(inst) {
+		return nil
+	}
+	dbs, err := s.repo.ListDatabases(inst.ID)
+	if err != nil {
+		return err
+	}
+	for _, d := range dbs {
+		if d.ApplicationID != nil && *d.ApplicationID != appID {
+			return ErrInstanceDedicated
+		}
+	}
+	return nil
 }
 
 // Redis and libSQL host no logical databases, so the app receives the instance connection.
@@ -172,7 +207,7 @@ func (s *Service) reusableIn(workspaceID uint, engine models.DBEngine, version s
 	}
 	version = strings.TrimSpace(version)
 	for i := range list {
-		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning || isDedicated(&list[i]) {
+		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning || IsDedicated(&list[i]) {
 			continue
 		}
 		if version != "" && list[i].Version != version {

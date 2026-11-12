@@ -1087,7 +1087,9 @@
         "deleteItsDatabaseBackup": "Supprimer {ref} ? Ses {length} sauvegarde(s) de base de données et leurs artefacts sont retirés.",
         "restoreAllDatabaseS": "Restaurer les {length} base(s) de données depuis {ref} ? Leur contenu actuel sera écrasé.",
         "theContainerWillBe": "Le conteneur {engine} sera redémarré. Une brève interruption est à prévoir.",
-        "redeployContainer": "Le conteneur {engine} sera supprimé puis recréé sur le même volume de données. Les données et les identifiants sont conservés ; une interruption est à prévoir jusqu’à ce qu’il soit prêt."
+        "redeployContainer": "Le conteneur {engine} sera supprimé puis recréé sur le même volume de données. Les données et les identifiants sont conservés ; une interruption est à prévoir jusqu’à ce qu’il soit prêt.",
+        "markDedicated": "Le placement automatique n’y placera plus d’autres bases de données, et il ne sera plus possible d’y en créer. Les bases existantes sont conservées.",
+        "allowSharing": "D’autres applications et modèles en placement automatique pourront y créer leurs bases de données et partager son CPU et sa mémoire."
       },
       "databaseSizes": {
         "nameWillNoLonger": "\"{name}\" ne sera plus proposée. Les bases de données qui l’utilisent déjà conservent leurs limites."
@@ -1279,7 +1281,9 @@
         "restoreRecoveryPoint": "Restaurer le point de restauration",
         "stopDatabase": "Arrêter la base de données",
         "upgradeDatabaseVersion": "Mettre à niveau la version de la base de données",
-        "redeployDatabase": "Redéployer la base de données"
+        "redeployDatabase": "Redéployer la base de données",
+        "markDedicated": "Marquer l’instance comme dédiée",
+        "allowSharing": "Autoriser le partage de l’instance"
       },
       "deleteApiKey": "Supprimer la clé API",
       "deleteBackup": "Supprimer la sauvegarde",
@@ -1656,7 +1660,9 @@
       "upgradeToCompleted": "Mise à niveau vers {to_version} terminée",
       "readOnlyEnabled": "Utilisateur en lecture seule ajouté.",
       "readOnlyDisabled": "Utilisateur en lecture seule supprimé.",
-      "redeployQueued": "Redéploiement lancé"
+      "redeployQueued": "Redéploiement lancé",
+      "markedDedicated": "Instance marquée comme dédiée",
+      "openedForSharing": "Instance ouverte au partage"
     },
     "typeToConfirm": "Saisissez {name} pour confirmer",
     "unlimited": "Illimité",
@@ -1676,7 +1682,15 @@
     "readOnlyConfirmDisable": "Supprimer l'utilisateur en lecture seule de {name} ? Les applications qui l'utilisent perdent l'accès immédiatement.",
     "redeploy": "Redéployer",
     "redeployTitle": "Redéployer le conteneur",
-    "redeployHint": "Recrée le conteneur à partir de ses paramètres enregistrés, sur le volume de données existant. À utiliser lorsque le conteneur a été supprimé ou ne démarre plus."
+    "redeployHint": "Recrée le conteneur à partir de ses paramètres enregistrés, sur le volume de données existant. À utiliser lorsque le conteneur a été supprimé ou ne démarre plus.",
+    "dedicated": "Dédiée",
+    "dedicatedTitle": "Provisionnée pour une seule dépendance : aucune autre base de données n’y est placée",
+    "dedicatedNoNewDatabases": "Cette instance est dédiée à une seule dépendance : aucune autre base de données ne peut y être créée.",
+    "placementTitle": "Placement",
+    "placementDedicatedHint": "Dédiée : le placement automatique n’y place jamais d’autres bases de données, et aucune base ne peut y être créée ni attachée pour une autre application.",
+    "placementSharedHint": "Partagée : le placement automatique peut y créer des bases de données pour d’autres applications et modèles.",
+    "markDedicated": "Marquer comme dédiée",
+    "allowSharing": "Autoriser le partage"
   },
   "dedicated": {
     "anOrganization": "une organisation",

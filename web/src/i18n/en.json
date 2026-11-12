@@ -1087,7 +1087,9 @@
         "deleteItsDatabaseBackup": "Delete {ref}? Its {length} database backup(s) and their artifacts are removed.",
         "restoreAllDatabaseS": "Restore all {length} database(s) from {ref}? Their current contents are overwritten.",
         "theContainerWillBe": "The {engine} container will be restarted. Brief downtime is expected.",
-        "redeployContainer": "The {engine} container will be removed and recreated on the same data volume. Data and credentials are kept; expect downtime until it is ready."
+        "redeployContainer": "The {engine} container will be removed and recreated on the same data volume. Data and credentials are kept; expect downtime until it is ready.",
+        "markDedicated": "Automatic placement will stop putting other databases on this instance, and new databases can no longer be created on it. Existing databases are kept.",
+        "allowSharing": "Other apps and templates using automatic placement may create their databases on this instance and share its CPU and memory."
       },
       "databaseSizes": {
         "nameWillNoLonger": "\"{name}\" will no longer be offered. Databases already on it keep their limits."
@@ -1279,7 +1281,9 @@
         "restoreRecoveryPoint": "Restore recovery point",
         "stopDatabase": "Stop database",
         "upgradeDatabaseVersion": "Upgrade database version",
-        "redeployDatabase": "Redeploy database"
+        "redeployDatabase": "Redeploy database",
+        "markDedicated": "Mark instance as dedicated",
+        "allowSharing": "Allow sharing this instance"
       },
       "deleteApiKey": "Delete API key",
       "deleteBackup": "Delete backup",
@@ -1656,7 +1660,9 @@
       "upgradeToCompleted": "Upgrade to {to_version} completed",
       "readOnlyEnabled": "Read-only user added.",
       "readOnlyDisabled": "Read-only user removed.",
-      "redeployQueued": "Redeploy started"
+      "redeployQueued": "Redeploy started",
+      "markedDedicated": "Instance marked as dedicated",
+      "openedForSharing": "Instance open for sharing"
     },
     "typeToConfirm": "Type {name} to confirm",
     "unlimited": "Unlimited",
@@ -1676,7 +1682,15 @@
     "readOnlyConfirmDisable": "Remove the read-only user of {name}? Apps using it lose access at once.",
     "redeploy": "Redeploy",
     "redeployTitle": "Redeploy container",
-    "redeployHint": "Recreates the container from its stored settings on the existing data volume. Use it when the container was removed or will not start."
+    "redeployHint": "Recreates the container from its stored settings on the existing data volume. Use it when the container was removed or will not start.",
+    "dedicated": "Dedicated",
+    "dedicatedTitle": "Provisioned for a single dependency: other databases are never placed on it",
+    "dedicatedNoNewDatabases": "This instance is dedicated to a single dependency, so no other databases can be created on it.",
+    "placementTitle": "Placement",
+    "placementDedicatedHint": "Dedicated: automatic placement never puts other databases here, and no databases can be created or attached for another app.",
+    "placementSharedHint": "Shared: automatic placement may create databases for other apps and templates on this instance.",
+    "markDedicated": "Mark as dedicated",
+    "allowSharing": "Allow sharing"
   },
   "dedicated": {
     "anOrganization": "one organization",
