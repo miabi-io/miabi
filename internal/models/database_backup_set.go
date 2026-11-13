@@ -93,6 +93,13 @@ type DatabaseBackupSetSchedule struct {
 	// 0 uses the conservative service default.
 	Concurrency int `json:"concurrency" gorm:"not null;default:0"`
 
+	// A run fails instead of writing a cleartext set while the workspace has no backup encryption.
+	RequireEncryption bool `json:"require_encryption" gorm:"not null;default:false"`
+	// ManagedBy is set when a manifest declared the schedule; the API refuses to delete it.
+	ManagedBy string `json:"managed_by,omitempty"`
+	// Declared is the manifest's schedule as written (a preset or cron), compared instead of the resolved Cron.
+	Declared string `json:"declared,omitempty"`
+
 	LastRunAt *time.Time `json:"last_run_at"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`

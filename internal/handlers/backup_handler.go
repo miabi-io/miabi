@@ -366,6 +366,9 @@ func (h *BackupHandler) DeleteSchedule(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("schedule not found")
 	}
+	if s.ManagedBy != "" {
+		return c.AbortConflict("this schedule is declared in a manifest; remove the backup block there instead")
+	}
 	h.cron.Unregister(s.ID)
 	if err := h.repo.DeleteSchedule(s.ID); err != nil {
 		return c.AbortInternalServerError("failed to delete schedule", err)

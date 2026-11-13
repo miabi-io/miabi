@@ -89,11 +89,19 @@ func (r *Resource) normalize() {
 		}
 	case r.Database != nil:
 		d := r.Database
-		if d.Placement != nil && d.Placement.legacyInstance != "" && d.Instance == "" {
-			d.Instance, d.Placement = d.Placement.legacyInstance, nil
+		if d.Placement != nil && d.Placement.legacyInstance != "" && d.Instance.Type == "" {
+			d.Instance.Type, d.Placement = d.Placement.legacyInstance, nil
 		}
-		if d.Instance == "" {
-			d.Instance = "auto"
+		if d.Instance.Type == "" {
+			d.Instance.Type = "auto"
+		}
+		d.Instance.Name = strings.TrimSpace(d.Instance.Name)
+		if d.Backup != nil {
+			d.Backup.Schedule = strings.TrimSpace(d.Backup.Schedule)
+		}
+	case r.DatabaseInstance != nil:
+		if rp := r.DatabaseInstance.RecoveryPoints; rp != nil {
+			rp.Schedule = strings.TrimSpace(rp.Schedule)
 		}
 	case r.Route != nil:
 		r.Route.adoptDeprecated()
@@ -202,6 +210,8 @@ func (r *Resource) validate() error {
 		return r.validateApplication()
 	case KindDatabase:
 		return r.validateDatabase()
+	case KindDatabaseInstance:
+		return r.validateDatabaseInstance()
 	case KindRoute:
 		return r.validateRoute()
 	case KindDomain:
@@ -582,31 +592,110 @@ func (r *Resource) validateDatabase() error {
 	if d.Placement != nil && d.Placement.legacyInstance != "" {
 		return fmt.Errorf("database %q: placement: %s is the old spelling of instance; set only instance", r.Metadata.Name, d.Placement.legacyInstance)
 	}
-	if !placements[d.Instance] {
-		return fmt.Errorf("database %q: invalid instance %q", r.Metadata.Name, d.Instance)
+	if !placements[d.Instance.Type] {
+		return fmt.Errorf("database %q: invalid instance type %q", r.Metadata.Name, d.Instance.Type)
 	}
 	if d.ReadOnlyUser != nil && *d.ReadOnlyUser && models.DBEngine(d.Engine) != models.DBEnginePostgres {
 		return fmt.Errorf("database %q: readOnlyUser is available for postgres only", r.Metadata.Name)
 	}
-	if !models.EngineSupportsLogicalDatabases(models.DBEngine(d.Engine)) && d.Instance == "shared" {
+	logical := models.EngineSupportsLogicalDatabases(models.DBEngine(d.Engine))
+	if !logical && d.Instance.Type == "shared" {
 		return fmt.Errorf("database %q: engine %q has no logical databases; instance cannot be 'shared'", r.Metadata.Name, d.Engine)
 	}
+	if d.Instance.Name != "" {
+		if !logical {
+			return fmt.Errorf("database %q: engine %q is its own instance, so instance.name is not accepted; metadata.name names it", r.Metadata.Name, d.Engine)
+		}
+		if !nameRe.MatchString(d.Instance.Name) {
+			return fmt.Errorf("database %q: instance.name %q must match %s", r.Metadata.Name, d.Instance.Name, nameRe)
+		}
+	}
 	if res := d.Resources; res != nil {
-		if res.Size != "" && (res.Memory != "" || res.CPU != "") {
-			return fmt.Errorf("database %q: resources: name a size, or set memory and cpu, not both", r.Metadata.Name)
+		if err := validateDatabaseResources("database", r.Metadata.Name, res); err != nil {
+			return err
 		}
-		if res.Size != "" && !nameRe.MatchString(res.Size) {
-			return fmt.Errorf("database %q: resources: size %q must be a size name matching %s", r.Metadata.Name, res.Size, nameRe)
-		}
-		if _, err := res.MemoryBytes(); err != nil {
-			return fmt.Errorf("database %q: resources: %w", r.Metadata.Name, err)
-		}
-		if _, err := res.NanoCPUs(); err != nil {
-			return fmt.Errorf("database %q: resources: %w", r.Metadata.Name, err)
-		}
-		if d.Instance == "shared" {
+		if d.Instance.Type == "shared" {
 			return fmt.Errorf("database %q: resources size an instance of its own; a shared database runs with its host's", r.Metadata.Name)
 		}
+		if d.Instance.Name != "" {
+			return fmt.Errorf("database %q: resources are refused with instance.name; the named instance is sized by its own manifest or settings", r.Metadata.Name)
+		}
+	}
+	if d.Backup.On() {
+		if models.DBEngine(d.Engine) == models.DBEngineRedis {
+			return fmt.Errorf("database %q: backup is not available for redis, whose data is covered by a volume backup", r.Metadata.Name)
+		}
+		if err := validateSchedule("database", r.Metadata.Name, "backup", d.Backup.Schedule, d.Backup.Retention); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Resource) validateDatabaseInstance() error {
+	d := r.DatabaseInstance
+	name := r.Metadata.Name
+	if d == nil {
+		return fmt.Errorf("databaseinstance %q: spec is required", name)
+	}
+	if !validEngines[models.DBEngine(d.Engine)] {
+		return fmt.Errorf("databaseinstance %q: unsupported engine %q", name, d.Engine)
+	}
+	if !models.EngineSupportsLogicalDatabases(models.DBEngine(d.Engine)) {
+		return fmt.Errorf("databaseinstance %q: engine %q hosts no logical databases; declare it as kind: Database", name, d.Engine)
+	}
+	if d.Resources != nil {
+		if err := validateDatabaseResources("databaseinstance", name, d.Resources); err != nil {
+			return err
+		}
+	}
+	if d.StorageClass != "" && !nameRe.MatchString(d.StorageClass) {
+		return fmt.Errorf("databaseinstance %q: storageClass %q must match %s", name, d.StorageClass, nameRe)
+	}
+	if rp := d.RecoveryPoints; rp.On() {
+		if err := validateSchedule("databaseinstance", name, "recoveryPoints", rp.Schedule, rp.Retention); err != nil {
+			return err
+		}
+		if rp.Concurrency < 0 || rp.Concurrency > 16 {
+			return fmt.Errorf("databaseinstance %q: recoveryPoints.concurrency must be between 0 and 16", name)
+		}
+	}
+	return nil
+}
+
+func validateDatabaseResources(kind, name string, res *DatabaseResourcesSpec) error {
+	if res.Size != "" && (res.Memory != "" || res.CPU != "") {
+		return fmt.Errorf("%s %q: resources: name a size, or set memory and cpu, not both", kind, name)
+	}
+	if res.Size != "" && !nameRe.MatchString(res.Size) {
+		return fmt.Errorf("%s %q: resources: size %q must be a size name matching %s", kind, name, res.Size, nameRe)
+	}
+	if _, err := res.MemoryBytes(); err != nil {
+		return fmt.Errorf("%s %q: resources: %w", kind, name, err)
+	}
+	if _, err := res.NanoCPUs(); err != nil {
+		return fmt.Errorf("%s %q: resources: %w", kind, name, err)
+	}
+	return nil
+}
+
+const (
+	SchedulePresetHourly = "hourly"
+	SchedulePresetDaily  = "daily"
+	SchedulePresetWeekly = "weekly"
+)
+
+// The full cron grammar is checked on apply by the scheduler's own parser; this catches the shape early.
+func validateSchedule(kind, name, field, schedule string, ret *RetentionSpec) error {
+	switch schedule {
+	case "", SchedulePresetHourly, SchedulePresetDaily, SchedulePresetWeekly:
+	default:
+		if len(strings.Fields(schedule)) != 5 {
+			return fmt.Errorf("%s %q: %s.schedule %q must be hourly, daily, weekly or a five-field cron expression", kind, name, field, schedule)
+		}
+	}
+	if ret != nil && (ret.Keep < 0 || ret.Days < 0) {
+		return fmt.Errorf("%s %q: %s.retention values must not be negative", kind, name, field)
 	}
 	return nil
 }
@@ -860,6 +949,10 @@ func validateFileMode(mode string) error {
 
 func (s *ResourceSet) validateReferences() error {
 	for _, r := range s.list {
+		// An inline database provisions an instance named after itself, which would collide with the declared one.
+		if r.Database != nil && r.Database.Instance.Name == "" && s.Has(KindDatabaseInstance, r.Metadata.Name) {
+			return fmt.Errorf("database %q has the name of a DatabaseInstance; set instance.name: %s to place it there, or rename one", r.Metadata.Name, r.Metadata.Name)
+		}
 		if r.Kind == KindSealedSecret && s.Has(KindSecret, r.Metadata.Name) {
 			return fmt.Errorf("secret %q is declared both as a Secret and as a SealedSecret; keep one", r.Metadata.Name)
 		}

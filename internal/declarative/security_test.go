@@ -115,8 +115,8 @@ func TestDatabaseInstanceAndPlacement(t *testing.T) {
 				t.Fatal(err)
 			}
 			r, _ := set.Get("Database/pg")
-			if r.Database.Instance != tc.instance || r.Database.Location() != tc.location {
-				t.Errorf("instance = %q, location = %q", r.Database.Instance, r.Database.Location())
+			if r.Database.Instance.Type != tc.instance || r.Database.Location() != tc.location {
+				t.Errorf("instance = %q, location = %q", r.Database.Instance.Type, r.Database.Location())
 			}
 		})
 	}
@@ -143,7 +143,7 @@ spec:
 	}
 	for name, want := range map[string]string{"posta-db": "auto", "posta-redis": "dedicated"} {
 		r, ok := set.Get("Database/" + name)
-		if !ok || r.Database.Instance != want || r.Database.Placement != nil {
+		if !ok || r.Database.Instance.Type != want || r.Database.Placement != nil {
 			t.Errorf("%s: database = %+v, want instance %q", name, r.Database, want)
 		}
 	}
@@ -177,7 +177,7 @@ func dbFields(desired, actual *d.DatabaseResourcesSpec) []d.FieldDiff {
 	set := func(res *d.DatabaseResourcesSpec) *d.ResourceSet {
 		s := d.NewResourceSet()
 		s.Add(d.Resource{APIVersion: d.APIVersion, Kind: d.KindDatabase, Metadata: d.Meta{Name: "pg"},
-			Database: &d.DatabaseSpec{Engine: "postgres", Instance: "auto", Resources: res}})
+			Database: &d.DatabaseSpec{Engine: "postgres", Instance: d.DatabaseInstanceRef{Type: "auto"}, Resources: res}})
 		return s
 	}
 	for _, c := range d.BuildPlan(set(desired), set(actual), d.PlanOptions{}).Changes {

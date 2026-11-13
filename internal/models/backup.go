@@ -101,6 +101,11 @@ type BackupSchedule struct {
 	MaxBackups    int `json:"max_backups" gorm:"not null;default:0"`    // keep at most N most-recent backups
 	RetentionDays int `json:"retention_days" gorm:"not null;default:0"` // delete backups older than N days
 
+	// ManagedBy is set when a manifest declared the schedule; the API refuses to delete it.
+	ManagedBy string `json:"managed_by,omitempty"`
+	// Declared is the manifest's schedule as written (a preset or cron), compared instead of the resolved Cron.
+	Declared string `json:"declared,omitempty"`
+
 	S3Endpoint       string `json:"s3_endpoint,omitempty"`
 	S3Bucket         string `json:"s3_bucket,omitempty"`
 	S3Region         string `json:"s3_region,omitempty"`

@@ -109,6 +109,8 @@ type Service struct {
 	gitSources GitSources
 	// gitRepos converges kind: GitRepository.
 	gitRepos *gitrepo.Service
+	// backups converges declared backup and recoveryPoints blocks.
+	backups *BackupPolicies
 }
 
 // Unsealer opens sealed secret values with the workspace's sealing keys. Satisfied by the sealing service.
@@ -400,6 +402,8 @@ func locationOf(r declarative.Resource) string {
 		return r.Stack.Location()
 	case r.Database != nil:
 		return r.Database.Location()
+	case r.DatabaseInstance != nil:
+		return r.DatabaseInstance.Location()
 	case r.Volume != nil:
 		return r.Volume.Location()
 	}
@@ -449,6 +453,10 @@ func refuseImmutable(ch declarative.Change) error {
 		return err
 	}
 	for _, f := range ch.Fields {
+		if f.Field == "instance.name" && ch.Kind == declarative.KindDatabase {
+			return fmt.Errorf("%w: database %q is on instance %q; moving it to %q would move its data. Delete it and apply again",
+				ErrInvalidManifest, ch.Name, f.From, f.To)
+		}
 		if f.Field == "storage.class" {
 			return fmt.Errorf("%w: %s %q is on storage class %q; moving it to %q would relocate its data. Delete it and apply again, or migrate it",
 				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
@@ -679,6 +687,9 @@ func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, 
 	plan := declarative.BuildPlan(desired, actual, declarative.PlanOptions{
 		Prune: opts.Prune, PruneManagedBy: ownerOf(opts.OwnerSource), PruneGitOpsSource: opts.OwnerSource,
 	})
+	if err := s.checkDatabaseDecls(ctx, workspaceID, plan, desired, actual, opts.OwnerSource); err != nil {
+		return nil, nil, err
+	}
 	if opts.OwnerSource == "" && !opts.Force {
 		if err := refuseGitOpsOwned(plan, actual); err != nil {
 			return nil, nil, err
@@ -1704,6 +1715,19 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	}
 	for i := range instances {
 		inst := &instances[i]
+		if owner := inst.Metadata[models.MetaDeclarativeKind]; owner == string(declarative.KindDatabaseInstance) {
+			set.Add(declarative.Resource{
+				APIVersion: declarative.APIVersion, Kind: declarative.KindDatabaseInstance,
+				Metadata: metaA(inst.UID, inst.Metadata[models.MetaDeclarativeName], inst.Metadata, inst.Annotations),
+				DatabaseInstance: &declarative.DatabaseInstanceSpec{
+					Engine: string(inst.Engine), Version: inst.Version,
+					Placement:      locationSpec(s.locationName(inst.ClusterID)),
+					Resources:      databaseResourcesSpec(inst),
+					StorageClass:   inst.StorageClassName,
+					RecoveryPoints: s.recoveryPointsSpecOf(inst.ID),
+				},
+			})
+		}
 		if decls := declDBsByInstance[inst.ID]; len(decls) > 0 {
 			// The instance host has no manifest identity of its own.
 			for j := range decls {
@@ -1712,22 +1736,28 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					APIVersion: declarative.APIVersion, Kind: declarative.KindDatabase,
 					Metadata: metaA(d.UID, d.Metadata[models.MetaDeclarativeName], d.Metadata, nil),
 					Database: &declarative.DatabaseSpec{
-						Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
+						Engine: string(inst.Engine), Version: inst.Version,
+						Instance:     declarative.DatabaseInstanceRef{Type: "auto", Name: inst.Name},
 						Placement:    databaseLocationSpec(s.locationName(inst.ClusterID)),
 						Resources:    databaseResourcesSpec(inst),
 						ReadOnlyUser: readOnlySpec(d),
+						Backup:       s.backupSpecOf(d.ID),
 					},
 				})
 			}
+			continue
+		}
+		if inst.Metadata[models.MetaDeclarativeKind] == string(declarative.KindDatabaseInstance) {
 			continue
 		}
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindDatabase,
 			Metadata: metaA(inst.UID, inst.Name, inst.Metadata, inst.Annotations),
 			Database: &declarative.DatabaseSpec{
-				Engine: string(inst.Engine), Version: inst.Version, Instance: "auto",
+				Engine: string(inst.Engine), Version: inst.Version, Instance: declarative.DatabaseInstanceRef{Type: "auto"},
 				Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
 				Resources: databaseResourcesSpec(inst),
+				Backup:    s.backupSpecOf(s.soleDatabaseID(workspaceID, inst)),
 			},
 		})
 	}
@@ -2059,6 +2089,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyVolume(ctx, workspaceID, ch, desired, set)
 	case declarative.KindDatabase:
 		return s.applyDatabase(ctx, workspaceID, ch, desired)
+	case declarative.KindDatabaseInstance:
+		return s.applyDatabaseInstance(ctx, workspaceID, ch, desired)
 	case declarative.KindStack:
 		return s.applyStack(ctx, workspaceID, ch, desired, set)
 	case declarative.KindSecret:
@@ -2588,31 +2620,51 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 	case declarative.ActionCreate:
 		spec := desired.Database
 		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
-		// Stamped with the manifest name so databaseViews resolves this exact database; DDL waits for a new instance.
-		target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
-		if err != nil {
-			return err
-		}
-		_, db, _, _, err := s.dbs.ResolveDependency(
-			ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
-			models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance), databaseResources(spec), meta,
-		)
-		if err != nil {
-			return err
+		var db *models.Database
+		if spec.Instance.Name != "" {
+			var err error
+			if db, err = s.createOnNamedInstance(ctx, workspaceID, ch, spec, meta); err != nil {
+				return err
+			}
+		} else {
+			// Stamped with the manifest name so databaseViews resolves this exact database; DDL waits for a new instance.
+			target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
+			if err != nil {
+				return err
+			}
+			inst, created, _, provisioned, err := s.dbs.ResolveDependency(
+				ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
+				models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance.Type), databaseResources(spec), meta,
+			)
+			if err != nil {
+				return err
+			}
+			db = created
+			if provisioned && inst != nil {
+				_, _ = s.dbs.SetMetadata(workspaceID, inst.ID, map[string]string{
+					models.MetaDeclarativeKind: string(declarative.KindDatabase), models.MetaDeclarativeName: ch.Name,
+				})
+			}
 		}
 		if spec.ReadOnlyUser != nil && *spec.ReadOnlyUser {
 			if db == nil {
 				return fmt.Errorf("database %q: readOnlyUser needs a logical PostgreSQL database", ch.Name)
 			}
-			return s.dbs.EnableReadOnly(ctx, db)
+			if err := s.dbs.EnableReadOnly(ctx, db); err != nil {
+				return err
+			}
 		}
-		return nil
+		return s.reconcileBackup(ctx, workspaceID, ch.Name, spec.Backup)
 	case declarative.ActionDelete:
-		// Tear down only what we own: the logical database when shared, the instance only when dedicated.
+		// Tear down only what we own: the logical database, and the instance only when this manifest provisioned it.
 		if db, inst, ok := s.dbs.FindDatabaseByDeclName(workspaceID, ch.Name); ok {
+			if err := s.dropManagedBackupSchedules(db.ID); err != nil {
+				return err
+			}
 			remaining, _ := s.dbs.ListDatabases(workspaceID, inst.ID)
-			shared := len(remaining) > 1 || inst.Name != ch.Name
-			if shared {
+			owner := inst.Metadata[models.MetaDeclarativeKind]
+			owns := ownedBy(inst, declarative.KindDatabase, ch.Name) || (owner == "" && inst.Name == ch.Name)
+			if len(remaining) > 1 || !owns {
 				return s.dbs.DeleteDatabase(ctx, workspaceID, db.ID)
 			}
 			return s.deleteInstance(ctx, inst)
@@ -2622,15 +2674,27 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 		if err != nil {
 			return err
 		}
+		if inst.Metadata[models.MetaDeclarativeKind] == string(declarative.KindDatabaseInstance) {
+			return nil
+		}
+		if id := s.soleDatabaseID(workspaceID, inst); id != 0 {
+			if err := s.dropManagedBackupSchedules(id); err != nil {
+				return err
+			}
+		}
 		return s.deleteInstance(ctx, inst)
 	case declarative.ActionUpdate:
-		if err := refuseMove(ch); err != nil {
+		if err := refuseImmutable(ch); err != nil {
 			return err
 		}
-		resize := false
+		resize, backup := false, false
 		for _, f := range ch.Fields {
 			if strings.HasPrefix(f.Field, "resources.") {
 				resize = true
+				continue
+			}
+			if strings.HasPrefix(f.Field, "backup.") {
+				backup = true
 				continue
 			}
 			if f.Field == "readOnlyUser" {
@@ -2647,12 +2711,29 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 			}
 			return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
 		}
-		if !resize {
-			return nil
+		if resize {
+			if err := s.resizeDatabase(ctx, workspaceID, ch.Name, desired.Database); err != nil {
+				return err
+			}
 		}
-		return s.resizeDatabase(ctx, workspaceID, ch.Name, desired.Database)
+		if backup {
+			return s.reconcileBackup(ctx, workspaceID, ch.Name, desired.Database.Backup)
+		}
+		return nil
 	}
 	return nil
+}
+
+// soleDatabaseID is the implicit row a libSQL instance keeps, or 0 for Redis and multi-database instances.
+func (s *Service) soleDatabaseID(workspaceID uint, inst *models.DatabaseInstance) uint {
+	if !models.EngineUsesLogicalDatabaseRecord(inst.Engine) {
+		return 0
+	}
+	dbs, err := s.dbs.ListDatabases(workspaceID, inst.ID)
+	if err != nil || len(dbs) != 1 {
+		return 0
+	}
+	return dbs[0].ID
 }
 
 // setReadOnly adds or removes a manifest database's read-only user in place.
@@ -2691,6 +2772,9 @@ func (s *Service) resizeDatabase(ctx context.Context, workspaceID uint, name str
 
 func (s *Service) ownedInstance(workspaceID uint, name string) (*models.DatabaseInstance, error) {
 	if _, inst, ok := s.dbs.FindDatabaseByDeclName(workspaceID, name); ok {
+		if k := inst.Metadata[models.MetaDeclarativeKind]; k == string(declarative.KindDatabaseInstance) {
+			return nil, fmt.Errorf("%w: database %q is on instance %q, which DatabaseInstance %q sizes", ErrInvalidManifest, name, inst.Name, inst.Name)
+		}
 		remaining, _ := s.dbs.ListDatabases(workspaceID, inst.ID)
 		if len(remaining) > 1 || inst.Name != name {
 			return nil, fmt.Errorf("%w: database %q shares instance %q with other databases, so its resources are that "+

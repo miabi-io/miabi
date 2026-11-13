@@ -62,6 +62,8 @@ func (r Resource) spec() any {
 		return r.Stack
 	case r.Database != nil:
 		return r.Database
+	case r.DatabaseInstance != nil:
+		return r.DatabaseInstance
 	case r.Volume != nil:
 		return r.Volume
 	case r.Route != nil:

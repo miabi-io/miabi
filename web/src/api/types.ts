@@ -2312,6 +2312,8 @@ export interface DatabaseBackupSetSchedule {
   max_sets: number
   retention_days: number
   concurrency: number
+  require_encryption?: boolean
+  managed_by?: string
   last_run_at?: string | null
   created_at: string
 }
@@ -2365,6 +2367,7 @@ export interface BackupSchedule {
   enabled: boolean
   max_backups?: number
   retention_days?: number
+  managed_by?: string
   last_run_at?: string | null
 }
 

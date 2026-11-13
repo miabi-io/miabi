@@ -42,6 +42,10 @@ const (
 	MetaRuntimeAutoService = "miabi.io/runtime-auto-service"
 	// Maps the manifest name to the exact logical database, since a manifest Database may share an instance.
 	MetaDeclarativeName = "miabi.io/declarative-name"
+	// MetaDeclarativeKind on an instance names the manifest kind that owns it, with MetaDeclarativeName.
+	MetaDeclarativeKind = "miabi.io/declarative-kind"
+	// MetaAdopted marks an instance a manifest took over rather than created, so removing the manifest releases it.
+	MetaAdopted = "miabi.io/adopted"
 	// Deploys pull image@digest while set; see Application.ImageRef.
 	MetaDigest = "miabi.io/digest"
 	// Set on a database instance provisioned for one dependency, so auto/shared placement never reuses it.

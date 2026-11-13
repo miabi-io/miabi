@@ -1548,6 +1548,8 @@
     "destination": "Destination",
     "details": "Détails",
     "disabled": "désactivé",
+    "fromManifest": "manifeste",
+    "fromManifestHint": "Déclarée dans un manifeste ; modifiez-la là-bas.",
     "dockerName": "Nom Docker",
     "donTAttach": "Ne pas attacher",
     "download": "Télécharger",

@@ -1548,6 +1548,8 @@
     "destination": "Destination",
     "details": "Details",
     "disabled": "disabled",
+    "fromManifest": "manifest",
+    "fromManifestHint": "Declared in a manifest; change it there.",
     "dockerName": "Docker name",
     "donTAttach": "Don't attach",
     "download": "Download",

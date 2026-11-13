@@ -323,9 +323,13 @@ func (m *Manager) runBackupSet(scheduleID, workspaceID, instanceID uint) error {
 	if err != nil {
 		return fmt.Errorf("schedule not found: %w", err)
 	}
+	dest := m.destinationFor(workspaceID)
+	if sched.RequireEncryption && dest.GPGPassphrase == "" && dest.AgeRecipients == "" {
+		return fmt.Errorf("recovery point skipped: the schedule requires encryption, but the workspace has no backup encryption configured")
+	}
 	set, err := m.backups.RunSet(context.Background(), inst, backup.SetOptions{
 		Trigger: "scheduled", Concurrency: sched.Concurrency,
-	}, m.destinationFor(workspaceID))
+	}, dest)
 	if err != nil {
 		return err
 	}

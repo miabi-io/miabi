@@ -1124,6 +1124,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	applyService.SetPlacer(placementService)
 	applyService.SetCertificates(certificateService)
 	applyService.SetPortExposure(portBindingService)
+	backupPolicies := apply.BackupPolicies{Schedules: backupRepo, Sets: backupSetRepo, Target: backupSettingsService, Entitlements: ee}
+	if cronManager != nil {
+		backupPolicies.Cron = cronManager
+	}
+	applyService.SetBackupPolicies(backupPolicies)
 	// Wired once every route service dependency is, since a pinned domain that changed re-hosts routes right away.
 	clusterService.SetExternalAccessListener(func(ctx context.Context, clusterID uint) {
 		routeService.RehostCluster(ctx, clusterID)

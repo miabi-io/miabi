@@ -56,6 +56,8 @@ type Change struct {
 
 type Plan struct {
 	Changes []Change `json:"changes"`
+	// Warnings point at something legal but likely unintended, such as a database dumped twice.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // LabelManagedBy keeps prune from ever deleting a resource the apply engine did not create.
@@ -105,7 +107,7 @@ func (p *Plan) Counts() (create, update, del, noop int) {
 
 func applyRank(k Kind) int {
 	switch k {
-	case KindSecret, KindSealedSecret, KindVolume, KindDomain, KindConfig, KindMiddleware:
+	case KindSecret, KindSealedSecret, KindVolume, KindDomain, KindConfig, KindMiddleware, KindDatabaseInstance:
 		// Middlewares come first because a route naming a chain is refused until every middleware in it exists.
 		return 0
 	case KindDatabase, KindStack, KindRegistry, KindGitRepository:
@@ -355,7 +357,12 @@ func portList(ports []PortSpec) string {
 
 // A database's limits may come from the console or plan defaults, so a silent manifest leaves them be.
 var optionalWhenUnsetByKind = map[Kind]map[string]bool{
-	KindDatabase: {"resources.memory": true, "resources.cpu": true, "resources.size": true, "readOnlyUser": true},
+	KindDatabase: {"version": true, "resources.memory": true, "resources.cpu": true, "resources.size": true, "readOnlyUser": true,
+		"instance.name": true, "backup.enabled": true, "backup.schedule": true, "backup.retention.keep": true, "backup.retention.days": true},
+	// An omitted version keeps the instance's, so adopting one never reads as an upgrade.
+	KindDatabaseInstance: {"version": true, "resources.memory": true, "resources.cpu": true, "resources.size": true, "storage.class": true,
+		"recoveryPoints.enabled": true, "recoveryPoints.schedule": true, "recoveryPoints.retention.keep": true,
+		"recoveryPoints.retention.days": true, "recoveryPoints.concurrency": true, "recoveryPoints.requireEncryption": true},
 	// A silent storage class keeps repos portable; a named one is immutable, so it is refused rather than converged.
 	KindVolume: {"storage.class": true, "size": true},
 	// A pause made in the console survives a manifest that doesn't state suspend.
@@ -617,25 +624,40 @@ func specFields(r Resource) map[string]string {
 		}
 	case r.Database != nil:
 		f["engine"] = r.Database.Engine
-		f["version"] = r.Database.Version
+		if r.Database.Version != "" {
+			f["version"] = r.Database.Version
+		}
 		if loc := r.Database.Location(); loc != "" {
 			f["placement.location"] = loc
 		}
 		if ro := r.Database.ReadOnlyUser; ro != nil {
 			f["readOnlyUser"] = strconv.FormatBool(*ro)
 		}
-		// "0" is stated too: it removes a limit.
-		if res := r.Database.Resources; res != nil {
-			if res.Memory != "" {
-				mb, _ := res.MemoryBytes()
-				f["resources.memory"] = strconv.FormatInt(mb, 10)
-			}
-			if res.CPU != "" {
-				nc, _ := res.NanoCPUs()
-				f["resources.cpu"] = strconv.FormatInt(nc, 10)
-			}
-			if res.Size != "" {
-				f["resources.size"] = res.Size
+		if n := r.Database.Instance.Name; n != "" {
+			f["instance.name"] = n
+		}
+		databaseResourceFields(r.Database.Resources, f)
+		if b := r.Database.Backup; b != nil {
+			scheduleFields("backup", b.On(), b.Schedule, b.Retention, f)
+		}
+	case r.DatabaseInstance != nil:
+		d := r.DatabaseInstance
+		f["engine"] = d.Engine
+		if d.Version != "" {
+			f["version"] = d.Version
+		}
+		if loc := d.Location(); loc != "" {
+			f["placement.location"] = loc
+		}
+		if sc := strings.TrimSpace(d.StorageClass); sc != "" {
+			f["storage.class"] = sc
+		}
+		databaseResourceFields(d.Resources, f)
+		if rp := d.RecoveryPoints; rp != nil {
+			scheduleFields("recoveryPoints", rp.On(), rp.Schedule, rp.Retention, f)
+			if rp.On() {
+				f["recoveryPoints.concurrency"] = strconv.Itoa(rp.Concurrency)
+				f["recoveryPoints.requireEncryption"] = strconv.FormatBool(rp.RequireEncryption)
 			}
 		}
 	case r.Volume != nil:
@@ -724,4 +746,33 @@ func specFields(r Resource) map[string]string {
 		f["deletePolicy"] = g.DeletePolicy
 	}
 	return f
+}
+
+// "0" is stated too: it removes a limit.
+func databaseResourceFields(res *DatabaseResourcesSpec, f map[string]string) {
+	if res == nil {
+		return
+	}
+	if res.Memory != "" {
+		mb, _ := res.MemoryBytes()
+		f["resources.memory"] = strconv.FormatInt(mb, 10)
+	}
+	if res.CPU != "" {
+		nc, _ := res.NanoCPUs()
+		f["resources.cpu"] = strconv.FormatInt(nc, 10)
+	}
+	if res.Size != "" {
+		f["resources.size"] = res.Size
+	}
+}
+
+// A disabled block states only enabled, so the schedule fields of a live one fall away as unstated.
+func scheduleFields(prefix string, on bool, schedule string, ret *RetentionSpec, f map[string]string) {
+	f[prefix+".enabled"] = strconv.FormatBool(on)
+	if !on {
+		return
+	}
+	f[prefix+".schedule"] = ScheduleOrDefault(schedule)
+	f[prefix+".retention.keep"] = strconv.Itoa(ret.KeepOr0())
+	f[prefix+".retention.days"] = strconv.Itoa(ret.DaysOr0())
 }

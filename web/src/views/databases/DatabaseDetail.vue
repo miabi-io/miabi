@@ -1325,7 +1325,10 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <thead><tr><th>{{ $t('db.schedule') }}</th><th>{{ $t('db.destination') }}</th><th>{{ $t('db.retention') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="s in schedules" :key="s.id">
-                <td class="cell-title">{{ s.cron }}</td>
+                <td class="cell-title">
+                  {{ s.cron }}
+                  <span v-if="s.managed_by" class="badge badge-neutral" :title="$t('db.fromManifestHint')">{{ $t('db.fromManifest') }}</span>
+                </td>
                 <td class="text-muted">{{ s.destination === 'workspace' ? 'Workspace settings' : s.destination }}</td>
                 <td class="cell-sub">
                   <template v-if="s.max_backups || s.retention_days">
@@ -1336,7 +1339,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                   <span v-else>—</span>
                 </td>
                 <td class="text-right">
-                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="delSchedule(s.id)"><span class="mdi mdi-delete-outline"></span></button>
+                  <button v-if="ws.canEdit && !s.managed_by" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="delSchedule(s.id)"><span class="mdi mdi-delete-outline"></span></button>
                 </td>
               </tr>
             </tbody>
@@ -1523,7 +1526,8 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                 <template v-if="sc.last_run_at"> · last {{ relativeTime(sc.last_run_at) }}</template>
               </span>
               <span v-if="!sc.enabled" class="badge badge-neutral">{{ $t('db.disabled') }}</span>
-              <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('db.deleteSchedule')" :aria-label="$t('db.deleteSchedule')" @click="removeSetSchedule(sc.id)">
+              <span v-if="sc.managed_by" class="badge badge-neutral" :title="$t('db.fromManifestHint')">{{ $t('db.fromManifest') }}</span>
+              <button v-if="ws.canEdit && !sc.managed_by" class="btn-icon btn-icon-danger" :title="$t('db.deleteSchedule')" :aria-label="$t('db.deleteSchedule')" @click="removeSetSchedule(sc.id)">
                 <span class="mdi mdi-delete-outline"></span>
               </button>
             </li>

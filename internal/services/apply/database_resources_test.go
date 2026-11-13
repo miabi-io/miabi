@@ -30,7 +30,7 @@ import (
 func databaseResource(res *declarative.DatabaseResourcesSpec) declarative.Resource {
 	return declarative.Resource{
 		APIVersion: declarative.APIVersion, Kind: declarative.KindDatabase, Metadata: declarative.Meta{Name: "pg"},
-		Database: &declarative.DatabaseSpec{Engine: "postgres", Instance: "auto", Resources: res},
+		Database: &declarative.DatabaseSpec{Engine: "postgres", Instance: declarative.DatabaseInstanceRef{Type: "auto"}, Resources: res},
 	}
 }
 
