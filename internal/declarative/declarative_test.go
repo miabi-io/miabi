@@ -357,7 +357,7 @@ func TestBuildPlanCreateUpdateNoopDelete(t *testing.T) {
 	})
 	actual.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindDatabase,
-		Metadata: d.Meta{Name: "db"}, Database: &d.DatabaseSpec{Engine: "postgres", Version: "16-alpine", Instance: "auto"},
+		Metadata: d.Meta{Name: "db"}, Database: &d.DatabaseSpec{Engine: "postgres", Version: "16-alpine", Instance: d.DatabaseInstanceRef{Type: "auto"}},
 	})
 	actual.Add(d.Resource{
 		APIVersion: d.APIVersion, Kind: d.KindApplication,

@@ -128,6 +128,23 @@
       },
       "type": "object"
     },
+    "BackupScheduleSpec": {
+      "additionalProperties": false,
+      "description": "BackupScheduleSpec Schedule is hourly, daily, weekly or a cron expression; presets get a per-database minute so runs spread out.",
+      "properties": {
+        "enabled": {
+          "description": "Enabled false removes the schedule this manifest declared.",
+          "type": "boolean"
+        },
+        "retention": {
+          "$ref": "#/$defs/RetentionSpec"
+        },
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "CapabilitiesSpec": {
       "additionalProperties": false,
       "description": "CapabilitiesSpec changes the Linux capabilities a container starts with. The CAP_ prefix is optional.",
@@ -242,6 +259,61 @@
       ],
       "type": "object"
     },
+    "DatabaseInstanceRef": {
+      "additionalProperties": false,
+      "description": "DatabaseInstanceRef is auto (reuse a compatible instance, else provision), dedicated (always provision) or shared (must exist).",
+      "properties": {
+        "name": {
+          "description": "Name targets one instance and makes the logical database's name exact instead of suffixed on a clash.",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "auto",
+            "dedicated",
+            "shared"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DatabaseInstanceSpec": {
+      "additionalProperties": false,
+      "description": "DatabaseInstanceSpec declares an instance for PostgreSQL, MySQL, MariaDB or MongoDB; Redis and libSQL are declared as a Database.",
+      "properties": {
+        "adopt": {
+          "description": "Adopt takes over an existing instance no manifest owns; a name match alone is refused.",
+          "type": "boolean"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/PlacementSpec",
+          "description": "Placement is where the instance is created. Fixed once created."
+        },
+        "recoveryPoints": {
+          "$ref": "#/$defs/RecoveryPointsSpec",
+          "description": "RecoveryPoints schedules sealed sets of every database on the instance (Enterprise, S3 target required)."
+        },
+        "resources": {
+          "$ref": "#/$defs/DatabaseResourcesSpec"
+        },
+        "storageClass": {
+          "description": "StorageClass is immutable, so apply refuses an edit; omit it to keep the manifest portable across installs.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version changes upgrade the instance in place or by dump and restore; a downgrade is refused.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "engine"
+      ],
+      "type": "object"
+    },
     "DatabasePlacementSpec": {
       "additionalProperties": false,
       "description": "DatabasePlacementSpec also accepts the old string form (placement: dedicated) as instance.",
@@ -274,18 +346,30 @@
       "additionalProperties": false,
       "description": "DatabaseSpec requests a logical database on a DatabaseInstance.",
       "properties": {
+        "backup": {
+          "$ref": "#/$defs/BackupScheduleSpec",
+          "description": "Backup schedules logical backups to the workspace backup target; omitted keeps what it has, enabled: false removes it."
+        },
         "engine": {
           "description": "postgres|mysql|mariadb|redis|mongodb|libsql",
           "type": "string"
         },
         "instance": {
-          "description": "Instance is auto (reuse a compatible one, else provision), dedicated (always provision) or shared (must exist).",
-          "enum": [
-            "auto",
-            "dedicated",
-            "shared"
-          ],
-          "type": "string"
+          "description": "Instance is a mode string (auto, dedicated, shared) or {type, name} naming the instance; the name is fixed once created.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DatabaseInstanceRef"
+            },
+            {
+              "description": "Short form of {type}.",
+              "enum": [
+                "auto",
+                "dedicated",
+                "shared"
+              ],
+              "type": "string"
+            }
+          ]
         },
         "placement": {
           "description": "Placement's string form (placement: dedicated) is the deprecated spelling of instance.",
@@ -719,6 +803,31 @@
       },
       "type": "object"
     },
+    "RecoveryPointsSpec": {
+      "additionalProperties": false,
+      "description": "RecoveryPointsSpec Schedule is hourly, daily, weekly or a cron expression, like a database backup's.",
+      "properties": {
+        "concurrency": {
+          "description": "Concurrency is how many databases are dumped at once; 0 is the service default.",
+          "type": "integer"
+        },
+        "enabled": {
+          "description": "Enabled false removes the schedule this manifest declared.",
+          "type": "boolean"
+        },
+        "requireEncryption": {
+          "description": "RequireEncryption refuses the apply, and fails each run, while the workspace has no backup encryption.",
+          "type": "boolean"
+        },
+        "retention": {
+          "$ref": "#/$defs/RetentionSpec"
+        },
+        "schedule": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "RegistrySpec": {
       "additionalProperties": false,
       "description": "RegistrySpec Password is write-only and never in a plan; rotation converges via PasswordFP.",
@@ -753,6 +862,19 @@
         "memory": {
           "description": "e.g. \"512Mi\"",
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RetentionSpec": {
+      "additionalProperties": false,
+      "description": "RetentionSpec 0 means unlimited for either rule.",
+      "properties": {
+        "days": {
+          "type": "integer"
+        },
+        "keep": {
+          "type": "integer"
         }
       },
       "type": "object"
@@ -1181,6 +1303,25 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "DatabaseInstance"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/DatabaseInstanceSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "Domain"
           }
         },
@@ -1419,6 +1560,7 @@
         "Config",
         "CronJob",
         "Database",
+        "DatabaseInstance",
         "Domain",
         "GitRepository",
         "GitSource",

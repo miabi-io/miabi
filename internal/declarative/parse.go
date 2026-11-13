@@ -187,6 +187,12 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 			return nil, specErr(head.Kind, meta.Name, err)
 		}
 		r.Database = &s
+	case KindDatabaseInstance:
+		var s DatabaseInstanceSpec
+		if err := decodeSpec(&head.Spec, &s); err != nil {
+			return nil, specErr(head.Kind, meta.Name, err)
+		}
+		r.DatabaseInstance = &s
 	case KindVolume:
 		var s VolumeSpec
 		if err := decodeSpec(&head.Spec, &s); err != nil {

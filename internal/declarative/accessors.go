@@ -133,6 +133,81 @@ func (d *DatabaseSpec) Location() string {
 	return d.Placement.Location
 }
 
+// Location is the location the database instance names, or "".
+func (d *DatabaseInstanceSpec) Location() string {
+	if d == nil || d.Placement == nil {
+		return ""
+	}
+	return d.Placement.Location
+}
+
+// UnmarshalYAML reads {type, name}, or the bare auto|dedicated|shared string the field held before it became one.
+func (i *DatabaseInstanceRef) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*i = DatabaseInstanceRef{Type: n.Value}
+		return nil
+	}
+	type plain DatabaseInstanceRef
+	return decodeSpec(n, (*plain)(i))
+}
+
+// MarshalYAML writes the string form when no instance is named, so existing manifests round-trip unchanged.
+func (i DatabaseInstanceRef) MarshalYAML() (any, error) {
+	if i.Name == "" {
+		return i.Type, nil
+	}
+	type plain DatabaseInstanceRef
+	return plain(i), nil
+}
+
+func (i DatabaseInstanceRef) MarshalJSON() ([]byte, error) {
+	if i.Name == "" {
+		return json.Marshal(i.Type)
+	}
+	type plain DatabaseInstanceRef
+	return json.Marshal(plain(i))
+}
+
+func (i *DatabaseInstanceRef) UnmarshalJSON(b []byte) error {
+	var mode string
+	if err := json.Unmarshal(b, &mode); err == nil {
+		*i = DatabaseInstanceRef{Type: mode}
+		return nil
+	}
+	type plain DatabaseInstanceRef
+	return json.Unmarshal(b, (*plain)(i))
+}
+
+func (i DatabaseInstanceRef) IsZero() bool { return i == DatabaseInstanceRef{} }
+
+// On reports whether the block declares a schedule; enabled: false and an absent block both read false.
+func (b *BackupScheduleSpec) On() bool { return b != nil && (b.Enabled == nil || *b.Enabled) }
+
+// On reports whether the block declares a schedule; enabled: false and an absent block both read false.
+func (r *RecoveryPointsSpec) On() bool { return r != nil && (r.Enabled == nil || *r.Enabled) }
+
+// ScheduleOrDefault is the declared schedule, daily when the block names none.
+func ScheduleOrDefault(s string) string {
+	if s == "" {
+		return SchedulePresetDaily
+	}
+	return s
+}
+
+func (r *RetentionSpec) KeepOr0() int {
+	if r == nil {
+		return 0
+	}
+	return r.Keep
+}
+
+func (r *RetentionSpec) DaysOr0() int {
+	if r == nil {
+		return 0
+	}
+	return r.Days
+}
+
 // Location is the location the volume names, or "".
 func (v *VolumeSpec) Location() string {
 	if v == nil || v.Placement == nil {

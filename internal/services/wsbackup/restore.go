@@ -658,6 +658,7 @@ func (r *restoreRun) applyDatabases(ctx context.Context) {
 				r.add("database", d.Name+"/"+ld.Name, "failed", err.Error())
 				continue
 			}
+			r.svc.Database.TagDeclared(created, ld.Metadata)
 			// Reserved now so its grants cover the tables the data restore loads.
 			if ld.ReadOnlyUser {
 				if err := r.svc.Database.EnableReadOnly(ctx, created); err != nil {

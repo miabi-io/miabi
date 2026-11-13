@@ -75,7 +75,7 @@ func TestReadOnlyUserPlan(t *testing.T) {
 	spec := func(ro *bool) *d.ResourceSet {
 		set := d.NewResourceSet()
 		set.Add(d.Resource{APIVersion: d.APIVersion, Kind: d.KindDatabase, Metadata: d.Meta{Name: "mail-db"},
-			Database: &d.DatabaseSpec{Engine: "postgres", Version: "17-alpine", Instance: "auto", ReadOnlyUser: ro}})
+			Database: &d.DatabaseSpec{Engine: "postgres", Version: "17-alpine", Instance: d.DatabaseInstanceRef{Type: "auto"}, ReadOnlyUser: ro}})
 		return set
 	}
 	on, off := true, false

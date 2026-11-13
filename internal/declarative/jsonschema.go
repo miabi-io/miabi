@@ -60,22 +60,23 @@ func JSONSchema() ([]byte, error) {
 	}
 
 	specFor := map[Kind]any{
-		KindApplication:   ApplicationSpec{},
-		KindStack:         StackSpec{},
-		KindDatabase:      DatabaseSpec{},
-		KindVolume:        VolumeSpec{},
-		KindRoute:         RouteSpec{},
-		KindSecret:        SecretSpec{},
-		KindSealedSecret:  SealedSecretSpec{},
-		KindDomain:        DomainSpec{},
-		KindRegistry:      RegistrySpec{},
-		KindProject:       ProjectSpec{},
-		KindConfig:        ConfigSpec{},
-		KindMiddleware:    MiddlewareSpec{},
-		KindCronJob:       CronJobSpec{},
-		KindJob:           JobSpec{},
-		KindGitSource:     GitSourceSpec{},
-		KindGitRepository: GitRepositorySpec{},
+		KindApplication:      ApplicationSpec{},
+		KindStack:            StackSpec{},
+		KindDatabase:         DatabaseSpec{},
+		KindDatabaseInstance: DatabaseInstanceSpec{},
+		KindVolume:           VolumeSpec{},
+		KindRoute:            RouteSpec{},
+		KindSecret:           SecretSpec{},
+		KindSealedSecret:     SealedSecretSpec{},
+		KindDomain:           DomainSpec{},
+		KindRegistry:         RegistrySpec{},
+		KindProject:          ProjectSpec{},
+		KindConfig:           ConfigSpec{},
+		KindMiddleware:       MiddlewareSpec{},
+		KindCronJob:          CronJobSpec{},
+		KindJob:              JobSpec{},
+		KindGitSource:        GitSourceSpec{},
+		KindGitRepository:    GitRepositorySpec{},
 	}
 	branches := make([]any, 0, len(kinds))
 	for _, k := range kinds {
@@ -196,6 +197,7 @@ func (g *schemaGen) field(owner reflect.Type, f reflect.StructField) map[string]
 	// The field was a string before it became a block, and the parser still reads that spelling.
 	legacy := map[string]map[string]any{
 		"DatabaseSpec.Placement": {"type": "string", "enum": sortedKeys(placements), "description": "Deprecated: use instance."},
+		"DatabaseSpec.Instance":  {"type": "string", "enum": sortedKeys(placements), "description": "Short form of {type}."},
 		"RouteSpec.TLS":          {"type": "string", "enum": sortedKeys(validTLS), "description": "Deprecated: use the tls block."},
 		"DomainSpec.TLS":         {"type": "string", "enum": sortedKeys(validDomainTLS), "description": "Deprecated: use tls.mode."},
 	}
@@ -262,7 +264,7 @@ func enumFor(typeName, field string) []string {
 	switch typeName + "." + field {
 	case "DomainTLSSpec.Mode":
 		return sortedKeys(validDomainTLS)
-	case "DatabaseSpec.Instance":
+	case "DatabaseInstanceRef.Type":
 		return sortedKeys(placements)
 	case "DeploymentSpec.Strategy", "ApplicationSpec.DeprecatedStrategy":
 		return sortedKeys(validStrategy)

@@ -29,7 +29,9 @@ const (
 	KindApplication Kind = "Application"
 	KindStack       Kind = "Stack"
 	KindDatabase    Kind = "Database"
-	KindVolume      Kind = "Volume"
+	// KindDatabaseInstance owns an instance that several Database manifests place logical databases on.
+	KindDatabaseInstance Kind = "DatabaseInstance"
+	KindVolume           Kind = "Volume"
 	// KindRoute exposes an app on a hostname; KindDomain is the owned zone with ownership and default TLS.
 	KindRoute  Kind = "Route"
 	KindSecret Kind = "Secret"
@@ -56,22 +58,23 @@ const (
 )
 
 var knownKinds = map[Kind]bool{
-	KindApplication:   true,
-	KindStack:         true,
-	KindDatabase:      true,
-	KindVolume:        true,
-	KindRoute:         true,
-	KindSecret:        true,
-	KindSealedSecret:  true,
-	KindDomain:        true,
-	KindRegistry:      true,
-	KindProject:       true,
-	KindConfig:        true,
-	KindMiddleware:    true,
-	KindCronJob:       true,
-	KindJob:           true,
-	KindGitSource:     true,
-	KindGitRepository: true,
+	KindApplication:      true,
+	KindStack:            true,
+	KindDatabase:         true,
+	KindDatabaseInstance: true,
+	KindVolume:           true,
+	KindRoute:            true,
+	KindSecret:           true,
+	KindSealedSecret:     true,
+	KindDomain:           true,
+	KindRegistry:         true,
+	KindProject:          true,
+	KindConfig:           true,
+	KindMiddleware:       true,
+	KindCronJob:          true,
+	KindJob:              true,
+	KindGitSource:        true,
+	KindGitRepository:    true,
 }
 
 // Custom metadata belongs in Labels or Annotations, never as ad-hoc top-level keys.
@@ -89,22 +92,23 @@ type Resource struct {
 	Kind       Kind   `yaml:"kind" json:"kind"`
 	Metadata   Meta   `yaml:"metadata" json:"metadata"`
 
-	Application   *ApplicationSpec   `yaml:"-" json:"application,omitempty"`
-	Stack         *StackSpec         `yaml:"-" json:"stack,omitempty"`
-	Database      *DatabaseSpec      `yaml:"-" json:"database,omitempty"`
-	Volume        *VolumeSpec        `yaml:"-" json:"volume,omitempty"`
-	Route         *RouteSpec         `yaml:"-" json:"route,omitempty"`
-	Secret        *SecretSpec        `yaml:"-" json:"secret,omitempty"`
-	SealedSecret  *SealedSecretSpec  `yaml:"-" json:"sealedSecret,omitempty"`
-	Domain        *DomainSpec        `yaml:"-" json:"domain,omitempty"`
-	Registry      *RegistrySpec      `yaml:"-" json:"registry,omitempty"`
-	Project       *ProjectSpec       `yaml:"-" json:"project,omitempty"`
-	Config        *ConfigSpec        `yaml:"-" json:"config,omitempty"`
-	Middleware    *MiddlewareSpec    `yaml:"-" json:"middleware,omitempty"`
-	CronJob       *CronJobSpec       `yaml:"-" json:"cronJob,omitempty"`
-	Job           *JobSpec           `yaml:"-" json:"job,omitempty"`
-	GitSource     *GitSourceSpec     `yaml:"-" json:"gitSource,omitempty"`
-	GitRepository *GitRepositorySpec `yaml:"-" json:"gitRepository,omitempty"`
+	Application      *ApplicationSpec      `yaml:"-" json:"application,omitempty"`
+	Stack            *StackSpec            `yaml:"-" json:"stack,omitempty"`
+	Database         *DatabaseSpec         `yaml:"-" json:"database,omitempty"`
+	DatabaseInstance *DatabaseInstanceSpec `yaml:"-" json:"databaseInstance,omitempty"`
+	Volume           *VolumeSpec           `yaml:"-" json:"volume,omitempty"`
+	Route            *RouteSpec            `yaml:"-" json:"route,omitempty"`
+	Secret           *SecretSpec           `yaml:"-" json:"secret,omitempty"`
+	SealedSecret     *SealedSecretSpec     `yaml:"-" json:"sealedSecret,omitempty"`
+	Domain           *DomainSpec           `yaml:"-" json:"domain,omitempty"`
+	Registry         *RegistrySpec         `yaml:"-" json:"registry,omitempty"`
+	Project          *ProjectSpec          `yaml:"-" json:"project,omitempty"`
+	Config           *ConfigSpec           `yaml:"-" json:"config,omitempty"`
+	Middleware       *MiddlewareSpec       `yaml:"-" json:"middleware,omitempty"`
+	CronJob          *CronJobSpec          `yaml:"-" json:"cronJob,omitempty"`
+	Job              *JobSpec              `yaml:"-" json:"job,omitempty"`
+	GitSource        *GitSourceSpec        `yaml:"-" json:"gitSource,omitempty"`
+	GitRepository    *GitRepositorySpec    `yaml:"-" json:"gitRepository,omitempty"`
 }
 
 func (r Resource) Key() string { return string(r.Kind) + "/" + r.Metadata.Name }
@@ -291,14 +295,65 @@ type StackSpec struct {
 type DatabaseSpec struct {
 	Engine  string `yaml:"engine" json:"engine"`                       // postgres|mysql|mariadb|redis|mongodb|libsql
 	Version string `yaml:"version,omitempty" json:"version,omitempty"` // e.g. "16-alpine"
-	// Instance is auto (reuse a compatible one, else provision), dedicated (always provision) or shared (must exist).
-	Instance string `yaml:"instance,omitempty" json:"instance,omitempty"`
+	// Instance is a mode string (auto, dedicated, shared) or {type, name} naming the instance; the name is fixed once created.
+	Instance DatabaseInstanceRef `yaml:"instance,omitempty" json:"instance,omitzero"`
 	// Placement's string form (placement: dedicated) is the deprecated spelling of instance.
 	Placement *DatabasePlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 	// Resources give the database its own instance, since a reused one runs with another's size; omitted keeps limits.
 	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
 	// ReadOnlyUser (PostgreSQL) grants SELECT on all tables; omitted keeps what it has, false removes it.
 	ReadOnlyUser *bool `yaml:"readOnlyUser,omitempty" json:"readOnlyUser,omitempty"`
+	// Backup schedules logical backups to the workspace backup target; omitted keeps what it has, enabled: false removes it.
+	Backup *BackupScheduleSpec `yaml:"backup,omitempty" json:"backup,omitempty"`
+}
+
+// DatabaseInstanceRef is auto (reuse a compatible instance, else provision), dedicated (always provision) or shared (must exist).
+type DatabaseInstanceRef struct {
+	Type string `yaml:"type,omitempty" json:"type,omitempty"`
+	// Name targets one instance and makes the logical database's name exact instead of suffixed on a clash.
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+}
+
+// DatabaseInstanceSpec declares an instance for PostgreSQL, MySQL, MariaDB or MongoDB; Redis and libSQL are declared as a Database.
+type DatabaseInstanceSpec struct {
+	Engine string `yaml:"engine" json:"engine"`
+	// Version changes upgrade the instance in place or by dump and restore; a downgrade is refused.
+	Version   string                 `yaml:"version,omitempty" json:"version,omitempty"`
+	Resources *DatabaseResourcesSpec `yaml:"resources,omitempty" json:"resources,omitempty"`
+	// Placement is where the instance is created. Fixed once created.
+	Placement *PlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// StorageClass is immutable, so apply refuses an edit; omit it to keep the manifest portable across installs.
+	StorageClass string `yaml:"storageClass,omitempty" json:"storageClass,omitempty"`
+	// RecoveryPoints schedules sealed sets of every database on the instance (Enterprise, S3 target required).
+	RecoveryPoints *RecoveryPointsSpec `yaml:"recoveryPoints,omitempty" json:"recoveryPoints,omitempty"`
+	// Adopt takes over an existing instance no manifest owns; a name match alone is refused.
+	Adopt bool `yaml:"adopt,omitempty" json:"adopt,omitempty"`
+}
+
+// BackupScheduleSpec Schedule is hourly, daily, weekly or a cron expression; presets get a per-database minute so runs spread out.
+type BackupScheduleSpec struct {
+	// Enabled false removes the schedule this manifest declared.
+	Enabled   *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Schedule  string         `yaml:"schedule,omitempty" json:"schedule,omitempty"`
+	Retention *RetentionSpec `yaml:"retention,omitempty" json:"retention,omitempty"`
+}
+
+// RecoveryPointsSpec Schedule is hourly, daily, weekly or a cron expression, like a database backup's.
+type RecoveryPointsSpec struct {
+	// Enabled false removes the schedule this manifest declared.
+	Enabled   *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Schedule  string         `yaml:"schedule,omitempty" json:"schedule,omitempty"`
+	Retention *RetentionSpec `yaml:"retention,omitempty" json:"retention,omitempty"`
+	// Concurrency is how many databases are dumped at once; 0 is the service default.
+	Concurrency int `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
+	// RequireEncryption refuses the apply, and fails each run, while the workspace has no backup encryption.
+	RequireEncryption bool `yaml:"requireEncryption,omitempty" json:"requireEncryption,omitempty"`
+}
+
+// RetentionSpec 0 means unlimited for either rule.
+type RetentionSpec struct {
+	Keep int `yaml:"keep,omitempty" json:"keep,omitempty"`
+	Days int `yaml:"days,omitempty" json:"days,omitempty"`
 }
 
 // DatabaseResourcesSpec memory accepts Ki/Mi/Gi, CPU is cores ("0.5"); "0" removes a limit.
