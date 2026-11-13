@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	filippo.io/age v1.3.2
 	github.com/alicebob/miniredis/v2 v2.40.0
-	github.com/aws/aws-sdk-go-v2 v1.47.6
+	github.com/aws/aws-sdk-go-v2 v1.47.8
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.7
 	github.com/aws/smithy-go v1.28.8
