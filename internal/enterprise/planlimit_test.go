@@ -12,31 +12,6 @@ package enterprise
 
 import "testing"
 
-func TestNodeLimitResolution(t *testing.T) {
-	cases := []struct {
-		name string
-		ent  Entitlements
-		want int
-	}{
-		{"community default (no license)", Entitlements{Edition: EditionCommunity}, CommunityNodeLimit},
-		{"empty edition treated as community", Entitlements{}, CommunityNodeLimit},
-		{"paid, no explicit cap is unlimited", Entitlements{Edition: EditionEnterprise}, -1},
-		{"explicit license cap wins over edition default",
-			Entitlements{Edition: EditionEnterprise, Limits: map[string]int{LimitNodeLimit: 10}}, 10},
-		{"explicit cap also overrides community default",
-			Entitlements{Edition: EditionCommunity, Limits: map[string]int{LimitNodeLimit: 1}}, 1},
-		{"explicit unlimited on a license",
-			Entitlements{Edition: EditionEnterprise, Limits: map[string]int{LimitNodeLimit: -1}}, -1},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.ent.NodeLimit(); got != tc.want {
-				t.Errorf("NodeLimit() = %d, want %d", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestPlanLimitResolution(t *testing.T) {
 	cases := []struct {
 		name string
@@ -73,10 +48,6 @@ func TestTierPresets(t *testing.T) {
 				t.Errorf("tier %q references unknown flag %q", tier.Name, f)
 			}
 		}
-		// Presets set both bounded limits.
-		if _, ok := tier.Limits[LimitNodeLimit]; !ok {
-			t.Errorf("tier %q missing node_limit", tier.Name)
-		}
 		if _, ok := tier.Limits[LimitPlanLimit]; !ok {
 			t.Errorf("tier %q missing plan_limit", tier.Name)
 		}
@@ -90,7 +61,7 @@ func TestTierPresets(t *testing.T) {
 	if len(ent.Flags) != len(AllFlags)-len(AddOnFlags) {
 		t.Errorf("enterprise tier has %d flags, want all %d but the %d add-ons", len(ent.Flags), len(AllFlags), len(AddOnFlags))
 	}
-	if ent.Limits[LimitNodeLimit] != -1 || ent.Limits[LimitPlanLimit] != -1 {
+	if ent.Limits[LimitPlanLimit] != -1 {
 		t.Error("enterprise tier should be unlimited")
 	}
 	if _, ok := TierByName("nope"); ok {

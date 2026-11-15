@@ -56,17 +56,6 @@ var (
 	ErrInvalidConnectivity = errors.New("a node either runs its own gateway (edge-gateway) or, as a swarm member, is served by its cluster's gateway (cluster)")
 )
 
-// NodeLimitError carries a stable Code() so the API surfaces NODE_LIMIT_REACHED with an upgrade-oriented message.
-type NodeLimitError struct{ Limit int }
-
-func (e *NodeLimitError) Error() string {
-	return fmt.Sprintf("node limit reached: this edition is limited to %d nodes besides the control plane", e.Limit)
-}
-func (e *NodeLimitError) Code() string { return "NODE_LIMIT_REACHED" }
-func (e *NodeLimitError) Message() string {
-	return fmt.Sprintf("This edition is limited to %d nodes besides the control plane. Upgrade to Enterprise to add more.", e.Limit)
-}
-
 const tokenPrefix = "mbn_"
 
 // AppNetwork is the gateway network Goma and app containers join; set once at startup via MIABI_PROXY_NETWORK.
@@ -101,11 +90,10 @@ func NewAppAlias(token string, appID uint) string {
 const IngressOverlay = "miabi-ingress"
 
 type Service struct {
-	repo      *repositories.ServerRepository
-	clusters  *repositories.ClusterRepository
-	docker    docker.Client
-	nodeLimit func() int // resolved edition node cap (-1 = unlimited); nil = unlimited
-	orphaned  func(serverID uint)
+	repo     *repositories.ServerRepository
+	clusters *repositories.ClusterRepository
+	docker   docker.Client
+	orphaned func(serverID uint)
 	// A closure keeps cluster.Service out of this package's imports (it already depends on this one).
 	swarmCordon func(ctx context.Context, serverID uint, cordoned bool) error
 }
@@ -144,28 +132,6 @@ func (s *Service) placeInStandaloneCluster(srv *models.Server) error {
 	}
 	_, err = s.clusters.CreateStandalone(srv, name)
 	return err
-}
-
-// SetNodeLimit's closure is re-evaluated per registration so license changes apply without restart; nil or negative is unlimited.
-func (s *Service) SetNodeLimit(fn func() int) { s.nodeLimit = fn }
-
-// Only the next registration is blocked; the control-plane host is not counted, matching the license view metric.
-func (s *Service) checkNodeLimit() error {
-	if s.nodeLimit == nil {
-		return nil
-	}
-	limit := s.nodeLimit()
-	if limit < 0 {
-		return nil
-	}
-	n, err := s.repo.CountLicensed()
-	if err != nil {
-		return err
-	}
-	if n >= int64(limit) {
-		return &NodeLimitError{Limit: limit}
-	}
-	return nil
 }
 
 // Bootstrap is non-fatal when Docker is unreachable, so the API can still serve.
@@ -245,9 +211,6 @@ type NodeInput struct {
 func (s *Service) CreateNode(in NodeInput) (*models.Server, string, error) {
 	if strings.TrimSpace(in.DisplayName) == "" {
 		return nil, "", ErrNameRequired
-	}
-	if err := s.checkNodeLimit(); err != nil {
-		return nil, "", err
 	}
 	mode := in.AccessMode
 	if !models.ValidAccessMode(mode) {
@@ -354,9 +317,6 @@ func (s *Service) FindBySwarmNodeID(swarmNodeID string) (*models.Server, error) 
 
 // RegisterClusterNode is not open registration: the caller has verified the swarm node belongs to this swarm.
 func (s *Service) RegisterClusterNode(clusterID uint, swarmNodeID, hostname string) (*models.Server, error) {
-	if err := s.checkNodeLimit(); err != nil {
-		return nil, err
-	}
 	name := strings.TrimSpace(hostname)
 	if name == "" {
 		name = "node-" + shortID(swarmNodeID)

@@ -36,9 +36,6 @@ const licenseBanner = computed(() => {
   if (w.includes('nearing_expiry')) {
     return { level: 'warning', text: t('adminLayout.license.expiringSoon') }
   }
-  if (w.includes('over_node_limit')) {
-    return { level: 'warning', text: t('adminLayout.license.nodeLimit') }
-  }
   return null
 })
 

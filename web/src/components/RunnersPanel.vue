@@ -17,19 +17,12 @@ const props = defineProps<{
   shared?: boolean
   // Scope-specific route (workspace vs admin); when unset the name renders as plain text.
   detailRouteName?: string
-  // -1 or omitted means no cap; at the cap registering is disabled and limitNote explains why.
-  createLimit?: number
-  limitNote?: string
 }>()
 
 const notify = useNotificationStore()
 const { t } = useI18n()
 
 const runners = ref<Runner[]>([])
-// The backend enforces the cap too.
-const atCreateLimit = computed(
-  () => props.createLimit !== undefined && props.createLimit >= 0 && runners.value.length >= props.createLimit,
-)
 const loading = ref(false)
 const saving = ref(false)
 const showRegister = ref(false)
@@ -211,21 +204,8 @@ function platform(r: Runner): string {
         <span v-if="live" class="live-chip" :class="{ 'live-chip--off': !streaming }" :title="streaming ? $t('runners.liveHint') : $t('runners.reconnectingHint')">
           <span class="live-dot"></span> {{ streaming ? $t('runners.live') : $t('runners.reconnecting') }}
         </span>
-        <button
-          v-if="canEdit"
-          class="btn btn-primary"
-          :disabled="atCreateLimit"
-          :title="atCreateLimit ? limitNote : ''"
-          @click="openRegister"
-        >
+        <button v-if="canEdit" class="btn btn-primary" @click="openRegister">
           <span class="mdi mdi-plus"></span>{{ $t('runners.addRunner') }}</button>
-      </div>
-    </div>
-
-    <div v-if="canEdit && atCreateLimit && limitNote" class="app-banner app-banner--info" style="margin-bottom: 16px">
-      <span class="mdi mdi-information-outline app-banner-icon"></span>
-      <div class="app-banner-content">
-        <p class="app-banner-text">{{ limitNote }}</p>
       </div>
     </div>
 
@@ -237,7 +217,7 @@ function platform(r: Runner): string {
         <p v-if="canEdit">{{ $t('runners.emptyHint') }}</p>
         <p v-else-if="shared">{{ $t('runners.noSharedRunners') }}</p>
         <p v-else>{{ $t('runners.noRunnersHint') }}</p>
-        <button v-if="canEdit" class="btn btn-primary mt-4" :disabled="atCreateLimit" :title="atCreateLimit ? limitNote : ''" @click="openRegister">{{ $t('runners.addARunner') }}</button>
+        <button v-if="canEdit" class="btn btn-primary mt-4" @click="openRegister">{{ $t('runners.addARunner') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>

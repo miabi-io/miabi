@@ -24,9 +24,10 @@ The individual or legal entity exercising rights under this license.
 **Valid Subscription**
 An active, paid Miabi Enterprise subscription or other written commercial
 agreement with the Licensor that grants rights to use the Enterprise Software. A
-Valid Subscription may include limits such as users, workspaces, applications,
-nodes, clusters, or other licensed capacities, and may require a valid license
-key.
+Valid Subscription may define the Enterprise features it includes and limits on
+them, such as the number of platform plans, and may require a valid license key.
+It does not limit the number of nodes, clusters, storage classes or build
+runners, which the Community edition already leaves unlimited.
 
 **Service Provider Use**
 Using the Enterprise Software to provide Miabi, or any application, platform, or

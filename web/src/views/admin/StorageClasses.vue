@@ -1,20 +1,17 @@
 <script setup lang="ts">
 import BetaBadge from '@/components/BetaBadge.vue'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import { nodesApi } from '@/api/nodes'
 import { useRouter } from 'vue-router'
 import type { Server, StorageClass } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
-import { useLicenseStore } from '@/stores/license'
 import { fmtSize } from '@/utils/format'
 import StorageClassFormModal from '@/components/StorageClassFormModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const notify = useNotificationStore()
 const router = useRouter()
-// The edition cap counts the built-in class; Enterprise lifts it.
-const license = useLicenseStore()
 
 const classes = ref<StorageClass[]>([])
 const nodes = ref<Server[]>([])
@@ -37,21 +34,7 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(() => {
-  void load()
-  // Idempotent; drives the class-cap gate.
-  void license.load()
-})
-
-const usage = computed(() => license.view?.storage_class_usage)
-const limited = computed(() => (usage.value?.limit ?? -1) >= 0)
-const atCap = computed(() => {
-  const u = usage.value
-  return !!u && u.limit >= 0 && u.used >= u.limit
-})
-const capTitle = computed(() =>
-  atCap.value ? `Your edition allows ${usage.value?.limit} storage classes — upgrade your license to add more disks` : '',
-)
+onMounted(load)
 
 function usedPercent(c: StorageClass): number | null {
   if (!c.capacity_bytes || c.available_bytes === undefined) return null
@@ -98,27 +81,10 @@ async function remove() {
         </p>
       </div>
       <div class="header-actions">
-        <span
-          v-if="limited"
-          class="class-usage"
-          :class="{ 'class-usage--full': atCap }"
-          :title="atCap ? capTitle : 'Storage classes used of your edition limit, the built-in one included'"
-        >
-          <span class="mdi mdi-harddisk"></span> {{ usage?.used ?? 0 }} / {{ usage?.limit }} classes
-        </span>
-        <button class="btn btn-primary" :disabled="atCap" :title="capTitle" @click="openCreate">
+        <button class="btn btn-primary" @click="openCreate">
           <span class="mdi mdi-plus"></span> New storage class
         </button>
       </div>
-    </div>
-
-    <div v-if="atCap" class="cap-note">
-      <span class="mdi mdi-lock-outline"></span>
-      <span>
-        Your edition includes <strong>{{ usage?.limit }}</strong> storage classes, the built-in one included. Enterprise
-        lifts the cap; classes already registered keep working either way.
-      </span>
-      <router-link to="/admin/license" class="cap-link">Manage license</router-link>
     </div>
 
     <div class="card">
@@ -182,19 +148,4 @@ async function remove() {
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .class-link { color: inherit; text-decoration: none; }
 .class-link:hover { text-decoration: underline; }
-.class-usage {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--surface-2, rgba(127, 127, 127, 0.1));
-}
-.class-usage--full { color: var(--warning, #b7791f); background: var(--warning-bg, rgba(183, 121, 31, 0.12)); }
-.cap-note { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 10px 14px; border-radius: 8px; font-size: 13px; background: var(--warning-bg, rgba(245, 158, 11, 0.1)); color: var(--warning, #b45309); }
-.cap-note .mdi { font-size: 16px; }
-.cap-link { margin-left: auto; font-weight: 600; white-space: nowrap; color: inherit; text-decoration: none; }
 </style>

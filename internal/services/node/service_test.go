@@ -31,44 +31,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Stand-in because the real model's gen_random_uuid() default cannot be parsed by sqlite.
-type serverRow struct {
-	ID      uint `gorm:"primaryKey"`
-	Name    string
-	IsLocal bool
-	// The insert names these columns, so the stand-in must carry them.
-	CPUCores         int
-	MemoryBytes      int64
-	StorageBytes     int64
-	StorageFreeBytes int64
-	CPUPercent       float64
-	MemUsedBytes     int64
-}
-
-func (serverRow) TableName() string { return "servers" }
-
-func newRepoWithNodes(t *testing.T, n int, withControlPlane bool) *repositories.ServerRepository {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&serverRow{}); err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < n; i++ {
-		if err := db.Create(&serverRow{Name: "node"}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	if withControlPlane {
-		if err := db.Create(&serverRow{Name: "manager", IsLocal: true}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	return repositories.NewServerRepository(db)
-}
-
 type swarmRow struct {
 	ID          uint `gorm:"primaryKey"`
 	Name        string
@@ -100,59 +62,6 @@ func TestNameBySwarmNodeID(t *testing.T) {
 	}
 	if got := s.NameBySwarmNodeID(""); got != "" {
 		t.Fatalf("empty swarm id should resolve to empty, got %q", got)
-	}
-}
-
-func TestCheckNodeLimit(t *testing.T) {
-	cases := []struct {
-		name         string
-		existing     int
-		controlPlane bool
-		limit        int
-		wantBlock    bool
-	}{
-		{"below limit", 2, false, 3, false},
-		{"at limit blocks next", 3, false, 3, true},
-		{"over limit blocks next", 4, false, 3, true},
-		{"unlimited (-1)", 9, false, -1, false},
-		{"control plane not counted", 2, true, 3, false},
-		{"control plane plus limit blocks next", 3, true, 3, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := NewService(newRepoWithNodes(t, tc.existing, tc.controlPlane), nil)
-			s.SetNodeLimit(func() int { return tc.limit })
-			err := s.checkNodeLimit()
-			var limitErr *NodeLimitError
-			if tc.wantBlock {
-				if !errors.As(err, &limitErr) {
-					t.Fatalf("want *NodeLimitError, got %v", err)
-				}
-				if limitErr.Limit != tc.limit {
-					t.Errorf("limit = %d, want %d", limitErr.Limit, tc.limit)
-				}
-			} else if err != nil {
-				t.Fatalf("want nil, got %v", err)
-			}
-		})
-	}
-}
-
-// A nil cap closure must never touch the repository, so a nil repo is safe.
-func TestCheckNodeLimitUnconfigured(t *testing.T) {
-	s := NewService(nil, nil) // no SetNodeLimit, no repo
-	if err := s.checkNodeLimit(); err != nil {
-		t.Fatalf("unconfigured cap should allow, got %v", err)
-	}
-}
-
-func TestNodeLimitErrorEnvelope(t *testing.T) {
-	e := &NodeLimitError{Limit: 3}
-	if e.Code() != "NODE_LIMIT_REACHED" {
-		t.Errorf("Code() = %q", e.Code())
-	}
-	if e.Message() == "" || e.Error() == "" {
-		t.Error("Message()/Error() must be populated for the API envelope")
 	}
 }
 

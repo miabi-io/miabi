@@ -45,7 +45,7 @@ func TestLicenseEntitlementsExposeOnlyGatingFields(t *testing.T) {
 		Flags:    map[string]bool{enterprise.FlagAdvancedCanary: true},
 		Customer: "Acme Corp", LicenseID: "lic_secret123", InstallID: "inst_abc",
 		URL: "https://portal.example.com", Limits: map[string]int{"node_limit": 50}, NotAfter: &expires,
-	}}, nil, nil, nil, nil, "inst_this", nil)
+	}}, nil, "inst_this", nil)
 
 	rec := httptest.NewRecorder()
 	c := okapi.NewContext(okapi.New(), rec, httptest.NewRequest(http.MethodGet, "/api/v1/system/license/entitlements", nil))

@@ -100,8 +100,7 @@
     "license": {
       "expired": "Your license has expired. Enterprise features are now read-only.",
       "expiringSoon": "Your license expires soon. Renew to avoid interruption.",
-      "grace": "Your license has expired and is in its grace period — renew to avoid losing access to paid features.",
-      "nodeLimit": "You have exceeded your licensed node limit — adding nodes is blocked."
+      "grace": "Your license has expired and is in its grace period — renew to avoid losing access to paid features."
     },
     "releaseNotes": "Release notes →",
     "securityRelease": "Security release"
@@ -2664,9 +2663,6 @@
     },
     "nodeImport": {
       "importedFailed": "Imported {imported}, {failed} failed"
-    },
-    "nodes": {
-      "communityEditionIsLimitedTo": "Community edition is limited to {value} nodes besides the control plane. Upgrade to Enterprise to add more."
     },
     "notifications": {
       "channelAdded": "Channel added",

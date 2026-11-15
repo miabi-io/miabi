@@ -33,26 +33,14 @@ const nearingExpiryWindow = 30 * 24 * time.Hour
 
 // In Community the injected EE is the deny-all stub, so install returns 402.
 type LicenseHandler struct {
-	ee                enterprise.EE
-	nodeCount         func() int64
-	planCount         func() int64
-	storageClassCount func() int64
-	sharedRunnerCount func() int64
-	installID         string // this deployment's stable Install ID ("Your Install ID")
-	audit             *audit.Logger
+	ee        enterprise.EE
+	planCount func() int64
+	installID string // this deployment's stable Install ID ("Your Install ID")
+	audit     *audit.Logger
 }
 
-func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount, storageClassCount, sharedRunnerCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
-	return &LicenseHandler{
-		ee: ee, nodeCount: nodeCount, planCount: planCount, storageClassCount: storageClassCount,
-		sharedRunnerCount: sharedRunnerCount, installID: installID, audit: auditLog,
-	}
-}
-
-// NodeUsage reports registered nodes, excluding the control plane, against the licensed cap (-1 = unlimited).
-type NodeUsage struct {
-	Used  int64 `json:"used"`
-	Limit int   `json:"limit"`
+func NewLicenseHandler(ee enterprise.EE, planCount func() int64, installID string, auditLog *audit.Logger) *LicenseHandler {
+	return &LicenseHandler{ee: ee, planCount: planCount, installID: installID, audit: auditLog}
 }
 
 // PlanUsage reports the plan-catalog size against the edition cap (-1 = unlimited).
@@ -61,26 +49,12 @@ type PlanUsage struct {
 	Limit int   `json:"limit"`
 }
 
-type StorageClassUsage struct {
-	Used  int64 `json:"used"`
-	Limit int   `json:"limit"`
-}
-
-// Workspace-owned runners are bounded by the workspace plan, not here.
-type SharedRunnerUsage struct {
-	Used  int64 `json:"used"`
-	Limit int   `json:"limit"`
-}
-
 type LicenseView struct {
 	enterprise.Entitlements
 	// Distinct from Entitlements.InstallID, which is the id a license is bound to.
-	InstanceInstallID string            `json:"instance_install_id"`
-	NodeUsage         NodeUsage         `json:"node_usage"`
-	PlanUsage         PlanUsage         `json:"plan_usage"`
-	StorageClassUsage StorageClassUsage `json:"storage_class_usage"`
-	SharedRunnerUsage SharedRunnerUsage `json:"shared_runner_usage"`
-	Warnings          []string          `json:"warnings"`
+	InstanceInstallID string    `json:"instance_install_id"`
+	PlanUsage         PlanUsage `json:"plan_usage"`
+	Warnings          []string  `json:"warnings"`
 }
 
 type InstallLicenseRequest struct {
@@ -91,34 +65,19 @@ type InstallLicenseRequest struct {
 
 func (h *LicenseHandler) view() LicenseView {
 	ent := h.ee.Entitlements()
-	used := int64(0)
-	if h.nodeCount != nil {
-		used = h.nodeCount()
-	}
 	plans := int64(0)
 	if h.planCount != nil {
 		plans = h.planCount()
 	}
-	classes := int64(0)
-	if h.storageClassCount != nil {
-		classes = h.storageClassCount()
-	}
-	runners := int64(0)
-	if h.sharedRunnerCount != nil {
-		runners = h.sharedRunnerCount()
-	}
 	return LicenseView{
 		Entitlements:      ent,
 		InstanceInstallID: h.installID,
-		NodeUsage:         NodeUsage{Used: used, Limit: ent.NodeLimit()},
 		PlanUsage:         PlanUsage{Used: plans, Limit: ent.PlanLimit()},
-		StorageClassUsage: StorageClassUsage{Used: classes, Limit: ent.StorageClassLimit()},
-		SharedRunnerUsage: SharedRunnerUsage{Used: runners, Limit: ent.SharedRunnerLimit()},
-		Warnings:          warnings(ent, used),
+		Warnings:          warnings(ent),
 	}
 }
 
-func warnings(ent enterprise.Entitlements, nodesUsed int64) []string {
+func warnings(ent enterprise.Entitlements) []string {
 	out := []string{}
 	switch ent.State {
 	case "grace":
@@ -130,13 +89,10 @@ func warnings(ent enterprise.Entitlements, nodesUsed int64) []string {
 			out = append(out, "nearing_expiry")
 		}
 	}
-	if limit := ent.NodeLimit(); limit >= 0 && nodesUsed > int64(limit) {
-		out = append(out, "over_node_limit")
-	}
 	return out
 }
 
-// Get returns the current license, entitlements, node usage, and warnings.
+// Get returns the current license, entitlements, plan usage, and warnings.
 func (h *LicenseHandler) Get(c *okapi.Context) error {
 	return ok(c, h.view())
 }
@@ -156,11 +112,7 @@ func (h *LicenseHandler) Entitlements(c *okapi.Context) error {
 // Health returns just the warnings list (drives the global UI banner).
 func (h *LicenseHandler) Health(c *okapi.Context) error {
 	ent := h.ee.Entitlements()
-	used := int64(0)
-	if h.nodeCount != nil {
-		used = h.nodeCount()
-	}
-	return ok(c, map[string]any{"state": ent.State, "edition": ent.Edition, "warnings": warnings(ent, used)})
+	return ok(c, map[string]any{"state": ent.State, "edition": ent.Edition, "warnings": warnings(ent)})
 }
 
 func (h *LicenseHandler) Install(c *okapi.Context, req *InstallLicenseRequest) error {

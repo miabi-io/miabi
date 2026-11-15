@@ -379,13 +379,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// No-op in Community.
 	directoryService := directory.NewService(ee, userRepo, workspaceRepo, ldapRepo)
 	serverRepo := repositories.NewServerRepository(db)
-	licenseNodeCount := func() int64 {
-		n, err := serverRepo.CountLicensed()
-		if err != nil {
-			return 0
-		}
-		return n
-	}
 	// Enforcement is off by default (cfg.PlanEnforcement); when off, all checks pass.
 	planRepo := repositories.NewPlanRepository(db)
 	quotaService := quota.NewService(planRepo, quotaOverrideRepo, appRepo, volumeRepo, dbRepo, cfg.PlanEnforcement)
@@ -592,7 +585,6 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	appService.SetRouteSyncer(routeService)
 	// Enforce platform CPU/memory caps on app create/update.
 	appService.SetSettings(settingsProvider)
-	nodeService.SetNodeLimit(func() int { return ee.Entitlements().NodeLimit() })
 	organizationService.SetClusters(clusterRepo)
 	organizationService.SetWorkspaces(workspaceRepo)
 	workspaceService.SetOrgs(organizationService)
@@ -1475,11 +1467,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 					return c
 				},
 			})),
-			oauthAdmin:  handlers.NewOAuthAdminHandler(oauthRepo, oauthService, ee, auditLogger),
-			oauthPublic: handlers.NewOAuthHandler(oauthService, oauthRepo, authService, sessionRepo, auditLogger, cfg),
-			license: handlers.NewLicenseHandler(ee, licenseNodeCount, func() int64 { n, _ := planRepo.Count(); return n }, func() int64 { n, _ := storageClassService.Count(); return n },
-				func() int64 { n, _ := repositories.NewRunnerRepository(db).CountShared(); return n },
-				installID, auditLogger),
+			oauthAdmin:        handlers.NewOAuthAdminHandler(oauthRepo, oauthService, ee, auditLogger),
+			oauthPublic:       handlers.NewOAuthHandler(oauthService, oauthRepo, authService, sessionRepo, auditLogger, cfg),
+			license:           handlers.NewLicenseHandler(ee, func() int64 { n, _ := planRepo.Count(); return n }, installID, auditLogger),
 			ssoAdmin:          handlers.NewSSOAdminHandler(orgRepo, samlConfigRepo, scimTokenRepo, ee, auditLogger),
 			adminOrganization: handlers.NewAdminOrganizationHandler(organizationService, userRepo, clusterRepo, workspaceRepo, ee, auditLogger),
 			ldapAdmin:         handlers.NewLDAPAdminHandler(ldapRepo, ee, auditLogger),
@@ -1490,8 +1480,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			siemAdmin:         handlers.NewSIEMAdminHandler(siemConfigRepo, siemStreamer, ee, auditLogger),
 			adminAnnouncement: handlers.NewAdminAnnouncementHandler(announcementService, announcementRepo, userRepo, ee, auditLogger),
 			adminDatabaseSize: handlers.NewAdminDatabaseSizeHandler(databaseSizeRepo, ee, auditLogger),
-			adminStorageClass: handlers.NewAdminStorageClassHandler(storageClassService, ee, auditLogger),
-			adminRunner:       handlers.NewAdminRunnerHandler(runnerService, ee, auditLogger),
+			adminStorageClass: handlers.NewAdminStorageClassHandler(storageClassService, auditLogger),
+			adminRunner:       handlers.NewAdminRunnerHandler(runnerService, auditLogger),
 		},
 	}
 

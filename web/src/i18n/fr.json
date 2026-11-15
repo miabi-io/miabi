@@ -100,8 +100,7 @@
     "license": {
       "expired": "Votre licence a expiré. Les fonctionnalités Enterprise sont désormais en lecture seule.",
       "expiringSoon": "Votre licence expire bientôt. Renouvelez-la pour éviter toute interruption.",
-      "grace": "Votre licence a expiré et se trouve dans sa période de grâce — renouvelez-la pour ne pas perdre l’accès aux fonctionnalités payantes.",
-      "nodeLimit": "Vous avez dépassé votre limite de nœuds sous licence — l’ajout de nœuds est bloqué."
+      "grace": "Votre licence a expiré et se trouve dans sa période de grâce — renouvelez-la pour ne pas perdre l’accès aux fonctionnalités payantes."
     },
     "releaseNotes": "Notes de version →",
     "securityRelease": "Mise à jour de sécurité"
@@ -2664,9 +2663,6 @@
     },
     "nodeImport": {
       "importedFailed": "{imported} importé(s), {failed} en échec"
-    },
-    "nodes": {
-      "communityEditionIsLimitedTo": "L’édition Community est limitée à {value} nœuds en plus du plan de contrôle. Passez à Enterprise pour en ajouter."
     },
     "notifications": {
       "channelAdded": "Canal ajouté",

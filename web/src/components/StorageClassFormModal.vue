@@ -2,9 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { Server, StorageClass, StorageClassInput } from '@/api/types'
-import { apiError as decodeApiError } from '@/api/client'
 import { useNotificationStore } from '@/stores/notification'
-import { useLicenseStore } from '@/stores/license'
 import AppModal from '@/components/AppModal.vue'
 
 // Name, node and path are set on create only: volumes and manifests point at them.
@@ -12,7 +10,6 @@ const props = defineProps<{ open: boolean; editing: StorageClass | null; nodes?:
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 
 const notify = useNotificationStore()
-const license = useLicenseStore()
 const saving = ref(false)
 
 const blank = (): StorageClassInput => ({
@@ -44,15 +41,7 @@ async function save() {
     notify.success(props.editing ? 'Storage class updated' : 'Storage class registered')
     emit('saved')
   } catch (e) {
-    if (decodeApiError(e).code === 'STORAGE_CLASS_LIMIT_REACHED') {
-      // The count is read from the license view, so refresh it: the cap was hit with a stale one.
-      void license.load(true)
-      notify.error(`Your edition allows ${license.view?.storage_class_usage?.limit ?? 2} storage classes, the built-in one included.`, {
-        title: 'Storage class limit reached',
-      })
-    } else {
-      notify.apiError(e)
-    }
+    notify.apiError(e)
   } finally {
     saving.value = false
   }

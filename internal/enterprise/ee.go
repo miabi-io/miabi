@@ -46,7 +46,7 @@ const (
 	FlagPrivateRegistry              = "private_registry"
 	FlagSecurityProfile              = "security_profile"     // restricted (force non-root UID) profile
 	FlagRegistryS3                   = "registry_s3"          // S3/MinIO storage for the built-in registry
-	FlagPlatformRunners              = "platform_runners"     // admin-managed platform-shared runner pool
+	FlagPlatformRunners              = "platform_runners"     // bind plans and workspaces to named platform runners
 	FlagUserWorkspaceLimit           = "user_workspace_limit" // per-user workspace-count override
 	FlagUserWorkspaceMembershipLimit = "user_workspace_membership_limit"
 	FlagSSOLDAP                      = "sso_ldap"          // LDAP / Active Directory authentication
@@ -55,7 +55,7 @@ const (
 	FlagAdvancedCanary               = "advanced_canary"
 	FlagAnnouncements                = "announcements" // platform-wide announcements to user inboxes
 	FlagDatabaseSizes                = "database_sizes"
-	FlagStorageClasses               = "storage_classes"   // admin-registered storage classes (bare-metal disks)
+	FlagStorageClasses               = "storage_classes"   // retired, grants nothing; kept because flag order is signed into tokens
 	FlagRecoveryPoints               = "recovery_points"   // recovery points over a database instance or a volume
 	FlagOrganizations                = "organizations"     // more than one organization (tenant realm)
 	FlagSecurityPolicies             = "security_policies" // Security Center: scoped, audited platform security policies
@@ -89,7 +89,7 @@ var AllFlags = []FlagInfo{
 	{FlagPrivateRegistry, "private registries: custom marketplace URL + platform image registry mirror"},
 	{FlagSecurityProfile, "restricted (force non-root UID) profile"},
 	{FlagRegistryS3, "S3/MinIO storage for the built-in registry"},
-	{FlagPlatformRunners, "admin-managed platform-shared runner pool"},
+	{FlagPlatformRunners, "bind plans and workspace overrides to named platform runners"},
 	{FlagUserWorkspaceLimit, "per-user workspace-count override"},
 	{FlagUserWorkspaceMembershipLimit, "per-user workspace-membership override"},
 	{FlagSSOLDAP, "LDAP / Active Directory authentication"},
@@ -98,7 +98,7 @@ var AllFlags = []FlagInfo{
 	{FlagAdvancedCanary, "manual canary control + attribute-based canary routing"},
 	{FlagAnnouncements, "platform announcements broadcast to user inboxes"},
 	{FlagDatabaseSizes, "named database sizes (CPU and memory), offered per plan"},
-	{FlagStorageClasses, "register storage classes: volumes on operator-managed disks"},
+	{FlagStorageClasses, "retired: storage classes are available in every edition"},
 	{FlagRecoveryPoints, "recovery points: back up, schedule and verify a database instance or a volume as one sealed set"},
 	{FlagOrganizations, "organizations: tenant realms owning workspaces, with their own limits and clusters"},
 	{FlagSecurityPolicies, "Security Center: platform security policies with audit mode, scoped overrides and a decision log"},
@@ -142,9 +142,8 @@ var Tiers = []Tier{
 	{
 		Name:  TierProfessional,
 		Desc:  "Freelancers & solo builders",
-		Flags: []string{FlagMultiSSO, FlagSSOHiddenProvider, FlagAuditLog, FlagRegistryS3, FlagStorageClasses, FlagRecoveryPoints, FlagEEFeatures},
+		Flags: []string{FlagMultiSSO, FlagSSOHiddenProvider, FlagAuditLog, FlagRegistryS3, FlagRecoveryPoints, FlagEEFeatures},
 		Limits: map[string]int{
-			LimitNodeLimit: 10,
 			LimitPlanLimit: 5,
 		},
 	},
@@ -157,10 +156,9 @@ var Tiers = []Tier{
 			FlagUserWorkspaceMembershipLimit,
 			FlagAuditLog, FlagAuditExport, FlagPlatformBackup, FlagAnnouncements,
 			FlagPrivateRegistry, FlagRegistryS3, FlagPlatformRunners, FlagSecurityProfile,
-			FlagStorageClasses, FlagRecoveryPoints, FlagOrganizations, FlagLiveMigration, FlagEEFeatures,
+			FlagRecoveryPoints, FlagOrganizations, FlagLiveMigration, FlagEEFeatures,
 		},
 		Limits: map[string]int{
-			LimitNodeLimit: 25,
 			LimitPlanLimit: 15,
 		},
 	},
@@ -169,7 +167,6 @@ var Tiers = []Tier{
 		Desc:  "Enterprises: everything, unlimited",
 		Flags: includedFlags(),
 		Limits: map[string]int{
-			LimitNodeLimit: -1,
 			LimitPlanLimit: -1,
 		},
 	},
@@ -205,9 +202,6 @@ func IsKnownFlag(name string) bool {
 	return false
 }
 
-// LimitNodeLimit is the entitlement limit key bounding registered nodes; the control plane is not counted.
-const LimitNodeLimit = "node_limit"
-
 // LimitPlanLimit is the entitlement limit key bounding the platform plan catalog.
 const LimitPlanLimit = "plan_limit"
 
@@ -216,11 +210,6 @@ const LimitAnalyticsRetentionDays = "analytics_retention_days"
 const CommunityAnalyticsRetentionDays = 7
 
 const CommunityPlanLimit = 3
-const CommunityNodeLimit = 3
-const CommunityRunnerLimit = 2
-
-// CommunityStorageClassLimit counts the seeded built-in class, leaving room for one disk of its own.
-const CommunityStorageClassLimit = 2
 
 // State is one of "valid" | "grace" | "degraded" | "none" (community).
 type Entitlements struct {
@@ -240,18 +229,6 @@ type Entitlements struct {
 	GraceEnds  *time.Time      `json:"grace_ends,omitempty"`
 }
 
-func (e Entitlements) NodeLimit() int {
-	if e.Limits != nil {
-		if v, ok := e.Limits[LimitNodeLimit]; ok {
-			return v
-		}
-	}
-	if e.Edition == "" || e.Edition == EditionCommunity {
-		return CommunityNodeLimit
-	}
-	return -1
-}
-
 func (e Entitlements) PlanLimit() int {
 	if e.Limits != nil {
 		if v, ok := e.Limits[LimitPlanLimit]; ok {
@@ -260,27 +237,6 @@ func (e Entitlements) PlanLimit() int {
 	}
 	if e.Edition == "" || e.Edition == EditionCommunity {
 		return CommunityPlanLimit
-	}
-	return -1
-}
-
-func (e Entitlements) SharedRunnerLimit() int {
-	if e.Flags[FlagPlatformRunners] {
-		return -1
-	}
-	if e.Edition == "" || e.Edition == EditionCommunity {
-		return CommunityRunnerLimit
-	}
-	return -1
-}
-
-// StorageClassLimit is the whole Community limit; the storage_classes entitlement makes it unlimited.
-func (e Entitlements) StorageClassLimit() int {
-	if e.Flags[FlagStorageClasses] {
-		return -1
-	}
-	if e.Edition == "" || e.Edition == EditionCommunity {
-		return CommunityStorageClassLimit
 	}
 	return -1
 }
@@ -406,8 +362,6 @@ var (
 	ErrLicenseExpired         = &gateError{code: "LICENSE_EXPIRED", msg: "your license has expired; this feature is read-only", status: 402}
 	ErrCommunityEdition       = &gateError{code: "COMMUNITY_EDITION", msg: "license management requires the Enterprise build", status: 402}
 	ErrPlanLimitReached       = &gateError{code: "PLAN_LIMIT_REACHED", msg: "the plan-catalog limit for your edition has been reached; upgrade your license to add more plans", status: 402}
-	ErrRunnerLimitReached     = &gateError{code: "RUNNER_LIMIT_REACHED", msg: "the platform-shared runner limit for your edition has been reached; upgrade your license to add more", status: 402}
-	ErrStorageClassLimit      = &gateError{code: "STORAGE_CLASS_LIMIT_REACHED", msg: "the storage-class limit for your edition has been reached; upgrade your license to add more disks", status: 402}
 	ErrLicenseBindingMismatch = &gateError{code: "LICENSE_BINDING_MISMATCH", msg: "this license is bound to a different deployment (Install ID or URL)", status: 402}
 	ErrLicenseUnknownKey      = &gateError{code: "LICENSE_UNKNOWN_KEY", msg: "this license is signed by a key this version of Miabi does not trust; upgrade Miabi or download the license again", status: 402}
 )
