@@ -3332,34 +3332,15 @@ export interface UserEntitlements {
   flags: Record<string, boolean>
 }
 
-export interface LicenseNodeUsage {
-  used: number
-  limit: number // -1 = unlimited
-}
-
 // LicensePlanUsage reports the plan-catalog size against the edition cap.
 export interface LicensePlanUsage {
   used: number
   limit: number // -1 = unlimited
 }
 
-export interface LicenseStorageClassUsage {
-  used: number
-  limit: number // -1 = unlimited
-}
-
-// Workspace-owned runners are bounded by the workspace plan, not by this.
-export interface LicenseSharedRunnerUsage {
-  used: number
-  limit: number // -1 = unlimited
-}
-
 export interface LicenseView extends LicenseEntitlements {
   instance_install_id: string // THIS deployment's Install ID ("Your Install ID")
-  node_usage: LicenseNodeUsage
   plan_usage: LicensePlanUsage
-  storage_class_usage: LicenseStorageClassUsage
-  shared_runner_usage: LicenseSharedRunnerUsage
   warnings: string[]
 }
 

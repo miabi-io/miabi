@@ -24,7 +24,6 @@ import (
 	"strconv"
 
 	"github.com/jkaninda/okapi"
-	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
@@ -32,15 +31,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// A lapsed license never breaks existing classes: only the next create is refused.
 type AdminStorageClassHandler struct {
 	svc   *storageclass.Service
-	ee    enterprise.EE
 	audit *audit.Logger
 }
 
-func NewAdminStorageClassHandler(svc *storageclass.Service, ee enterprise.EE, auditLog *audit.Logger) *AdminStorageClassHandler {
-	return &AdminStorageClassHandler{svc: svc, ee: ee, audit: auditLog}
+func NewAdminStorageClassHandler(svc *storageclass.Service, auditLog *audit.Logger) *AdminStorageClassHandler {
+	return &AdminStorageClassHandler{svc: svc, audit: auditLog}
 }
 
 type storageClassBody struct {
@@ -62,15 +59,6 @@ type CreateStorageClassRequest struct {
 
 type UpdateStorageClassRequest struct {
 	Body storageClassBody `json:"body"`
-}
-
-// Writes no response: entitlementAbort returns nil, so the refusal must be the handler's own return.
-func (h *AdminStorageClassHandler) overCap() bool {
-	if h.ee.Mutable(enterprise.FlagStorageClasses) {
-		return false
-	}
-	n, err := h.svc.Count()
-	return err == nil && n >= int64(enterprise.CommunityStorageClassLimit)
 }
 
 func (h *AdminStorageClassHandler) List(c *okapi.Context) error {
@@ -98,9 +86,6 @@ func (h *AdminStorageClassHandler) Get(c *okapi.Context) error {
 
 // The node is probed for the path first, so an unmounted disk fails here, not at a tenant's first deploy.
 func (h *AdminStorageClassHandler) Create(c *okapi.Context, req *CreateStorageClassRequest) error {
-	if h.overCap() {
-		return entitlementAbort(c, enterprise.ErrStorageClassLimit)
-	}
 	sc, err := h.svc.Create(c.Request().Context(), storageClassInput(req.Body))
 	if err != nil {
 		return storageClassAbort(c, err)

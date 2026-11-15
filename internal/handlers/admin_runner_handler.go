@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/jkaninda/okapi"
-	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
@@ -36,22 +35,11 @@ import (
 type AdminRunnerHandler struct {
 	svc   *runner.Service
 	base  *RunnerHandler
-	ee    enterprise.EE
 	audit *audit.Logger
 }
 
-func NewAdminRunnerHandler(svc *runner.Service, ee enterprise.EE, auditLog *audit.Logger) *AdminRunnerHandler {
-	return &AdminRunnerHandler{svc: svc, base: NewRunnerHandler(svc, auditLog), ee: ee, audit: auditLog}
-}
-
-// Writes no response: entitlementAbort returns nil, so the refusal must be the handler's own return.
-func (h *AdminRunnerHandler) overCreateLimit() bool {
-	lim := h.ee.Entitlements().SharedRunnerLimit()
-	if lim < 0 {
-		return false // unlimited shared pool
-	}
-	runners, err := h.svc.ListShared()
-	return err == nil && len(runners) >= lim
+func NewAdminRunnerHandler(svc *runner.Service, auditLog *audit.Logger) *AdminRunnerHandler {
+	return &AdminRunnerHandler{svc: svc, base: NewRunnerHandler(svc, auditLog), audit: auditLog}
 }
 
 func (h *AdminRunnerHandler) SetConnRegistry(c RunnerConnRegistry) { h.base.SetConnRegistry(c) }
@@ -81,9 +69,6 @@ func (h *AdminRunnerHandler) Get(c *okapi.Context) error {
 
 // Create registers a platform-shared runner and returns the one-time token.
 func (h *AdminRunnerHandler) Create(c *okapi.Context, req *RunnerRequest) error {
-	if h.overCreateLimit() {
-		return entitlementAbort(c, enterprise.ErrRunnerLimitReached)
-	}
 	r, token, err := h.svc.CreateShared(middlewares.UserID(c), req.input())
 	if err != nil {
 		return h.base.mapErr(c, err)
@@ -92,7 +77,6 @@ func (h *AdminRunnerHandler) Create(c *okapi.Context, req *RunnerRequest) error 
 	return created(c, map[string]any{"runner": r, "token": token, "image": h.svc.Image()})
 }
 
-// Not license-gated: managing a runner already within the pool's allowance is always permitted.
 func (h *AdminRunnerHandler) Update(c *okapi.Context, req *RunnerRequest) error {
 	r, err := h.svc.UpdateShared(h.id(c), req.input())
 	if err != nil {

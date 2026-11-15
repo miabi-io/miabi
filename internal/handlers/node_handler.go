@@ -224,11 +224,6 @@ func (h *NodeHandler) Create(c *okapi.Context, req *CreateNodeRequest) error {
 		if errors.Is(err, node.ErrNameRequired) {
 			return c.AbortBadRequest("node name is required")
 		}
-		var limitErr *node.NodeLimitError
-		if errors.As(err, &limitErr) {
-			// 402: the cap is an edition limit, lifted by an Enterprise license.
-			return c.AbortWithError(402, limitErr)
-		}
 		return c.AbortInternalServerError("failed to create node", err)
 	}
 	if cerr := h.manager.ConnectDirect(srv); cerr != nil {

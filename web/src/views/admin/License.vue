@@ -139,14 +139,6 @@ const alerts = computed<Alert[]>(() => {
       body: `Renew before ${fmtDate(v.not_after)} to avoid the grace period.`,
     })
   }
-  if (v.warnings?.includes('over_node_limit')) {
-    out.push({
-      kind: 'warning',
-      icon: 'mdi-server-network',
-      title: 'Over the node limit',
-      body: `${v.node_usage.used} nodes are registered besides the control plane, but the license covers ${v.node_usage.limit}. Remove nodes or upgrade the license.`,
-    })
-  }
   return out
 })
 
@@ -168,10 +160,7 @@ const meters = computed<Meter[]>(() => {
   const v = view.value
   if (!v) return []
   return [
-    { label: 'Nodes (besides control plane)', used: v.node_usage.used, limit: v.node_usage.limit },
     { label: 'Plans', used: v.plan_usage.used, limit: v.plan_usage.limit },
-    { label: 'Storage classes', used: v.storage_class_usage.used, limit: v.storage_class_usage.limit },
-    { label: 'Shared runners', used: v.shared_runner_usage.used, limit: v.shared_runner_usage.limit },
   ]
 })
 
@@ -206,14 +195,13 @@ const FEATURE_LABELS: Record<string, string> = {
   white_label: 'White-label branding',
   private_registry: 'Private registry',
   security_profile: 'Restricted security profile',
-  platform_runners: 'Shared runners',
+  platform_runners: 'Plan-bound platform runners',
   user_workspace_limit: 'Per-user workspace limits',
   user_workspace_membership_limit: 'Per-user membership limits',
   analytics_export: 'Analytics export',
   advanced_canary: 'Advanced canary releases',
   announcements: 'Announcements',
   database_sizes: 'Database sizes',
-  storage_classes: 'Storage classes',
   recovery_points: 'Recovery points',
   organizations: 'Multiple organizations',
   security_policies: 'Security Center policies',
@@ -221,6 +209,9 @@ const FEATURE_LABELS: Record<string, string> = {
   billing: 'Billing API (add-on)',
   ee_features: 'Enterprise features',
 }
+
+// Older licenses still carry retired flags; they grant nothing, so listing them would mislead.
+const RETIRED_FLAGS = new Set(['storage_classes'])
 
 function featureLabel(flag: string): string {
   if (FEATURE_LABELS[flag]) return FEATURE_LABELS[flag]
@@ -230,7 +221,7 @@ function featureLabel(flag: string): string {
 
 const features = computed(() =>
   Object.entries(view.value?.flags ?? {})
-    .filter(([, on]) => on)
+    .filter(([flag, on]) => on && !RETIRED_FLAGS.has(flag))
     .map(([flag]) => ({ flag, label: featureLabel(flag) }))
     .sort((a, b) => a.label.localeCompare(b.label)),
 )

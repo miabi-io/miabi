@@ -4,8 +4,6 @@ import DedicatedBadge from '@/components/DedicatedBadge.vue'
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
-import { useLicenseStore } from '@/stores/license'
-import { apiError as decodeApiError } from '@/api/client'
 import { nodesApi, type CreateNodePayload, type NodeStatusEvent } from '@/api/nodes'
 import { clustersApi } from '@/api/clusters'
 import { adminApi } from '@/api/admin'
@@ -19,17 +17,10 @@ import { useNodeStatusStream } from './useNodeStatusStream'
 const notify = useNotificationStore()
 const { t } = useI18n()
 const router = useRouter()
-const license = useLicenseStore()
 
 const nodes = ref<Server[]>([])
 const loading = ref(false)
 const agentImage = ref('ghcr.io/miabi-io/agent:latest')
-
-// -1 = unlimited, control plane excluded; enforced server-side, this only surfaces it.
-const nodeLimit = computed(() => license.view?.node_usage?.limit ?? -1)
-const nodeCount = computed(() => nodes.value.filter((n) => !n.is_local).length)
-const limited = computed(() => nodeLimit.value >= 0)
-const atNodeLimit = computed(() => limited.value && nodeCount.value >= nodeLimit.value)
 
 const clusters = ref<Cluster[]>([])
 const clusterFilter = ref<number | 'all'>('all')
@@ -104,7 +95,7 @@ async function loadAgentImage() {
     if (agent?.effective) agentImage.value = agent.effective
   } catch { /* fall back to the default ref */ }
 }
-onMounted(() => { load(); loadClusters(); loadAgentImage(); license.load(); openStatusStream() })
+onMounted(() => { load(); loadClusters(); loadAgentImage(); openStatusStream() })
 
 // --- Add node ---
 const showCreate = ref(false)
@@ -158,7 +149,6 @@ async function submit() {
     const res = await nodesApi.create(payload)
     load()
     loadClusters()
-    license.load(true) // refresh node usage so the cap chip stays accurate
     if (mode === 'agent') {
       createdToken.value = res.data.data.token
       createdNodeId.value = res.data.data.node.id
@@ -169,15 +159,7 @@ async function submit() {
       notify.success('Node added — connecting…')
     }
   } catch (e) {
-    // The node cap is an edition limit, so show the upgrade banner rather than a bare error.
-    if (decodeApiError(e).code === 'NODE_LIMIT_REACHED') {
-      license.load(true)
-      notify.error(t('notify.nodes.communityEditionIsLimitedTo', { value: nodeLimit.value }),
-        { title: 'Node limit reached' },
-      )
-    } else {
-      notify.apiError(e)
-    }
+    notify.apiError(e)
   } finally {
     creating.value = false
   }
@@ -298,9 +280,6 @@ function swarmClass(n: Server): string {
         <span v-else-if="outdatedAgents > 0" class="agent-rollup" title="A newer node agent is available">
           <span class="mdi mdi-arrow-up-bold-circle-outline"></span> {{ outdatedAgents }} {{ outdatedAgents === 1 ? 'agent' : 'agents' }} outdated
         </span>
-        <span v-if="limited" class="node-usage" :class="{ 'node-usage--full': atNodeLimit }" :title="atNodeLimit ? 'Node limit reached — upgrade to add more' : 'Nodes used of your edition limit (the control plane is not counted)'">
-          <span class="mdi mdi-server"></span> {{ nodeCount }} / {{ nodeLimit }} nodes + control plane
-        </span>
         <button class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> Add node</button>
       </div>
     </div>
@@ -396,18 +375,6 @@ function swarmClass(n: Server): string {
         <template v-if="!createdToken">
           <form @submit.prevent="submit">
             <div class="modal-body">
-              <!-- Nodes are a paid scale dimension. -->
-              <div v-if="atNodeLimit" class="app-banner app-banner--warning">
-                <span class="mdi mdi-lock-outline app-banner-icon"></span>
-                <div class="app-banner-content">
-                  <p class="app-banner-title">Node limit reached</p>
-                  <p class="app-banner-text">
-                    Community edition is limited to {{ nodeLimit }} nodes besides the control plane (standalone or Swarm).
-                    Upgrade to Enterprise to add more.
-                  </p>
-                  <router-link to="/admin/license" class="btn btn-secondary btn-sm" style="margin-top: 10px">Upgrade</router-link>
-                </div>
-              </div>
               <div class="form-group">
                 <label class="form-label">Display name</label>
                 <input v-model="form.display_name" class="form-input" placeholder="e.g. Frankfurt Edge" required autofocus />
@@ -453,7 +420,7 @@ function swarmClass(n: Server): string {
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="showCreate = false">Cancel</button>
-              <button type="submit" class="btn btn-primary" :disabled="creating || atNodeLimit">{{ creating ? 'Saving…' : 'Add node' }}</button>
+              <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Saving…' : 'Add node' }}</button>
             </div>
           </form>
         </template>
@@ -536,22 +503,6 @@ function swarmClass(n: Server): string {
   align-items: center;
   gap: 8px;
 }
-.node-usage {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--surface-2, rgba(127, 127, 127, 0.1));
-}
-.node-usage--full {
-  color: var(--warning, #b7791f);
-  background: var(--warning-bg, rgba(183, 121, 31, 0.12));
-}
-
 .agent-rollup {
   display: inline-flex;
   align-items: center;
