@@ -64,7 +64,7 @@ type AppService interface {
 	LiveStatus(ctx context.Context, app *models.Application) application.LiveStatus
 	Create(workspaceID uint, in application.CreateInput) (*models.Application, error)
 	SetEnvVar(appID uint, key, value string, isSecret bool) error
-	AttachVolume(app *models.Application, volumeID uint, path string) error
+	AttachVolumeAs(app *models.Application, volumeID uint, path string, readOnly bool) error
 }
 
 type VolumeCreator interface {

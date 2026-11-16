@@ -2820,6 +2820,10 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 	}
 	switch ch.Action {
 	case declarative.ActionCreate:
+		// A mount that fails after Create leaves an app without it, and later plans then read as in sync.
+		if err := s.resolveMounts(workspaceID, ch.Name, spec); err != nil {
+			return err
+		}
 		in := s.createInput(ctx, desired.Metadata, spec)
 		in.RegistryID = regID
 		in.StackID = stackID
@@ -3345,7 +3349,7 @@ func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spe
 		if err != nil {
 			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, app.Name, err)
 		}
-		if err := s.apps.AttachVolume(app, vol.ID, mt.Path); err != nil {
+		if err := s.apps.AttachVolumeAs(app, vol.ID, mt.Path, mt.ReadOnly); err != nil {
 			return fmt.Errorf("attach volume %q to %q: %w", mt.Volume, app.Name, err)
 		}
 		keep[vol.ID] = true
@@ -3378,6 +3382,21 @@ func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spe
 }
 
 // findConfig resolves a config by its manifest name within the workspace.
+func (s *Service) resolveMounts(workspaceID uint, appName string, spec *declarative.ApplicationSpec) error {
+	for _, mt := range spec.Mounts {
+		var err error
+		if mt.Config != "" {
+			_, err = s.findConfig(workspaceID, mt.Config)
+		} else {
+			_, err = s.findVolume(workspaceID, mt.Volume)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, appName, err)
+		}
+	}
+	return nil
+}
+
 func (s *Service) findConfig(workspaceID uint, name string) (*models.Config, error) {
 	if s.configs == nil {
 		return nil, fmt.Errorf("config %q not found", name)

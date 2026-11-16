@@ -605,13 +605,14 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		h.log(dep, fmt.Sprintf("attaching %d GPU(s)", app.GPUCount))
 	}
 	spec := docker.RunSpec{
-		Name:     name,
-		Image:    image,
-		Hostname: upstreamAlias, // stable alias hostname (mb-app-<token>-<id>)
-		Env:      rc.Env,
-		Cmd:      cmd,
-		Mounts:   rc.Mounts,
-		Files:    rc.Files,
+		Name:           name,
+		Image:          image,
+		Hostname:       upstreamAlias, // stable alias hostname (mb-app-<token>-<id>)
+		Env:            rc.Env,
+		Cmd:            cmd,
+		Mounts:         rc.Mounts,
+		ReadOnlyMounts: rc.ReadOnlyMounts,
+		Files:          rc.Files,
 		// Volumes are already chowned to the pinned user; copy-up would re-apply the image's ownership and undo it.
 		NoCopyVolumes:    sec.HasUser(),
 		Binds:            rc.Binds,
@@ -773,6 +774,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// Host-preset binds aren't supported since tasks may land on any node; shared volumes carry their driver config.
 	mounts := map[string]string{}
 	mountDrivers := map[string]docker.ServiceMountDriver{}
+	var readOnlyMounts []string
 	var binds []docker.ServiceBind
 	for _, m := range app.Mounts {
 		if m.HostPreset != "" {
@@ -787,6 +789,9 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		}
 		if m.DockerName != "" {
 			mounts[m.DockerName] = m.Path
+			if m.ReadOnly {
+				readOnlyMounts = append(readOnlyMounts, m.DockerName)
+			}
 			if dc := h.sharedMountDriver(app.WorkspaceID, m.VolumeID); dc != nil {
 				mountDrivers[m.DockerName] = *dc
 			}
@@ -829,6 +834,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		EndpointMode:    h.endpointMode(app),
 		Mounts:          mounts,
 		MountDrivers:    mountDrivers,
+		ReadOnlyMounts:  readOnlyMounts,
 		Binds:           binds,
 		Configs:         svcConfigs,
 		MemoryBytes:     app.MemoryBytes,

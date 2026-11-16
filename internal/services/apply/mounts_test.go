@@ -20,8 +20,12 @@
 package apply
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/miabi-io/miabi/internal/declarative"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -43,5 +47,20 @@ func TestAppResourceEmitsMounts(t *testing.T) {
 	}
 	if got[0].Volume != "guestbook-data" || got[0].Path != "/data" {
 		t.Errorf("mount = %+v, want {Volume: guestbook-data, Path: /data}", got[0])
+	}
+}
+
+// Create resolves mounts first: an app created before its mount failed was left without it.
+func TestCreateRefusesAMissingMountBeforeTheAppExists(t *testing.T) {
+	s := &Service{}
+	spec := &declarative.ApplicationSpec{Image: "busybox", Tag: "1.36",
+		Mounts: []declarative.MountSpec{{Volume: "ceph-data", Path: "/data"}}}
+	desired := declarative.Resource{APIVersion: declarative.APIVersion, Kind: declarative.KindApplication,
+		Metadata: declarative.Meta{Name: "ceph-probe"}, Application: spec}
+	ch := declarative.Change{Action: declarative.ActionCreate, Kind: declarative.KindApplication, Name: "ceph-probe"}
+
+	err := s.applyApplication(context.Background(), 1, ch, desired, &declarative.ResourceSet{})
+	if !errors.Is(err, ErrInvalidManifest) || !strings.Contains(err.Error(), `volume "ceph-data" not found`) {
+		t.Fatalf("err = %v, want an invalid-manifest error naming the volume", err)
 	}
 }

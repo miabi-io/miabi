@@ -71,8 +71,10 @@ func (f *fakeApp) LiveStatus(_ context.Context, app *models.Application) applica
 func (f *fakeApp) Create(_ uint, _ application.CreateInput) (*models.Application, error) {
 	return &models.Application{}, nil
 }
-func (f *fakeApp) SetEnvVar(_ uint, _, _ string, _ bool) error                { return nil }
-func (f *fakeApp) AttachVolume(_ *models.Application, _ uint, _ string) error { return nil }
+func (f *fakeApp) SetEnvVar(_ uint, _, _ string, _ bool) error { return nil }
+func (f *fakeApp) AttachVolumeAs(_ *models.Application, _ uint, _ string, _ bool) error {
+	return nil
+}
 
 // fakeVols is a no-op VolumeCreator for tests.
 type fakeVols struct{}

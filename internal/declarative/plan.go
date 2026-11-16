@@ -329,7 +329,25 @@ var optionalWhenUnset = map[string]bool{
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
 	"healthcheck.type": true, "healthcheck.path": true, "healthcheck.port": true, "healthcheck.command": true,
 	"healthcheck.intervalSeconds": true, "healthcheck.timeoutSeconds": true, "healthcheck.retries": true,
-	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true,
+	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "mounts": true,
+}
+
+// Config mounts are always read-only and their content is compared by configFP, so only where they land counts.
+func mountList(mounts []MountSpec) string {
+	out := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		if m.Config != "" {
+			out = append(out, fmt.Sprintf("config:%s:%s:%s", m.Config, m.Key, m.Path))
+			continue
+		}
+		access := "rw"
+		if m.ReadOnly {
+			access = "ro"
+		}
+		out = append(out, fmt.Sprintf("volume:%s:%s:%s", m.Volume, m.Path, access))
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
 }
 
 // Order-independent, and keyed like the app service stores ports: number, protocol and scheme.
@@ -610,6 +628,9 @@ func specFields(r Resource) map[string]string {
 		// Only compared when stated, so a manifest without ports keeps the ones set in the console.
 		if len(a.Ports) > 0 {
 			f["ports"] = portList(a.Ports)
+		}
+		if len(a.Mounts) > 0 {
+			f["mounts"] = mountList(a.Mounts)
 		}
 		for _, p := range a.Ports {
 			if p.ExternalAccess {

@@ -302,13 +302,14 @@ func (b *runtimeBuilder) prepareVolumeOwnership(ctx context.Context, eng docker.
 }
 
 type RuntimeContext struct {
-	Env         []string
-	Networks    []string
-	Mounts      map[string]string
-	Binds       []docker.BindMount
-	Files       []docker.FileEntry
-	MemoryBytes int64
-	NanoCPUs    int64
+	Env            []string
+	Networks       []string
+	Mounts         map[string]string
+	ReadOnlyMounts []string
+	Binds          []docker.BindMount
+	Files          []docker.FileEntry
+	MemoryBytes    int64
+	NanoCPUs       int64
 }
 
 // eng must be the Docker client for the app's node.
@@ -335,6 +336,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 		}
 	}
 	mounts := make(map[string]string, len(app.Mounts))
+	var readOnly []string
 	var binds []docker.BindMount
 	for _, m := range app.Mounts {
 		// Resolve the source path from the server-owned allow-list, never from stored or client input.
@@ -358,6 +360,9 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 			continue // projected as files below, never as a directory bind
 		}
 		mounts[m.DockerName] = m.Path
+		if m.ReadOnly {
+			readOnly = append(readOnly, m.DockerName)
+		}
 	}
 	env, err := b.buildEnv(app)
 	if err != nil {
@@ -368,13 +373,14 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 		return RuntimeContext{}, ferr
 	}
 	return RuntimeContext{
-		Env:         env,
-		Networks:    networks,
-		Mounts:      mounts,
-		Binds:       binds,
-		Files:       files,
-		MemoryBytes: app.MemoryBytes,
-		NanoCPUs:    app.NanoCPUs,
+		Env:            env,
+		Networks:       networks,
+		Mounts:         mounts,
+		ReadOnlyMounts: readOnly,
+		Binds:          binds,
+		Files:          files,
+		MemoryBytes:    app.MemoryBytes,
+		NanoCPUs:       app.NanoCPUs,
 	}, nil
 }
 

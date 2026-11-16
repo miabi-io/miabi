@@ -100,6 +100,22 @@ func TestBuildSwarmServiceSpecMountDrivers(t *testing.T) {
 	}
 }
 
+func TestBuildSwarmServiceSpecReadOnlyMounts(t *testing.T) {
+	spec := buildSwarmServiceSpec(ServiceSpec{
+		Name:           "svc",
+		Image:          "nginx",
+		Mounts:         map[string]string{"mb-vol-1-assets": "/assets", "mb-vol-1-data": "/data"},
+		ReadOnlyMounts: []string{"mb-vol-1-assets"},
+	})
+	ro := map[string]bool{}
+	for _, m := range spec.TaskTemplate.ContainerSpec.Mounts {
+		ro[m.Target] = m.ReadOnly
+	}
+	if !ro["/assets"] || ro["/data"] {
+		t.Fatalf("read-only by target = %v, want only /assets read-only", ro)
+	}
+}
+
 // Empty credentials must yield an empty header so public images don't get a bogus auth.
 func TestEncodeRegistryAuth(t *testing.T) {
 	if enc, err := encodeRegistryAuth(nil); err != nil || enc != "" {

@@ -115,19 +115,23 @@ services:
 
 func TestParseComposeVolume(t *testing.T) {
 	cases := []struct {
-		in     string
-		source string
-		target string
-		bind   bool
-		ok     bool
+		in       string
+		source   string
+		target   string
+		bind     bool
+		readOnly bool
+		ok       bool
 	}{
-		{"db_data:/var/lib/postgresql/data", "db_data", "/var/lib/postgresql/data", false, true},
-		{"redis_data:/data", "redis_data", "/data", false, true},
-		{"config:/etc/app:ro", "config", "/etc/app", false, true},
-		{"/host/path:/container", "/host/path", "/container", true, true}, // bind
-		{"./rel:/container", "./rel", "/container", true, true},           // bind
-		{"/data", "", "/data", false, true},                               // anonymous
-		{"", "", "", false, false},
+		{"db_data:/var/lib/postgresql/data", "db_data", "/var/lib/postgresql/data", false, false, true},
+		{"redis_data:/data", "redis_data", "/data", false, false, true},
+		{"config:/etc/app:ro", "config", "/etc/app", false, true, true},
+		{"config:/etc/app:ro,z", "config", "/etc/app", false, true, true},
+		{"config:/etc/app:rw", "config", "/etc/app", false, false, true},
+		{"config:/etc/app:nocopy", "config", "/etc/app", false, false, true},
+		{"/host/path:/container", "/host/path", "/container", true, false, true},
+		{"./rel:/container", "./rel", "/container", true, false, true},
+		{"/data", "", "/data", false, false, true},
+		{"", "", "", false, false, false},
 	}
 	for _, c := range cases {
 		m, ok := parseComposeVolume(c.in)
@@ -135,8 +139,9 @@ func TestParseComposeVolume(t *testing.T) {
 			t.Errorf("%q: ok=%v want %v", c.in, ok, c.ok)
 			continue
 		}
-		if ok && (m.Source != c.source || m.Target != c.target || m.Bind != c.bind) {
-			t.Errorf("%q: got {%q %q bind=%v} want {%q %q bind=%v}", c.in, m.Source, m.Target, m.Bind, c.source, c.target, c.bind)
+		if ok && (m.Source != c.source || m.Target != c.target || m.Bind != c.bind || m.ReadOnly != c.readOnly) {
+			t.Errorf("%q: got {%q %q bind=%v ro=%v} want {%q %q bind=%v ro=%v}", c.in,
+				m.Source, m.Target, m.Bind, m.ReadOnly, c.source, c.target, c.bind, c.readOnly)
 		}
 	}
 }
@@ -163,6 +168,30 @@ volumes:
 	db := cf.Services["posta-db"]
 	if len(db.Volumes) != 1 || db.Volumes[0].Raw != "db_data:/var/lib/postgresql/data" || db.Volumes[0].Mount.Source != "db_data" {
 		t.Errorf("posta-db volumes = %v", db.Volumes)
+	}
+}
+
+func TestComposeUnmarshal_LongFormReadOnly(t *testing.T) {
+	const y = `
+services:
+  web:
+    image: nginx:1.27
+    volumes:
+      - type: volume
+        source: assets
+        target: /usr/share/nginx/html
+        read_only: true
+      - type: volume
+        source: cache
+        target: /var/cache/nginx
+`
+	var cf composeFile
+	if err := yaml.Unmarshal([]byte(y), &cf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	v := cf.Services["web"].Volumes
+	if len(v) != 2 || !v[0].Mount.ReadOnly || v[1].Mount.ReadOnly {
+		t.Fatalf("volumes = %+v, want only the first read-only", v)
 	}
 }
 

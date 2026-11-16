@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,15 +106,16 @@ func (v *composeVolumes) UnmarshalYAML(node *yaml.Node) error {
 			continue
 		}
 		var long struct {
-			Type   string `yaml:"type"`
-			Source string `yaml:"source"`
-			Target string `yaml:"target"`
+			Type     string `yaml:"type"`
+			Source   string `yaml:"source"`
+			Target   string `yaml:"target"`
+			ReadOnly bool   `yaml:"read_only"`
 		}
 		if err := n.Decode(&long); err != nil {
 			return err
 		}
 		raw := strings.TrimPrefix(long.Source+":"+long.Target, ":")
-		m := composeMount{Source: long.Source, Target: long.Target}
+		m := composeMount{Source: long.Source, Target: long.Target, ReadOnly: long.ReadOnly}
 		switch long.Type {
 		case "", "volume":
 		case "bind":
@@ -339,7 +341,7 @@ func (s *Service) importVolumes(ctx context.Context, workspaceID, serverID uint,
 			volumes[key] = v
 			result.Volumes = append(result.Volumes, v.Name)
 		}
-		if err := s.app.AttachVolume(app, vol.ID, m.Target); err != nil {
+		if err := s.app.AttachVolumeAs(app, vol.ID, m.Target, m.ReadOnly); err != nil {
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: "attach " + raw + ": " + err.Error()})
 		}
 	}
@@ -354,9 +356,10 @@ func volumeName(stackName, source, svc string) string {
 
 // composeMount is a parsed entry from a service's "volumes:" list.
 type composeMount struct {
-	Source string // named volume (empty = anonymous volume)
-	Target string // container path
-	Bind   bool   // host bind mount (unsupported)
+	Source   string // named volume (empty = anonymous volume)
+	Target   string // container path
+	Bind     bool   // host bind mount (unsupported)
+	ReadOnly bool
 	// Unsupported names a long-form mount type Miabi cannot provision, such as tmpfs.
 	Unsupported string
 }
@@ -374,11 +377,15 @@ func parseComposeVolume(v string) (composeMount, bool) {
 	if target == "" {
 		return composeMount{}, false
 	}
+	readOnly := false
+	if len(parts) > 2 {
+		readOnly = slices.Contains(strings.Split(parts[2], ","), "ro")
+	}
 	// A source containing a path separator (or "." / "~") is a host bind mount.
 	if strings.ContainsAny(source, "/.~") {
-		return composeMount{Source: source, Target: target, Bind: true}, true
+		return composeMount{Source: source, Target: target, Bind: true, ReadOnly: readOnly}, true
 	}
-	return composeMount{Source: source, Target: target}, true
+	return composeMount{Source: source, Target: target, ReadOnly: readOnly}, true
 }
 
 // Host is 0 when the port is only exposed, not published.

@@ -362,7 +362,7 @@ func (s *Service) ApplyUpgrade(ctx context.Context, workspaceID, installID uint,
 				res.Warnings = append(res.Warnings, fmt.Sprintf("new mount %s on %q references a volume not created by this upgrade — attach manually", mt.Volume, name))
 				continue
 			}
-			if aerr := s.apps.AttachVolume(app, vid, mt.Path); aerr != nil {
+			if aerr := s.apps.AttachVolumeAs(app, vid, mt.Path, mt.ReadOnly); aerr != nil {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("mount %s on %q: %v", mt.Volume, name, aerr))
 				continue
 			}

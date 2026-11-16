@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -45,6 +46,7 @@ type ServiceSpec struct {
 	Networks       []string          // swarm-scoped (overlay) network names to attach
 	NetworkAliases []string          // DNS aliases applied on each attached network
 	Mounts         map[string]string // volume name -> container path
+	ReadOnlyMounts []string
 	// Required for shared volumes on a service, or a task on another node silently gets an empty local volume.
 	MountDrivers map[string]ServiceMountDriver
 	// Binds need no driver config; the path is assumed present on every node a task lands on.
@@ -130,7 +132,7 @@ func buildSwarmServiceSpec(spec ServiceSpec) swarm.ServiceSpec {
 		cspec.Privileges = &swarm.Privileges{NoNewPrivileges: true}
 	}
 	for vol, path := range spec.Mounts {
-		m := mount.Mount{Type: mount.TypeVolume, Source: vol, Target: path}
+		m := mount.Mount{Type: mount.TypeVolume, Source: vol, Target: path, ReadOnly: slices.Contains(spec.ReadOnlyMounts, vol)}
 		if d, ok := spec.MountDrivers[vol]; ok && (d.Name != "" || len(d.Options) > 0) {
 			m.VolumeOptions = &mount.VolumeOptions{DriverConfig: &mount.Driver{Name: d.Name, Options: d.Options}}
 		}

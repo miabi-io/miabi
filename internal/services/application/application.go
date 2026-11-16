@@ -1976,6 +1976,16 @@ func removeConfigMount(mounts []models.AppMount, configID uint, key string) ([]m
 
 // AttachVolume mounts a workspace volume into the app at path. Takes effect on the next deploy.
 func (s *Service) AttachVolume(app *models.Application, volumeID uint, path string) error {
+	return s.attachVolume(app, volumeID, path, nil)
+}
+
+// AttachVolumeAs is AttachVolume for callers that state the access, such as manifests and templates.
+func (s *Service) AttachVolumeAs(app *models.Application, volumeID uint, path string, readOnly bool) error {
+	return s.attachVolume(app, volumeID, path, &readOnly)
+}
+
+// A nil readOnly keeps an existing mount's flag, so moving a mount in the console doesn't make it writable.
+func (s *Service) attachVolume(app *models.Application, volumeID uint, path string, readOnly *bool) error {
 	vol, err := s.resolveMountVolume(app.WorkspaceID, volumeID)
 	if err != nil {
 		return err
@@ -2001,13 +2011,17 @@ func (s *Service) AttachVolume(app *models.Application, volumeID uint, path stri
 		return ErrLocalVolumeReplicated
 	}
 	for i, m := range app.Mounts {
-		if m.VolumeID == volumeID { // update path
+		if m.VolumeID == volumeID {
 			app.Mounts[i].Path = path
+			if readOnly != nil {
+				app.Mounts[i].ReadOnly = *readOnly
+			}
 			return s.apps.Update(app)
 		}
 	}
 	// The volume is immutable, so the denormalized host path can't drift.
-	app.Mounts = append(app.Mounts, models.AppMount{VolumeID: vol.ID, DockerName: vol.DockerName, Path: path, HostPath: vol.HostPath})
+	app.Mounts = append(app.Mounts, models.AppMount{VolumeID: vol.ID, DockerName: vol.DockerName, Path: path,
+		HostPath: vol.HostPath, ReadOnly: readOnly != nil && *readOnly})
 	if err := s.apps.Update(app); err != nil {
 		return err
 	}
