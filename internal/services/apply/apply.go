@@ -373,8 +373,7 @@ func (s *Service) checkMountLocations(workspaceID uint, desired *declarative.Res
 			}
 			volLocation, nodeLocal := "", false
 			if vr, ok := desired.Get(string(declarative.KindVolume) + "/" + m.Volume); ok {
-				// A volume created from a manifest is always node-local.
-				volLocation, nodeLocal = vr.Volume.Location(), true
+				volLocation, nodeLocal = vr.Volume.Location(), s.storage == nil || !s.storage.SharesAcrossNodes(workspaceID, vr.Volume.StorageClass)
 			}
 			if v, err := s.findVolume(workspaceID, m.Volume); err == nil {
 				if v.Driver == models.VolumeDriverHost {
