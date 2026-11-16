@@ -524,7 +524,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 				}
 				continue
 			}
-			if err := s.apps.AttachVolume(app, volIDs[mt.Volume], mt.Path); err != nil {
+			if err := s.apps.AttachVolumeAs(app, volIDs[mt.Volume], mt.Path, mt.ReadOnly); err != nil {
 				return nil, fmt.Errorf("mount %s on %q: %w", mt.Volume, spec.Name, err)
 			}
 		}

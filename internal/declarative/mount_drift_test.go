@@ -39,6 +39,10 @@ func TestMissingMountIsDrift(t *testing.T) {
 	if got := fieldNames(diffFields(moved, desired)); !slices.Contains(got, "mounts") {
 		t.Fatalf("changed mount path not detected, diff = %v", got)
 	}
+	readOnly := appRes(MountSpec{Volume: "data", Path: "/data", ReadOnly: true})
+	if got := fieldNames(diffFields(appRes(MountSpec{Volume: "data", Path: "/data"}), readOnly)); !slices.Contains(got, "mounts") {
+		t.Fatalf("a mount made read-only not detected, diff = %v", got)
+	}
 }
 
 func TestEquivalentMountsAreNotDrift(t *testing.T) {
@@ -47,7 +51,7 @@ func TestEquivalentMountsAreNotDrift(t *testing.T) {
 		MountSpec{Volume: "data", Path: "/data"},
 	)
 	desired := appRes(
-		MountSpec{Volume: "data", Path: "/data", ReadOnly: true},
+		MountSpec{Volume: "data", Path: "/data"},
 		MountSpec{Config: "conf", Key: "nginx.conf", Path: "/etc/nginx/nginx.conf"},
 	)
 	if d := diffFields(live, desired); len(d) != 0 {

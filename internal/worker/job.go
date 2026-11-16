@@ -149,13 +149,14 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		}
 	}
 	spec := docker.RunSpec{
-		Name:       name,
-		Image:      j.Image,
-		Entrypoint: j.Entrypoint,
-		Cmd:        j.Command,
-		Env:        rc.Env,
-		Networks:   rc.Networks,
-		Mounts:     rc.Mounts,
+		Name:           name,
+		Image:          j.Image,
+		Entrypoint:     j.Entrypoint,
+		Cmd:            j.Command,
+		Env:            rc.Env,
+		Networks:       rc.Networks,
+		Mounts:         rc.Mounts,
+		ReadOnlyMounts: rc.ReadOnlyMounts,
 		// Volumes are already chowned for the pinned user; copy-up would re-own them from the image.
 		NoCopyVolumes: sec.HasUser(),
 		Binds:         rc.Binds,

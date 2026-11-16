@@ -332,7 +332,7 @@ var optionalWhenUnset = map[string]bool{
 	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "mounts": true,
 }
 
-// Only what apply converges: config content is configFP's job, and apply does not store a volume's readOnly.
+// Config mounts are always read-only and their content is compared by configFP, so only where they land counts.
 func mountList(mounts []MountSpec) string {
 	out := make([]string, 0, len(mounts))
 	for _, m := range mounts {
@@ -340,7 +340,11 @@ func mountList(mounts []MountSpec) string {
 			out = append(out, fmt.Sprintf("config:%s:%s:%s", m.Config, m.Key, m.Path))
 			continue
 		}
-		out = append(out, fmt.Sprintf("volume:%s:%s", m.Volume, m.Path))
+		access := "rw"
+		if m.ReadOnly {
+			access = "ro"
+		}
+		out = append(out, fmt.Sprintf("volume:%s:%s:%s", m.Volume, m.Path, access))
 	}
 	sort.Strings(out)
 	return strings.Join(out, ",")

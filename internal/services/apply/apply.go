@@ -3349,7 +3349,7 @@ func (s *Service) reconcileMounts(workspaceID uint, app *models.Application, spe
 		if err != nil {
 			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, app.Name, err)
 		}
-		if err := s.apps.AttachVolume(app, vol.ID, mt.Path); err != nil {
+		if err := s.apps.AttachVolumeAs(app, vol.ID, mt.Path, mt.ReadOnly); err != nil {
 			return fmt.Errorf("attach volume %q to %q: %w", mt.Volume, app.Name, err)
 		}
 		keep[vol.ID] = true
