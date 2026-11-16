@@ -401,6 +401,7 @@ func runServer(cli *okapicli.CLI) {
 			poolPlacement := placement.NewService(repositories.NewClusterRepository(res.db), repositories.NewServerRepository(res.db), nil)
 			poolPlacement.SetPolicy(securityQuota)
 			deployHandler.SetPoolPolicy(poolPlacement)
+			deployHandler.SetStorageClasses(repositories.NewStorageClassRepository(res.db))
 			gpuScheduler := gpu.NewService(
 				repositories.NewGPUDeviceRepository(res.db),
 				repositories.NewServerRepository(res.db),

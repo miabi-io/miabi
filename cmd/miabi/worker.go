@@ -219,6 +219,7 @@ func runWorker() error {
 	poolPlacement := placement.NewService(repositories.NewClusterRepository(db), repositories.NewServerRepository(db), nil)
 	poolPlacement.SetPolicy(securityQuota)
 	deployHandler.SetPoolPolicy(poolPlacement)
+	deployHandler.SetStorageClasses(repositories.NewStorageClassRepository(db))
 	gpuScheduler := gpu.NewService(
 		repositories.NewGPUDeviceRepository(db),
 		repositories.NewServerRepository(db),
