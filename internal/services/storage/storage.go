@@ -161,6 +161,23 @@ func (s *Service) resolveClass(workspaceID, serverID uint, requested string) (*m
 	return s.classes.Resolve(serverID, binding.Allowed[0])
 }
 
+// SharesAcrossNodes reports, before a node is chosen, whether a volume asking for this class would be shared (RWX).
+func (s *Service) SharesAcrossNodes(workspaceID uint, requested string) bool {
+	if s.classes == nil {
+		return false
+	}
+	name := strings.TrimSpace(requested)
+	if name == "" && s.quota != nil {
+		name = s.quota.EffectiveStorageClasses(workspaceID).Default
+	}
+	// The node's own default is unknown until placement, so an unnamed class stays node-local here.
+	if name == "" {
+		return false
+	}
+	c, err := s.classes.Resolve(0, name)
+	return err == nil && c != nil && c.Managed() && c.Shared
+}
+
 // PlaceVolume gives self-managed Docker volumes (e.g. database data) the same class placement as workspace volumes.
 func (s *Service) PlaceVolume(ctx context.Context, workspaceID, serverID uint, requested, dockerName string) (className, devicePath string, err error) {
 	class, err := s.resolveClass(workspaceID, serverID, requested)
