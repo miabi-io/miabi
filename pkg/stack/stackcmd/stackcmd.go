@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/miabi-io/miabi/pkg/stack"
+	"golang.org/x/mod/semver"
 )
 
 // UI is the front-end's output. The CLI colors it; the server image prints plainly.
@@ -291,6 +292,8 @@ type UpgradeOptions struct {
 	Yes       bool
 	// DefaultImage is as in SetupOptions.
 	DefaultImage func() string
+	// GatewayVersion is the Goma release a whole-stack upgrade moves to; nil or "" means the bundled one.
+	GatewayVersion func() string
 }
 
 // The "v" is stripped only before a digit, so a tag like "vnext" survives.
@@ -396,11 +399,42 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	warnFloatingTag(ui, target)
 	prev := *pin
 
+	// An explicit --version/--image names a control-plane release, which the latest gateway may not match.
+	gwPrev, gwTarget := m.Images.Gateway, ""
+	if wholeStack && o.Image == "" && o.Version == "" {
+		v, _ := normalizeVersion(gatewayVersion(o))
+		var custom bool
+		if gwTarget, custom = gatewayTarget(gwPrev, v); custom {
+			ui.Info("Goma %s is available; %s is a custom image, so it is left as is. "+
+				"Roll it out with `miabi upgrade %s --version %s` once your registry has it.",
+				v, gwPrev, stack.ContainerGateway, v)
+		}
+	}
+
 	if prev == target && !isDrifted(ctx, svc, name, target) {
 		ui.Info("%s is already at %s.", name, target)
 		if wholeStack {
+			if gwTarget != "" {
+				ui.Printf("\nMiabi will roll out:\n\n  %-14s %s → %s\n\n", stack.ContainerGateway, gwPrev, gwTarget)
+				if !o.Yes && !ui.Confirm("Proceed?") {
+					return errors.New("cancelled")
+				}
+			}
 			if err := convertManifest(path, m, ui); err != nil {
 				return err
+			}
+			if gwTarget != "" {
+				m.Images.Gateway = gwTarget
+				if err := svc.Converge(ctx, m); err != nil {
+					m.Images.Gateway = gwPrev
+					_ = stack.Save(path, m)
+					return err
+				}
+				if err := stack.Save(path, m); err != nil {
+					return err
+				}
+				ui.Success("Upgraded %s to %s.", stack.ContainerGateway, gwTarget)
+				return nil
 			}
 			return convergeRest(ctx, svc, m, path)
 		}
@@ -411,7 +445,11 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 		return nil
 	}
 
-	ui.Printf("\nMiabi will roll out:\n\n  %-14s %s → %s\n\n", name, prev, target)
+	ui.Printf("\nMiabi will roll out:\n\n  %-14s %s → %s\n", name, prev, target)
+	if gwTarget != "" {
+		ui.Printf("  %-14s %s → %s\n", stack.ContainerGateway, gwPrev, gwTarget)
+	}
+	ui.Printf("\n")
 	if !o.Yes && !ui.Confirm("Proceed?") {
 		return errors.New("cancelled")
 	}
@@ -422,6 +460,10 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	}
 
 	*pin = target
+	// Set before the control plane rolls out, since it hands this image to node gateways.
+	if gwTarget != "" {
+		m.Images.Gateway = gwTarget
+	}
 	err = svc.Rollout(ctx, m, name, target, func(phase string, cause error) {
 		if cause != nil {
 			ui.Printf("  %-13s %v\n", phase, cause)
@@ -432,6 +474,7 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	if err != nil {
 		// The manifest must describe what runs, or the next converge would re-apply the failed upgrade.
 		*pin = prev
+		m.Images.Gateway = gwPrev
 		_ = stack.Save(path, m)
 		return err
 	}
@@ -448,6 +491,40 @@ func Upgrade(ctx context.Context, svc *stack.Service, path string, o UpgradeOpti
 	ui.Printf("\n")
 	ui.Success("Upgraded. %s", m.WebURL)
 	return nil
+}
+
+func gatewayVersion(o UpgradeOptions) string {
+	if o.GatewayVersion != nil {
+		if v := strings.TrimSpace(o.GatewayVersion()); v != "" {
+			return v
+		}
+	}
+	return tagOf(stack.DefaultGatewayImage)
+}
+
+// gatewayTarget only moves a semver pin forward; custom reports a newer release skipped because the image is not the official one.
+func gatewayTarget(current, version string) (target string, custom bool) {
+	want, _ := normalizeVersion(version)
+	have := tagOf(current)
+	if !semver.IsValid("v"+want) || semver.Prerelease("v"+want) != "" || !semver.IsValid("v"+have) {
+		return "", false
+	}
+	if semver.Compare("v"+want, "v"+have) <= 0 {
+		return "", false
+	}
+	// A mirror or private registry may not carry the new tag yet, so only the official image follows.
+	if repoOf(current) != repoOf(stack.DefaultGatewayImage) {
+		return "", true
+	}
+	return retag(current, want), false
+}
+
+func repoOf(ref string) string {
+	repo := strings.TrimSuffix(retag(ref, ""), ":")
+	for _, p := range []string{"docker.io/", "index.docker.io/", "registry-1.docker.io/"} {
+		repo = strings.TrimPrefix(repo, p)
+	}
+	return repo
 }
 
 // Upgrade is the one command every host eventually runs, so it is where the shape changes; `setup` never converts.

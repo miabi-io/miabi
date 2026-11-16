@@ -123,3 +123,29 @@ func TestWarnFloatingTag(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewayTarget(t *testing.T) {
+	cases := []struct {
+		current, version, want string
+		custom                 bool
+	}{
+		{"jkaninda/goma-gateway:1.1.2", "1.2.1", "jkaninda/goma-gateway:1.2.1", false},
+		{"jkaninda/goma-gateway:1.1.2", "v1.2.1", "jkaninda/goma-gateway:1.2.1", false},
+		{"docker.io/jkaninda/goma-gateway:1.1.2", "1.2.1", "docker.io/jkaninda/goma-gateway:1.2.1", false},
+		{"registry.example.com:5000/goma:1.1.2", "1.2.1", "", true},
+		{"registry.example.com/jkaninda/goma-gateway:1.1.2", "1.2.1", "", true},
+		{"registry.example.com:5000/goma:1.2.1", "1.2.1", "", false},
+		{"jkaninda/goma-gateway:1.2.1", "1.2.1", "", false},
+		{"jkaninda/goma-gateway:1.3.0", "1.2.1", "", false}, // never downgrade a newer hand-picked pin
+		{"jkaninda/goma-gateway:1.1.2", "1.3.0-rc.1", "", false},
+		{"jkaninda/goma-gateway:latest", "1.2.1", "", false},
+		{"jkaninda/goma-gateway@sha256:deadbeef", "1.2.1", "", false},
+		{"jkaninda/goma-gateway:1.1.2", "", "", false},
+	}
+	for _, c := range cases {
+		got, custom := gatewayTarget(c.current, c.version)
+		if got != c.want || custom != c.custom {
+			t.Errorf("gatewayTarget(%q, %q) = %q, %v; want %q, %v", c.current, c.version, got, custom, c.want, c.custom)
+		}
+	}
+}
