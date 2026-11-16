@@ -85,7 +85,9 @@ type DeployHandler struct {
 	releaseHook   ReleaseHook
 	builderPolicy BuilderPolicy
 	poolPolicy    PoolPolicy
-	clusterSlots  *clusterSlots
+	// Nil keeps shared-class volumes without a driver config, so a task on another node gets an empty volume.
+	storageClasses StorageClassLookup
+	clusterSlots   *clusterSlots
 
 	// A git-source app's image is built on a runner and pushed to the internal registry, never on this node.
 	buildDispatch     BuildDispatcher
@@ -196,6 +198,12 @@ type PoolPolicy interface {
 
 // SetPoolPolicy wires plan node pools into service placement (nil adds no pool constraints).
 func (h *DeployHandler) SetPoolPolicy(p PoolPolicy) { h.poolPolicy = p }
+
+type StorageClassLookup interface {
+	FindByName(name string) (*models.StorageClass, error)
+}
+
+func (h *DeployHandler) SetStorageClasses(c StorageClassLookup) { h.storageClasses = c }
 
 func (h *DeployHandler) serviceConstraints(app *models.Application) []string {
 	if h.poolPolicy == nil {
@@ -899,7 +907,13 @@ func (h *DeployHandler) sharedMountDriver(workspaceID, volumeID uint) *docker.Se
 		return nil
 	}
 	v, err := h.volumes.FindInWorkspace(workspaceID, volumeID)
-	if err != nil || strings.TrimSpace(v.DriverOptsEnc) == "" {
+	if err != nil {
+		return nil
+	}
+	if d := h.sharedClassMountDriver(v); d != nil {
+		return d
+	}
+	if strings.TrimSpace(v.DriverOptsEnc) == "" {
 		return nil
 	}
 	raw, err := crypto.Decrypt(v.DriverOptsEnc)
@@ -918,6 +932,24 @@ func (h *DeployHandler) sharedMountDriver(workspaceID, volumeID uint) *docker.Se
 	}
 	// nfs/cifs volumes use Docker's local driver with mount options, so the swarm mount does too.
 	return &docker.ServiceMountDriver{Name: models.VolumeDriverLocal, Options: opts}
+}
+
+// The device comes from the admin-registered class, never the volume row, so a tenant cannot steer the bind.
+func (h *DeployHandler) sharedClassMountDriver(v *models.Volume) *docker.ServiceMountDriver {
+	if h.storageClasses == nil || v.Driver != models.VolumeDriverLocal || v.AccessMode != models.AccessRWX {
+		return nil
+	}
+	c, err := h.storageClasses.FindByName(v.StorageClassName)
+	if err != nil || !c.Shared {
+		return nil
+	}
+	device := c.VolumePath(v.DockerName)
+	if device == "" {
+		return nil
+	}
+	return &docker.ServiceMountDriver{Name: models.VolumeDriverLocal, Options: map[string]string{
+		"type": "none", "o": "bind", "device": device,
+	}}
 }
 
 func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, name string, desired uint64) error {

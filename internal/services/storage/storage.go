@@ -373,6 +373,9 @@ func (s *Service) CreateOn(ctx context.Context, workspaceID, serverID uint, in C
 		if class, err = s.resolveClass(workspaceID, serverID, in.StorageClass); err != nil {
 			return nil, err
 		}
+		if class != nil && class.Managed() && class.Shared {
+			accessMode = models.AccessRWX
+		}
 	}
 	volName, err := slug.Unique(name, "vol", func(c string) (bool, error) {
 		return s.repo.ExistsByName(workspaceID, c)

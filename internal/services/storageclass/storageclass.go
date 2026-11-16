@@ -249,7 +249,13 @@ func (s *Service) Update(id uint, in Input) (*models.StorageClass, error) {
 	if models.ValidReclaimPolicy(in.ReclaimPolicy) {
 		c.ReclaimPolicy = in.ReclaimPolicy
 	}
-	if !c.Builtin {
+	if !c.Builtin && in.Shared != c.Shared {
+		// A volume's access mode, and so whether services may move off its node, is fixed when it is created.
+		if n, err := s.repo.CountVolumes(c.Name); err != nil {
+			return nil, err
+		} else if n > 0 {
+			return nil, fmt.Errorf("%w: %d volume(s) on %q were created with its current sharing setting", ErrInUse, n, c.Name)
+		}
 		c.Shared = in.Shared
 	}
 	if err := s.repo.Update(c); err != nil {
