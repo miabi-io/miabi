@@ -22,7 +22,7 @@ package bundled
 import "strings"
 
 // fallbackGatewayVersion is the Goma Gateway a build without -X provisions.
-const fallbackGatewayVersion = "1.1.2"
+const fallbackGatewayVersion = "1.2.1"
 
 // A var because -X cannot set a constant.
 var gatewayVersion = fallbackGatewayVersion
