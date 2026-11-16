@@ -505,7 +505,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 			vol, _ = s.volumes.FindByDockerName(m.Name)
 		}
 		if vol != nil && vol.WorkspaceID == wsID {
-			_ = s.apps.AttachVolume(app, vol.ID, m.Destination)
+			_ = s.apps.AttachVolumeAs(app, vol.ID, m.Destination, m.ReadOnly)
 		}
 	}
 
