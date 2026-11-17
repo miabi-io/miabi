@@ -1070,6 +1070,16 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register gpu inventory task", "error", err)
 		}
+		if cfg.GPUSampleSeconds > 0 {
+			sampleEvery := max(cfg.GPUSampleSeconds, 15)
+			if err := cronManager.RegisterTask("gpu_sample", 0, "GPU utilization sample", fmt.Sprintf("@every %ds", sampleEvery), func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(sampleEvery)*time.Second)
+				defer cancel()
+				return gpuService.Sample(ctx)
+			}); err != nil {
+				logger.Warn("failed to register gpu sample task", "error", err)
+			}
+		}
 		go func() {
 			time.Sleep(45 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -1538,6 +1548,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			platformMailer.SendPasswordReset(owner.Email, owner.Name, raw, int(auth.PasswordResetTTL/time.Hour))
 		}})
 	r.h.app.SetPlacer(placer)
+	r.h.app.SetGPU(gpuService)
 	r.h.database.SetPlacer(placer)
 	r.h.volume.SetPlacer(placer)
 	r.h.volume.SetStorageClasses(storageClassService, quotaService)

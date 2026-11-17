@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 )
 
 // Viewer reads; Developer deploys and edits; Admin deletes.
@@ -75,6 +76,15 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.app.Get,
 			Summary:     "Get an application",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{appID}/gpu-kinds",
+			Group:       apps,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.app.GPUKinds,
+			Summary:     "List the GPU kinds enabled on the application's node",
+			Response:    &dto.Response[[]gpu.Kind]{},
 		},
 		{
 			Method:      http.MethodGet,

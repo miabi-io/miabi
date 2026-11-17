@@ -170,6 +170,13 @@ export interface CanaryPreviewInput {
   ip?: string
 }
 
+export interface GPUKind {
+  vendor: string
+  model: string
+  count: number
+  memory_mb: number
+}
+
 export const appApi = {
   list(ws: number) {
     return api.get<ApiResponse<Application[]>>(`/workspaces/${ws}/apps`)
@@ -189,6 +196,9 @@ export const appApi = {
   },
   status(ws: number, id: number) {
     return api.get<ApiResponse<LiveStatus>>(`/workspaces/${ws}/apps/${id}/status`)
+  },
+  gpuKinds(ws: number, id: number) {
+    return api.get<ApiResponse<GPUKind[]>>(`/workspaces/${ws}/apps/${id}/gpu-kinds`)
   },
   externalAccess(ws: number, id: number) {
     return api.get<ApiResponse<ExternalAccess>>(`/workspaces/${ws}/apps/${id}/external-access`)

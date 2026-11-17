@@ -272,7 +272,7 @@ async function setGpu(dev: GPUDevice, patch: { enabled?: boolean; shared?: boole
   try {
     const updated = (await nodesApi.updateGpu(id, dev.id, patch)).data.data
     if (gpuInfo.value) {
-      gpuInfo.value.devices = gpuInfo.value.devices.map((d) => (d.id === updated.id ? updated : d))
+      gpuInfo.value.devices = gpuInfo.value.devices.map((d) => (d.id === updated.id ? { ...d, ...updated } : d))
     }
   } catch (e) {
     notify.apiError(e)
@@ -280,6 +280,12 @@ async function setGpu(dev: GPUDevice, patch: { enabled?: boolean; shared?: boole
     gpuBusy.value = null
   }
 }
+function gpuMemory(dev: GPUDevice): string {
+  if (!dev.memory_mb) return '—'
+  if (dev.memory_used_mb == null) return `${dev.memory_mb} MiB`
+  return `${dev.memory_used_mb} / ${dev.memory_mb} MiB`
+}
+
 async function rescanGpus() {
   gpuRescanning.value = true
   try {
@@ -1147,8 +1153,9 @@ const gwBadge = computed(() => {
           </div>
           <div v-if="!gpuInfo.toolkit_present" class="card-body">
             <p class="text-muted">
-              GPUs may be present, but the NVIDIA Container Toolkit is not installed on this node.
-              Install it and rescan to inventory the devices.
+              No GPU has been found on this node, and Docker has no <code>nvidia</code> runtime registered.
+              If the NVIDIA Container Toolkit is installed, <strong>Rescan GPUs</strong> probes the node anyway
+              and reports why it fails if it does.
             </p>
           </div>
           <div v-else-if="!gpuInfo.devices.length" class="card-body">
@@ -1156,16 +1163,24 @@ const gwBadge = computed(() => {
           </div>
           <div v-else class="table-wrapper">
             <table>
-              <thead><tr><th>Model</th><th>UUID</th><th>Memory</th><th>Index</th><th>Enabled</th><th>Mode</th></tr></thead>
+              <thead><tr><th>Model</th><th>UUID</th><th>Memory</th><th>Utilization</th><th>Used by</th><th>Enabled</th><th>Mode</th></tr></thead>
               <tbody>
                 <tr v-for="dev in gpuInfo.devices" :key="dev.id">
                   <td>
-                    {{ dev.model || dev.vendor }}
+                    {{ dev.model || dev.vendor }} <span class="text-muted">#{{ dev.index }}</span>
                     <span v-if="dev.missing" class="badge badge-warning" style="margin-left: 4px" :title="dev.last_seen_at ? 'Last seen ' + new Date(dev.last_seen_at).toLocaleString() : ''">missing</span>
                   </td>
                   <td><code>{{ dev.uuid }}</code></td>
-                  <td>{{ dev.memory_mb ? dev.memory_mb + ' MiB' : '—' }}</td>
-                  <td>{{ dev.index }}</td>
+                  <td>{{ gpuMemory(dev) }}</td>
+                  <td :title="dev.sampled_at ? 'Sampled ' + new Date(dev.sampled_at).toLocaleString() : ''">{{ dev.utilization_pct != null ? dev.utilization_pct + '%' : '—' }}</td>
+                  <td>
+                    <span v-if="gpuInfo.holders_unknown" class="text-muted" title="The node could not be asked which containers hold its cards">unknown</span>
+                    <span v-else-if="!dev.holders.length" class="text-muted">—</span>
+                    <div v-for="h in dev.holders" :key="`${h.app_id}-${h.job}`">
+                      <RouterLink :to="{ name: 'admin-workspace-detail', params: { id: h.workspace_id } }" :title="`Workspace #${h.workspace_id}`">{{ h.app_name || `app #${h.app_id}` }}</RouterLink>
+                      <span v-if="h.job" class="badge badge-info" style="margin-left: 4px">job</span>
+                    </div>
+                  </td>
                   <td>
                     <label class="switch">
                       <input type="checkbox" :checked="dev.enabled" :disabled="gpuBusy === dev.id" @change="setGpu(dev, { enabled: !dev.enabled })" />

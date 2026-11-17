@@ -638,6 +638,8 @@
       "dropCapsHint": "Retirées de l’ensemble par défaut de Docker, comme {cmd}. {all} les retire toutes, ne laissant que les capacités accordées à l’application. Appliqué au prochain déploiement.",
       "gitopsLocked": "Géré par GitOps — modifiez-le dans le manifeste Git. Les modifications faites ici sont écrasées à la prochaine {link}.",
       "gpuFilterHint": "Restreindre à un fabricant/modèle (par ex. {vendor}). Vide = n’importe quel GPU activé sur le nœud.",
+      "gpuKindOption": "{model} ({count} sur ce nœud)",
+      "gpuKindPickHint": "Modèles de GPU activés sur le nœud de l’application. N’importe lequel = la carte activée la moins occupée.",
       "gpuCapabilitiesHint": "Fonctions du pilote exposées au conteneur. Aucune sélection = compute et utility. Ajoutez video pour le transcodage NVENC/NVDEC.",
       "gpuHint": "Périphériques GPU entiers à attacher. 0 = aucun. Décompté du quota de GPU du plan pendant l’exécution.",
       "hostMountsHint": "Montez des chemins hôte autorisés dans cette application. Ils accordent un accès au niveau de l’hôte — n’attachez que ce dont l’application a vraiment besoin.",

@@ -21,6 +21,7 @@ package metrics
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jkaninda/okapi"
@@ -49,18 +50,30 @@ var (
 )
 
 var (
-	gpuDevicesTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+	gpuDevicesTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "miabi_gpu_devices_total",
-		Help: "Number of physical GPU devices discovered across all nodes.",
-	})
-	gpuDevicesEnabled = prometheus.NewGauge(prometheus.GaugeOpts{
+		Help: "Number of physical GPU devices discovered, per node and vendor.",
+	}, []string{"server", "vendor"})
+	gpuDevicesEnabled = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "miabi_gpu_devices_enabled",
-		Help: "Number of GPU devices enabled (offered to workloads).",
-	})
-	gpuAllocated = prometheus.NewGauge(prometheus.GaugeOpts{
+		Help: "Number of GPU devices enabled and present (offered to workloads), per node and vendor.",
+	}, []string{"server", "vendor"})
+	gpuAllocated = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "miabi_gpu_allocated",
-		Help: "GPU units currently held by running applications.",
-	})
+		Help: "GPU units currently held by running applications, per workspace id.",
+	}, []string{"workspace"})
+	gpuUtilization = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "miabi_gpu_utilization_percent",
+		Help: "GPU core utilization at the last sample.",
+	}, []string{"server", "uuid", "model"})
+	gpuMemoryUsed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "miabi_gpu_memory_used_bytes",
+		Help: "GPU framebuffer memory in use at the last sample.",
+	}, []string{"server", "uuid", "model"})
+	gpuMemoryTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "miabi_gpu_memory_total_bytes",
+		Help: "GPU framebuffer memory size.",
+	}, []string{"server", "uuid", "model"})
 )
 
 // So a mistaken second control plane shows as a standby, not a process silently running no jobs.
@@ -71,6 +84,7 @@ var leaderHeld = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 
 func init() {
 	prometheus.MustRegister(buildInfo, subnetPoolUsed, subnetPoolTotal, gpuDevicesTotal, gpuDevicesEnabled, gpuAllocated,
+		gpuUtilization, gpuMemoryUsed, gpuMemoryTotal,
 		analyticsIngested, analyticsRejected, leaderHeld,
 		controlManagerSweep, controlManagerDrift, controlManagerUnobserved, controlManagerBlocked,
 		controlManagerActions)
@@ -154,10 +168,43 @@ func SetSubnetPoolUsage(used, total int) {
 	subnetPoolTotal.Set(float64(total))
 }
 
-func SetGPUStats(total, enabled, allocated int) {
-	gpuDevicesTotal.Set(float64(total))
-	gpuDevicesEnabled.Set(float64(enabled))
-	gpuAllocated.Set(float64(allocated))
+type GPUDeviceSample struct {
+	Server, Vendor, UUID, Model string
+	Enabled                     bool
+	// Nil when the card has not been sampled yet; the series is then left out rather than reported as 0.
+	UtilizationPct *int
+	MemoryUsedMB   *int
+	MemoryTotalMB  int
+}
+
+// Resets first so a removed card or emptied workspace does not linger as a stale series.
+func SetGPUStats(devices []GPUDeviceSample, allocatedByWorkspace map[uint]int64) {
+	gpuDevicesTotal.Reset()
+	gpuDevicesEnabled.Reset()
+	gpuAllocated.Reset()
+	gpuUtilization.Reset()
+	gpuMemoryUsed.Reset()
+	gpuMemoryTotal.Reset()
+	for _, d := range devices {
+		gpuDevicesTotal.WithLabelValues(d.Server, d.Vendor).Inc()
+		enabled := gpuDevicesEnabled.WithLabelValues(d.Server, d.Vendor)
+		if d.Enabled {
+			enabled.Inc()
+		}
+		card := []string{d.Server, d.UUID, d.Model}
+		if d.MemoryTotalMB > 0 {
+			gpuMemoryTotal.WithLabelValues(card...).Set(float64(d.MemoryTotalMB) * 1024 * 1024)
+		}
+		if d.UtilizationPct != nil {
+			gpuUtilization.WithLabelValues(card...).Set(float64(*d.UtilizationPct))
+		}
+		if d.MemoryUsedMB != nil {
+			gpuMemoryUsed.WithLabelValues(card...).Set(float64(*d.MemoryUsedMB) * 1024 * 1024)
+		}
+	}
+	for ws, n := range allocatedByWorkspace {
+		gpuAllocated.WithLabelValues(strconv.FormatUint(uint64(ws), 10)).Set(float64(n))
+	}
 }
 
 // A node reporting routes it does not serve is a compromise signal, so rejects are counted per node.

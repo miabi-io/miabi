@@ -244,12 +244,28 @@ export interface GPUDevice {
   shared: boolean
   missing: boolean
   last_seen_at?: string | null
+  utilization_pct?: number | null
+  memory_used_mb?: number | null
+  sampled_at?: string | null
+}
+
+export interface GPUHolder {
+  app_id: number
+  app_name: string
+  workspace_id: number
+  job?: boolean
+}
+
+export interface GPUDeviceView extends GPUDevice {
+  holders: GPUHolder[]
 }
 
 export interface NodeGPUList {
   enabled: boolean          // platform GPU support on (MIABI_GPU_ENABLED)
-  toolkit_present: boolean  // node has the NVIDIA Container Toolkit
-  devices: GPUDevice[]
+  toolkit_present: boolean  // nvidia runtime registered, or a probe already found cards
+  nvidia_runtime: boolean
+  holders_unknown?: boolean
+  devices: GPUDeviceView[]
 }
 
 export const nodesApi = {

@@ -82,6 +82,8 @@ type Config struct {
 	NvidiaRuntime       string
 	GPUProbeImage       string
 	GPUInventoryMinutes int
+	// 0 turns usage sampling off; each sample runs one probe container per GPU node.
+	GPUSampleSeconds int
 
 	// LicenseFile is a signed license token auto-installed on boot; a newer DB-installed license still wins.
 	LicenseFile           string
@@ -487,6 +489,7 @@ func New() *Config {
 		NvidiaRuntime:           goutils.Env("MIABI_NVIDIA_RUNTIME", "nvidia"),
 		GPUProbeImage:           goutils.Env("MIABI_GPU_PROBE_IMAGE", "nvidia/cuda:12.4.1-base-ubuntu22.04"),
 		GPUInventoryMinutes:     goutils.EnvInt("MIABI_GPU_INVENTORY_MINUTES", 30),
+		GPUSampleSeconds:        goutils.EnvInt("MIABI_GPU_SAMPLE_SECONDS", 60),
 		LicenseFile:             goutils.Env("MIABI_LICENSE_FILE", ""),
 		MetricsScrapeSeconds:    goutils.EnvInt("MIABI_METRICS_SCRAPE_SECONDS", 60),
 		MetricsRetentionHours:   goutils.EnvInt("MIABI_METRICS_RETENTION_HOURS", 24),

@@ -22,6 +22,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -611,9 +612,25 @@ func bearer(h string) string {
 }
 
 type GPUListResponse struct {
-	Enabled        bool               `json:"enabled"`         // platform GPU support on (MIABI_GPU_ENABLED)
-	ToolkitPresent bool               `json:"toolkit_present"` // node has the NVIDIA Container Toolkit
-	Devices        []models.GPUDevice `json:"devices"`
+	Enabled        bool             `json:"enabled"`         // platform GPU support on (MIABI_GPU_ENABLED)
+	ToolkitPresent bool             `json:"toolkit_present"` // nvidia runtime registered, or a probe found cards
+	NvidiaRuntime  bool             `json:"nvidia_runtime"`
+	HoldersUnknown bool             `json:"holders_unknown,omitempty"`
+	Devices        []gpu.DeviceView `json:"devices"`
+}
+
+func (h *NodeHandler) gpuList(c *okapi.Context, id uint) error {
+	view, err := h.gpu.Node(c.Request().Context(), id)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list node GPUs", err)
+	}
+	return ok(c, GPUListResponse{
+		Enabled:        true,
+		ToolkitPresent: view.Capable,
+		NvidiaRuntime:  view.NvidiaRuntime,
+		HoldersUnknown: view.HoldersUnknown,
+		Devices:        view.Devices,
+	})
 }
 
 type UpdateGPURequest struct {
@@ -630,20 +647,9 @@ func (h *NodeHandler) ListGPUs(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid node id")
 	}
 	if h.gpu == nil || !h.gpu.Enabled() {
-		return ok(c, GPUListResponse{Enabled: false, Devices: []models.GPUDevice{}})
+		return ok(c, GPUListResponse{Enabled: false, Devices: []gpu.DeviceView{}})
 	}
-	devices, err := h.gpu.Devices(id)
-	if err != nil {
-		return c.AbortInternalServerError("failed to list node GPUs", err)
-	}
-	if devices == nil {
-		devices = []models.GPUDevice{}
-	}
-	return ok(c, GPUListResponse{
-		Enabled:        true,
-		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
-		Devices:        devices,
-	})
+	return h.gpuList(c, id)
 }
 
 func (h *NodeHandler) UpdateGPU(c *okapi.Context, req *UpdateGPURequest) error {
@@ -677,22 +683,12 @@ func (h *NodeHandler) RescanGPUs(c *okapi.Context) error {
 	if h.gpu == nil || !h.gpu.Enabled() {
 		return c.AbortBadRequest("GPU support is disabled on this platform")
 	}
-	if _, err := h.gpu.InventoryNode(c.Request().Context(), id); err != nil {
-		return c.AbortInternalServerError("GPU rescan failed", err)
-	}
-	devices, err := h.gpu.Devices(id)
-	if err != nil {
-		return c.AbortInternalServerError("failed to list node GPUs", err)
-	}
-	if devices == nil {
-		devices = []models.GPUDevice{}
-	}
 	h.record(c, "node.gpu.rescan", id)
-	return ok(c, GPUListResponse{
-		Enabled:        true,
-		ToolkitPresent: h.gpu.NodeCapable(c.Request().Context(), id),
-		Devices:        devices,
-	})
+	// The probe's reason (no toolkit, driver mismatch) is what the admin needs, so it is the message, not a detail.
+	if _, err := h.gpu.InventoryNode(c.Request().Context(), id, true); err != nil {
+		return c.AbortWithError(http.StatusBadGateway, fmt.Errorf("GPU rescan failed: %w", err))
+	}
+	return h.gpuList(c, id)
 }
 
 func (h *NodeHandler) id(c *okapi.Context) (uint, error) {
