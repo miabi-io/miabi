@@ -353,6 +353,7 @@ func (s *Service) pickNode(c *models.Cluster, req Request, pool string, pooled b
 	}
 	var best uint
 	var bestLoad repositories.ServerLoad
+	bestOnGPUNode := false
 	gpuShort := false
 	for i := range servers {
 		srv := &servers[i]
@@ -366,9 +367,14 @@ func (s *Service) pickNode(c *models.Cluster, req Request, pool string, pooled b
 			gpuShort = true
 			continue
 		}
+		// A GPU-free request goes to a GPU node only when no other node can take it, so cards stay reachable for GPU apps.
+		onGPUNode := req.GPUs <= 0 && s.offersGPUs(srv.ID)
 		load := loads[srv.ID]
-		if best == 0 || load.Less(bestLoad) {
-			best, bestLoad = srv.ID, load
+		switch {
+		case best == 0,
+			bestOnGPUNode && !onGPUNode,
+			bestOnGPUNode == onGPUNode && load.Less(bestLoad):
+			best, bestLoad, bestOnGPUNode = srv.ID, load, onGPUNode
 		}
 	}
 	if best == 0 && gpuShort {
@@ -381,6 +387,14 @@ func (s *Service) pickNode(c *models.Cluster, req Request, pool string, pooled b
 		return 0, ErrNoSchedulableNode
 	}
 	return best, nil
+}
+
+func (s *Service) offersGPUs(serverID uint) bool {
+	if s.gpus == nil {
+		return false
+	}
+	devices, err := s.gpus.ListEnabledByServer(serverID)
+	return err == nil && len(devices) > 0
 }
 
 // Capacity only: whether a dedicated card is free is decided at deploy, where the node's running containers are visible.

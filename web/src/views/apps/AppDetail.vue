@@ -806,6 +806,16 @@ async function loadGpuKinds() {
   }
 }
 
+// Mirrors GPUDevice.MatchesKind on the server: vendor, exact model, or case-insensitive model substring.
+const gpuCardsMatching = computed(() => {
+  const k = settingsForm.value.gpu_kind.trim().toLowerCase()
+  return gpuKinds.value
+    .filter((g) => !k || g.vendor.toLowerCase() === k || g.model.toLowerCase().includes(k))
+    .reduce((n, g) => n + g.count, 0)
+})
+
+const gpuShort = computed(() => gpuKinds.value.length > 0 && settingsForm.value.gpu_count > gpuCardsMatching.value)
+
 // A stored kind may be a vendor or model substring rather than an exact model, so it stays selectable.
 const gpuKindIsCustom = computed(() => {
   const k = settingsForm.value.gpu_kind.trim()
@@ -1149,8 +1159,10 @@ async function saveSettings() {
       healthcheck_retries: settingsForm.value.hc_retries,
       healthcheck_start_period_seconds: settingsForm.value.hc_start_period,
     })).data.data
+    const warnings = app.value.warnings ?? []
     syncSettingsForm()
     notify.success(t('notify.appDetail.settingsSaved') + changeNote())
+    for (const w of warnings) notify.show(w, 'info', 12000, { title: t('appDetail.settings.gpuCapacityTitle') })
     loadApp() // refresh status + redeploy_required for the header
   } catch (e) {
     notify.apiError(e)
@@ -3512,6 +3524,9 @@ async function detachDatabase(d: AppDatabase) {
               <label class="form-label">{{ $t('appDetail.gpus') }}</label>
               <input v-model.number="settingsForm.gpu_count" type="number" min="0" step="1" class="form-input" :disabled="!ws.canEdit" />
               <p class="form-hint">{{ $t('appDetail.settings.gpuHint') }}</p>
+              <p v-if="gpuShort" class="form-hint text-warning">
+                {{ $t('appDetail.settings.gpuShort', { have: gpuCardsMatching, want: settingsForm.gpu_count }) }}
+              </p>
             </div>
             <div class="form-group" style="flex: 1">
               <label class="form-label">{{ $t('appDetail.gpuKind') }}</label>

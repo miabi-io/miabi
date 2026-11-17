@@ -500,6 +500,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "app.create", app.ID)
+	h.gpuWarning(app)
 	return created(c, app)
 }
 
@@ -520,6 +521,15 @@ type ResourceLimitsResponse struct {
 func (h *ApplicationHandler) ResourceLimits(c *okapi.Context) error {
 	cores, mem := h.svc.ResourceLimits()
 	return ok(c, ResourceLimitsResponse{MaxCPUCores: cores, MaxMemoryMB: mem})
+}
+
+func (h *ApplicationHandler) gpuWarning(app *models.Application) {
+	if h.gpu == nil {
+		return
+	}
+	if w := h.gpu.CapacityWarning(app); w != "" {
+		app.Warnings = append(app.Warnings, w)
+	}
 }
 
 func (h *ApplicationHandler) GPUKinds(c *okapi.Context) error {
@@ -604,6 +614,7 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	}
 	h.record(c, app.WorkspaceID, "app.update", app.ID)
 	h.markRedeploy(c, app)
+	h.gpuWarning(app)
 	return ok(c, app)
 }
 
