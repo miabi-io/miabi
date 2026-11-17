@@ -129,16 +129,15 @@ func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, e
 		return nil, noop, ErrGPUDisabled
 	}
 	node := s.nodeName(app.ServerID)
-	info, err := eng.Info(ctx)
-	if err != nil {
-		return nil, noop, fmt.Errorf("inspect node runtimes: %w", err)
-	}
-	if !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
-		return nil, noop, fmt.Errorf("node %q is not GPU-capable: the NVIDIA Container Toolkit (%q runtime) is not installed", node, s.cfg.NvidiaRuntime)
-	}
 	enabled, err := s.devices.ListEnabledByServer(app.ServerID)
 	if err != nil {
 		return nil, noop, fmt.Errorf("list node GPUs: %w", err)
+	}
+	// A device row exists only after a probe attached GPUs through this same request path, so it outranks the runtime name.
+	if len(enabled) == 0 {
+		if info, err := eng.Info(ctx); err == nil && !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
+			return nil, noop, fmt.Errorf("node %q is not GPU-capable: no GPU has been found on it and the %q runtime is not registered; install the NVIDIA Container Toolkit, then rescan the node's GPUs", node, s.cfg.NvidiaRuntime)
+		}
 	}
 	matched := filterByKind(enabled, app.GPUKind)
 
@@ -227,24 +226,6 @@ func pickDevices(devices []models.GPUDevice, count int, h cardHolders) ([]models
 	return free, busy
 }
 
-// Devices lists every discovered device on a node (enabled or not).
-func (s *Service) Devices(serverID uint) ([]models.GPUDevice, error) {
-	return s.devices.ListByServer(serverID)
-}
-
-// Lets the admin UI explain a node with no listed GPUs.
-func (s *Service) NodeCapable(ctx context.Context, serverID uint) bool {
-	cli, err := s.clients.For(serverID)
-	if err != nil {
-		return false
-	}
-	info, err := cli.Info(ctx)
-	if err != nil {
-		return false
-	}
-	return hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime)
-}
-
 func (s *Service) SetDevice(serverID, gpuID uint, enabled, shared *bool) (*models.GPUDevice, error) {
 	d, err := s.devices.FindByID(gpuID)
 	if err != nil {
@@ -276,7 +257,7 @@ func (s *Service) Inventory(ctx context.Context) error {
 		return err
 	}
 	for i := range servers {
-		if _, err := s.InventoryNode(ctx, servers[i].ID); err != nil {
+		if _, err := s.InventoryNode(ctx, servers[i].ID, false); err != nil {
 			logger.Warn("gpu inventory failed for node", "node", servers[i].Label(), "error", err)
 		}
 	}
@@ -284,8 +265,8 @@ func (s *Service) Inventory(ctx context.Context) error {
 	return nil
 }
 
-// Most nodes have no GPU, so a missing runtime or failed probe yields zero devices, not an error; new devices arrive disabled.
-func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error) {
+// force (an admin rescan) probes a node without the nvidia runtime and reports probe failures; the sweep skips such nodes and stays quiet.
+func (s *Service) InventoryNode(ctx context.Context, serverID uint, force bool) (int, error) {
 	if !s.Enabled() {
 		return 0, ErrGPUDisabled
 	}
@@ -297,32 +278,16 @@ func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	if !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
-		return 0, nil // no toolkit → no GPUs to inventory
-	}
-	if present, _ := cli.ImageExists(ctx, s.cfg.ProbeImage); !present {
-		if err := cli.PullImage(ctx, s.cfg.ProbeImage, nil); err != nil {
-			return 0, fmt.Errorf("pull GPU probe image %q: %w", s.cfg.ProbeImage, err)
-		}
-	}
-	spec := docker.RunSpec{
-		Name:  fmt.Sprintf("mb-gpu-probe-%d-%d", serverID, time.Now().UnixNano()),
-		Image: s.cfg.ProbeImage,
-		Cmd:   []string{"nvidia-smi", "-q", "-x"},
-		GPUs:  []docker.GPURequest{{Count: -1, Capabilities: [][]string{{"gpu"}}}}, // -1 = all
-	}
-	exit, out, err := cli.RunOneShot(ctx, spec)
-	if err != nil {
-		logger.Warn("gpu probe container failed", "node", serverID, "error", err)
-		return 0, nil // fail soft: a probe error is not a node error
-	}
-	if exit != 0 {
-		logger.Warn("gpu probe exited non-zero", "node", serverID, "exit", exit)
+	if !force && !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) && !s.hasKnownDevices(serverID) {
 		return 0, nil
 	}
-	devs, err := parseNvidiaSMI(out)
+	devs, err := s.probe(ctx, cli, serverID)
 	if err != nil {
-		return 0, fmt.Errorf("parse nvidia-smi output: %w", err)
+		if force {
+			return 0, err
+		}
+		logger.Warn("gpu probe failed", "node", serverID, "error", err)
+		return 0, nil
 	}
 	seen := make([]string, 0, len(devs))
 	for i := range devs {
@@ -339,17 +304,229 @@ func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error)
 			logger.Warn("gpu devices no longer reported by the node", "node", serverID, "count", n)
 		}
 	}
+	if force {
+		s.publishMetrics()
+	}
 	return len(devs), nil
+}
+
+func (s *Service) hasKnownDevices(serverID uint) bool {
+	devices, err := s.devices.ListByServer(serverID)
+	if err != nil {
+		return false
+	}
+	for _, d := range devices {
+		if !d.Missing {
+			return true
+		}
+	}
+	return false
+}
+
+// Runs nvidia-smi with every card attached, through the same device-request path a deploy uses.
+func (s *Service) probe(ctx context.Context, cli docker.Client, serverID uint) ([]models.GPUDevice, error) {
+	if present, _ := cli.ImageExists(ctx, s.cfg.ProbeImage); !present {
+		if err := cli.PullImage(ctx, s.cfg.ProbeImage, nil); err != nil {
+			return nil, fmt.Errorf("pull GPU probe image %q: %w", s.cfg.ProbeImage, err)
+		}
+	}
+	spec := docker.RunSpec{
+		Name:  fmt.Sprintf("mb-gpu-probe-%d-%d", serverID, time.Now().UnixNano()),
+		Image: s.cfg.ProbeImage,
+		Cmd:   []string{"nvidia-smi", "-q", "-x"},
+		GPUs:  []docker.GPURequest{{Count: -1, Capabilities: [][]string{{"gpu"}}}}, // -1 = all
+	}
+	exit, out, err := cli.RunOneShot(ctx, spec)
+	if err != nil {
+		return nil, fmt.Errorf("GPU probe container could not run (is the NVIDIA Container Toolkit installed?): %w", err)
+	}
+	if exit != 0 {
+		return nil, fmt.Errorf("GPU probe exited with code %d: %s", exit, lastLine(out))
+	}
+	devs, err := parseNvidiaSMI(out)
+	if err != nil {
+		return nil, fmt.Errorf("parse nvidia-smi output: %w", err)
+	}
+	return devs, nil
+}
+
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+// Sample refreshes utilization and memory use on nodes that offer GPUs; it never adds or removes devices.
+func (s *Service) Sample(ctx context.Context) error {
+	if !s.Enabled() {
+		return nil
+	}
+	ids, err := s.devices.ServersWithEnabled()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		cli, err := s.clients.For(id)
+		if err != nil {
+			continue
+		}
+		devs, err := s.probe(ctx, cli, id)
+		if err != nil {
+			logger.Debug("gpu sample failed", "node", id, "error", err)
+			continue
+		}
+		now := time.Now()
+		for _, d := range devs {
+			if err := s.devices.UpdateUsage(id, d.UUID, d.UtilizationPct, d.MemoryUsedMB, now); err != nil {
+				logger.Warn("gpu usage update failed", "uuid", d.UUID, "error", err)
+			}
+		}
+	}
+	s.publishMetrics()
+	return nil
+}
+
+type Kind struct {
+	Vendor   string `json:"vendor"`
+	Model    string `json:"model"`
+	Count    int    `json:"count"`
+	MemoryMB int    `json:"memory_mb"`
+}
+
+// Kinds groups a node's enabled, present cards by model; tenants see models and counts, never UUIDs or holders.
+func (s *Service) Kinds(serverID uint) ([]Kind, error) {
+	devices, err := s.devices.ListEnabledByServer(serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := []Kind{}
+	at := map[string]int{}
+	for _, d := range devices {
+		key := string(d.Vendor) + "\x00" + d.Model
+		if i, ok := at[key]; ok {
+			out[i].Count++
+			continue
+		}
+		at[key] = len(out)
+		out = append(out, Kind{Vendor: string(d.Vendor), Model: d.Model, Count: 1, MemoryMB: d.MemoryMB})
+	}
+	return out, nil
+}
+
+type Holder struct {
+	AppID       uint   `json:"app_id"`
+	AppName     string `json:"app_name"`
+	WorkspaceID uint   `json:"workspace_id"`
+	Job         bool   `json:"job,omitempty"`
+}
+
+type DeviceView struct {
+	models.GPUDevice
+	Holders []Holder `json:"holders"`
+}
+
+type NodeView struct {
+	// Capable is true when the nvidia runtime is registered or a probe has already found cards.
+	Capable       bool         `json:"toolkit_present"`
+	NvidiaRuntime bool         `json:"nvidia_runtime"`
+	Devices       []DeviceView `json:"devices"`
+	// HoldersUnknown is set when the node could not be asked which containers hold its cards.
+	HoldersUnknown bool `json:"holders_unknown,omitempty"`
+}
+
+// An offline node still lists its devices, just without holders.
+func (s *Service) Node(ctx context.Context, serverID uint) (NodeView, error) {
+	devices, err := s.devices.ListByServer(serverID)
+	if err != nil {
+		return NodeView{}, err
+	}
+	view := NodeView{Devices: make([]DeviceView, len(devices))}
+	for i, d := range devices {
+		view.Devices[i] = DeviceView{GPUDevice: d, Holders: []Holder{}}
+		if !d.Missing {
+			view.Capable = true
+		}
+	}
+	cli, err := s.clients.For(serverID)
+	if err != nil {
+		view.HoldersUnknown = true
+		return view, nil
+	}
+	if info, err := cli.Info(ctx); err == nil && hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
+		view.NvidiaRuntime, view.Capable = true, true
+	}
+	containers, err := cli.ListContainers(ctx, false)
+	if err != nil {
+		view.HoldersUnknown = true
+		return view, nil
+	}
+	byUUID := s.holdersByUUID(containers)
+	for i := range view.Devices {
+		if hs := byUUID[view.Devices[i].UUID]; len(hs) > 0 {
+			view.Devices[i].Holders = hs
+		}
+	}
+	return view, nil
+}
+
+func (s *Service) holdersByUUID(containers []docker.Container) map[string][]Holder {
+	out := map[string][]Holder{}
+	seen := map[string]bool{}
+	names := map[uint]*models.Application{}
+	for _, c := range containers {
+		raw := c.Labels[docker.LabelGPUs]
+		if raw == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(c.Labels[docker.LabelApp], 10, 64)
+		if err != nil {
+			continue
+		}
+		appID := uint(id)
+		job := c.Labels[docker.LabelJob] != ""
+		app, ok := names[appID]
+		if !ok {
+			app, _ = s.apps.FindByID(appID)
+			names[appID] = app
+		}
+		h := Holder{AppID: appID, Job: job}
+		if app != nil {
+			h.AppName, h.WorkspaceID = app.Name, app.WorkspaceID
+		}
+		for _, uuid := range docker.ParseGPULabel(raw) {
+			key := fmt.Sprintf("%s/%d/%v", uuid, appID, job)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out[uuid] = append(out[uuid], h)
+		}
+	}
+	return out
 }
 
 func (s *Service) publishMetrics() {
 	if s == nil {
 		return
 	}
-	total, _ := s.devices.CountAll()
-	enabled, _ := s.devices.CountEnabled()
-	alloc, _ := s.apps.SumRunningGPUs()
-	metrics.SetGPUStats(int(total), int(enabled), int(alloc))
+	devices, err := s.devices.ListAll()
+	if err != nil {
+		return
+	}
+	names := map[uint]string{}
+	samples := make([]metrics.GPUDeviceSample, 0, len(devices))
+	for _, d := range devices {
+		name, ok := names[d.ServerID]
+		if !ok {
+			name = s.nodeName(d.ServerID)
+			names[d.ServerID] = name
+		}
+		samples = append(samples, metrics.GPUDeviceSample{
+			Server: name, Vendor: string(d.Vendor), UUID: d.UUID, Model: d.Model,
+			Enabled: d.Enabled && !d.Missing, UtilizationPct: d.UtilizationPct, MemoryUsedMB: d.MemoryUsedMB, MemoryTotalMB: d.MemoryMB,
+		})
+	}
+	alloc, _ := s.apps.SumRunningGPUsPerWorkspace()
+	metrics.SetGPUStats(samples, alloc)
 }
 
 func (s *Service) nodeName(serverID uint) string {
@@ -401,7 +578,11 @@ func parseNvidiaSMI(raw string) ([]models.GPUDevice, error) {
 			MinorNumber string `xml:"minor_number"`
 			FB          struct {
 				Total string `xml:"total"`
+				Used  string `xml:"used"`
 			} `xml:"fb_memory_usage"`
+			Utilization struct {
+				GPU string `xml:"gpu_util"`
+			} `xml:"utilization"`
 		} `xml:"gpu"`
 	}
 	if err := xml.Unmarshal([]byte(raw), &doc); err != nil {
@@ -418,14 +599,26 @@ func parseNvidiaSMI(raw string) ([]models.GPUDevice, error) {
 			index = n
 		}
 		out = append(out, models.GPUDevice{
-			UUID:     uuid,
-			Index:    index,
-			Vendor:   models.GPUVendorNvidia,
-			Model:    strings.TrimSpace(g.ProductName),
-			MemoryMB: parseMiB(g.FB.Total),
+			UUID:           uuid,
+			Index:          index,
+			Vendor:         models.GPUVendorNvidia,
+			Model:          strings.TrimSpace(g.ProductName),
+			MemoryMB:       parseMiB(g.FB.Total),
+			UtilizationPct: parseReading(g.Utilization.GPU, "%"),
+			MemoryUsedMB:   parseReading(g.FB.Used, "MiB"),
 		})
 	}
 	return out, nil
+}
+
+// nvidia-smi prints "N/A" for readings a card does not support, which must stay unknown rather than read as 0.
+func parseReading(s, unit string) *int {
+	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), unit))
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return nil
+	}
+	return &n
 }
 
 func parseMiB(s string) int {

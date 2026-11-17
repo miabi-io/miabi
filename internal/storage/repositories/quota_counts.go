@@ -116,12 +116,20 @@ func (r *ApplicationRepository) SumRunningGPUsByWorkspace(workspaceID, excludeAp
 	return total, err
 }
 
-func (r *ApplicationRepository) SumRunningGPUs() (int64, error) {
-	var total int64
+func (r *ApplicationRepository) SumRunningGPUsPerWorkspace() (map[uint]int64, error) {
+	var rows []struct {
+		WorkspaceID uint
+		Total       int64
+	}
 	err := r.db.Model(&models.Application{}).
-		Select("COALESCE(SUM(gpu_count * CASE WHEN replicas < 1 THEN 1 ELSE replicas END),0)").
-		Where("status = ? AND gpu_count > 0", models.AppStatusRunning).Scan(&total).Error
-	return total, err
+		Select("workspace_id, COALESCE(SUM(gpu_count * CASE WHEN replicas < 1 THEN 1 ELSE replicas END),0) AS total").
+		Where("status = ? AND gpu_count > 0", models.AppStatusRunning).
+		Group("workspace_id").Scan(&rows).Error
+	out := make(map[uint]int64, len(rows))
+	for _, row := range rows {
+		out[row.WorkspaceID] = row.Total
+	}
+	return out, err
 }
 
 // SumSizeByWorkspace returns the total declared volume size (bytes) in a workspace.

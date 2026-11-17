@@ -72,14 +72,12 @@ func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error 
 	now := time.Now()
 	existing, err := r.FindByUUID(dev.UUID)
 	if err == nil {
-		existing.ServerID = serverID
-		existing.Index = dev.Index
-		existing.Vendor = dev.Vendor
-		existing.Model = dev.Model
-		existing.MemoryMB = dev.MemoryMB
-		existing.Missing = false
-		existing.LastSeenAt = &now
-		return r.Update(existing)
+		// Column-targeted so a concurrent admin toggle of enabled/shared is never overwritten by a sweep.
+		return r.db.Model(&models.GPUDevice{}).Where("id = ?", existing.ID).Updates(map[string]any{
+			"server_id": serverID, "index": dev.Index, "vendor": dev.Vendor, "model": dev.Model,
+			"memory_mb": dev.MemoryMB, "missing": false, "last_seen_at": now,
+			"utilization_pct": dev.UtilizationPct, "memory_used_mb": dev.MemoryUsedMB, "sampled_at": now,
+		}).Error
 	}
 	if err != gorm.ErrRecordNotFound {
 		return err
@@ -89,7 +87,28 @@ func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error 
 	dev.Shared = true
 	dev.Missing = false
 	dev.LastSeenAt = &now
+	dev.SampledAt = &now
 	return r.Create(&dev)
+}
+
+func (r *GPUDeviceRepository) UpdateUsage(serverID uint, uuid string, utilizationPct, memoryUsedMB *int, at time.Time) error {
+	return r.db.Model(&models.GPUDevice{}).Where("server_id = ? AND uuid = ?", serverID, uuid).Updates(map[string]any{
+		"utilization_pct": utilizationPct, "memory_used_mb": memoryUsedMB, "sampled_at": at,
+	}).Error
+}
+
+func (r *GPUDeviceRepository) ListAll() ([]models.GPUDevice, error) {
+	var devices []models.GPUDevice
+	err := r.db.Order("server_id ASC, \"index\" ASC, id ASC").Find(&devices).Error
+	return devices, err
+}
+
+// ServersWithEnabled lists the nodes that have at least one enabled, present card.
+func (r *GPUDeviceRepository) ServersWithEnabled() ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.GPUDevice{}).Where("enabled = ? AND missing = ?", true, false).
+		Distinct("server_id").Pluck("server_id", &ids).Error
+	return ids, err
 }
 
 // MarkMissing flags the node's devices whose UUID is not in seen, and returns how many changed.
@@ -100,18 +119,4 @@ func (r *GPUDeviceRepository) MarkMissing(serverID uint, seen []string) (int64, 
 	}
 	res := q.Update("missing", true)
 	return res.RowsAffected, res.Error
-}
-
-// CountAll returns the total number of discovered devices (for metrics).
-func (r *GPUDeviceRepository) CountAll() (int64, error) {
-	var n int64
-	err := r.db.Model(&models.GPUDevice{}).Count(&n).Error
-	return n, err
-}
-
-// CountEnabled counts admin-enabled devices that the last probe still saw.
-func (r *GPUDeviceRepository) CountEnabled() (int64, error) {
-	var n int64
-	err := r.db.Model(&models.GPUDevice{}).Where("enabled = ? AND missing = ?", true, false).Count(&n).Error
-	return n, err
 }

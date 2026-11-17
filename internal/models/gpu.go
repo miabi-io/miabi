@@ -54,8 +54,13 @@ type GPUDevice struct {
 	// Set only by a successful probe that no longer lists the card; the row is kept so admin flags survive its return.
 	Missing    bool       `json:"missing" gorm:"not null;default:false"`
 	LastSeenAt *time.Time `json:"last_seen_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+
+	// Whole-card figures from the last sample, so they include every container using the card.
+	UtilizationPct *int       `json:"utilization_pct,omitempty"`
+	MemoryUsedMB   *int       `json:"memory_used_mb,omitempty"`
+	SampledAt      *time.Time `json:"sampled_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // An empty kind matches any; otherwise vendor, exact model, or case-insensitive model substring.

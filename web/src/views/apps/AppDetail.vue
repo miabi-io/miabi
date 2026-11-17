@@ -6,7 +6,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { appApi, isPipelineRun, type ExternalAccess, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
+import { appApi, isPipelineRun, type ExternalAccess, type GPUKind, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
 import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
@@ -795,6 +795,23 @@ async function loadCapabilityCatalog() {
   }
 }
 
+const gpuKinds = ref<GPUKind[]>([])
+
+async function loadGpuKinds() {
+  if (!wid.value) return
+  try {
+    gpuKinds.value = (await appApi.gpuKinds(wid.value, appId.value)).data.data ?? []
+  } catch {
+    gpuKinds.value = []
+  }
+}
+
+// A stored kind may be a vendor or model substring rather than an exact model, so it stays selectable.
+const gpuKindIsCustom = computed(() => {
+  const k = settingsForm.value.gpu_kind.trim()
+  return k !== '' && !gpuKinds.value.some((g) => g.model === k)
+})
+
 const gpuCapabilityOptions = ['compute', 'utility', 'video', 'graphics', 'display', 'compat32']
 
 function toggleCapability(name: string) {
@@ -914,8 +931,10 @@ async function loadApp() {
     const usage = (await usageApi.get(wid.value)).data.data
     shellExecAllowed.value = usage.capabilities.shell_exec
     customLabelsAllowed.value = usage.capabilities.custom_labels
-    gpuAllowed.value = !!usage.limits.allow_gpu
     requireNonRoot.value = !!usage.capabilities.require_non_root
+    // The restricted profile refuses GPU apps at save, so the field would only ever error.
+    gpuAllowed.value = !!usage.limits.allow_gpu && !requireNonRoot.value
+    if (gpuAllowed.value) void loadGpuKinds()
     serviceRuntimeAllowed.value = !!usage.capabilities.service_runtime
     planResources.value = {
       required: usage.enforced && !!usage.limits.require_resource_limits,
@@ -3496,8 +3515,16 @@ async function detachDatabase(d: AppDatabase) {
             </div>
             <div class="form-group" style="flex: 1">
               <label class="form-label">{{ $t('appDetail.gpuKind') }}</label>
-              <input v-model="settingsForm.gpu_kind" type="text" :placeholder="$t('appDetail.any')" class="form-input" :disabled="!ws.canEdit || settingsForm.gpu_count < 1" />
-              <i18n-t keypath="appDetail.settings.gpuFilterHint" tag="p" class="form-hint">
+              <select v-if="gpuKinds.length" v-model="settingsForm.gpu_kind" class="form-select" :disabled="!ws.canEdit || settingsForm.gpu_count < 1">
+                <option value="">{{ $t('appDetail.any') }}</option>
+                <option v-for="k in gpuKinds" :key="k.model" :value="k.model">
+                  {{ $t('appDetail.settings.gpuKindOption', { model: k.model || k.vendor, count: k.count }) }}
+                </option>
+                <option v-if="gpuKindIsCustom" :value="settingsForm.gpu_kind">{{ settingsForm.gpu_kind }}</option>
+              </select>
+              <input v-else v-model="settingsForm.gpu_kind" type="text" :placeholder="$t('appDetail.any')" class="form-input" :disabled="!ws.canEdit || settingsForm.gpu_count < 1" />
+              <p v-if="gpuKinds.length" class="form-hint">{{ $t('appDetail.settings.gpuKindPickHint') }}</p>
+              <i18n-t v-else keypath="appDetail.settings.gpuFilterHint" tag="p" class="form-hint">
             <template #vendor><code>nvidia</code></template>
           </i18n-t>
             </div>

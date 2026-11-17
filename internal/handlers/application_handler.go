@@ -38,6 +38,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
+	"github.com/miabi-io/miabi/internal/services/gpu"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/placement"
 	"github.com/miabi-io/miabi/internal/worker"
@@ -50,8 +51,12 @@ type ApplicationHandler struct {
 	ee       enterprise.EE
 	logs     *logstore.Store
 	placer   *Placer
+	gpu      *gpu.Service
 	upgrader websocket.Upgrader
 }
+
+// Unset (GPU support off) makes the kinds endpoint return an empty list.
+func (h *ApplicationHandler) SetGPU(g *gpu.Service) { h.gpu = g }
 
 // Falls back to the DB tail when the store is disabled, the ref is empty, or the object is gone.
 func (h *ApplicationHandler) SetLogStore(s *logstore.Store) { h.logs = s }
@@ -515,6 +520,21 @@ type ResourceLimitsResponse struct {
 func (h *ApplicationHandler) ResourceLimits(c *okapi.Context) error {
 	cores, mem := h.svc.ResourceLimits()
 	return ok(c, ResourceLimitsResponse{MaxCPUCores: cores, MaxMemoryMB: mem})
+}
+
+func (h *ApplicationHandler) GPUKinds(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	if h.gpu == nil || !h.gpu.Enabled() {
+		return ok(c, []gpu.Kind{})
+	}
+	kinds, err := h.gpu.Kinds(app.ServerID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list GPU kinds", err)
+	}
+	return ok(c, kinds)
 }
 
 func (h *ApplicationHandler) Get(c *okapi.Context) error {

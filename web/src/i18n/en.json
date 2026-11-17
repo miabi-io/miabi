@@ -638,6 +638,8 @@
       "dropCapsHint": "Removed from Docker’s default set, like {cmd}. {all} drops every one, leaving only the capabilities granted to the app. Applied on the next deploy.",
       "gitopsLocked": "Managed by GitOps — change it in the Git manifest. Edits here are overwritten on the next {link}.",
       "gpuFilterHint": "Narrow to a vendor/model (e.g. {vendor}). Empty = any enabled GPU on the node.",
+      "gpuKindOption": "{model} ({count} on this node)",
+      "gpuKindPickHint": "GPU models enabled on this app's node. Any = whichever enabled card is least busy.",
       "gpuCapabilitiesHint": "Driver features exposed to the container. None selected = compute and utility. Add video for NVENC/NVDEC transcoding.",
       "gpuHint": "Whole GPU devices to attach. 0 = none. Counts against the plan’s GPU quota while running.",
       "hostMountsHint": "Bind allow-listed host paths into this app. These grant host-level access — attach only what the app truly needs.",
