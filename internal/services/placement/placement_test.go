@@ -517,3 +517,28 @@ func TestColocationDoesNotConfirmForeignLocations(t *testing.T) {
 		t.Errorf("colocation naming another shared location: err = %v, want ErrLocationMismatch", err)
 	}
 }
+
+type fakeGPUs map[uint][]models.GPUDevice
+
+func (f fakeGPUs) ListEnabledByServer(id uint) ([]models.GPUDevice, error) { return f[id], nil }
+
+func TestPlacementSendsGPUAppsToGPUNodes(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+	a100 := models.GPUDevice{Vendor: models.GPUVendorNvidia, Model: "NVIDIA A100-SXM4-40GB"}
+	s.SetGPUInventory(fakeGPUs{10: {a100, a100}})
+
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ServerID != 11 {
+		t.Errorf("a non-GPU app keeps the least-loaded node 11, got %d (%v)", got.ServerID, err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", GPUs: 2, GPUKind: "a100"}); err != nil || got.ServerID != 10 {
+		t.Errorf("a 2-GPU A100 app must land on node 10, got %d (%v)", got.ServerID, err)
+	}
+	for _, req := range []Request{
+		{WorkspaceID: 5, Location: "eu-east", GPUs: 3},
+		{WorkspaceID: 5, Location: "eu-east", GPUs: 1, GPUKind: "H100"},
+	} {
+		if _, err := s.Place(req); !errors.Is(err, ErrNoGPUNode) {
+			t.Errorf("%d x %q: want ErrNoGPUNode, got %v", req.GPUs, req.GPUKind, err)
+		}
+	}
+}

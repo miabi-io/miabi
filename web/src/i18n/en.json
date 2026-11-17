@@ -449,6 +449,7 @@
     "gitops": "GitOps",
     "gitopsManifest": "GitOps manifest",
     "gpuKind": "GPU kind",
+    "gpuCapabilities": "GPU driver capabilities",
     "gpus": "GPUs",
     "hardening": "Hardening",
     "hc": {
@@ -637,6 +638,7 @@
       "dropCapsHint": "Removed from Docker’s default set, like {cmd}. {all} drops every one, leaving only the capabilities granted to the app. Applied on the next deploy.",
       "gitopsLocked": "Managed by GitOps — change it in the Git manifest. Edits here are overwritten on the next {link}.",
       "gpuFilterHint": "Narrow to a vendor/model (e.g. {vendor}). Empty = any enabled GPU on the node.",
+      "gpuCapabilitiesHint": "Driver features exposed to the container. None selected = compute and utility. Add video for NVENC/NVDEC transcoding.",
       "gpuHint": "Whole GPU devices to attach. 0 = none. Counts against the plan’s GPU quota while running.",
       "hostMountsHint": "Bind allow-listed host paths into this app. These grant host-level access — attach only what the app truly needs.",
       "httpProbeHint": "Miabi copies a small probe into the container, so the image needs no curl or wget. A replicated service uses the image's curl, wget or bash instead.",

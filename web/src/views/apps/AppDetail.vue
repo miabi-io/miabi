@@ -465,7 +465,7 @@ interface SettingsForm {
   stack_id: number | null; network_ids: number[]; ports: AppPort[]
   deploy_strategy: DeployStrategy; canary_initial_weight: number; canary_step_weight: number; canary_step_interval_seconds: number
   // Resources (0 = unlimited)
-  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
+  cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; gpu_capabilities: string[]; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
   reconcile_policy: ReconcilePolicy
   read_only_root_filesystem: boolean; no_new_privileges: boolean; drop_capabilities: string
   // Healthcheck
@@ -476,7 +476,7 @@ function emptySettingsForm(): SettingsForm {
   return {
     image: '', tag: '', command: '', registry_id: null, git_repository_id: null, git_repo: '', git_ref: '', build_method: 'auto', builder: '', stack_id: null, network_ids: [], ports: [],
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
-    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
+    cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', gpu_capabilities: [], run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
     reconcile_policy: 'inherit',
     read_only_root_filesystem: false, no_new_privileges: false, drop_capabilities: '',
     hc_type: 'image', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
@@ -795,6 +795,8 @@ async function loadCapabilityCatalog() {
   }
 }
 
+const gpuCapabilityOptions = ['compute', 'utility', 'video', 'graphics', 'display', 'compat32']
+
 function toggleCapability(name: string) {
   const list = settingsForm.value.add_capabilities
   const i = list.indexOf(name)
@@ -875,6 +877,7 @@ function syncSettingsForm() {
     memory_mb: app.value.memory_bytes ? Math.round(app.value.memory_bytes / MB) : 0,
     gpu_count: app.value.gpu_count || 0,
     gpu_kind: app.value.gpu_kind || '',
+    gpu_capabilities: [...(app.value.gpu_capabilities ?? [])],
     run_as_user: app.value.run_as_user || '',
     add_capabilities: [...(app.value.add_capabilities ?? [])],
     devices: [...(app.value.devices ?? [])],
@@ -1108,6 +1111,7 @@ async function saveSettings() {
       // A disallowed workspace never sends a GPU request, so it never trips the 403.
       gpu_count: gpuAllowed.value ? Math.max(0, Math.round(settingsForm.value.gpu_count || 0)) : 0,
       gpu_kind: gpuAllowed.value ? settingsForm.value.gpu_kind.trim() : '',
+      gpu_capabilities: gpuAllowed.value ? settingsForm.value.gpu_capabilities : [],
       run_as_user: settingsForm.value.run_as_user.trim(),
       add_capabilities: settingsForm.value.add_capabilities,
       devices: settingsForm.value.devices.map((d) => d.trim()).filter(Boolean),
@@ -3497,6 +3501,16 @@ async function detachDatabase(d: AppDatabase) {
             <template #vendor><code>nvidia</code></template>
           </i18n-t>
             </div>
+          </div>
+          <div v-if="gpuAllowed && settingsForm.gpu_count > 0" class="form-group">
+            <label class="form-label">{{ $t('appDetail.gpuCapabilities') }}</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px 16px">
+              <label v-for="c in gpuCapabilityOptions" :key="c" class="checkbox-label" style="margin-bottom: 0">
+                <input type="checkbox" :value="c" v-model="settingsForm.gpu_capabilities" :disabled="!ws.canEdit" />
+                <code>{{ c }}</code>
+              </label>
+            </div>
+            <p class="form-hint">{{ $t('appDetail.settings.gpuCapabilitiesHint') }}</p>
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('jobs.runAsUser') }}</label>

@@ -40,7 +40,13 @@ var (
 	ErrNoSchedulableNode  = errors.New("no node in that location can take new resources right now")
 	ErrNodePinAdminOnly   = errors.New("only platform admins can choose a node; choose a location instead")
 	ErrLocationMismatch   = errors.New("the chosen node is not in the chosen location")
+	ErrNoGPUNode          = errors.New("no schedulable node in that location has enough enabled GPUs of the requested kind")
 )
+
+// GPUInventory lists a node's enabled, present GPUs. Satisfied by the GPU device repository.
+type GPUInventory interface {
+	ListEnabledByServer(serverID uint) ([]models.GPUDevice, error)
+}
 
 // Online reports whether a remote node's agent is connected. Satisfied by nodes.Clients.Connected.
 type Online func(serverID uint) bool
@@ -52,7 +58,11 @@ type Service struct {
 	online   Online
 	policy   Policy
 	orgs     Orgs
+	gpus     GPUInventory
 }
+
+// Unset (GPU support off) places GPU requests like any other app.
+func (s *Service) SetGPUInventory(g GPUInventory) { s.gpus = g }
 
 func NewService(clusters *repositories.ClusterRepository, servers *repositories.ServerRepository, online Online) *Service {
 	return &Service{clusters: clusters, servers: servers, online: online}
@@ -144,6 +154,9 @@ type Request struct {
 	Admin    bool
 	// Service marks a replicated service app: Swarm schedules it, so its node is only the manager.
 	Service bool
+	// GPUs and GPUKind narrow the node choice to nodes that have that many matching enabled cards.
+	GPUs    int
+	GPUKind string
 }
 
 // Result is where the resource lands.
@@ -190,7 +203,7 @@ func (s *Service) Place(req Request) (Result, error) {
 		return Result{}, err
 	}
 	policy, enforced := s.planPlacement(req.WorkspaceID)
-	serverID, err := s.pickNode(c, req.Service, policy.Pool, enforced)
+	serverID, err := s.pickNode(c, req, policy.Pool, enforced)
 	if err != nil {
 		return Result{}, err
 	}
@@ -299,7 +312,8 @@ func (s *Service) resolveCluster(workspaceID uint, location string, admin bool) 
 }
 
 // pickNode prefers the least container memory placed; cordoned nodes are refused, and pooled plans count only pool nodes.
-func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled bool) (uint, error) {
+func (s *Service) pickNode(c *models.Cluster, req Request, pool string, pooled bool) (uint, error) {
+	service := req.Service
 	if pooled && (c.Mode != models.ClusterModeSwarm || service) {
 		servers, err := s.servers.List()
 		if err != nil {
@@ -339,6 +353,7 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 	}
 	var best uint
 	var bestLoad repositories.ServerLoad
+	gpuShort := false
 	for i := range servers {
 		srv := &servers[i]
 		if srv.ClusterID != c.ID || srv.Cordoned || (!srv.IsLocal && (s.online == nil || !s.online(srv.ID))) {
@@ -347,10 +362,17 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 		if pooled && models.PoolOf(srv) != pool {
 			continue
 		}
+		if !s.hasGPUs(srv.ID, req.GPUs, req.GPUKind) {
+			gpuShort = true
+			continue
+		}
 		load := loads[srv.ID]
 		if best == 0 || load.Less(bestLoad) {
 			best, bestLoad = srv.ID, load
 		}
+	}
+	if best == 0 && gpuShort {
+		return 0, ErrNoGPUNode
 	}
 	if best == 0 && pooled {
 		return 0, poolUnavailable(pool)
@@ -359,6 +381,24 @@ func (s *Service) pickNode(c *models.Cluster, service bool, pool string, pooled 
 		return 0, ErrNoSchedulableNode
 	}
 	return best, nil
+}
+
+// Capacity only: whether a dedicated card is free is decided at deploy, where the node's running containers are visible.
+func (s *Service) hasGPUs(serverID uint, want int, kind string) bool {
+	if want <= 0 || s.gpus == nil {
+		return true
+	}
+	devices, err := s.gpus.ListEnabledByServer(serverID)
+	if err != nil {
+		return false
+	}
+	n := 0
+	for _, d := range devices {
+		if d.MatchesKind(kind) {
+			n++
+		}
+	}
+	return n >= want
 }
 
 // An unreadable node is not cordoned: a transient DB fault must not fail the create.

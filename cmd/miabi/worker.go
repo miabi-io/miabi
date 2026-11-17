@@ -229,6 +229,7 @@ func runWorker() error {
 	)
 	gpuScheduler.SetQuota(securityQuota)
 	deployHandler.SetGPU(gpuScheduler)
+	jobHandler.SetGPU(gpuScheduler)
 	jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 	jobHandler.SetGrantGuard(grantGuard)
 

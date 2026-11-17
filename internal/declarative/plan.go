@@ -613,6 +613,9 @@ func specFields(r Resource) map[string]string {
 			if a.Resources.GPUKind != "" {
 				f["resources.gpuKind"] = a.Resources.GPUKind
 			}
+			if caps, _ := models.NormalizeGPUCapabilities(a.Resources.GPUCapabilities); len(caps) > 0 {
+				f["resources.gpuCapabilities"] = strings.Join(caps, ",")
+			}
 		}
 		secret := map[string]bool{}
 		for _, k := range a.SecretEnv {

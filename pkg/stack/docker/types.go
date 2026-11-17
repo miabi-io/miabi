@@ -140,6 +140,8 @@ type RunSpec struct {
 	GroupAdd []string
 	// Written between create and start, so no host path or distribution is needed; re-applied on every deploy.
 	Files []FileEntry
+	// OnStarted runs once a one-shot container is running, before the wait; RunContainer ignores it.
+	OnStarted func()
 }
 
 // Mode is a 3- or 4-digit octal string; empty means 0644.

@@ -162,6 +162,9 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 		WorkspaceID: workspaceID, Location: spec.Location(), Admin: isAdmin(ctx),
 		Service: spec.Runtime() == string(models.RuntimeService),
 	}
+	if spec.Resources != nil {
+		req.GPUs, req.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
+	}
 	if spec.Stack != "" {
 		if st, err := s.findStack(workspaceID, spec.Stack); err == nil {
 			stackLocation := s.placer.LocationName(st.ClusterID)
@@ -2027,10 +2030,11 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	}
 	if app.MemoryBytes > 0 || app.NanoCPUs > 0 || app.GPUCount > 0 {
 		spec.Resources = &declarative.ResourceSpec{
-			Memory:  strconv.FormatInt(app.MemoryBytes, 10), // bytes; canonical for diff
-			CPU:     strconv.FormatFloat(float64(app.NanoCPUs)/1e9, 'f', -1, 64),
-			GPU:     app.GPUCount,
-			GPUKind: app.GPUKind,
+			Memory:          strconv.FormatInt(app.MemoryBytes, 10), // bytes; canonical for diff
+			CPU:             strconv.FormatFloat(float64(app.NanoCPUs)/1e9, 'f', -1, 64),
+			GPU:             app.GPUCount,
+			GPUKind:         app.GPUKind,
+			GPUCapabilities: app.GPUCapabilities,
 		}
 	}
 	env := map[string]string{}
@@ -2885,6 +2889,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			nc, _ := spec.Resources.NanoCPUs()
 			app.MemoryBytes, app.NanoCPUs = mb, nc
 			app.GPUCount, app.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
+			app.GPUCapabilities = spec.Resources.GPUCapabilities
 		}
 		app.Metadata = claim(ctx, models.SetBuiltin(
 			models.MergeUserMetadata(app.Metadata, desired.Metadata.Labels),
@@ -3134,6 +3139,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()
 		in.NanoCPUs, _ = spec.Resources.NanoCPUs()
 		in.GPUCount, in.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
+		in.GPUCapabilities = spec.Resources.GPUCapabilities
 	}
 	in.Ports = portSpecsOf(spec)
 	if len(spec.Ports) > 0 {

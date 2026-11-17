@@ -279,6 +279,8 @@ type ResourceSpec struct {
 	// GPUKind narrows the request to a vendor/model ("nvidia", "NVIDIA A100-...").
 	GPU     int    `yaml:"gpu,omitempty" json:"gpu,omitempty"`
 	GPUKind string `yaml:"gpuKind,omitempty" json:"gpuKind,omitempty"`
+	// GPUCapabilities sets the NVIDIA driver capabilities (compute, utility, video, graphics, display, compat32).
+	GPUCapabilities []string `yaml:"gpuCapabilities,omitempty" json:"gpuCapabilities,omitempty"`
 }
 
 // StackSpec groups applications into one logical unit / network.

@@ -411,6 +411,7 @@ func runServer(cli *okapicli.CLI) {
 			)
 			gpuScheduler.SetQuota(securityQuota)
 			deployHandler.SetGPU(gpuScheduler)
+			jobHandler.SetGPU(gpuScheduler)
 			jobHandler.SetSecurity(securityResolver, cfg.SecurityInitImage)
 			jobHandler.SetGrantGuard(grantGuard)
 			subnetAllocator := newSubnetAllocator(cfg, res.db)

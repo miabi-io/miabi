@@ -157,7 +157,8 @@ func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, e
 	for i, d := range picked {
 		ids[i] = d.UUID
 	}
-	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{{"gpu"}}}}, release, nil
+	caps := append([]string{"gpu"}, app.GPUCapabilities...)
+	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{caps}}}, release, nil
 }
 
 // Per process only: two worker processes deploying to the same node can still race for one dedicated card.
@@ -299,8 +300,10 @@ func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error)
 	if !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
 		return 0, nil // no toolkit → no GPUs to inventory
 	}
-	if err := cli.PullImage(ctx, s.cfg.ProbeImage, nil); err != nil {
-		return 0, fmt.Errorf("pull GPU probe image %q: %w", s.cfg.ProbeImage, err)
+	if present, _ := cli.ImageExists(ctx, s.cfg.ProbeImage); !present {
+		if err := cli.PullImage(ctx, s.cfg.ProbeImage, nil); err != nil {
+			return 0, fmt.Errorf("pull GPU probe image %q: %w", s.cfg.ProbeImage, err)
+		}
 	}
 	spec := docker.RunSpec{
 		Name:  fmt.Sprintf("mb-gpu-probe-%d-%d", serverID, time.Now().UnixNano()),
@@ -373,18 +376,10 @@ func hasRuntime(runtimes []string, name string) bool {
 	return false
 }
 
-// An empty kind matches any; otherwise vendor, exact model, or case-insensitive model substring.
 func filterByKind(devices []models.GPUDevice, kind string) []models.GPUDevice {
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return devices
-	}
-	lower := strings.ToLower(kind)
 	out := make([]models.GPUDevice, 0, len(devices))
 	for _, d := range devices {
-		if strings.EqualFold(string(d.Vendor), kind) ||
-			strings.EqualFold(d.Model, kind) ||
-			strings.Contains(strings.ToLower(d.Model), lower) {
+		if d.MatchesKind(kind) {
 			out = append(out, d)
 		}
 	}

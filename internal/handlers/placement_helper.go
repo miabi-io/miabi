@@ -78,7 +78,7 @@ func placementAbort(c *okapi.Context, err error) error {
 	case errors.Is(err, placement.ErrLocationMismatch):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, placement.ErrLocationCordoned), errors.Is(err, placement.ErrNoSchedulableNode),
-		errors.Is(err, placement.ErrNoLocation):
+		errors.Is(err, placement.ErrNoLocation), errors.Is(err, placement.ErrNoGPUNode):
 		return c.AbortWithError(http.StatusConflict, err)
 	}
 	return nil

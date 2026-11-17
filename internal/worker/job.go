@@ -48,7 +48,11 @@ type JobHandler struct {
 	waitMax     time.Duration
 	// onFailed hears about a declared Job's failed run, to retry it.
 	onFailed func(jobID uint)
+	gpu      GPUScheduler
 }
+
+// Jobs inherit the app's GPU request like its CPU and memory; nil runs them without GPUs, as deploys do.
+func (h *JobHandler) SetGPU(g GPUScheduler) { h.gpu = g }
 
 // SetFailureHook wires what a declared Job's failed run reports to (backoffLimit retries).
 func (h *JobHandler) SetFailureHook(fn func(jobID uint)) { h.onFailed = fn }
@@ -167,6 +171,27 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 			docker.LabelJob:       fmt.Sprintf("%d", j.ID),
 			docker.LabelWorkspace: fmt.Sprintf("%d", app.WorkspaceID),
 		},
+	}
+	if app.GPUCount > 0 && h.gpu != nil {
+		if sec.Restricted {
+			h.finish(j, models.JobFailed, nil, ErrGPUWithRestrictedProfile.Error())
+			return
+		}
+		if err := h.gpu.Preflight(app); err != nil {
+			h.finish(j, models.JobFailed, nil, err.Error())
+			return
+		}
+		placed := *app
+		placed.ServerID = j.ServerID
+		reqs, release, err := h.gpu.ResolveDevices(runCtx, &placed, dc)
+		if err != nil {
+			h.finish(j, models.JobFailed, nil, err.Error())
+			return
+		}
+		defer release()
+		spec.GPUs = reqs
+		spec.Labels[docker.LabelGPUs] = gpuLabel(reqs)
+		spec.OnStarted = release
 	}
 	sec.applyTo(&spec)
 	exit, out, runErr := dc.RunOneShot(runCtx, spec)

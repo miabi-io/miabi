@@ -19,7 +19,13 @@
 
 package models
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
 
 // "amd" is reserved for a later ROCm phase.
 type GPUVendor string
@@ -50,4 +56,44 @@ type GPUDevice struct {
 	LastSeenAt *time.Time `json:"last_seen_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+// An empty kind matches any; otherwise vendor, exact model, or case-insensitive model substring.
+func (d GPUDevice) MatchesKind(kind string) bool {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return true
+	}
+	return strings.EqualFold(string(d.Vendor), kind) ||
+		strings.EqualFold(d.Model, kind) ||
+		strings.Contains(strings.ToLower(d.Model), strings.ToLower(kind))
+}
+
+var ErrGPUCapabilityInvalid = errors.New("invalid gpu capability")
+
+// Mirrors the set dockerd's NVIDIA driver forwards as NVIDIA_DRIVER_CAPABILITIES; anything else is rejected at device request time.
+var gpuDriverCapabilities = map[string]bool{
+	"compute": true, "utility": true, "video": true, "graphics": true, "display": true, "compat32": true,
+}
+
+// NormalizeGPUCapabilities lowercases, dedupes and sorts; empty keeps the toolkit default (compute, utility).
+func NormalizeGPUCapabilities(in []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, c := range in {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if c == "" || seen[c] {
+			continue
+		}
+		if !gpuDriverCapabilities[c] {
+			return nil, fmt.Errorf("%w %q (allowed: compute, utility, video, graphics, display, compat32)", ErrGPUCapabilityInvalid, c)
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	sort.Strings(out)
+	return out, nil
 }

@@ -631,11 +631,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		}
 	}
 	if len(gpuReqs) > 0 {
-		var ids []string
-		for _, r := range gpuReqs {
-			ids = append(ids, r.DeviceIDs...)
-		}
-		spec.Labels[docker.LabelGPUs] = docker.GPULabelValue(ids)
+		spec.Labels[docker.LabelGPUs] = gpuLabel(gpuReqs)
 	}
 	sec.applyTo(&spec)
 	containerID, err := h.eng(app).RunContainer(ctx, spec)
@@ -1307,6 +1303,14 @@ func (h *DeployHandler) recordCanary(app *models.Application, deploymentID uint,
 }
 
 // System labels are stamped last so they always win a key collision with user labels.
+func gpuLabel(reqs []docker.GPURequest) string {
+	var ids []string
+	for _, r := range reqs {
+		ids = append(ids, r.DeviceIDs...)
+	}
+	return docker.GPULabelValue(ids)
+}
+
 func containerLabels(app *models.Application, deploymentID uint) map[string]string {
 	labels := docker.SanitizeUserLabels(app.ContainerLabels)
 	if labels == nil {
