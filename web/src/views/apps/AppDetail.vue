@@ -822,7 +822,8 @@ const gpuKindIsCustom = computed(() => {
   return k !== '' && !gpuKinds.value.some((g) => g.model === k)
 })
 
-const gpuCapabilityOptions = ['compute', 'utility', 'video', 'graphics', 'display', 'compat32']
+// compute and utility are always granted, so only the optional ones are offered.
+const gpuCapabilityOptions = ['video', 'graphics', 'display', 'compat32']
 
 function toggleCapability(name: string) {
   const list = settingsForm.value.add_capabilities
