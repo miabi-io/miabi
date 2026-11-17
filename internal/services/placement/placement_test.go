@@ -542,3 +542,23 @@ func TestPlacementSendsGPUAppsToGPUNodes(t *testing.T) {
 		}
 	}
 }
+
+func TestPlacementKeepsGPUFreeWorkOffGPUNodes(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+	l4 := models.GPUDevice{Vendor: models.GPUVendorNvidia, Model: "NVIDIA L4"}
+
+	// Node 11 is the least loaded, but it is the GPU node, so GPU-free work goes to node 10.
+	s.SetGPUInventory(fakeGPUs{11: {l4}})
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ServerID != 10 {
+		t.Errorf("a GPU-free app should avoid the GPU node, got %d (%v)", got.ServerID, err)
+	}
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", GPUs: 1}); err != nil || got.ServerID != 11 {
+		t.Errorf("a GPU app still lands on the GPU node, got %d (%v)", got.ServerID, err)
+	}
+
+	// With every node offering GPUs, GPU-free work falls back to the least loaded.
+	s.SetGPUInventory(fakeGPUs{10: {l4}, 11: {l4}})
+	if got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east"}); err != nil || got.ServerID != 11 {
+		t.Errorf("with only GPU nodes left, take the least loaded, got %d (%v)", got.ServerID, err)
+	}
+}

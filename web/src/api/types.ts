@@ -1415,6 +1415,8 @@ export interface NodePlacement {
 }
 
 export interface Application {
+  // Advisory notes returned by a create or update that still succeeded.
+  warnings?: string[]
   id: number
   workspace_id: number
   server_id?: number

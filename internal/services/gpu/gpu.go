@@ -385,6 +385,60 @@ func (s *Service) Sample(ctx context.Context) error {
 	return nil
 }
 
+// CapacityWarning is empty when the app's node holds its GPU request; a deploy would otherwise fail there, so it names the location's nodes that could.
+func (s *Service) CapacityWarning(app *models.Application) string {
+	if !s.Enabled() || app == nil || app.GPUCount <= 0 || app.RuntimeKind == models.RuntimeService {
+		return ""
+	}
+	have := s.matchingCards(app.ServerID, app.GPUKind)
+	if have >= app.GPUCount {
+		return ""
+	}
+	kind := app.GPUKind
+	if strings.TrimSpace(kind) == "" {
+		kind = "any"
+	}
+	msg := fmt.Sprintf("node %q has %d enabled GPU(s) of kind %q, but the app requests %d, so its deploy will fail there",
+		s.nodeName(app.ServerID), have, kind, app.GPUCount)
+	if others := s.nodesWithCards(app, kind); len(others) > 0 {
+		return msg + ". Nodes in this location with enough: " + strings.Join(others, ", ") + ". Ask a platform admin to move the app, or create it again in this location"
+	}
+	return msg + ". No node in this location has enough; ask a platform admin to enable more cards"
+}
+
+func (s *Service) matchingCards(serverID uint, kind string) int {
+	devices, err := s.devices.ListEnabledByServer(serverID)
+	if err != nil {
+		return 0
+	}
+	return len(filterByKind(devices, kind))
+}
+
+func (s *Service) nodesWithCards(app *models.Application, kind string) []string {
+	cur, err := s.servers.FindByID(app.ServerID)
+	if err != nil {
+		return nil
+	}
+	servers, err := s.servers.List()
+	if err != nil {
+		return nil
+	}
+	if kind == "any" {
+		kind = ""
+	}
+	var out []string
+	for i := range servers {
+		srv := &servers[i]
+		if srv.ID == app.ServerID || srv.ClusterID != cur.ClusterID || srv.Cordoned {
+			continue
+		}
+		if s.matchingCards(srv.ID, kind) >= app.GPUCount {
+			out = append(out, srv.Label())
+		}
+	}
+	return out
+}
+
 type Kind struct {
 	Vendor   string `json:"vendor"`
 	Model    string `json:"model"`

@@ -77,6 +77,17 @@ type fakeClients struct{ node *fakeNode }
 func (c fakeClients) For(uint) (docker.Client, error) { return c.node, nil }
 func (c fakeClients) LocalID() uint                   { return 1 }
 
+var testDBs = map[*repositories.GPUDeviceRepository]*gorm.DB{}
+
+func devicesDB(t *testing.T, r *repositories.GPUDeviceRepository) *gorm.DB {
+	t.Helper()
+	db, ok := testDBs[r]
+	if !ok {
+		t.Fatal("no test db for repository")
+	}
+	return db
+}
+
 func newTestService(t *testing.T, node *fakeNode) (*Service, *repositories.GPUDeviceRepository) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -87,6 +98,7 @@ func newTestService(t *testing.T, node *fakeNode) (*Service, *repositories.GPUDe
 		t.Fatalf("migrate: %v", err)
 	}
 	devices := repositories.NewGPUDeviceRepository(db)
+	testDBs[devices] = db
 	svc := NewService(devices, repositories.NewServerRepository(db), repositories.NewApplicationRepository(db), fakeClients{node}, Config{Enabled: true, ProbeImage: "probe"})
 	return svc, devices
 }
@@ -214,5 +226,59 @@ func TestSampleUpdatesUsageOnly(t *testing.T) {
 	d, _ := devices.FindByUUID("GPU-l4-0")
 	if d.UtilizationPct == nil || *d.UtilizationPct != 91 || !d.Enabled {
 		t.Errorf("sample should refresh usage and keep admin flags, got util=%v enabled=%v", d.UtilizationPct, d.Enabled)
+	}
+}
+
+type serverRow struct {
+	ID          uint `gorm:"primaryKey"`
+	Name        string
+	DisplayName string
+	ClusterID   uint
+	Cordoned    bool
+}
+
+func (serverRow) TableName() string { return "servers" }
+
+func TestCapacityWarningNamesNodesThatFit(t *testing.T) {
+	node := &fakeNode{probeOut: usageSMI}
+	svc, devices := newTestService(t, node)
+	db := devicesDB(t, devices)
+	if err := db.AutoMigrate(&serverRow{}); err != nil {
+		t.Fatal(err)
+	}
+	db.Create(&[]serverRow{
+		{ID: 1, Name: "gpu-a", ClusterID: 2},
+		{ID: 2, Name: "gpu-b", ClusterID: 2},
+		{ID: 3, Name: "gpu-c", ClusterID: 2, Cordoned: true},
+		{ID: 4, Name: "elsewhere", ClusterID: 9},
+	})
+	l4 := func(server uint, uuid string) {
+		if err := devices.Upsert(server, models.GPUDevice{UUID: uuid, Vendor: models.GPUVendorNvidia, Model: "NVIDIA L4"}); err != nil {
+			t.Fatal(err)
+		}
+		d, _ := devices.FindByUUID(uuid)
+		d.Enabled = true
+		_ = devices.Update(d)
+	}
+	l4(1, "a0")
+	l4(2, "b0")
+	l4(2, "b1")
+	l4(3, "c0")
+	l4(3, "c1")
+	l4(4, "e0")
+	l4(4, "e1")
+
+	app := &models.Application{ServerID: 1, GPUCount: 1}
+	if w := svc.CapacityWarning(app); w != "" {
+		t.Errorf("a request the node holds needs no warning, got %q", w)
+	}
+	app.GPUCount = 2
+	w := svc.CapacityWarning(app)
+	if !strings.Contains(w, `node "gpu-a" has 1`) || !strings.Contains(w, "with enough: gpu-b.") {
+		t.Errorf("should name only gpu-b (gpu-c is cordoned, elsewhere is another location), got %q", w)
+	}
+	app.GPUCount, app.GPUKind = 1, "H100"
+	if w := svc.CapacityWarning(app); !strings.Contains(w, "No node in this location") {
+		t.Errorf("no node has an H100, got %q", w)
 	}
 }

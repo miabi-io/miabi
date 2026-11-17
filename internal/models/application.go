@@ -321,6 +321,8 @@ type Application struct {
 	// Transient, and nil when the swarm could not be asked, so the UI can tell unknown from zero.
 	RunningReplicas *uint64 `json:"running_replicas,omitempty" gorm:"-"`
 	DesiredReplicas *uint64 `json:"desired_replicas,omitempty" gorm:"-"`
+	// Warnings are advisory notes on a create or update that still succeeded.
+	Warnings []string `json:"warnings,omitempty" gorm:"-"`
 
 	// Replicas, PlacementConstraints and UpdateConfig apply only to the service runtime.
 	RuntimeKind          RuntimeKind          `json:"runtime_kind" gorm:"not null;default:container"`
