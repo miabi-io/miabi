@@ -40,6 +40,8 @@ const (
 	LabelManaged     = "io.miabi.managed"      // "true" on managed raw resources/services
 	LabelPipelineRun = "io.miabi.pipeline-run" // pipeline run id (transient)
 	LabelSizeBytes   = "io.miabi.size_bytes"   // volume size hint
+	// The scheduler reads holders from running containers, so a crash or manual removal frees the card without bookkeeping.
+	LabelGPUs = "io.miabi.gpus"
 
 	// The stack is deployed from outside Miabi, so without these Miabi cannot recognize its own components.
 
@@ -181,4 +183,16 @@ func WorkspaceID(labels map[string]string) (id uint, ok bool) {
 		return 0, false
 	}
 	return uint(n), true
+}
+
+func GPULabelValue(uuids []string) string { return strings.Join(uuids, ",") }
+
+func ParseGPULabel(value string) []string {
+	var out []string
+	for _, u := range strings.Split(value, ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			out = append(out, u)
+		}
+	}
+	return out
 }

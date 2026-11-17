@@ -25,8 +25,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -47,6 +49,7 @@ type NoDeviceError struct {
 	Kind      string
 	Requested int
 	Available int
+	Busy      int // matching dedicated cards held by another app
 }
 
 func (e *NoDeviceError) Error() string {
@@ -54,7 +57,11 @@ func (e *NoDeviceError) Error() string {
 	if kind == "" {
 		kind = "any"
 	}
-	return fmt.Sprintf("node %q has %d enabled GPU(s) of kind %q, but the app requested %d", e.Node, e.Available, kind, e.Requested)
+	msg := fmt.Sprintf("node %q has %d available GPU(s) of kind %q, but the app requested %d", e.Node, e.Available, kind, e.Requested)
+	if e.Busy > 0 {
+		msg += fmt.Sprintf(" (%d dedicated GPU(s) are held by other apps)", e.Busy)
+	}
+	return msg
 }
 func (e *NoDeviceError) Code() string { return "GPU_NO_DEVICE" }
 
@@ -71,12 +78,13 @@ type Config struct {
 }
 
 type Service struct {
-	devices *repositories.GPUDeviceRepository
-	servers *repositories.ServerRepository
-	apps    *repositories.ApplicationRepository
-	clients NodeDocker
-	quota   *quota.Service
-	cfg     Config
+	nodeLocks sync.Map // serverID -> *sync.Mutex
+	devices   *repositories.GPUDeviceRepository
+	servers   *repositories.ServerRepository
+	apps      *repositories.ApplicationRepository
+	clients   NodeDocker
+	quota     *quota.Service
+	cfg       Config
 }
 
 // NewService builds the GPU service. quota is wired separately via SetQuota.
@@ -111,32 +119,111 @@ func (s *Service) Preflight(app *models.Application) error {
 	return nil
 }
 
-// A node without the NVIDIA runtime is refused up front rather than failing cryptically at container start.
-func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, runtimes []string) ([]docker.GPURequest, error) {
+// The returned release must be called once the container is running: holders are read from running containers, so the lock covers the gap.
+func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, eng docker.Client) ([]docker.GPURequest, func(), error) {
+	noop := func() {}
 	if app == nil || app.GPUCount <= 0 {
-		return nil, nil
+		return nil, noop, nil
 	}
 	if !s.Enabled() {
-		return nil, ErrGPUDisabled
+		return nil, noop, ErrGPUDisabled
 	}
 	node := s.nodeName(app.ServerID)
-	if !hasRuntime(runtimes, s.cfg.NvidiaRuntime) {
-		return nil, fmt.Errorf("node %q is not GPU-capable: the NVIDIA Container Toolkit (%q runtime) is not installed", node, s.cfg.NvidiaRuntime)
+	info, err := eng.Info(ctx)
+	if err != nil {
+		return nil, noop, fmt.Errorf("inspect node runtimes: %w", err)
+	}
+	if !hasRuntime(info.Runtimes, s.cfg.NvidiaRuntime) {
+		return nil, noop, fmt.Errorf("node %q is not GPU-capable: the NVIDIA Container Toolkit (%q runtime) is not installed", node, s.cfg.NvidiaRuntime)
 	}
 	enabled, err := s.devices.ListEnabledByServer(app.ServerID)
 	if err != nil {
-		return nil, fmt.Errorf("list node GPUs: %w", err)
+		return nil, noop, fmt.Errorf("list node GPUs: %w", err)
 	}
 	matched := filterByKind(enabled, app.GPUKind)
-	if len(matched) < app.GPUCount {
-		return nil, &NoDeviceError{Node: node, Kind: app.GPUKind, Requested: app.GPUCount, Available: len(matched)}
+
+	release := s.lockNode(app.ServerID)
+	containers, err := eng.ListContainers(ctx, false)
+	if err != nil {
+		release()
+		return nil, noop, fmt.Errorf("list node containers for GPU holders: %w", err)
 	}
-	picked := matched[:app.GPUCount]
+	picked, busy := pickDevices(matched, app.GPUCount, gpuHolders(containers, app.ID))
+	if len(picked) < app.GPUCount {
+		release()
+		return nil, noop, &NoDeviceError{Node: node, Kind: app.GPUKind, Requested: app.GPUCount, Available: len(picked), Busy: busy}
+	}
 	ids := make([]string, len(picked))
 	for i, d := range picked {
 		ids[i] = d.UUID
 	}
-	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{{"gpu"}}}}, nil
+	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{{"gpu"}}}}, release, nil
+}
+
+// Per process only: two worker processes deploying to the same node can still race for one dedicated card.
+func (s *Service) lockNode(serverID uint) func() {
+	v, _ := s.nodeLocks.LoadOrStore(serverID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	var once sync.Once
+	return func() { once.Do(mu.Unlock) }
+}
+
+// cardHolders maps a device UUID to how many other apps hold it and whether the requesting app does.
+type cardHolders struct {
+	others map[string]int
+	own    map[string]bool
+}
+
+func gpuHolders(containers []docker.Container, appID uint) cardHolders {
+	h := cardHolders{others: map[string]int{}, own: map[string]bool{}}
+	seen := map[string]map[string]bool{}
+	self := strconv.FormatUint(uint64(appID), 10)
+	for _, c := range containers {
+		raw := c.Labels[docker.LabelGPUs]
+		if raw == "" {
+			continue
+		}
+		holder := c.Labels[docker.LabelApp]
+		for _, uuid := range docker.ParseGPULabel(raw) {
+			if holder == self {
+				h.own[uuid] = true
+				continue
+			}
+			if seen[uuid] == nil {
+				seen[uuid] = map[string]bool{}
+			}
+			if !seen[uuid][holder] {
+				seen[uuid][holder] = true
+				h.others[uuid]++
+			}
+		}
+	}
+	return h
+}
+
+// Least-loaded first, then cards the app already holds so a canary or redeploy stays put; dedicated cards held by another app are skipped.
+func pickDevices(devices []models.GPUDevice, count int, h cardHolders) ([]models.GPUDevice, int) {
+	free := make([]models.GPUDevice, 0, len(devices))
+	busy := 0
+	for _, d := range devices {
+		if !d.Shared && h.others[d.UUID] > 0 {
+			busy++
+			continue
+		}
+		free = append(free, d)
+	}
+	sort.SliceStable(free, func(i, j int) bool {
+		a, b := free[i], free[j]
+		if h.others[a.UUID] != h.others[b.UUID] {
+			return h.others[a.UUID] < h.others[b.UUID]
+		}
+		return h.own[a.UUID] && !h.own[b.UUID]
+	})
+	if len(free) > count {
+		free = free[:count]
+	}
+	return free, busy
 }
 
 // Devices lists every discovered device on a node (enabled or not).
@@ -234,9 +321,19 @@ func (s *Service) InventoryNode(ctx context.Context, serverID uint) (int, error)
 	if err != nil {
 		return 0, fmt.Errorf("parse nvidia-smi output: %w", err)
 	}
+	seen := make([]string, 0, len(devs))
 	for i := range devs {
 		if err := s.devices.Upsert(serverID, devs[i]); err != nil {
 			logger.Warn("gpu device upsert failed", "uuid", devs[i].UUID, "error", err)
+			continue
+		}
+		seen = append(seen, devs[i].UUID)
+	}
+	if len(seen) == len(devs) {
+		if n, err := s.devices.MarkMissing(serverID, seen); err != nil {
+			logger.Warn("gpu missing-device sweep failed", "node", serverID, "error", err)
+		} else if n > 0 {
+			logger.Warn("gpu devices no longer reported by the node", "node", serverID, "count", n)
 		}
 	}
 	return len(devs), nil
