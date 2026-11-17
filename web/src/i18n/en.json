@@ -642,7 +642,7 @@
       "gpuShort": "This node has {have} matching GPU(s), so a deploy asking for {want} will fail here. Saving tells you which nodes in this location have enough.",
       "gpuKindOption": "{model} ({count} on this node)",
       "gpuKindPickHint": "GPU models enabled on this app's node. Any = whichever enabled card is least busy.",
-      "gpuCapabilitiesHint": "Driver features exposed to the container. None selected = compute and utility. Add video for NVENC/NVDEC transcoding.",
+      "gpuCapabilitiesHint": "Extra driver features for the container, on top of compute and utility, which are always included. Add video for NVENC/NVDEC transcoding, graphics for OpenGL/Vulkan.",
       "gpuHint": "Whole GPU devices to attach. 0 = none. Counts against the plan’s GPU quota while running.",
       "hostMountsHint": "Bind allow-listed host paths into this app. These grant host-level access — attach only what the app truly needs.",
       "httpProbeHint": "Miabi copies a small probe into the container, so the image needs no curl or wget. A replicated service uses the image's curl, wget or bash instead.",

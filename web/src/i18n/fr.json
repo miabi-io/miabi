@@ -642,7 +642,7 @@
       "gpuShort": "Ce nœud a {have} GPU correspondant(s), donc un déploiement qui en demande {want} échouera ici. L’enregistrement indique quels nœuds de cet emplacement en ont assez.",
       "gpuKindOption": "{model} ({count} sur ce nœud)",
       "gpuKindPickHint": "Modèles de GPU activés sur le nœud de l’application. N’importe lequel = la carte activée la moins occupée.",
-      "gpuCapabilitiesHint": "Fonctions du pilote exposées au conteneur. Aucune sélection = compute et utility. Ajoutez video pour le transcodage NVENC/NVDEC.",
+      "gpuCapabilitiesHint": "Fonctions supplémentaires du pilote pour le conteneur, en plus de compute et utility, toujours incluses. Ajoutez video pour le transcodage NVENC/NVDEC, graphics pour OpenGL/Vulkan.",
       "gpuHint": "Périphériques GPU entiers à attacher. 0 = aucun. Décompté du quota de GPU du plan pendant l’exécution.",
       "hostMountsHint": "Montez des chemins hôte autorisés dans cette application. Ils accordent un accès au niveau de l’hôte — n’attachez que ce dont l’application a vraiment besoin.",
       "httpProbeHint": "Miabi copie une petite sonde dans le conteneur : l’image n’a besoin ni de curl ni de wget. Un service répliqué utilise plutôt le curl, wget ou bash de l’image.",

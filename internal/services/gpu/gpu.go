@@ -156,8 +156,21 @@ func (s *Service) ResolveDevices(ctx context.Context, app *models.Application, e
 	for i, d := range picked {
 		ids[i] = d.UUID
 	}
-	caps := append([]string{"gpu"}, app.GPUCapabilities...)
-	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{caps}}}, release, nil
+	return []docker.GPURequest{{DeviceIDs: ids, Capabilities: [][]string{deviceCapabilities(app.GPUCapabilities)}}}, release, nil
+}
+
+// dockerd sets NVIDIA_DRIVER_CAPABILITIES to exactly the requested set, so asking for video alone would drop compute and utility.
+func deviceCapabilities(extra []string) []string {
+	if len(extra) == 0 {
+		return []string{"gpu"}
+	}
+	out := []string{"gpu", "compute", "utility"}
+	for _, c := range extra {
+		if c != "compute" && c != "utility" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Per process only: two worker processes deploying to the same node can still race for one dedicated card.
@@ -556,6 +569,15 @@ func (s *Service) holdersByUUID(containers []docker.Container) map[string][]Hold
 		}
 	}
 	return out
+}
+
+// PublishMetrics refreshes this process's GPU gauges from the database, so every replica's /metrics agrees.
+func (s *Service) PublishMetrics() error {
+	if !s.Enabled() {
+		return nil
+	}
+	s.publishMetrics()
+	return nil
 }
 
 func (s *Service) publishMetrics() {

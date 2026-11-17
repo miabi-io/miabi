@@ -1070,6 +1070,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}); err != nil {
 			logger.Warn("failed to register gpu inventory task", "error", err)
 		}
+		// Sweeps and samples run on the leader only, but every replica serves /metrics.
+		if cfg.MetricsEnabled {
+			if err := cronManager.RegisterLocalTask("gpu_metrics", 0, "GPU metrics refresh", "@every 30s", gpuService.PublishMetrics); err != nil {
+				logger.Warn("failed to register gpu metrics task", "error", err)
+			}
+		}
 		if cfg.GPUSampleSeconds > 0 {
 			sampleEvery := max(cfg.GPUSampleSeconds, 15)
 			if err := cronManager.RegisterTask("gpu_sample", 0, "GPU utilization sample", fmt.Sprintf("@every %ds", sampleEvery), func() error {

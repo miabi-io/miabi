@@ -226,3 +226,19 @@ func TestNoDeviceError_MentionsBusyCards(t *testing.T) {
 		t.Errorf("unexpected message: %s", msg)
 	}
 }
+
+func TestDeviceCapabilitiesKeepComputeAndUtility(t *testing.T) {
+	cases := map[string]struct {
+		in   []string
+		want []string
+	}{
+		"default":    {nil, []string{"gpu"}},
+		"video only": {[]string{"video"}, []string{"gpu", "compute", "utility", "video"}},
+		"explicit":   {[]string{"compute", "graphics", "utility"}, []string{"gpu", "compute", "utility", "graphics"}},
+	}
+	for name, c := range cases {
+		if got := deviceCapabilities(c.in); strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
