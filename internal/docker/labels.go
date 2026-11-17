@@ -41,6 +41,7 @@ const (
 	LabelManaged           = stackdocker.LabelManaged
 	LabelPipelineRun       = stackdocker.LabelPipelineRun
 	LabelSizeBytes         = stackdocker.LabelSizeBytes
+	LabelGPUs              = stackdocker.LabelGPUs
 	LabelPartOf            = stackdocker.LabelPartOf
 	LabelManagedBy         = stackdocker.LabelManagedBy
 	LabelProtected         = stackdocker.LabelProtected
@@ -80,6 +81,8 @@ var (
 	IsReservedLabelKey = stackdocker.IsReservedLabelKey
 	SanitizeUserLabels = stackdocker.SanitizeUserLabels
 	WorkspaceID        = stackdocker.WorkspaceID
+	GPULabelValue      = stackdocker.GPULabelValue
+	ParseGPULabel      = stackdocker.ParseGPULabel
 )
 
 // NetworkRefMatches accepts name, full id or short id, since a name-only guard is bypassed by passing the id.

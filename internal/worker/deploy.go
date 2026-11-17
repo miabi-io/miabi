@@ -101,7 +101,7 @@ type DeployHandler struct {
 type GPUScheduler interface {
 	// Preflight checks the plan capability and GPU quota without binding devices.
 	Preflight(app *models.Application) error
-	ResolveDevices(ctx context.Context, app *models.Application, runtimes []string) ([]docker.GPURequest, error)
+	ResolveDevices(ctx context.Context, app *models.Application, eng docker.Client) ([]docker.GPURequest, func(), error)
 }
 
 // Without it a GPU request is ignored at deploy; the request-time capability gate still applies.
@@ -586,22 +586,19 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 
 	// Device passthrough is privileged, so it cannot coexist with the restricted profile; refuse rather than drop either.
 	var gpuReqs []docker.GPURequest
+	releaseGPUs := func() {}
 	if app.GPUCount > 0 && h.gpu != nil {
 		if sec.Restricted {
 			_ = h.fail(dep, ErrGPUWithRestrictedProfile)
 			return
 		}
-		info, err := h.eng(app).Info(ctx)
-		if err != nil {
-			_ = h.fail(dep, fmt.Errorf("inspect node runtimes: %w", err))
-			return
-		}
-		reqs, err := h.gpu.ResolveDevices(ctx, app, info.Runtimes)
+		reqs, release, err := h.gpu.ResolveDevices(ctx, app, h.eng(app))
 		if err != nil {
 			_ = h.fail(dep, err)
 			return
 		}
-		gpuReqs = reqs
+		gpuReqs, releaseGPUs = reqs, release
+		defer releaseGPUs()
 		h.log(dep, fmt.Sprintf("attaching %d GPU(s)", app.GPUCount))
 	}
 	spec := docker.RunSpec{
@@ -633,8 +630,16 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 			spec.Files = withBinaryHTTPProbe(app, spec.Healthcheck, spec.Files, info.Arch, sec.ReadOnlyRootfs)
 		}
 	}
+	if len(gpuReqs) > 0 {
+		var ids []string
+		for _, r := range gpuReqs {
+			ids = append(ids, r.DeviceIDs...)
+		}
+		spec.Labels[docker.LabelGPUs] = docker.GPULabelValue(ids)
+	}
 	sec.applyTo(&spec)
 	containerID, err := h.eng(app).RunContainer(ctx, spec)
+	releaseGPUs()
 	if err != nil {
 		// A failed start leaves a created container; remove it so a port conflict doesn't leave an orphan.
 		if containerID != "" {

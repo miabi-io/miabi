@@ -1652,6 +1652,12 @@ func (s *Service) Start(ctx context.Context, app *models.Application) (*models.D
 	if app.RedeployRequired {
 		return s.Redeploy(app)
 	}
+	// A stopped container keeps the device IDs it was created with; a dedicated card may have gone to another app since.
+	if app.GPUCount > 0 && app.RuntimeKind != models.RuntimeService {
+		if rel, err := s.releases.FindActive(app.ID); err == nil && rel.Image != "" {
+			return s.enqueue(app.ID, app.ServerID, rel.Image, "start", app.RegistryID, models.DeployRolling, false, nil)
+		}
+	}
 	if app.RuntimeKind == models.RuntimeService {
 		// Start = scale the service back to its desired replica count.
 		replicas := uint64(app.Replicas)

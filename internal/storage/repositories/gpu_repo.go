@@ -62,7 +62,7 @@ func (r *GPUDeviceRepository) ListByServer(serverID uint) ([]models.GPUDevice, e
 
 func (r *GPUDeviceRepository) ListEnabledByServer(serverID uint) ([]models.GPUDevice, error) {
 	var devices []models.GPUDevice
-	err := r.db.Where("server_id = ? AND enabled = ?", serverID, true).
+	err := r.db.Where("server_id = ? AND enabled = ? AND missing = ?", serverID, true, false).
 		Order("\"index\" ASC, id ASC").Find(&devices).Error
 	return devices, err
 }
@@ -77,6 +77,7 @@ func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error 
 		existing.Vendor = dev.Vendor
 		existing.Model = dev.Model
 		existing.MemoryMB = dev.MemoryMB
+		existing.Missing = false
 		existing.LastSeenAt = &now
 		return r.Update(existing)
 	}
@@ -86,8 +87,19 @@ func (r *GPUDeviceRepository) Upsert(serverID uint, dev models.GPUDevice) error 
 	dev.ServerID = serverID
 	dev.Enabled = false
 	dev.Shared = true
+	dev.Missing = false
 	dev.LastSeenAt = &now
 	return r.Create(&dev)
+}
+
+// MarkMissing flags the node's devices whose UUID is not in seen, and returns how many changed.
+func (r *GPUDeviceRepository) MarkMissing(serverID uint, seen []string) (int64, error) {
+	q := r.db.Model(&models.GPUDevice{}).Where("server_id = ? AND missing = ?", serverID, false)
+	if len(seen) > 0 {
+		q = q.Where("uuid NOT IN ?", seen)
+	}
+	res := q.Update("missing", true)
+	return res.RowsAffected, res.Error
 }
 
 // CountAll returns the total number of discovered devices (for metrics).
@@ -97,9 +109,9 @@ func (r *GPUDeviceRepository) CountAll() (int64, error) {
 	return n, err
 }
 
-// CountEnabled returns the number of admin-enabled devices (for metrics).
+// CountEnabled counts admin-enabled devices that the last probe still saw.
 func (r *GPUDeviceRepository) CountEnabled() (int64, error) {
 	var n int64
-	err := r.db.Model(&models.GPUDevice{}).Where("enabled = ?", true).Count(&n).Error
+	err := r.db.Model(&models.GPUDevice{}).Where("enabled = ? AND missing = ?", true, false).Count(&n).Error
 	return n, err
 }

@@ -242,6 +242,7 @@ export interface GPUDevice {
   memory_mb: number
   enabled: boolean
   shared: boolean
+  missing: boolean
   last_seen_at?: string | null
 }
 

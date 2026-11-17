@@ -1159,7 +1159,10 @@ const gwBadge = computed(() => {
               <thead><tr><th>Model</th><th>UUID</th><th>Memory</th><th>Index</th><th>Enabled</th><th>Mode</th></tr></thead>
               <tbody>
                 <tr v-for="dev in gpuInfo.devices" :key="dev.id">
-                  <td>{{ dev.model || dev.vendor }}</td>
+                  <td>
+                    {{ dev.model || dev.vendor }}
+                    <span v-if="dev.missing" class="badge badge-warning" style="margin-left: 4px" :title="dev.last_seen_at ? 'Last seen ' + new Date(dev.last_seen_at).toLocaleString() : ''">missing</span>
+                  </td>
                   <td><code>{{ dev.uuid }}</code></td>
                   <td>{{ dev.memory_mb ? dev.memory_mb + ' MiB' : '—' }}</td>
                   <td>{{ dev.index }}</td>

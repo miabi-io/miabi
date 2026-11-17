@@ -42,10 +42,11 @@ type GPUDevice struct {
 
 	// Newly discovered cards arrive disabled (fail closed).
 	Enabled bool `json:"enabled" gorm:"not null;default:false"`
-	// TODO: enforce fleet-wide exclusivity for dedicated (non-shared) cards.
+	// A dedicated card is held by at most one app; the app's own canary and redeploy may share it.
 	Shared bool `json:"shared" gorm:"not null;default:true"`
 
-	// Missing devices are kept so history and GPUKind references survive a transient probe failure.
+	// Set only by a successful probe that no longer lists the card; the row is kept so admin flags survive its return.
+	Missing    bool       `json:"missing" gorm:"not null;default:false"`
 	LastSeenAt *time.Time `json:"last_seen_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
