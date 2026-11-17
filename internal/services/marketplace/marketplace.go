@@ -399,7 +399,7 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	created := make([]*models.Application, 0, len(m.Applications))
 	appViews := map[string]manifest.AppView{}
 	for _, spec := range m.Applications {
-		app, err := s.createApp(workspaceID, m, spec, result.DisplayName, stackID, targetNode, pins[spec.Name])
+		app, err := s.createApp(workspaceID, m, spec, result.DisplayName, stackID, targetNode, pins[spec.Name], source == SourceOfficial)
 		if err != nil {
 			return nil, fmt.Errorf("create application %q: %w", spec.Name, err)
 		}
@@ -559,11 +559,8 @@ func (s *Service) install(ctx context.Context, workspaceID uint, in InstallInput
 	// Best-effort; powers "installed from <template>" on the app page.
 	if result.InstallID != 0 {
 		id := result.InstallID
-		// Trust boundary: set server-side so user input can never claim official status and its security exemption.
-		official := source == SourceOfficial
 		for _, app := range created {
 			app.TemplateInstallID = &id
-			app.OfficialTemplate = official
 			_ = s.apps.Update(app)
 		}
 	}
@@ -608,7 +605,8 @@ func (s *Service) configName(workspaceID uint, installName, localName string) (s
 }
 
 // digest, when set, pins the image so the install runs exactly what the registry published.
-func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint, digest string) (*models.Application, error) {
+// Trust boundary: official is set server-side so user input can never claim the security exemption.
+func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifest.AppSpec, baseName string, stackID *uint, serverID uint, digest string, official bool) (*models.Application, error) {
 
 	name := baseName
 	if len(m.Applications) > 1 {
@@ -624,6 +622,8 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 		RestartPolicy: models.RestartPolicy(spec.RestartPolicy),
 		StackID:       stackID,
 		ServerID:      serverID,
+		// The first deploy reads the row, so the exemption must exist before it is enqueued.
+		OfficialTemplate: official,
 		Metadata: models.SetBuiltin(models.Metadata{},
 			models.MetaManagedBy, models.ManagedByMarketplace,
 			models.MetaTemplate, m.Metadata.Name,
