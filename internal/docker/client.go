@@ -601,6 +601,9 @@ func (e *engineClient) RunOneShot(ctx context.Context, spec RunSpec) (int, strin
 	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return -1, "", err
 	}
+	if spec.OnStarted != nil {
+		spec.OnStarted()
+	}
 
 	wait := e.cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	var exitCode int
@@ -630,6 +633,9 @@ func (e *engineClient) RunOneShotStream(ctx context.Context, spec RunSpec, sink 
 	wait := e.cli.ContainerWait(ctx, id, client.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		return -1, err
+	}
+	if spec.OnStarted != nil {
+		spec.OnStarted()
 	}
 
 	rc, lerr := e.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{

@@ -82,6 +82,7 @@ var (
 	ErrHostMountNotPrivileged = errors.New("host mounts require a privileged workspace")
 
 	ErrInvalidGPUCount = errors.New("gpu_count must be between 0 and 64")
+	ErrGPURestricted   = errors.New("this workspace runs the restricted security profile, which does not allow GPU device passthrough")
 
 	ErrClusterDisabled       = errors.New("cluster mode is not enabled; cannot run this application as a service")
 	ErrNotService            = errors.New("this operation is only valid for service-runtime (cluster) applications")
@@ -123,8 +124,9 @@ type CreateInput struct {
 	MemoryBytes     int64
 	NanoCPUs        int64
 	// Gated by the AllowGPU plan capability; 0 = none.
-	GPUCount int
-	GPUKind  string
+	GPUCount        int
+	GPUKind         string
+	GPUCapabilities []string
 	// Empty keeps the image's user; validated against the workspace security profile.
 	RunAsUser string
 	// Both are allow-listed and gated on the workspace.
@@ -954,6 +956,10 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err := s.gpuAllowed(workspaceID, in.GPUCount); err != nil {
 		return nil, err
 	}
+	gpuCaps, err := models.NormalizeGPUCapabilities(in.GPUCapabilities)
+	if err != nil {
+		return nil, err
+	}
 	runAsUser, err := s.validRunAsUser(workspaceID, in.RunAsUser, false)
 	if err != nil {
 		return nil, err
@@ -1004,7 +1010,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		RegistryID: in.RegistryID, GitRepositoryID: in.GitRepositoryID, StackID: in.StackID,
 		Command: in.Command, Port: in.Port,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
-		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind),
+		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind), GPUCapabilities: gpuCaps,
 		RunAsUser:              runAsUser,
 		AddCapabilities:        addCaps,
 		Devices:                devices,
@@ -1340,6 +1346,11 @@ func (s *Service) Update(app *models.Application) error {
 	if err := s.gpuAllowed(app.WorkspaceID, app.GPUCount); err != nil {
 		return err
 	}
+	gpuCaps, err := models.NormalizeGPUCapabilities(app.GPUCapabilities)
+	if err != nil {
+		return err
+	}
+	app.GPUCapabilities = gpuCaps
 	// Re-validated on every update so a stored run-as user can't survive a plan that mandates non-root.
 	runAsUser, err := s.validRunAsUser(app.WorkspaceID, app.RunAsUser, app.OfficialTemplate)
 	if err != nil {
@@ -2313,12 +2324,18 @@ func validateGPUCount(gpuCount int) error {
 	return nil
 }
 
-// nil quota (single-tenant) skips the gate.
+// nil quota (single-tenant) skips the gate; the restricted check mirrors the deploy-time refusal so the app is never saved undeployable.
 func (s *Service) gpuAllowed(workspaceID uint, gpuCount int) error {
 	if gpuCount <= 0 || s.quota == nil {
 		return nil
 	}
-	return s.quota.Require(workspaceID, quota.CapGPU)
+	if err := s.quota.Require(workspaceID, quota.CapGPU); err != nil {
+		return err
+	}
+	if s.quota.RequireNonRootUser(workspaceID, false) {
+		return ErrGPURestricted
+	}
+	return nil
 }
 
 // Both the global kill-switch and the per-workspace plan capability must allow it.

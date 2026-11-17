@@ -1471,6 +1471,8 @@ export interface Application {
   // Gated by the plan's allow_gpu; gpu_count is whole devices.
   gpu_count?: number
   gpu_kind?: string
+  // Empty = the toolkit default (compute, utility).
+  gpu_capabilities?: string[]
   // Like `docker run --user`; empty keeps the image's own user.
   run_as_user?: string
   add_capabilities?: string[]

@@ -120,6 +120,8 @@ type CreateAppRequest struct {
 		// GPUCount requests whole devices (0 = none); gated by the AllowGPU plan capability.
 		GPUCount int    `json:"gpu_count" min:"0"`
 		GPUKind  string `json:"gpu_kind"`
+		// NVIDIA driver capabilities; empty = compute,utility.
+		GPUCapabilities []string `json:"gpu_capabilities"`
 		// Like docker run --user; a restricted-profile workspace must give a non-root numeric uid.
 		RunAsUser string `json:"run_as_user"`
 		// Allow-listed kernel privileges; need a privileged workspace.
@@ -175,6 +177,7 @@ type UpdateAppBody struct {
 	NanoCPUs                      int64                    `json:"nano_cpus" min:"0"`
 	GPUCount                      int                      `json:"gpu_count" min:"0"`
 	GPUKind                       string                   `json:"gpu_kind"`
+	GPUCapabilities               []string                 `json:"gpu_capabilities"`
 	RunAsUser                     string                   `json:"run_as_user"`
 	AddCapabilities               []string                 `json:"add_capabilities"`
 	Devices                       []string                 `json:"devices"`
@@ -278,6 +281,9 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 	}
 	if b.sent("gpu_kind") {
 		app.GPUKind = b.GPUKind
+	}
+	if b.sent("gpu_capabilities") {
+		app.GPUCapabilities = b.GPUCapabilities
 	}
 	if b.sent("run_as_user") {
 		app.RunAsUser = b.RunAsUser // validated against the security profile in the service
@@ -450,6 +456,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 	placed, err := h.placer.place(c, placement.Request{
 		Location: req.Body.Location, ServerID: req.Body.ServerID,
 		Service: req.Body.RuntimeKind == string(models.RuntimeService),
+		GPUs:    req.Body.GPUCount, GPUKind: req.Body.GPUKind,
 	})
 	if err != nil {
 		if a := placementAbort(c, err); a != nil {
@@ -468,7 +475,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		NetworkIDs: req.Body.NetworkIDs, Ports: toPortSpecs(req.Body.Ports),
 		Command: req.Body.Command, Port: req.Body.Port,
 		MemoryBytes: req.Body.MemoryBytes, NanoCPUs: req.Body.NanoCPUs,
-		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind,
+		GPUCount: req.Body.GPUCount, GPUKind: req.Body.GPUKind, GPUCapabilities: req.Body.GPUCapabilities,
 		RunAsUser:              req.Body.RunAsUser,
 		AddCapabilities:        req.Body.AddCapabilities,
 		Devices:                req.Body.Devices,
@@ -1448,11 +1455,11 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		return a
 	}
 	switch {
-	case errors.Is(err, application.ErrImageNotPermitted):
+	case errors.Is(err, application.ErrImageNotPermitted), errors.Is(err, application.ErrGPURestricted):
 		return c.AbortForbidden(err.Error())
 	case errors.Is(err, application.ErrImageRequired), errors.Is(err, application.ErrGitRepoRequired),
 		errors.Is(err, application.ErrBuildConfigOnImage), errors.Is(err, application.ErrInvalidBuildMethod),
-		errors.Is(err, application.ErrInvalidGPUCount):
+		errors.Is(err, application.ErrInvalidGPUCount), errors.Is(err, models.ErrGPUCapabilityInvalid):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),

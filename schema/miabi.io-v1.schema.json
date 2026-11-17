@@ -856,6 +856,13 @@
           "description": "GPUKind narrows the request to a vendor/model (\"nvidia\", \"NVIDIA A100-...\").",
           "type": "integer"
         },
+        "gpuCapabilities": {
+          "description": "GPUCapabilities sets the NVIDIA driver capabilities (compute, utility, video, graphics, display, compat32).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "gpuKind": {
           "type": "string"
         },

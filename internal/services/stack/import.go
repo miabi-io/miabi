@@ -48,6 +48,8 @@ type composeService struct {
 	Command     composeList    `yaml:"command"`
 	Volumes     composeVolumes `yaml:"volumes"`
 	EnvFile     composeEnvFile `yaml:"env_file"`
+	Deploy      composeDeploy  `yaml:"deploy"`
+	GPUs        composeGPUs    `yaml:"gpus"`
 }
 
 // composePorts reads the short and long syntax, turning a long entry into its short equivalent.
@@ -240,7 +242,8 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 			continue
 		}
 		mappings, badPorts := composePortMappings(def.Ports)
-		app, err := s.app.Create(workspaceID, application.CreateInput{
+		gpu := composeGPURequest(def)
+		in := application.CreateInput{
 			DisplayName: svc,
 			Handle:      svc,
 			SourceType:  models.AppSourceImage,
@@ -252,7 +255,18 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 			Metadata: models.SetBuiltin(models.Metadata{},
 				models.MetaManagedBy, models.ManagedByStackImport,
 				models.MetaStack, st.DockerName),
-		})
+			GPUCount:        gpu.Count,
+			GPUCapabilities: gpu.Capabilities,
+		}
+		app, err := s.app.Create(workspaceID, in)
+		// A plan without GPU access should not cost the whole service; it imports without the GPU and says why.
+		if err != nil && gpu.Count > 0 {
+			gpuErr := err
+			in.GPUCount, in.GPUCapabilities = 0, nil
+			if app, err = s.app.Create(workspaceID, in); err == nil {
+				gpu.Notes = []string{fmt.Sprintf("GPU request dropped (%d GPU(s)): %v", gpu.Count, gpuErr)}
+			}
+		}
 		if err != nil {
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: err.Error()})
 			continue
@@ -276,6 +290,9 @@ func (s *Service) ImportCompose(ctx context.Context, workspaceID, userID uint, n
 		}
 		for _, bad := range badPorts {
 			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: bad})
+		}
+		for _, note := range gpu.Notes {
+			result.Skipped = append(result.Skipped, ImportSkip{Service: svc, Reason: note})
 		}
 		s.importVolumes(ctx, workspaceID, at.ServerID, st, svc, app, def.Volumes, volumes, result)
 		s.importPorts(workspaceID, userID, svc, app, mappings, result)

@@ -449,6 +449,7 @@
     "gitops": "GitOps",
     "gitopsManifest": "Manifeste GitOps",
     "gpuKind": "Type de GPU",
+    "gpuCapabilities": "Capacités du pilote GPU",
     "gpus": "GPU",
     "hardening": "Durcissement",
     "hc": {
@@ -637,6 +638,7 @@
       "dropCapsHint": "Retirées de l’ensemble par défaut de Docker, comme {cmd}. {all} les retire toutes, ne laissant que les capacités accordées à l’application. Appliqué au prochain déploiement.",
       "gitopsLocked": "Géré par GitOps — modifiez-le dans le manifeste Git. Les modifications faites ici sont écrasées à la prochaine {link}.",
       "gpuFilterHint": "Restreindre à un fabricant/modèle (par ex. {vendor}). Vide = n’importe quel GPU activé sur le nœud.",
+      "gpuCapabilitiesHint": "Fonctions du pilote exposées au conteneur. Aucune sélection = compute et utility. Ajoutez video pour le transcodage NVENC/NVDEC.",
       "gpuHint": "Périphériques GPU entiers à attacher. 0 = aucun. Décompté du quota de GPU du plan pendant l’exécution.",
       "hostMountsHint": "Montez des chemins hôte autorisés dans cette application. Ils accordent un accès au niveau de l’hôte — n’attachez que ce dont l’application a vraiment besoin.",
       "httpProbeHint": "Miabi copie une petite sonde dans le conteneur : l’image n’a besoin ni de curl ni de wget. Un service répliqué utilise plutôt le curl, wget ou bash de l’image.",

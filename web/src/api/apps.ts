@@ -26,6 +26,7 @@ export interface AppResourceInput {
   // GPU request (gated by the plan's allow_gpu capability).
   gpu_count?: number
   gpu_kind?: string
+  gpu_capabilities?: string[]
   // Empty keeps the image's user; the restricted profile requires a non-root numeric uid.
   run_as_user?: string
   /** Extra Linux capabilities and host devices. An empty array revokes. */

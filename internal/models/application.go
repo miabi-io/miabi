@@ -381,6 +381,8 @@ type Application struct {
 	GPUCount int `json:"gpu_count" gorm:"not null;default:0"`
 	// Empty means any enabled GPU on the app's node.
 	GPUKind string `json:"gpu_kind,omitempty"`
+	// Empty keeps the toolkit default; video is needed for NVENC/NVDEC.
+	GPUCapabilities []string `json:"gpu_capabilities,omitempty" gorm:"serializer:json"`
 	// Under the restricted profile it must be a non-root numeric uid; managed volumes are chowned to it.
 	RunAsUser string `json:"run_as_user,omitempty"`
 	// Allow-listed in capabilities.go and gated on the workspace; both need a redeploy.
