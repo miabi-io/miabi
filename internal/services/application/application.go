@@ -128,7 +128,8 @@ type CreateInput struct {
 	GPUKind         string
 	GPUCapabilities []string
 	// Empty keeps the image's user; validated against the workspace security profile.
-	RunAsUser string
+	RunAsUser        string
+	OfficialTemplate bool
 	// Both are allow-listed and gated on the workspace.
 	AddCapabilities        []string
 	Devices                []string
@@ -960,7 +961,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	if err != nil {
 		return nil, err
 	}
-	runAsUser, err := s.validRunAsUser(workspaceID, in.RunAsUser, false)
+	runAsUser, err := s.validRunAsUser(workspaceID, in.RunAsUser, in.OfficialTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -1012,6 +1013,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		MemoryBytes: in.MemoryBytes, NanoCPUs: in.NanoCPUs,
 		GPUCount: in.GPUCount, GPUKind: strings.TrimSpace(in.GPUKind), GPUCapabilities: gpuCaps,
 		RunAsUser:              runAsUser,
+		OfficialTemplate:       in.OfficialTemplate,
 		AddCapabilities:        addCaps,
 		Devices:                devices,
 		DropCapabilities:       dropCaps,
