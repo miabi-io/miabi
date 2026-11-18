@@ -1604,6 +1604,7 @@ export interface Deployment {
   // Per-application, independent of the global id; mirrors Release.version.
   number: number
   application_id: number
+  container_id?: string
   status: DeploymentStatus
   image: string
   /** The pipeline build's version tag, e.g. v1.4.2. */

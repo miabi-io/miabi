@@ -497,10 +497,12 @@
     "logs": {
       "copyMatching": "Copier les lignes correspondantes",
       "downloadMatching": "Télécharger les lignes correspondantes",
+      "failedStart": "Le déploiement n°{number} a échoué avant le démarrage de son conteneur. Le conteneur a été supprimé ; ses dernières sorties sont enregistrées dans le journal du déploiement.",
       "following": "Suivi de la nouvelle sortie — cliquez pour mettre en pause",
       "jumpToLatest": "Aller à la fin et suivre",
       "liveTab": "En direct",
       "noMatches": "Aucune ligne ne correspond à votre recherche.",
+      "openDeploymentLog": "Ouvrir le journal du déploiement",
       "search": "Rechercher dans les journaux…",
       "searchRegex": "Rechercher dans les journaux (regex)…",
       "selectDeployment": "Sélectionnez un déploiement ou cliquez sur Déployer pour diffuser les journaux.",

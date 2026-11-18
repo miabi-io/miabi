@@ -1821,6 +1821,17 @@ func (s *Service) WaitRunning(ctx context.Context, app *models.Application) erro
 	}
 }
 
+// By alias, not release: a service whose first deploy failed has no release but still crash-loops on the cluster.
+func (s *Service) removeService(ctx context.Context, app *models.Application) {
+	mgr, err := s.swarmManager(ctx, app)
+	if err == nil {
+		err = mgr.ServiceRemove(ctx, node.AppAlias(app))
+	}
+	if err != nil && !errors.Is(err, docker.ErrNotFound) {
+		logger.Warn("could not remove the app's swarm service; housekeeping lists it as an orphan", "app", app.Name, "error", err)
+	}
+}
+
 // Refuses while running to avoid yanking a live workload.
 func (s *Service) Delete(ctx context.Context, app *models.Application) error {
 	if s.LiveStatus(ctx, app).Running {
@@ -1828,7 +1839,10 @@ func (s *Service) Delete(ctx context.Context, app *models.Application) error {
 	}
 	// Record before the row is gone; Record publishes synchronously so the live stream still sees it.
 	s.emit(app, models.EventAppDeleted, "Application deleted")
-	if rel, err := s.releases.FindActive(app.ID); err == nil && rel.ContainerID != "" {
+	if app.RuntimeKind == models.RuntimeService {
+		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
+		s.removeService(ctx, app)
+	} else if rel, err := s.releases.FindActive(app.ID); err == nil && rel.ContainerID != "" {
 		// Recorded first so die and destroy events read as a deliberate stop rather than a crash.
 		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 		_ = s.eng(app).StopContainer(ctx, rel.ContainerID, 10)

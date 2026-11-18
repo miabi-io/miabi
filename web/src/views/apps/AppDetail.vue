@@ -291,6 +291,7 @@ function downloadLogs() {
 
 // Deployments + logs
 const deployments = ref<Deployment[]>([])
+const failedStart = ref<Deployment | null>(null)
 const logs = ref<string[]>([])
 const streamingId = ref<number | null>(null)
 const deployStreaming = ref(false)
@@ -1095,6 +1096,7 @@ async function loadMoreEvents() {
 function startRuntimeLogs() {
   if (!wid.value) return
   runtimeLogs.value = []
+  failedStart.value = null
   logsTrimmed.value = false
   logFollow.value = true // a fresh stream starts pinned to the latest output
   runtimeES = new EventSource(eventsApi.logsUrl(wid.value, appId.value))
@@ -1111,7 +1113,27 @@ function startRuntimeLogs() {
       }
     } catch { /* ignore */ }
   }
-  runtimeES.onerror = () => { runtimeConnected.value = false; runtimeES?.close() }
+  runtimeES.onerror = () => {
+    runtimeConnected.value = false
+    runtimeES?.close()
+    if (!runtimeLogs.value.length) void findFailedStart()
+  }
+}
+
+// A container that fails to start is removed, so its output lives only in the failed deployment's log.
+async function findFailedStart() {
+  if (!wid.value) return
+  try {
+    const list = (await appApi.deployments(wid.value, appId.value)).data.data ?? []
+    const latest = list[0]
+    failedStart.value = latest?.status === 'failed' && latest.container_id ? latest : null
+  } catch { failedStart.value = null }
+}
+
+function openFailedStart() {
+  if (!failedStart.value) return
+  streamingId.value = null
+  router.replace({ query: { ...route.query, tab: 'deployments', deployment: String(failedStart.value.id) } })
 }
 
 async function saveSettings() {
@@ -2569,13 +2591,17 @@ async function detachDatabase(d: AppDatabase) {
             <span class="mdi mdi-chevron-double-down"></span>
             {{ logFollow ? 'Following' : 'Follow' }}
           </button>
-          <span class="badge" :class="runtimeConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ runtimeConnected ? 'live' : 'connecting…' }}</span>
+          <span class="badge" :class="runtimeConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ runtimeConnected ? 'live' : failedStart ? 'not running' : 'connecting…' }}</span>
         </div>
       </div>
       <div class="card-body">
         <p v-if="logsTrimmed" class="text-muted text-sm log-trim-note">Showing the most recent {{ RUNTIME_LOG_CAP.toLocaleString() }} lines — older output was trimmed.</p>
         <div ref="logViewEl" class="code-block log-view" :style="logViewStyle" @scroll="onLogScroll">
-          <span v-if="!runtimeLogs.length" class="log-placeholder">{{ $t('appDetail.logs.waiting') }}</span>
+          <span v-if="!runtimeLogs.length && failedStart" class="log-placeholder">
+            {{ $t('appDetail.logs.failedStart', { number: failedStart.number }) }}
+            <button type="button" class="btn btn-secondary btn-sm log-failed-start" @click="openFailedStart">{{ $t('appDetail.logs.openDeploymentLog') }}</button>
+          </span>
+          <span v-else-if="!runtimeLogs.length" class="log-placeholder">{{ $t('appDetail.logs.waiting') }}</span>
           <span v-else-if="!filteredRuntimeLogs.length" class="log-placeholder">{{ $t('appDetail.logs.noMatches') }}</span>
           <template v-else>
             <div v-for="(line, i) in filteredRuntimeLogs" :key="i" class="log-line"><span v-for="(seg, j) in logSegments(line)" :key="j" :class="{ 'log-hit': seg.hit }">{{ seg.text }}</span></div>
@@ -4372,6 +4398,7 @@ async function detachDatabase(d: AppDatabase) {
 .log-line { min-height: 1.4em; }
 .log-hit { background: var(--warning-400, #facc15); color: #1a1a2e; border-radius: 2px; }
 .log-placeholder { color: var(--text-secondary); }
+.log-failed-start { margin-left: 8px; }
 .text-muted { color: var(--text-muted); }
 /* The deployment row whose logs are currently streamed. */
 .row-selected td { background: var(--bg-hover); }

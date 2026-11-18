@@ -652,6 +652,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 		h.log(dep, "waiting for container to become healthy")
 	}
 	if err := h.healthGate(ctx, app, containerID); err != nil {
+		h.logContainerOutput(app, dep.ID, containerID)
 		_ = h.eng(app).RemoveContainer(context.Background(), containerID, true)
 		_ = h.fail(dep, err)
 		return
@@ -893,6 +894,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 
 	h.log(dep, "waiting for service tasks to converge")
 	if err := h.serviceConverge(ctx, mgr, alias, replicas); err != nil {
+		h.logServiceOutput(mgr, dep.ID, alias)
 		_ = h.fail(dep, err)
 		return
 	}
@@ -963,11 +965,17 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 	if desired == 0 {
 		desired = 1
 	}
-	deadline := time.Now().Add(180 * time.Second)
+	start := time.Now()
+	deadline := start.Add(180 * time.Second)
 	for time.Now().Before(deadline) {
 		st, err := mgr.ServiceInspect(ctx, name)
 		if err == nil && st.RunningTasks >= desired {
 			return nil
+		}
+		if err == nil {
+			if ferr := taskCrashLoop(st.Failures, start); ferr != nil {
+				return ferr
+			}
 		}
 		time.Sleep(2 * time.Second)
 	}
@@ -1270,6 +1278,7 @@ func (h *DeployHandler) autoPromoteCanary(app *models.Application, rel *models.R
 
 func (h *DeployHandler) autoAbortCanary(app *models.Application, rel *models.Release) {
 	if rel.ContainerID != "" {
+		h.logContainerOutput(app, rel.DeploymentID, rel.ContainerID)
 		_ = h.eng(app).StopContainer(context.Background(), rel.ContainerID, 10)
 		_ = h.eng(app).RemoveContainer(context.Background(), rel.ContainerID, true)
 	}
@@ -1569,6 +1578,48 @@ func (h *DeployHandler) resolveRegistryAuth(app *models.Application, dep *models
 	return &docker.RegistryAuth{Server: reg.Server, Username: reg.Username, Password: password}, nil
 }
 
+const (
+	startupOutputLines   = 100
+	startupOutputLineMax = 2000
+)
+
+// The container is removed right after a failed start, so this copy is the only record of why it failed.
+func (h *DeployHandler) logContainerOutput(app *models.Application, deploymentID uint, containerID string) {
+	h.logOutput(deploymentID, "container", func(ctx context.Context, tail string, sink func(docker.LogLine) error) error {
+		return h.eng(app).StreamLogs(ctx, containerID, false, tail, sink)
+	})
+}
+
+func (h *DeployHandler) logServiceOutput(mgr docker.Client, deploymentID uint, service string) {
+	h.logOutput(deploymentID, "service", func(ctx context.Context, tail string, sink func(docker.LogLine) error) error {
+		return mgr.StreamServiceLogs(ctx, service, false, tail, sink)
+	})
+}
+
+func (h *DeployHandler) logOutput(deploymentID uint, what string, read func(ctx context.Context, tail string, sink func(docker.LogLine) error) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	var lines []string
+	err := read(ctx, strconv.Itoa(startupOutputLines), func(l docker.LogLine) error {
+		if len(l.Text) > startupOutputLineMax {
+			l.Text = l.Text[:startupOutputLineMax] + " …"
+		}
+		lines = append(lines, l.Text)
+		return nil
+	})
+	switch {
+	case err != nil:
+		h.logTo(deploymentID, "could not read the "+what+" output: "+err.Error())
+	case len(lines) == 0:
+		h.logTo(deploymentID, "the "+what+" produced no output")
+	default:
+		h.logTo(deploymentID, fmt.Sprintf("%s output (last %d lines):", what, len(lines)))
+		for _, l := range lines {
+			h.logTo(deploymentID, "  | "+l)
+		}
+	}
+}
+
 func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application, containerID string) error {
 	requireHealthy := app.HealthcheckType.GatesDeploy()
 	deadline := time.Now().Add(healthGateTimeout(app, requireHealthy))
@@ -1579,8 +1630,14 @@ func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application,
 		}
 		switch c.State {
 		case "exited", "dead":
-			return fmt.Errorf("container exited during startup (state=%s)", c.State)
+			return fmt.Errorf("container exited during startup (state=%s, exit code %d)", c.State, c.ExitCode)
+		case "restarting":
+			return crashLoop(c)
 		case "running":
+			// A restart policy brings a crashing container straight back, so it can be caught between two crashes.
+			if c.RestartCount > 0 {
+				return crashLoop(c)
+			}
 			if !requireHealthy {
 				return nil
 			}
@@ -1601,6 +1658,35 @@ func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application,
 }
 
 // Derived from the probe's timing so slow starters aren't cut off, but capped so deploys can't hang.
+const serviceFailureLimit = 3
+
+// Only failures since this deploy count: the task history still holds those of earlier deploys.
+func taskCrashLoop(failures []docker.TaskFailure, since time.Time) error {
+	var n int
+	var last docker.TaskFailure
+	for _, f := range failures {
+		if f.At.Before(since) {
+			continue
+		}
+		n++
+		if f.At.After(last.At) {
+			last = f
+		}
+	}
+	if n < serviceFailureLimit {
+		return nil
+	}
+	msg := fmt.Sprintf("service tasks keep failing during startup (exit code %d, %d failed tasks)", last.ExitCode, n)
+	if last.Error != "" {
+		msg += ": " + last.Error
+	}
+	return errors.New(msg)
+}
+
+func crashLoop(c docker.Container) error {
+	return fmt.Errorf("container keeps exiting during startup (exit code %d, restart count %d)", c.ExitCode, c.RestartCount)
+}
+
 func healthGateTimeout(app *models.Application, requireHealthy bool) time.Duration {
 	if !requireHealthy {
 		return 15 * time.Second
