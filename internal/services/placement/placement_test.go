@@ -562,3 +562,77 @@ func TestPlacementKeepsGPUFreeWorkOffGPUNodes(t *testing.T) {
 		t.Errorf("with only GPU nodes left, take the least loaded, got %d (%v)", got.ServerID, err)
 	}
 }
+
+func TestPlacementNodeByName(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+
+	got, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2"})
+	if err != nil || got.ServerID != 11 || got.ClusterID != 2 {
+		t.Fatalf("node pin = %+v (%v), want warsaw-2 (11) in eu-east", got, err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-4"}); !errors.Is(err, ErrNodeCordoned) {
+		t.Errorf("cordoned node err = %v, want ErrNodeCordoned", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "manager"}); !errors.Is(err, ErrNodeNotInLocation) {
+		t.Errorf("node of another location err = %v, want ErrNodeNotInLocation", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "gpu", Node: "gpu-1"}); !errors.Is(err, ErrLocationNotFound) {
+		t.Errorf("node in a hidden location err = %v, want ErrLocationNotFound", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Node: "warsaw-2", ServerID: 11, Admin: true}); !errors.Is(err, ErrNodeAndServerID) {
+		t.Errorf("node with server_id err = %v, want ErrNodeAndServerID", err)
+	}
+
+	s.SetPolicy(fakePolicy{placement: models.PlanPlacement{Pool: "pro"}})
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2"}); !errors.Is(err, ErrNodeNotInLocation) {
+		t.Errorf("node outside the plan's pool err = %v, want ErrNodeNotInLocation", err)
+	}
+}
+
+func TestNodePinningSwitch(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true, 11: true})
+	off, on := false, true
+
+	s.SetNodePinning(false)
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2"}); !errors.Is(err, ErrNodePinningOff) {
+		t.Errorf("platform off err = %v, want ErrNodePinningOff", err)
+	}
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2", Admin: true}); err != nil {
+		t.Errorf("an admin pins even when it is off: %v", err)
+	}
+	s.SetPolicy(fakePolicy{placement: models.PlanPlacement{NodePinning: &on}})
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2"}); err != nil {
+		t.Errorf("plan turns it on over the platform: %v", err)
+	}
+
+	s.SetNodePinning(true)
+	s.SetPolicy(fakePolicy{placement: models.PlanPlacement{NodePinning: &off}})
+	if _, err := s.Place(Request{WorkspaceID: 5, Location: "eu-east", Node: "warsaw-2"}); !errors.Is(err, ErrNodePinningOff) {
+		t.Errorf("plan off err = %v, want ErrNodePinningOff", err)
+	}
+	nodes, err := s.Nodes(5, "eu-east", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range nodes {
+		if n.Pinnable {
+			t.Errorf("node %s pinnable while the plan turns pinning off", n.Name)
+		}
+	}
+}
+
+func TestNodesReportPinnable(t *testing.T) {
+	s, _ := newPlacement(t, map[uint]bool{10: true})
+	nodes, err := s.Nodes(5, "eu-east", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, n := range nodes {
+		got[n.Name] = n.Pinnable
+	}
+	want := map[string]bool{"warsaw-1": true, "warsaw-2": false, "warsaw-3": false, "warsaw-4": false}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("pinnable = %v, want %v (online and not cordoned)", got, want)
+	}
+}

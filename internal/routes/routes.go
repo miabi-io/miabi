@@ -929,6 +929,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	monitoringService.SetSwarmManager(clusterService)
 	monitoringService.SetServerInfo(nodeService)
 	placementService := placement.NewService(clusterRepo, serverRepo, nodeClients.Connected)
+	placementService.SetNodePinning(cfg.NodePinning)
 	placementService.SetPolicy(quotaService)
 	if cfg.GPUEnabled {
 		placementService.SetGPUInventory(repositories.NewGPUDeviceRepository(db))

@@ -24,6 +24,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/hostmount"
@@ -68,7 +69,9 @@ type VolumeCreateRequest struct {
 		Location string `json:"location"`
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
-		SizeMB   int  `json:"size_mb"` // declared capacity in MB (0 = unspecified)
+		// Node pins a node by its fixed name; fixed once created.
+		Node   string `json:"node"`
+		SizeMB int    `json:"size_mb"` // declared capacity in MB (0 = unspecified)
 		// "host" is privileged-only; DriverOpts are encrypted at rest and never returned.
 		Driver     string            `json:"driver" enum:"local,nfs,cifs,host"`
 		DriverOpts map[string]string `json:"driver_opts"`
@@ -83,7 +86,12 @@ func (h *VolumeHandler) Create(c *okapi.Context, req *VolumeCreateRequest) error
 	if req.Body.SizeMB > 0 {
 		sizeBytes = int64(req.Body.SizeMB) * 1024 * 1024
 	}
-	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID})
+	if strings.TrimSpace(req.Body.Node) != "" {
+		if err := h.svc.NodeApplies(wsID, req.Body.Driver, req.Body.StorageClass); err != nil {
+			return c.AbortBadRequest(err.Error())
+		}
+	}
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID, Node: req.Body.Node})
 	if err != nil {
 		if a := placementAbort(c, err); a != nil {
 			return a

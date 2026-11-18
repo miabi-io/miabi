@@ -324,7 +324,7 @@ func diffFields(actual, desired Resource) []FieldDiff {
 }
 
 var optionalWhenUnset = map[string]bool{
-	"placement.location": true, "placement.constraints": true,
+	"placement.location": true, "placement.node": true, "placement.constraints": true,
 	"deployment.strategy": true, "deployment.runtime": true, "deployment.replicas": true,
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
 	"healthcheck.type": true, "healthcheck.path": true, "healthcheck.port": true, "healthcheck.command": true,
@@ -687,6 +687,9 @@ func specFields(r Resource) map[string]string {
 	case r.Volume != nil:
 		if loc := r.Volume.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		if n := r.Volume.NodeName(); n != "" {
+			f["placement.node"] = n
 		}
 		// Must be on both sides: desired-only makes phantom updates, actual-only disables the immutability refusal.
 		if sc := strings.TrimSpace(r.Volume.StorageClass); sc != "" {

@@ -116,8 +116,8 @@ export const volumeApi = {
   // Declared-vs-measured storage summary; served from cached columns (no live df).
   storage: (ws: number) => api.get<ApiResponse<WorkspaceStorage>>(`${w(ws)}/storage`),
   get: (ws: number, id: number) => api.get<ApiResponse<VolumeDetail>>(`${w(ws)}/volumes/${id}`),
-  create: (ws: number, name: string, serverId?: number, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>, location?: string, storageClass?: string) =>
-    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, server_id: serverId, size_mb: sizeMb, driver, driver_opts: driverOpts, location, storage_class: storageClass }),
+  create: (ws: number, name: string, node?: string, sizeMb?: number, driver?: string, driverOpts?: Record<string, string>, location?: string, storageClass?: string) =>
+    api.post<ApiResponse<Volume>>(`${w(ws)}/volumes`, { name, node, size_mb: sizeMb, driver, driver_opts: driverOpts, location, storage_class: storageClass }),
   // The classes this workspace may create volumes on, narrowed to its plan.
   storageClasses: (ws: number, location?: string) =>
     api.get<ApiResponse<StorageClassOption[]>>(`${w(ws)}/storage-classes${location ? `?location=${encodeURIComponent(location)}` : ''}`),

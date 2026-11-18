@@ -39,7 +39,7 @@ const loading = ref(false)
 const showCreate = ref(false)
 const creating = ref(false)
 const name = ref('')
-const serverId = ref(0)
+const nodeName = ref('')
 const volLocation = ref('')
 const sizeMb = ref<number | null>(null)
 // nfs/cifs are shared rwx for replicated apps; host binds an operator /mnt/* path present on every node.
@@ -82,7 +82,7 @@ watch(currentWorkspaceId, load, { immediate: true })
 
 function openCreate() {
   name.value = ''
-  serverId.value = 0
+  nodeName.value = ''
   volLocation.value = ''
   sizeMb.value = null
   driver.value = 'local'
@@ -106,6 +106,9 @@ async function loadStorageClasses() {
   }
 }
 watch(volLocation, () => { if (showCreate.value) void loadStorageClasses() })
+
+// A shared volume is on every node, so a node only applies to local, node-local classes.
+const nodeLocal = computed(() => driver.value === 'local' && !storageClasses.value.find((c) => c.name === storageClass.value)?.shared)
 
 // A class no longer offered (disabled, dropped from the plan) simply shows its name.
 function classLabel(name?: string): string {
@@ -134,7 +137,7 @@ async function create() {
   creating.value = true
   try {
     const d = driver.value === 'local' ? undefined : driver.value
-    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), serverId.value || undefined, sizeMb.value ?? undefined, d, driverOpts(), volLocation.value || undefined, storageClass.value || undefined)
+    await volumeApi.create(currentWorkspaceId.value, name.value.trim(), (nodeLocal.value && nodeName.value) || undefined, sizeMb.value ?? undefined, d, driverOpts(), volLocation.value || undefined, storageClass.value || undefined)
     notify.success(t('notify.volumes.created'))
     showCreate.value = false
     load(currentWorkspaceId.value)
@@ -260,7 +263,7 @@ function fmtDate(s?: string) {
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="name" class="form-input" placeholder="e.g. app-data" required autofocus />
             </div>
-            <LocationPicker v-model="volLocation" v-model:server-id="serverId" />
+            <LocationPicker v-model="volLocation" v-model:node-name="nodeName" :allow-pin="nodeLocal" />
             <div class="form-group">
               <label class="form-label">{{ $t('volumes.type') }}</label>
               <select v-model="driver" class="form-select">

@@ -99,6 +99,13 @@ const placementPool = computed({
     if (form.value) form.value.placement = { ...form.value.placement, pool }
   },
 })
+// '' follows MIABI_NODE_PINNING; the select stores null so the plan keeps following it.
+const placementPinning = computed({
+  get: () => (form.value?.placement?.node_pinning == null ? '' : String(form.value.placement.node_pinning)),
+  set: (v: string) => {
+    if (form.value) form.value.placement = { ...form.value.placement, node_pinning: v === '' ? null : v === 'true' }
+  },
+})
 function setLocations(locations: number[]) {
   if (form.value) form.value.placement = { ...form.value.placement, locations }
 }
@@ -350,6 +357,15 @@ function fmtDate(s?: string): string {
             <label class="form-label">{{ $t('planDetail.nodePool') }}</label>
             <input v-model.trim="placementPool" class="form-input mono" :placeholder="$t('planDetail.namePlaceholder')" :disabled="!placementPolicy.mutable.value" />
             <p class="form-hint">{{ $t('planDetail.nodePoolHint') }}</p>
+          </div>
+          <div class="form-group" style="margin-top: 12px; max-width: 360px">
+            <label class="form-label">{{ $t('planDetail.nodePinning') }}</label>
+            <select v-model="placementPinning" class="form-select" :disabled="!placementPolicy.mutable.value">
+              <option value="">{{ $t('planDetail.nodePinningPlatform') }}</option>
+              <option value="true">{{ $t('planDetail.nodePinningAllowed') }}</option>
+              <option value="false">{{ $t('planDetail.nodePinningOff') }}</option>
+            </select>
+            <p class="form-hint">{{ $t('planDetail.nodePinningHint') }}</p>
           </div>
         </div>
       </div>

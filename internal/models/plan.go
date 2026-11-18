@@ -66,6 +66,8 @@ type PlanPlacement struct {
 	// Locations are the cluster ids the plan may use; the first is its default location.
 	Locations []uint `json:"locations,omitempty"`
 	Pool      string `json:"pool,omitempty"`
+	// NodePinning overrides MIABI_NODE_PINNING for the plan's workspaces; nil follows the platform.
+	NodePinning *bool `json:"node_pinning,omitempty"`
 }
 
 // Plan limits use -1 for unlimited and 0 for none.

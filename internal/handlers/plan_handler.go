@@ -274,7 +274,8 @@ func (h *PlanHandler) checkPlacement(c *okapi.Context, prev, next models.PlanPla
 	if next.Pool != "" && !models.ValidPoolName(next.Pool) {
 		return c.AbortBadRequest(errInvalidPlanPool.Error())
 	}
-	if (len(next.Locations) == 0 && next.Pool == "") || (next.Pool == prev.Pool && slices.Equal(next.Locations, prev.Locations)) {
+	samePinning := (next.NodePinning == nil) == (prev.NodePinning == nil) && (next.NodePinning == nil || *next.NodePinning == *prev.NodePinning)
+	if (len(next.Locations) == 0 && next.Pool == "" && next.NodePinning == nil) || (next.Pool == prev.Pool && slices.Equal(next.Locations, prev.Locations) && samePinning) {
 		return nil
 	}
 	if err := h.ee.RequireMutable(enterprise.FlagPlacementPolicy); err != nil {

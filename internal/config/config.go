@@ -169,6 +169,8 @@ type Config struct {
 	NodeStatsAgent bool
 	// MetadataGuard blocks containers from the cloud metadata service via nftables; off removes the table.
 	MetadataGuard bool
+	// NodePinning lets workspace members choose a node inside a location; a plan may override it.
+	NodePinning bool
 
 	// ProxyNetwork is empty until startup resolves it with node.ResolveAppNetwork when MIABI_PROXY_NETWORK is unset.
 	ProxyNetwork string
@@ -523,6 +525,7 @@ func New() *Config {
 		HostProcPath:               goutils.Env("MIABI_HOST_PROC", "/host/proc"),
 		NodeStatsAgent:             goutils.EnvBool("MIABI_NODE_STATS_AGENT", true),
 		MetadataGuard:              goutils.EnvBool("MIABI_METADATA_GUARD", false),
+		NodePinning:                goutils.EnvBool("MIABI_NODE_PINNING", true),
 		DeletionGraceDays:          goutils.EnvInt("MIABI_DELETION_GRACE_DAYS", 7),
 		DNSReconcileMinutes:        goutils.EnvInt("MIABI_DNS_RECONCILE_MINUTES", 30),
 		StorageUsageEnabled:        goutils.EnvBool("MIABI_STORAGE_USAGE_ENABLED", true),

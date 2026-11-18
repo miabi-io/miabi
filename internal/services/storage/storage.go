@@ -161,6 +161,32 @@ func (s *Service) resolveClass(workspaceID, serverID uint, requested string) (*m
 	return s.classes.Resolve(serverID, binding.Allowed[0])
 }
 
+// ErrNodeOnShared refuses a node pin a shared volume would ignore, since its data is on every node.
+var ErrNodeOnShared = errors.New("a shared volume is reachable from every node; node does not apply to it")
+
+// NodeApplies refuses a node pin on a volume whose data is not node-local.
+func (s *Service) NodeApplies(workspaceID uint, driver, class string) error {
+	switch driver {
+	case models.VolumeDriverNFS, models.VolumeDriverCIFS, models.VolumeDriverHost:
+		return ErrNodeOnShared
+	}
+	if s.SharesAcrossNodes(workspaceID, class) {
+		return ErrNodeOnShared
+	}
+	return nil
+}
+
+// NodeName is a node's fixed name, or "" when unknown; server id 0 is the control plane.
+func (s *Service) NodeName(serverID uint) string {
+	if s.serverInfo == nil {
+		return ""
+	}
+	if srv, err := s.serverInfo.Get(serverID); err == nil && srv != nil {
+		return srv.Name
+	}
+	return ""
+}
+
 // SharesAcrossNodes reports, before a node is chosen, whether a volume asking for this class would be shared (RWX).
 func (s *Service) SharesAcrossNodes(workspaceID uint, requested string) bool {
 	if s.classes == nil {
@@ -457,6 +483,7 @@ func (s *Service) CreateOn(ctx context.Context, workspaceID, serverID uint, in C
 			return nil, err
 		}
 	}
+	s.annotateServer(v)
 	return v, nil
 }
 

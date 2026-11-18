@@ -739,6 +739,10 @@
         "location": {
           "description": "Location names where the resource is created; omitted, the workspace default. Fixed once created.",
           "type": "string"
+        },
+        "node": {
+          "description": "Node is a node's fixed name inside the location (volumes only); omitted, Miabi picks one. Fixed once created.",
+          "type": "string"
         }
       },
       "type": "object"

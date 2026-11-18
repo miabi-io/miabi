@@ -204,13 +204,26 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 
 // Node-local data is reachable from one node; placed alone, the volume would leave its app half-applied.
 func (s *Service) placeVolume(ctx context.Context, workspaceID uint, ch declarative.Change, spec *declarative.VolumeSpec, set *declarative.ResourceSet) (placement.Result, error) {
-	location := spec.Location()
-	if s.placer == nil || set == nil {
-		return s.place(ctx, workspaceID, ch, location, false)
+	location, node := spec.Location(), spec.NodeName()
+	if node != "" && s.storage != nil {
+		if err := s.storage.NodeApplies(workspaceID, "", spec.StorageClass); err != nil {
+			return placement.Result{}, fmt.Errorf("%w: volume %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
 	}
-	app, appName := mountingApp(set, ch.Name)
+	if s.placer == nil {
+		return placement.Result{}, nil
+	}
+	var app *declarative.ApplicationSpec
+	var appName string
+	if set != nil {
+		app, appName = mountingApp(set, ch.Name)
+	}
 	if app == nil {
-		return s.place(ctx, workspaceID, ch, location, false)
+		res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: location, Node: node, Admin: isAdmin(ctx)})
+		if err != nil {
+			return res, fmt.Errorf("%w: volume %q: %v", ErrInvalidManifest, ch.Name, err)
+		}
+		return res, nil
 	}
 	appLocation := s.appLocation(workspaceID, app, set)
 	switch {
@@ -239,14 +252,30 @@ func (s *Service) placeVolume(ctx context.Context, workspaceID uint, ch declarat
 			}
 		}
 	}
+	colocate := req.Colocate
+	if node != "" {
+		req.Node, req.Colocate = node, 0
+	}
 	res, err := s.placer.Place(req)
 	switch {
 	case errors.Is(err, placement.ErrLocationMismatch):
 		return res, volumeLocationError(appName, s.placer.LocationName(res.ClusterID), ch.Name, location)
 	case err != nil:
 		return res, fmt.Errorf("%w: volume %q: %v", ErrInvalidManifest, ch.Name, err)
+	case node != "" && colocate != 0 && res.ServerID != colocate:
+		return res, fmt.Errorf("%w: volume %q is pinned to node %q, but application %q and its other node-local volumes run on %s; one node must hold them all",
+			ErrInvalidManifest, ch.Name, node, appName, s.nodeLabel(colocate))
 	}
 	return res, nil
+}
+
+func (s *Service) nodeLabel(serverID uint) string {
+	if s.storage != nil {
+		if n := s.storage.NodeName(serverID); n != "" {
+			return fmt.Sprintf("%q", n)
+		}
+	}
+	return fmt.Sprintf("node %d", serverID)
 }
 
 // mountingApp is the first application in the bundle that mounts the named volume.
@@ -434,6 +463,10 @@ func (s *Service) locationName(clusterID uint) string {
 // Nothing is rescheduled after create.
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
+		if f.Field == "placement.node" {
+			return fmt.Errorf("%w: %s %q lives on node %q and cannot move to %q; volumes do not move between nodes. Migrate the data, or delete it and apply again",
+				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
+		}
 		if f.Field == "placement.location" {
 			hint := ""
 			if ch.Kind == declarative.KindApplication {
@@ -1525,8 +1558,12 @@ func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name 
 			continue
 		}
 		if v, found := set.Get(string(declarative.KindVolume) + "/" + mt.Volume); found {
-			if v.Volume != nil && v.Volume.Location() == defaultLocation {
-				v.Volume.Placement = nil
+			// A node name is specific to this install, so an export never carries one.
+			if v.Volume != nil && v.Volume.Placement != nil {
+				v.Volume.Placement.Node = ""
+				if v.Volume.Location() == defaultLocation {
+					v.Volume.Placement = nil
+				}
 			}
 			out.Add(v)
 		}
@@ -1573,6 +1610,18 @@ func trimDefaults(a *declarative.ApplicationSpec, defaultLocation string) {
 			a.Deployment = nil
 		}
 	}
+}
+
+// Only node-local volumes report a node: a shared one lives on every node, so a pin there never drifts.
+func volumePlacement(location string, v *models.Volume) *declarative.PlacementSpec {
+	p := locationSpec(location)
+	if v.NodeLocal() && v.Node != "" {
+		if p == nil {
+			p = &declarative.PlacementSpec{}
+		}
+		p.Node = v.Node
+	}
+	return p
 }
 
 func locationSpec(location string) *declarative.PlacementSpec {
@@ -1637,7 +1686,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Volume: &declarative.VolumeSpec{
 				Size:         size,
 				StorageClass: vols[i].StorageClassName,
-				Placement:    locationSpec(s.locationName(vols[i].ClusterID)),
+				Placement:    volumePlacement(s.locationName(vols[i].ClusterID), &vols[i]),
 			},
 		})
 	}
