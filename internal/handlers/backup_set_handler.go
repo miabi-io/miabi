@@ -20,7 +20,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/services/restores"
 )
 
 type RunBackupSetRequest struct {
@@ -83,6 +86,9 @@ func (h *BackupHandler) RunSet(c *okapi.Context, req *RunBackupSetRequest) error
 	dest, err := h.setDestination(inst.WorkspaceID)
 	if err != nil {
 		return c.AbortInternalServerError("failed to resolve the backup destination", err)
+	}
+	if busy, a := restoreBusy(c, h.restores, models.Restore{InstanceID: inst.ID}, "take the recovery point once it finishes"); busy {
+		return a
 	}
 	set, err := h.svc.RunSetInBackground(inst, backup.SetOptions{
 		Trigger:     "manual",
@@ -229,16 +235,36 @@ func (h *BackupHandler) RestoreSet(c *okapi.Context, req *RestoreSetRequest) err
 	if req.Body.AgeIdentity != "" {
 		dest.AgeIdentity = req.Body.AgeIdentity
 	}
-	res, err := h.svc.RestoreSet(c.Request().Context(), inst, set, dest,
-		req.Body.Method == "force", req.Body.AllowVersionMismatch)
-	if err != nil {
-		if errors.Is(err, backup.ErrNoBackupFile) {
-			return c.AbortBadRequest("this recovery point has no artifacts to restore")
+	force := req.Body.Method == "force"
+	switch err := h.svc.PrecheckSet(inst, set, req.Body.AllowVersionMismatch); {
+	case errors.Is(err, backup.ErrNoBackupFile):
+		return c.AbortBadRequest("this recovery point has no artifacts to restore")
+	case errors.Is(err, backup.ErrRestoreVersionTooNew):
+		return c.AbortBadRequest(err.Error() + " — restore into a matching or newer engine, or confirm to override")
+	case err != nil:
+		return c.AbortInternalServerError("failed to restore the recovery point", err)
+	}
+	if h.svc.SetRunning(inst.ID) {
+		return c.AbortWithError(http.StatusConflict, errors.New("a recovery point of this instance is running; restore once it finishes"))
+	}
+	rec, err := h.restores.Start(&models.Restore{
+		WorkspaceID: wsID, Kind: models.RestoreRecoveryPoint, InstanceID: inst.ID,
+		Source: set.Ref, SourceID: set.ID, Force: force, RequestedByID: userIDPtr(c),
+	}, inst.Name, fmt.Sprintf("/databases/%d", inst.ID), func(ctx context.Context) (restores.Outcome, error) {
+		res, err := h.svc.RestoreSet(ctx, inst, set, dest, force, req.Body.AllowVersionMismatch)
+		if err != nil {
+			return restores.Outcome{}, err
 		}
+		return restores.Outcome{Restored: res.Restored, Failed: res.Failed}, nil
+	})
+	if errors.Is(err, restores.ErrRunning) {
+		return c.AbortWithError(http.StatusConflict, err)
+	}
+	if err != nil {
 		return c.AbortInternalServerError("failed to restore the recovery point", err)
 	}
 	h.record(c, wsID, "database.backup_set_restore", set.ID)
-	return ok(c, res)
+	return accepted(c, rec)
 }
 
 // bucketFor resolves the workspace's object-storage target, or says why it cannot.
@@ -375,4 +401,17 @@ func (h *BackupHandler) DeleteSetSchedule(c *okapi.Context) error {
 	}
 	h.record(c, wsID, "database.backup_set_schedule_delete", sched.ID)
 	return ok(c, okapi.M{"deleted": true})
+}
+
+// Restores lists the instance's recent restores, so the console can show one still running.
+func (h *BackupHandler) Restores(c *okapi.Context) error {
+	inst, err := h.loadInstance(c)
+	if err != nil {
+		return c.AbortNotFound("database instance not found")
+	}
+	list, err := h.restores.ForInstance(inst.WorkspaceID, inst.ID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list restores", err)
+	}
+	return ok(c, list)
 }

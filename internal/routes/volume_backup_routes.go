@@ -39,6 +39,14 @@ func (r *Router) volumeBackupRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
+			Path:        "/{workspace}/volumes/{volumeID}/restores",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.volumeBackup.Restores,
+			Summary:     "List the volume's recent restores, newest first",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        base + "/status",
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),

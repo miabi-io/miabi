@@ -20,7 +20,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -37,6 +39,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/backupsettings"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -51,6 +54,22 @@ type BackupHandler struct {
 	audit           *audit.Logger
 	maxRestoreBytes int64
 	logs            *logstore.Store
+	restores        *restores.Runner
+}
+
+// SetRestores wires the background restore runner; restores and backups refuse to overlap through it.
+func (h *BackupHandler) SetRestores(r *restores.Runner) { h.restores = r }
+
+// restoreBusy is false once a refusal is written, since okapi's abort helpers return nil.
+func restoreBusy(c *okapi.Context, r *restores.Runner, target models.Restore, what string) (bool, error) {
+	live, err := r.Live(target)
+	if err != nil {
+		return true, c.AbortInternalServerError("check running restores", err)
+	}
+	if live != nil {
+		return true, c.AbortWithError(http.StatusConflict, fmt.Errorf("a restore from %s is running; %s", live.Source, what))
+	}
+	return false, nil
 }
 
 func NewBackupHandler(svc *backup.Service, dbs *repositories.DatabaseRepository, repo *repositories.BackupRepository, sets *repositories.DatabaseBackupSetRepository, settings *backupsettings.Service, cron *cronpkg.Manager, ee enterprise.EE, auditLog *audit.Logger, maxRestoreMB int) *BackupHandler {
@@ -162,6 +181,9 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 				wd.GPGPassphrase, wd.AgeRecipients, wd.AgeIdentity, wd.SkipVerify
 		}
 	}
+	if busy, a := restoreBusy(c, h.restores, models.Restore{InstanceID: inst.ID, DatabaseID: db.ID}, "back it up once it finishes"); busy {
+		return a
+	}
 	b, err := h.svc.RunInBackground(inst, db,
 		backup.RunOptions{Trigger: "manual", Comment: strings.TrimSpace(req.Body.Comment), RequestedBy: userIDPtr(c)}, dest)
 	if err != nil {
@@ -225,18 +247,35 @@ func (h *BackupHandler) Restore(c *okapi.Context, req *RestoreRequest) error {
 			dest.S3 = cfg
 		}
 	}
-	if err := h.svc.RestoreFromBackup(c.Request().Context(), inst, db, b, dest,
-		req.Body.Method == "force", req.Body.AllowVersionMismatch); err != nil {
-		if errors.Is(err, backup.ErrRestoreVersionTooNew) {
-			return c.AbortBadRequest(err.Error() + " — restore into a matching or newer engine, or confirm to override")
-		}
-		if errors.Is(err, backup.ErrAgeIdentityRequired) {
-			return c.AbortBadRequest(err.Error() + " — store one in the workspace backup settings, or provide it with this restore")
-		}
+	force := req.Body.Method == "force"
+	spec, err := h.svc.RestoreSpecFor(inst, b, dest, force, req.Body.AllowVersionMismatch)
+	switch {
+	case errors.Is(err, backup.ErrRestoreVersionTooNew):
+		return c.AbortBadRequest(err.Error() + " — restore into a matching or newer engine, or confirm to override")
+	case errors.Is(err, backup.ErrAgeIdentityRequired):
+		return c.AbortBadRequest(err.Error() + " — store one in the workspace backup settings, or provide it with this restore")
+	case errors.Is(err, backup.ErrNoBackupFile), errors.Is(err, backup.ErrUnsupportedEngine):
+		return c.AbortBadRequest(err.Error())
+	case err != nil:
+		return c.AbortInternalServerError("restore failed", err)
+	}
+	if h.svc.BackupRunning(db.ID) {
+		return c.AbortWithError(http.StatusConflict, errors.New("a backup of this database is running; restore once it finishes"))
+	}
+	rec, err := h.restores.Start(&models.Restore{
+		WorkspaceID: db.WorkspaceID, Kind: models.RestoreDatabase, InstanceID: inst.ID, DatabaseID: db.ID,
+		Source: fmt.Sprintf("backup #%d", b.Number), SourceID: b.ID, Force: force, RequestedByID: userIDPtr(c),
+	}, db.Name, fmt.Sprintf("/databases/%d", inst.ID), func(ctx context.Context) (restores.Outcome, error) {
+		return restores.Outcome{}, h.svc.Restore(ctx, inst, db, spec)
+	})
+	if errors.Is(err, restores.ErrRunning) {
+		return c.AbortWithError(http.StatusConflict, err)
+	}
+	if err != nil {
 		return c.AbortInternalServerError("restore failed", err)
 	}
 	h.record(c, db.WorkspaceID, "backup.restore", b.ID)
-	return message(c, "database restored")
+	return accepted(c, rec)
 }
 
 func allowedDump(name string) bool {

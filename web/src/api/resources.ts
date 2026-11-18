@@ -1,7 +1,7 @@
 import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
-  Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, SetRestoreResult, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput, CreateServiceAccountKeyInput, User,
+  Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, Restore, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput, CreateServiceAccountKeyInput, User,
   Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
   SecurityStatus, SecurityOverview, SecurityPolicy, SavePolicyInput, SecurityEvent, ApprovedBinding,
 } from './types'
@@ -147,7 +147,8 @@ export const volumeApi = {
   runBackup: (ws: number, id: number) =>
     api.post<ApiResponse<VolumeBackup>>(`${w(ws)}/volumes/${id}/backups`),
   restoreBackup: (ws: number, id: number, backupId: number) =>
-    api.post<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}/backups/${backupId}/restore`),
+    api.post<ApiResponse<Restore>>(`${w(ws)}/volumes/${id}/backups/${backupId}/restore`),
+  restores: (ws: number, id: number) => api.get<ApiResponse<Restore[]>>(`${w(ws)}/volumes/${id}/restores`),
   deleteBackup: (ws: number, id: number, backupId: number) =>
     api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/volumes/${id}/backups/${backupId}`),
   verifyBackup: (ws: number, id: number, backupId: number) =>
@@ -176,7 +177,8 @@ export const backupApi = {
   update: (ws: number, inst: number, db: number, id: number, patch: { comment?: string; pinned?: boolean }) =>
     api.patch<ApiResponse<Backup>>(`${b(ws, inst, db)}/backups/${id}`, patch),
   restore: (ws: number, inst: number, db: number, id: number, method: 'normal' | 'force' = 'normal', ageIdentity = '') =>
-    api.post<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/backups/${id}/restore`, { method, age_identity: ageIdentity }),
+    api.post<ApiResponse<Restore>>(`${b(ws, inst, db)}/backups/${id}/restore`, { method, age_identity: ageIdentity }),
+  restores: (ws: number, inst: number) => api.get<ApiResponse<Restore[]>>(`${w(ws)}/databases/${inst}/restores`),
   restoreFile: (ws: number, inst: number, db: number, file: File, method: 'normal' | 'force' = 'normal') => {
     const form = new FormData()
     form.append('file', file)
@@ -211,7 +213,7 @@ export const backupApi = {
   adoptSet: (ws: number, inst: number, ref: string) =>
     api.post<ApiResponse<AdoptResult>>(`${w(ws)}/databases/${inst}/backup-sets/adopt`, { ref }),
   restoreSet: (ws: number, inst: number, id: number, method: 'normal' | 'force' = 'normal') =>
-    api.post<ApiResponse<SetRestoreResult>>(`${w(ws)}/databases/${inst}/backup-sets/${id}/restore`, { method }),
+    api.post<ApiResponse<Restore>>(`${w(ws)}/databases/${inst}/backup-sets/${id}/restore`, { method }),
   verifySet: (ws: number, inst: number, id: number) =>
     api.post<ApiResponse<VerifyResult>>(`${w(ws)}/databases/${inst}/backup-sets/${id}/verify`, {}),
   recoveryKit: (ws: number, inst: number, id: number) =>

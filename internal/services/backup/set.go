@@ -29,6 +29,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/dbenvelope"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -123,7 +124,7 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 		row := *set
 		opts.started <- &row
 	}
-	defer beat(func() error { return s.sets.Touch(set.ID) })()
+	defer restores.Beat(func() error { return s.sets.Touch(set.ID) })()
 
 	items := s.runSetItems(ctx, inst, dbs, set.ID, opts, dest)
 	done := s.finishSet(set, inst, items)

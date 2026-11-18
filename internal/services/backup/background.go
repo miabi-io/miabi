@@ -27,34 +27,14 @@ import (
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/restores"
 )
 
 // A manual run outlives its request, since a large dump takes longer than any HTTP timeout; this bounds it instead.
 const backgroundTimeout = 24 * time.Hour
 
-const (
-	heartbeatEvery = time.Minute
-	// A row silent this long belongs to a process that died, not to a slow dump.
-	staleAfter = 5 * time.Minute
-)
-
-// beat touches a run's row until stop is called.
-func beat(touch func() error) (stop func()) {
-	done := make(chan struct{})
-	go func() {
-		t := time.NewTicker(heartbeatEvery)
-		defer t.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-t.C:
-				_ = touch()
-			}
-		}
-	}()
-	return func() { close(done) }
-}
+// A row silent this long belongs to a process that died, not to a slow dump.
+const staleAfter = restores.StaleAfter
 
 var (
 	ErrAlreadyRunning    = errors.New("a backup of this database is already running")

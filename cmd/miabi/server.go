@@ -66,6 +66,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/portforward"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/secret"
 	"github.com/miabi-io/miabi/internal/services/settings"
@@ -445,6 +446,8 @@ func runServer(cli *okapicli.CLI) {
 			volumeBackupSvc.SetLogStore(logStore)
 			volumeBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
 			volumeBackupSvc.SetAlerter(volumeAlerter{alertEngine})
+			volumeBackupSvc.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
+				repositories.NewWorkspaceRepository(res.db), repositories.NewNotificationInboxRepository(res.db), bus)))
 			volumeBackupHandler := worker.NewVolumeBackupHandler(volumeBackupSvc)
 
 			pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()
@@ -520,6 +523,8 @@ func runServer(cli *okapicli.CLI) {
 			res.cron.SetLeader(elector)
 			res.cron.Start()
 			_ = res.cron.RegisterTask("backup_stale", 0, "Close abandoned backup runs", "@every 5m", backupService.FailStale)
+			_ = res.cron.RegisterTask("restore_stale", 0, "Close abandoned restores", "@every 5m",
+				restores.NewRunner(repositories.NewRestoreRepository(res.db)).FailStale)
 
 			if logStore.Enabled() {
 				_ = res.cron.RegisterTask("logstore", 0, "Log retention sweep", "@daily", func() error {
