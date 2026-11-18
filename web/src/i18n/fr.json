@@ -1524,6 +1524,7 @@
       "volumeHint": "Capacité déclarée du volume de données de l’instance, enregistrée pour le calcul des quotas. L’application stricte dépend du backend de stockage du nœud.",
       "volumeSize": "Taille du volume de données (Mo)"
     },
+    "nodeHint": "Une base de données reste sur le nœud où elle est créée, avec son volume de données.",
     "provision": "Provisionner une base de données",
     "provisioning": "Provisionnement de la base de données…"
   },

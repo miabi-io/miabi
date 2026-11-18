@@ -41,6 +41,7 @@ type dbInstRow struct {
 	Version     string
 	Status      string
 	ClusterID   uint
+	ServerID    uint
 	Metadata    models.Metadata `gorm:"serializer:json"`
 	CreatedAt   time.Time
 }
@@ -235,5 +236,27 @@ func TestCheckDedicatedAttach(t *testing.T) {
 	inst.Metadata = nil
 	if err := s.CheckDedicatedAttach(inst, 8); err != nil {
 		t.Fatalf("shared instance: %v", err)
+	}
+}
+
+// A pinned dependency reuses only an instance on its node, never one elsewhere in the location.
+func TestReusableOnServerMatchesTheNode(t *testing.T) {
+	s, db := newDeclNameSvc(t)
+	const ws = uint(1)
+	running, pg := string(models.DBStatusRunning), string(models.DBEnginePostgres)
+	if err := db.Create(&[]dbInstRow{
+		{ID: 1, UID: "pg-a", WorkspaceID: ws, Name: "pg-a", Engine: pg, Version: "17", Status: running, ClusterID: 2, ServerID: 3},
+		{ID: 2, UID: "pg-b", WorkspaceID: ws, Name: "pg-b", Engine: pg, Version: "17", Status: running, ClusterID: 2, ServerID: 4},
+	}).Error; err != nil {
+		t.Fatalf("seed instances: %v", err)
+	}
+	if got := s.reusableOnServer(ws, models.DBEnginePostgres, "17", 4); got == nil || got.ID != 2 {
+		t.Errorf("node 4 reused %v, want pg-b", got)
+	}
+	if got := s.reusableOnServer(ws, models.DBEnginePostgres, "", 5); got != nil {
+		t.Errorf("a node with no instance reused %q", got.Name)
+	}
+	if got := s.reusableOnServer(ws, models.DBEnginePostgres, "16", 3); got != nil {
+		t.Errorf("version 16 reused %q, which runs %s", got.Name, got.Version)
 	}
 }

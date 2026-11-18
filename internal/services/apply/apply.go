@@ -296,6 +296,24 @@ func (s *Service) pinAppNode(ctx context.Context, workspaceID uint, app *models.
 	return s.apps.PinNode(app, target)
 }
 
+// A node pin is refused on a shared storage class, whose failover the pin would undo.
+func (s *Service) placeDatabase(ctx context.Context, workspaceID uint, ch declarative.Change, location, node, class string) (placement.Result, error) {
+	if node == "" {
+		return s.place(ctx, workspaceID, ch, location, false)
+	}
+	if err := s.dbs.NodeApplies(workspaceID, class); err != nil {
+		return placement.Result{}, fmt.Errorf("%w: %s %q: %v", ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, err)
+	}
+	if s.placer == nil {
+		return placement.Result{}, nil
+	}
+	res, err := s.placer.Place(placement.Request{WorkspaceID: workspaceID, Location: location, Node: node, Admin: isAdmin(ctx)})
+	if err != nil {
+		return res, fmt.Errorf("%w: %s %q: %v", ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, err)
+	}
+	return res, nil
+}
+
 func (s *Service) nodeLabel(serverID uint) string {
 	if s.storage != nil {
 		if n := s.storage.NodeName(serverID); n != "" {
@@ -490,8 +508,8 @@ func (s *Service) locationName(clusterID uint) string {
 // Nothing is rescheduled after create.
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
-		if f.Field == "placement.node" && ch.Kind == declarative.KindVolume {
-			return fmt.Errorf("%w: %s %q lives on node %q and cannot move to %q; volumes do not move between nodes. Migrate the data, or delete it and apply again",
+		if f.Field == "placement.node" && (ch.Kind == declarative.KindVolume || ch.Kind == declarative.KindDatabaseInstance || ch.Kind == declarative.KindDatabase) {
+			return fmt.Errorf("%w: %s %q lives on node %q and cannot move to %q; its data does not move between nodes. Migrate the data, or delete it and apply again",
 				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
 		}
 		if f.Field == "placement.location" {
@@ -1678,6 +1696,29 @@ func databaseResources(spec *declarative.DatabaseSpec) database.Resources {
 	return database.Resources{MemoryBytes: mb, NanoCPUs: nc, Size: spec.Resources.Size}
 }
 
+// The live side always reports its node; an omitted node in a manifest never diffs against it.
+func withNode(p *declarative.PlacementSpec, node string) *declarative.PlacementSpec {
+	if node == "" {
+		return p
+	}
+	if p == nil {
+		p = &declarative.PlacementSpec{}
+	}
+	p.Node = node
+	return p
+}
+
+func databaseNodeSpec(p *declarative.DatabasePlacementSpec, node string) *declarative.DatabasePlacementSpec {
+	if node == "" {
+		return p
+	}
+	if p == nil {
+		p = &declarative.DatabasePlacementSpec{}
+	}
+	p.Node = node
+	return p
+}
+
 func databaseLocationSpec(location string) *declarative.DatabasePlacementSpec {
 	if location == "" {
 		return nil
@@ -1807,7 +1848,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 				Metadata: metaA(inst.UID, inst.Metadata[models.MetaDeclarativeName], inst.Metadata, inst.Annotations),
 				DatabaseInstance: &declarative.DatabaseInstanceSpec{
 					Engine: string(inst.Engine), Version: inst.Version,
-					Placement:      locationSpec(s.locationName(inst.ClusterID)),
+					Placement:      withNode(locationSpec(s.locationName(inst.ClusterID)), inst.Node),
 					Resources:      databaseResourcesSpec(inst),
 					StorageClass:   inst.StorageClassName,
 					RecoveryPoints: s.recoveryPointsSpecOf(inst.ID),
@@ -1824,7 +1865,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 					Database: &declarative.DatabaseSpec{
 						Engine: string(inst.Engine), Version: inst.Version,
 						Instance:     declarative.DatabaseInstanceRef{Type: "auto", Name: inst.Name},
-						Placement:    databaseLocationSpec(s.locationName(inst.ClusterID)),
+						Placement:    databaseNodeSpec(databaseLocationSpec(s.locationName(inst.ClusterID)), inst.Node),
 						Resources:    databaseResourcesSpec(inst),
 						ReadOnlyUser: readOnlySpec(d),
 						Backup:       s.backupSpecOf(d.ID),
@@ -1841,7 +1882,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			Metadata: metaA(inst.UID, inst.Name, inst.Metadata, inst.Annotations),
 			Database: &declarative.DatabaseSpec{
 				Engine: string(inst.Engine), Version: inst.Version, Instance: declarative.DatabaseInstanceRef{Type: "auto"},
-				Placement: databaseLocationSpec(s.locationName(inst.ClusterID)),
+				Placement: databaseNodeSpec(databaseLocationSpec(s.locationName(inst.ClusterID)), inst.Node),
 				Resources: databaseResourcesSpec(inst),
 				Backup:    s.backupSpecOf(s.soleDatabaseID(workspaceID, inst)),
 			},
@@ -2715,14 +2756,21 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 			}
 		} else {
 			// Stamped with the manifest name so databaseViews resolves this exact database; DDL waits for a new instance.
-			target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
+			target, err := s.placeDatabase(ctx, workspaceID, ch, spec.Location(), spec.NodeName(), "")
 			if err != nil {
 				return err
 			}
-			inst, created, _, provisioned, err := s.dbs.ResolveDependency(
-				ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name,
-				models.DBEngine(spec.Engine), spec.Version, database.Placement(spec.Instance.Type), databaseResources(spec), meta,
+			engine, how := models.DBEngine(spec.Engine), database.Placement(spec.Instance.Type)
+			var (
+				inst        *models.DatabaseInstance
+				created     *models.Database
+				provisioned bool
 			)
+			if spec.NodeName() != "" {
+				inst, created, _, provisioned, err = s.dbs.ResolveOnNode(ctx, workspaceID, target.ServerID, ch.Name, ch.Name, engine, spec.Version, how, databaseResources(spec), meta)
+			} else {
+				inst, created, _, provisioned, err = s.dbs.ResolveDependency(ctx, workspaceID, target.ServerID, 0, ch.Name, ch.Name, engine, spec.Version, how, databaseResources(spec), meta)
+			}
 			if err != nil {
 				return err
 			}

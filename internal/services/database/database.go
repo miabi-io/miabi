@@ -248,6 +248,16 @@ type StorageClassPlacer interface {
 
 func (s *Service) SetStorageClasses(p StorageClassPlacer) { s.storage = p }
 
+// NodeApplies refuses a node pin on an instance whose data volume is shared, since a pin would undo its failover.
+func (s *Service) NodeApplies(workspaceID uint, class string) error {
+	if c, ok := s.storage.(interface {
+		NodeApplies(workspaceID uint, driver, class string) error
+	}); ok {
+		return c.NodeApplies(workspaceID, "", class)
+	}
+	return nil
+}
+
 // Shared by provision and bring-up so a recreated volume lands on the same disk.
 func (s *Service) dataVolumeSpec(inst *models.DatabaseInstance) docker.VolumeSpec {
 	spec := docker.VolumeSpec{
@@ -707,6 +717,7 @@ func (s *Service) Provision(ctx context.Context, workspaceID, serverID uint, nam
 	if err := s.enqueuer.EnqueueProvisionDB(inst.ID, inst.ServerID); err != nil {
 		return nil, err
 	}
+	s.annotateServer(inst)
 	return inst, nil
 }
 

@@ -22,11 +22,11 @@ const loading = ref(false) // first-load spinner only; background updates never 
 const showCreate = ref(false)
 const creating = ref(false)
 interface CreateForm {
-  name: string; engine: DBEngine; version: string; server_id: number; location: string
+  name: string; engine: DBEngine; version: string; node: string; location: string
   size_mb: number | null; memory_mb: number | null; cpu_cores: number | null; size: string
   storage_class: string
 }
-const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', server_id: 0, location: '', size_mb: null, memory_mb: null, cpu_cores: null, size: '', storage_class: '' })
+const emptyForm = (): CreateForm => ({ name: '', engine: 'postgres', version: '', node: '', location: '', size_mb: null, memory_mb: null, cpu_cores: null, size: '', storage_class: '' })
 
 const sizeOffer = ref<DatabaseSizeOffer>({ sizes: [], bound: false })
 const defaultSizeName = computed(() => sizeOffer.value.sizes.find((s) => s.id === sizeOffer.value.default_id)?.name ?? '')
@@ -44,6 +44,8 @@ const form = ref<CreateForm>(emptyForm())
 
 // Classes depend on the node, so they reload with the location; on failure the create uses the workspace default.
 const storageClasses = ref<StorageClassOption[]>([])
+// A shared class keeps the data reachable from every node, so a pin would only undo its failover.
+const nodeLocal = computed(() => !storageClasses.value.find((c) => c.name === form.value.storage_class)?.shared)
 async function loadStorageClasses() {
   if (!currentWorkspaceId.value) return
   try {
@@ -172,7 +174,7 @@ async function create() {
   creating.value = true
   try {
     const f = form.value
-    await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, f.server_id || undefined,
+    await databaseApi.create(currentWorkspaceId.value, f.name.trim(), f.engine, f.version.trim() || undefined, (nodeLocal.value && f.node) || undefined,
       Number(f.size_mb) || undefined, f.location || undefined,
       f.size ? undefined : Number(f.memory_mb) || undefined, f.size ? undefined : Number(f.cpu_cores) || undefined, f.size || undefined,
       f.storage_class || undefined)
@@ -262,7 +264,7 @@ function fmtBytes(n?: number): string {
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" :placeholder="$t('databases.form.namePlaceholder')" required autofocus />
             </div>
-            <LocationPicker v-model="form.location" v-model:server-id="form.server_id" />
+            <LocationPicker v-model="form.location" v-model:node-name="form.node" :allow-pin="nodeLocal" :node-hint="$t('databases.nodeHint')" />
             <div class="form-group">
               <label class="form-label">{{ $t('databases.col.engine') }}</label>
               <div class="engine-grid">

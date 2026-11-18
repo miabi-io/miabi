@@ -96,3 +96,15 @@ func TestRefuseImmutableLeavesAnAppNodeChangeToTheAppService(t *testing.T) {
 		t.Fatalf("an app node change must reach the app service, got %v", err)
 	}
 }
+
+func TestRefuseImmutableRefusesADatabaseNodeMove(t *testing.T) {
+	for _, kind := range []declarative.Kind{declarative.KindDatabase, declarative.KindDatabaseInstance} {
+		ch := declarative.Change{
+			Action: declarative.ActionUpdate, Kind: kind, Name: "pg",
+			Fields: []declarative.FieldDiff{{Field: "placement.node", From: "safari-01", To: "safari-02"}},
+		}
+		if err := refuseImmutable(ch); !errors.Is(err, ErrInvalidManifest) {
+			t.Errorf("%s node move err = %v, want a refusal", kind, err)
+		}
+	}
+}

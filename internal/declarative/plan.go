@@ -657,6 +657,9 @@ func specFields(r Resource) map[string]string {
 		if loc := r.Database.Location(); loc != "" {
 			f["placement.location"] = loc
 		}
+		if n := r.Database.NodeName(); n != "" {
+			f["placement.node"] = n
+		}
 		if ro := r.Database.ReadOnlyUser; ro != nil {
 			f["readOnlyUser"] = strconv.FormatBool(*ro)
 		}
@@ -675,6 +678,9 @@ func specFields(r Resource) map[string]string {
 		}
 		if loc := d.Location(); loc != "" {
 			f["placement.location"] = loc
+		}
+		if n := d.NodeName(); n != "" {
+			f["placement.node"] = n
 		}
 		if sc := strings.TrimSpace(d.StorageClass); sc != "" {
 			f["storage.class"] = sc
