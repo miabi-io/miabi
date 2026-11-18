@@ -21,10 +21,12 @@ package alerting
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/services/restores"
 )
 
 // BackupReporter posts finished backup runs to the inbox.
@@ -47,9 +49,12 @@ func (r BackupReporter) RequestedBackupFinished(ws, user uint, rep backup.Backup
 
 func backupNotice(rep backup.BackupReport, run string) models.Notification {
 	item := models.Notification{
-		Category:    models.CategoryDatabase,
+		Category:    rep.Category,
 		SubjectLink: rep.Link,
 		ActionText:  "View backups",
+	}
+	if item.Category == "" {
+		item.Category = models.CategoryDatabase
 	}
 	what := "Backup"
 	if rep.Ref != "" {
@@ -95,4 +100,40 @@ func humanBytes(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %sB", val, [...]string{"", "Ki", "Mi", "Gi", "Ti"}[exp])
+}
+
+func (r BackupReporter) RequestedRestoreFinished(ws, user uint, rep restores.Report) {
+	if err := r.n.NotifyUser(ws, user, restoreNotice(rep)); err != nil {
+		logger.Warn("could not report a restore to its requester", "workspace", ws, "user", user, "error", err)
+	}
+}
+
+func restoreNotice(rep restores.Report) models.Notification {
+	item := models.Notification{
+		Category: models.CategoryDatabase, SubjectLink: rep.Link, ActionText: "View",
+		Severity: models.AlertInfo,
+	}
+	if rep.Kind == models.RestoreVolume {
+		item.Category = models.CategoryStorage
+	}
+	switch {
+	case rep.OK && rep.Kind == models.RestoreRecoveryPoint:
+		item.Title = fmt.Sprintf("Recovery point restored — %s", rep.Subject)
+		item.Body = fmt.Sprintf("%s restored %s.", rep.Source, pluralDatabases(len(rep.Restored)))
+	case rep.OK:
+		item.Title = fmt.Sprintf("Restore completed — %s", rep.Subject)
+		item.Body = fmt.Sprintf("Restored from %s.", rep.Source)
+	case len(rep.Restored) > 0:
+		item.Severity = models.AlertWarning
+		item.Title = fmt.Sprintf("Restore partly failed — %s", rep.Subject)
+		item.Body = fmt.Sprintf("%s restored %s; failed: %s", rep.Source, pluralDatabases(len(rep.Restored)), strings.Join(rep.Failed, "; "))
+	default:
+		item.Severity = models.AlertWarning
+		item.Title = fmt.Sprintf("Restore failed — %s", rep.Subject)
+		item.Body = rep.Err
+		if len(rep.Failed) > 0 {
+			item.Body = strings.Join(rep.Failed, "; ")
+		}
+	}
+	return item
 }

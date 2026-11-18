@@ -113,6 +113,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/registry"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	releasesvc "github.com/miabi-io/miabi/internal/services/release"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/services/restriction"
 	"github.com/miabi-io/miabi/internal/services/route"
 	"github.com/miabi-io/miabi/internal/services/runner"
@@ -857,6 +858,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupService.SetSetRepository(backupSetRepo) // instance-wide recovery points
 	backupService.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
 		workspaceRepo, repositories.NewNotificationInboxRepository(db), bus)))
+	restoreRunner := restores.NewRunner(repositories.NewRestoreRepository(db))
+	restoreRunner.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
+		workspaceRepo, repositories.NewNotificationInboxRepository(db), bus)))
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
 	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients, cfg.ProxyNetwork)
 	volumeBackupService.SetImageResolver(imageResolver)
@@ -1558,6 +1562,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			platformMailer.SendPasswordReset(owner.Email, owner.Name, raw, int(auth.PasswordResetTTL/time.Hour))
 		}})
 	r.h.app.SetPlacer(placer)
+	r.h.backup.SetRestores(restoreRunner)
+	r.h.volumeBackup.SetRestores(restoreRunner)
 	r.h.app.SetGPU(gpuService)
 	r.h.database.SetPlacer(placer)
 	r.h.volume.SetPlacer(placer)

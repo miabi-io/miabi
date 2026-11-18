@@ -183,6 +183,7 @@ func Run(db *gorm.DB) error {
 		&models.WorkspaceBundle{},
 		&models.LocationMigration{},
 		&models.VolumeBackup{},
+		&models.Restore{},
 		&models.VolumeBackupSchedule{},
 		&models.SecurityPolicy{},
 		&models.BillingIdempotencyKey{},

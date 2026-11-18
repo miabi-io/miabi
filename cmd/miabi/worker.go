@@ -32,6 +32,7 @@ import (
 	"github.com/miabi-io/miabi/internal/netguard"
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/proxy"
+	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/application"
 	"github.com/miabi-io/miabi/internal/services/backup"
@@ -273,6 +274,9 @@ func runWorker() error {
 	volumeBackupSvc.SetS3Provider(backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(db)))
 	volumeBackupSvc.SetLogStore(logStore)
 	volumeBackupSvc.SetInternalNetwork(cfg.InternalNetwork)
+	// The worker's bus is local, so the bell picks the notice up on its next refresh rather than live.
+	volumeBackupSvc.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
+		repositories.NewWorkspaceRepository(db), repositories.NewNotificationInboxRepository(db), nil)))
 	volumeBackupHandler := worker.NewVolumeBackupHandler(volumeBackupSvc)
 
 	pbHost, pbPort, pbName, pbUser, pbPass, pbSSL := cfg.Database.PostgresConn()

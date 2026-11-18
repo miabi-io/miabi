@@ -18,7 +18,7 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import { fmtSize } from '@/utils/format'
 import { engineLogo, engineMdi } from '@/utils/resourceIcon'
 import { copyText } from '@/utils/clipboard'
-import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent, DatabaseSize, DatabaseSizeOffer, EngineDefault } from '@/api/types'
+import type { DatabaseInstance, DBStatus, UpgradeProgress, LogicalDatabase, ConnectionInfo, ForwardSession, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, DiscoveredSet, Application, Network, UpgradeOptions, UpgradePlan, StatsSample, AppEvent, DatabaseSize, DatabaseSizeOffer, EngineDefault, Restore } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { relativeTime } from '@/utils/time'
 import { fmtDateTime } from '@/utils/datetime'
@@ -555,14 +555,33 @@ function askRestoreSet(set: DatabaseBackupSet) {
 async function restoreSet(set: DatabaseBackupSet) {
   if (!wid.value) return
   try {
-    const res = (await backupApi.restoreSet(wid.value, instId.value, set.id)).data.data
-    if (res.failed?.length) {
-      notify.error(t('notify.databaseDetail.restoredFailed', { count: res.restored.length, count2: res.failed.length, join: res.failed.join('; ') }))
-    } else {
-      notify.success(t('db.toast.restoredDatabaseSFrom', { count: res.restored.length, ref: set.ref }))
-    }
+    await backupApi.restoreSet(wid.value, instId.value, set.id)
+    notify.info(t('db.toast.restoreStarted', { source: set.ref }))
+    await loadRestores()
   } catch (e) { notify.apiError(e) }
 }
+
+// A restore runs after its request; the banner follows it until it ends, and the inbox reports the outcome.
+const restores = ref<Restore[]>([])
+const liveRestore = computed(() => restores.value.find((r) => inProgress(r.status)) ?? null)
+async function loadRestores() {
+  if (!wid.value) return
+  try {
+    restores.value = (await backupApi.restores(wid.value, instId.value)).data.data ?? []
+  } catch { restores.value = [] }
+}
+watch([wid, instId], () => void loadRestores(), { immediate: true })
+let restorePoll: ReturnType<typeof setInterval> | null = null
+watch(liveRestore, (live) => {
+  if (!live) {
+    if (restorePoll) clearInterval(restorePoll)
+    restorePoll = null
+    if (selected.value) void loadBackups()
+    return
+  }
+  restorePoll ??= setInterval(() => void loadRestores(), 5000)
+})
+onUnmounted(() => { if (restorePoll) clearInterval(restorePoll) })
 
 async function addSetSchedule() {
   if (!wid.value) return
@@ -683,12 +702,15 @@ async function runRestore() {
   restoring.value = true
   try {
     if (restoreModal.value.backupId != null) {
-      await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value, restoreAgeIdentity.value.trim())
+      const rec = (await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value, restoreAgeIdentity.value.trim())).data.data
+      notify.info(t('db.toast.restoreStarted', { source: rec.source }))
+      await loadRestores()
     } else {
       if (!restoreFile.value) { notify.error(t('notify.databaseDetail.chooseADumpFile')); restoring.value = false; return }
+      // An uploaded dump streams with the request, so it still finishes before the response.
       await backupApi.restoreFile(wid.value, instId.value, selected.value.id, restoreFile.value, restoreMethod.value)
+      notify.success(t('db.toast.databaseRestored'))
     }
-    notify.success(t('db.toast.databaseRestored'))
     restoreModal.value = null
     loadBackups()
   } catch (e) { notify.apiError(e) }
@@ -1064,6 +1086,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       <div class="app-banner-content">
         <p class="app-banner-text">Provisioning {{ inst.engine }} {{ inst.version }}…</p>
         <p v-if="provisionMsg" class="app-banner-sub">{{ provisionMsg }}</p>
+      </div>
+    </div>
+
+    <div v-if="liveRestore" class="app-banner app-banner--warning mb-4">
+      <span class="mdi mdi-backup-restore app-banner-icon mdi-spin"></span>
+      <div class="app-banner-content">
+        <p class="app-banner-text">{{ $t('db.restoringBanner', { source: liveRestore.source }) }}</p>
+        <p class="app-banner-sub">{{ $t('db.restoringBannerSub') }}</p>
       </div>
     </div>
 

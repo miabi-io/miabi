@@ -404,7 +404,7 @@ func (s *Service) RunSchedule(ctx context.Context, workspaceID, scheduleID uint)
 	if err != nil {
 		return fmt.Errorf("volume not found: %w", err)
 	}
-	b, err := s.CreatePoint(ctx, vol, "scheduled", &sched.ID)
+	b, err := s.CreatePoint(ctx, vol, "scheduled", &sched.ID, nil)
 	now := time.Now()
 	sched.LastRunAt = &now
 	if uerr := s.repo.UpdateSchedule(sched); uerr != nil {

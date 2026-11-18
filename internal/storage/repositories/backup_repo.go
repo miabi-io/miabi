@@ -33,6 +33,7 @@ type BackupRepository struct {
 func NewBackupRepository(db *gorm.DB) *BackupRepository { return &BackupRepository{db: db} }
 
 func (r *BackupRepository) Create(b *models.Backup) error { return r.db.Create(b).Error }
+
 // The heartbeat is left to Touch, or a mid-run save would blank it and make a live run look abandoned.
 func (r *BackupRepository) Update(b *models.Backup) error {
 	return r.db.Omit("HeartbeatAt").Save(b).Error

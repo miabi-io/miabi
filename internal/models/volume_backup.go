@@ -30,6 +30,8 @@ type VolumeBackup struct {
 	VolumeName  string       `json:"volume_name"`                               // docker volume name
 	Status      BackupStatus `json:"status" gorm:"not null;default:pending"`
 	Trigger     string       `json:"trigger"` // manual | scheduled
+	// RequestedByID is who started a manual run; they alone are told when it finishes.
+	RequestedByID *uint `json:"requested_by_id,omitempty"`
 
 	// Empty on a plain archive; the partial index keeps those from colliding.
 	Ref string `json:"ref,omitempty" gorm:"uniqueIndex:idx_volume_backups_ref,where:ref <> ''"`

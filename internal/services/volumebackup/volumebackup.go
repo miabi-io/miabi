@@ -81,6 +81,30 @@ type Alerter interface {
 	VolumeBackupSucceeded(workspaceID, volumeID uint)
 }
 
+// Reporter tells whoever started a manual run how it ended; it runs on the worker, after their request.
+type Reporter interface {
+	RequestedBackupFinished(workspaceID, userID uint, rep backup.BackupReport)
+}
+
+func (s *Service) SetReporter(r Reporter) { s.reporter = r }
+
+func (s *Service) report(b *models.VolumeBackup) {
+	if s.reporter == nil || b.RequestedByID == nil {
+		return
+	}
+	// The row keeps the Docker name; the notice uses the name people gave the volume.
+	subject := b.VolumeName
+	if s.volumes != nil {
+		if v, err := s.volumes.FindInWorkspace(b.WorkspaceID, b.VolumeID); err == nil {
+			subject = v.Name
+		}
+	}
+	s.reporter.RequestedBackupFinished(b.WorkspaceID, *b.RequestedByID, backup.BackupReport{
+		Subject: subject, Ref: b.Ref, Link: fmt.Sprintf("/volumes/%d", b.VolumeID),
+		OK: b.Status == models.BackupCompleted, SizeBytes: b.SizeBytes, Err: b.Error, Category: models.CategoryStorage,
+	})
+}
+
 type Enqueuer interface {
 	EnqueueVolumeBackup(backupID, serverID uint) error
 }
@@ -93,6 +117,7 @@ type Service struct {
 	s3       S3Provider
 	enqueuer Enqueuer
 	alerter  Alerter
+	reporter Reporter
 	logs     *logstore.Store
 	// networks the helper is attached to so it can reach the object store from inside Docker.
 	network         string
@@ -255,16 +280,16 @@ func (s *Service) helperNetworks(ctx context.Context, dc docker.Client) ([]strin
 	return out, nil
 }
 
-func (s *Service) Create(ctx context.Context, vol *models.Volume, trigger string) (*models.VolumeBackup, error) {
-	return s.create(ctx, vol, trigger, false, nil)
+func (s *Service) Create(ctx context.Context, vol *models.Volume, trigger string, requestedBy *uint) (*models.VolumeBackup, error) {
+	return s.create(ctx, vol, trigger, false, nil, requestedBy)
 }
 
 // The caller owns the licence check.
-func (s *Service) CreatePoint(ctx context.Context, vol *models.Volume, trigger string, scheduleID *uint) (*models.VolumeBackup, error) {
-	return s.create(ctx, vol, trigger, true, scheduleID)
+func (s *Service) CreatePoint(ctx context.Context, vol *models.Volume, trigger string, scheduleID, requestedBy *uint) (*models.VolumeBackup, error) {
+	return s.create(ctx, vol, trigger, true, scheduleID, requestedBy)
 }
 
-func (s *Service) create(ctx context.Context, vol *models.Volume, trigger string, point bool, scheduleID *uint) (*models.VolumeBackup, error) {
+func (s *Service) create(ctx context.Context, vol *models.Volume, trigger string, point bool, scheduleID, requestedBy *uint) (*models.VolumeBackup, error) {
 	cfg, path, err := s.target(vol.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -272,7 +297,7 @@ func (s *Service) create(ctx context.Context, vol *models.Volume, trigger string
 	b := &models.VolumeBackup{
 		WorkspaceID: vol.WorkspaceID, VolumeID: vol.ID, ServerID: vol.ServerID,
 		VolumeName: vol.DockerName, Status: models.BackupPending, Trigger: trigger,
-		S3Bucket: cfg.Bucket, S3Path: path,
+		S3Bucket: cfg.Bucket, S3Path: path, RequestedByID: requestedBy,
 	}
 	if point {
 		b.Ref = models.NewVolumeBackupRef(vol.Name, time.Now())
@@ -442,6 +467,7 @@ func (s *Service) RunBackup(ctx context.Context, backupID uint) error {
 	if b.IsPoint() {
 		s.finishPoint(ctx, vol, b, passphrase, readBack, readBackErr)
 	}
+	s.report(b)
 	return nil
 }
 
@@ -450,6 +476,27 @@ func (s *Service) age(workspaceID uint) (recipients, identity string, err error)
 		return "", "", nil
 	}
 	return s.s3.BackupAge(workspaceID)
+}
+
+// PrecheckRestore runs the checks that can refuse a restore at once, so a background restore fails them on the request.
+func (s *Service) PrecheckRestore(vol *models.Volume, b *models.VolumeBackup) error {
+	if b.Filename == "" {
+		return ErrNoArchive
+	}
+	if _, _, err := s.target(vol.WorkspaceID); err != nil {
+		return err
+	}
+	var key, identity string
+	var err error
+	if strings.HasSuffix(b.Filename, ".age") {
+		if _, identity, err = s.age(b.WorkspaceID); err != nil {
+			return err
+		}
+	} else if key, err = s.archiveKeyPassphrase(b); err != nil {
+		return err
+	}
+	_, err = backup.RestoreKeyEnv(b.Filename, key, identity)
+	return err
 }
 
 func (s *Service) Restore(ctx context.Context, vol *models.Volume, b *models.VolumeBackup) error {
@@ -533,5 +580,6 @@ func (s *Service) fail(b *models.VolumeBackup, cause error) *models.VolumeBackup
 	if b.IsPoint() && s.alerter != nil {
 		s.alerter.VolumeBackupFailed(b.WorkspaceID, b.VolumeID, b.VolumeName, b.Ref, b.Error)
 	}
+	s.report(b)
 	return b
 }

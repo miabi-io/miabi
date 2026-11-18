@@ -41,6 +41,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -103,6 +104,8 @@ type BackupReport struct {
 	Databases int
 	SizeBytes int64
 	Err       string
+	// Category files the notice; empty means database.
+	Category models.AlertCategory
 }
 
 // A scheduled run reports to the workspace; a manual one runs in the background, so it reports to whoever started it.
@@ -296,7 +299,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 		row := *b
 		opts.started <- &row
 	}
-	defer beat(func() error { return s.repo.Touch(b.ID) })()
+	defer restores.Beat(func() error { return s.repo.Touch(b.ID) })()
 
 	env, err := s.connEnv(inst, db)
 	if err != nil {
@@ -570,19 +573,31 @@ func passphraseFor(filename, pass string) string {
 
 // For an S3 backup, dest.S3 must supply the bucket credentials again.
 func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, b *models.Backup, dest Destination, force, allowVersionMismatch bool) error {
+	spec, err := s.RestoreSpecFor(inst, b, dest, force, allowVersionMismatch)
+	if err != nil {
+		return err
+	}
+	return s.Restore(ctx, inst, db, spec)
+}
+
+// RestoreSpecFor runs the checks that can refuse a restore at once, so a background restore fails them on the request.
+func (s *Service) RestoreSpecFor(inst *models.DatabaseInstance, b *models.Backup, dest Destination, force, allowVersionMismatch bool) (RestoreSpec, error) {
 	if b.Filename == "" {
-		return ErrNoBackupFile
+		return RestoreSpec{}, ErrNoBackupFile
+	}
+	if _, ok := s.bkupImage(inst.Engine); !ok {
+		return RestoreSpec{}, ErrUnsupportedEngine
 	}
 	if !allowVersionMismatch {
 		if err := checkRestoreVersion(inst.Version, b.Version); err != nil {
-			return err
+			return RestoreSpec{}, err
 		}
 	}
 	pass, err := s.artifactPassphrase(b, dest.GPGPassphrase)
 	if err != nil {
-		return err
+		return RestoreSpec{}, err
 	}
-	return s.Restore(ctx, inst, db, RestoreSpec{
+	spec := RestoreSpec{
 		Filename:    b.Filename,
 		Destination: b.Destination,
 		VolumeName:  b.VolumeName,
@@ -592,7 +607,45 @@ func (s *Service) RestoreFromBackup(ctx context.Context, inst *models.DatabaseIn
 		// Keyed off the artifact: a backup taken before a passphrase was set is cleartext.
 		GPGPassphrase: passphraseFor(b.Filename, pass),
 		AgeIdentity:   dest.AgeIdentity,
-	})
+	}
+	if _, err := RestoreKeyEnv(spec.Filename, spec.GPGPassphrase, spec.AgeIdentity); err != nil {
+		return RestoreSpec{}, err
+	}
+	return spec, nil
+}
+
+// PrecheckSet refuses a recovery point restore before it starts when an item cannot be restored here.
+func (s *Service) PrecheckSet(inst *models.DatabaseInstance, set *models.DatabaseBackupSet, allowVersionMismatch bool) error {
+	if s.sets == nil {
+		return ErrSetsUnavailable
+	}
+	if len(set.Items) == 0 {
+		return ErrNoBackupFile
+	}
+	if allowVersionMismatch {
+		return nil
+	}
+	for i := range set.Items {
+		if err := checkRestoreVersion(inst.Version, set.Items[i].Version); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BackupRunning reports a live single-database backup, which a restore must not overlap.
+func (s *Service) BackupRunning(databaseID uint) bool {
+	running, err := s.repo.Running(databaseID, time.Now().Add(-staleAfter))
+	return err == nil && running
+}
+
+// SetRunning reports a live recovery point on the instance.
+func (s *Service) SetRunning(instanceID uint) bool {
+	if s.sets == nil {
+		return false
+	}
+	running, err := s.sets.Running(instanceID, time.Now().Add(-staleAfter))
+	return err == nil && running
 }
 
 // Wraps restore so every early return still reports to the instance timeline.

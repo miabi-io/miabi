@@ -20,7 +20,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -32,20 +35,24 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/services/restores"
 	"github.com/miabi-io/miabi/internal/services/volumebackup"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // VolumeBackupHandler exposes backup/restore of a managed volume's contents.
 type VolumeBackupHandler struct {
-	svc     *volumebackup.Service
-	volumes *repositories.VolumeRepository
-	repo    *repositories.VolumeBackupRepository
-	audit   *audit.Logger
-	logs    *logstore.Store
-	ee      enterprise.EE
-	cron    *cronpkg.Manager
+	svc      *volumebackup.Service
+	volumes  *repositories.VolumeRepository
+	repo     *repositories.VolumeBackupRepository
+	audit    *audit.Logger
+	logs     *logstore.Store
+	ee       enterprise.EE
+	cron     *cronpkg.Manager
+	restores *restores.Runner
 }
+
+func (h *VolumeBackupHandler) SetRestores(r *restores.Runner) { h.restores = r }
 
 func NewVolumeBackupHandler(svc *volumebackup.Service, volumes *repositories.VolumeRepository, repo *repositories.VolumeBackupRepository, cron *cronpkg.Manager, ee enterprise.EE, auditLog *audit.Logger) *VolumeBackupHandler {
 	return &VolumeBackupHandler{svc: svc, volumes: volumes, repo: repo, cron: cron, ee: ee, audit: auditLog}
@@ -110,11 +117,14 @@ func (h *VolumeBackupHandler) Run(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("volume not found")
 	}
+	if busy, a := restoreBusy(c, h.restores, models.Restore{VolumeID: v.ID}, "back it up once it finishes"); busy {
+		return a
+	}
 	var b *models.VolumeBackup
 	if h.entitled() {
-		b, err = h.svc.CreatePoint(c.Request().Context(), v, "manual", nil)
+		b, err = h.svc.CreatePoint(c.Request().Context(), v, "manual", nil, userIDPtr(c))
 	} else {
-		b, err = h.svc.Create(c.Request().Context(), v, "manual")
+		b, err = h.svc.Create(c.Request().Context(), v, "manual", userIDPtr(c))
 	}
 	if err != nil {
 		if errors.Is(err, volumebackup.ErrS3NotConfigured) {
@@ -136,7 +146,7 @@ func (h *VolumeBackupHandler) Restore(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("volume backup not found")
 	}
-	if err := h.svc.Restore(c.Request().Context(), v, b); err != nil {
+	if err := h.svc.PrecheckRestore(v, b); err != nil {
 		switch {
 		case errors.Is(err, volumebackup.ErrS3NotConfigured):
 			return c.AbortBadRequest("configure S3 backup settings for this workspace first")
@@ -150,8 +160,24 @@ func (h *VolumeBackupHandler) Restore(c *okapi.Context) error {
 			return c.AbortInternalServerError("restore failed", err)
 		}
 	}
+	source := b.Ref
+	if source == "" {
+		source = fmt.Sprintf("backup #%d", b.ID)
+	}
+	rec, err := h.restores.Start(&models.Restore{
+		WorkspaceID: v.WorkspaceID, Kind: models.RestoreVolume, VolumeID: v.ID,
+		Source: source, SourceID: b.ID, RequestedByID: userIDPtr(c),
+	}, v.Name, fmt.Sprintf("/volumes/%d", v.ID), func(ctx context.Context) (restores.Outcome, error) {
+		return restores.Outcome{}, h.svc.Restore(ctx, v, b)
+	})
+	if errors.Is(err, restores.ErrRunning) {
+		return c.AbortWithError(http.StatusConflict, err)
+	}
+	if err != nil {
+		return c.AbortInternalServerError("restore failed", err)
+	}
 	h.record(c, v.WorkspaceID, "volume.restore", b.ID)
-	return message(c, "volume restored")
+	return accepted(c, rec)
 }
 
 // Delete removes a volume backup record. In-flight backups can't be deleted.
@@ -396,4 +422,17 @@ func (h *VolumeBackupHandler) loadBackup(c *okapi.Context, workspaceID uint) (*m
 func (h *VolumeBackupHandler) record(c *okapi.Context, wsID uint, action string, id uint) {
 	actor := middlewares.UserID(c)
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "volume_backup", TargetID: strconv.Itoa(int(id)), IP: c.RealIP()})
+}
+
+// Restores lists the volume's recent restores, so the console can show one still running.
+func (h *VolumeBackupHandler) Restores(c *okapi.Context) error {
+	v, err := h.loadVolume(c)
+	if err != nil {
+		return c.AbortNotFound("volume not found")
+	}
+	list, err := h.restores.ForVolume(v.WorkspaceID, v.ID)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list restores", err)
+	}
+	return ok(c, list)
 }

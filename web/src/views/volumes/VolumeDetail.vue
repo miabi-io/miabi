@@ -13,7 +13,7 @@ import LocationName from '@/components/LocationName.vue'
 import { copyText } from '@/utils/clipboard'
 import { relativeTime } from '@/utils/time'
 import { fmtSize } from '@/utils/format'
-import type { VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupSchedule } from '@/api/types'
+import type { VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupSchedule, Restore } from '@/api/types'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -276,14 +276,36 @@ onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer)
 })
 
+// A restore runs after its request; the banner follows it until it ends, and the inbox reports the outcome.
+const restores = ref<Restore[]>([])
+const liveRestore = computed(() => restores.value.find((r) => r.status === 'running' || r.status === 'pending') ?? null)
+async function loadRestores() {
+  if (!wid.value) return
+  try {
+    restores.value = (await volumeApi.restores(wid.value, volId.value)).data.data ?? []
+  } catch { restores.value = [] }
+}
+watch([wid, volId], () => void loadRestores(), { immediate: true })
+let restorePoll: ReturnType<typeof setInterval> | null = null
+watch(liveRestore, (live) => {
+  if (!live) {
+    if (restorePoll) clearInterval(restorePoll)
+    restorePoll = null
+    return
+  }
+  restorePoll ??= setInterval(() => void loadRestores(), 5000)
+})
+onUnmounted(() => { if (restorePoll) clearInterval(restorePoll) })
+
 async function doRestore() {
   if (!wid.value || !pendingRestore.value) return
   restoring.value = true
   try {
-    await volumeApi.restoreBackup(wid.value, volId.value, pendingRestore.value.id)
-    notify.success(t('notify.volumeDetail.restored'))
+    const rec = (await volumeApi.restoreBackup(wid.value, volId.value, pendingRestore.value.id)).data.data
+    notify.info(t('volumes.restoreStarted', { source: rec.source }))
     restoreConfirmOpen.value = false
     pendingRestore.value = null
+    await loadRestores()
   } catch (e) {
     notify.apiError(e, 'Restore failed')
   } finally {
@@ -472,6 +494,14 @@ function isFileVisible(file: VolumeFile): boolean {
           {{ vol.in_use ? `in use · ${vol.used_by.length} app${vol.used_by.length === 1 ? '' : 's'}` : 'unused' }}
         </span>
         <span v-if="!vol.exists" class="badge badge-danger" :title="$t('volumes.missingHint')">{{ $t('volumes.missing') }}</span>
+      </div>
+    </div>
+
+    <div v-if="liveRestore" class="app-banner app-banner--warning mb-4">
+      <span class="mdi mdi-backup-restore app-banner-icon mdi-spin"></span>
+      <div class="app-banner-content">
+        <p class="app-banner-text">{{ $t('volumes.restoringBanner', { source: liveRestore.source }) }}</p>
+        <p class="app-banner-sub">{{ $t('volumes.restoringBannerSub') }}</p>
       </div>
     </div>
 

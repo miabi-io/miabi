@@ -42,6 +42,14 @@ func (r *Router) backupRoutes() []okapi.RouteDefinition {
 	return []okapi.RouteDefinition{
 		{
 			Method:      http.MethodGet,
+			Path:        "/{workspace}/databases/{databaseID}/restores",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.backup.Restores,
+			Summary:     "List the instance's recent restores (database and recovery point), newest first",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        sets,
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),

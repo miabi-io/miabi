@@ -2367,6 +2367,22 @@ export interface AdoptResult {
   skipped?: { database: string; filename: string; reason: string }[]
 }
 
+// A restore runs after its request; this is its record.
+export interface Restore {
+  id: number
+  kind: 'database' | 'recovery_point' | 'volume'
+  instance_id?: number
+  database_id?: number
+  volume_id?: number
+  source: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  error?: string
+  restored?: string[]
+  failed?: string[]
+  started_at?: string
+  finished_at?: string
+}
+
 export interface SetRestoreResult {
   ref: string
   restored: string[]
