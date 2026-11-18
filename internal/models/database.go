@@ -71,6 +71,7 @@ type DatabaseInstance struct {
 	ServerID    uint   `json:"server_id" gorm:"index;not null;default:0"`
 	ClusterID   uint   `json:"cluster_id" gorm:"index;not null;default:0"`
 	ServerName  string `json:"server_name,omitempty" gorm:"-"`
+	Node        string `json:"node,omitempty" gorm:"-"`
 	ContainerID string `json:"container_id,omitempty"`
 	// Empty on legacy rows, which fall back to the engine default.
 	Image string `json:"image,omitempty"`

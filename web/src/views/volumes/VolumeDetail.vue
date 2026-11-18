@@ -525,7 +525,7 @@ function isFileVisible(file: VolumeFile): boolean {
           <div v-if="vol.storage_class"><span class="detail-label">{{ $t('volumes.storageClass') }}</span>{{ vol.storage_class }}</div>
           <div v-if="vol.host_path"><span class="detail-label">{{ $t('volumes.hostPath') }}</span><code class="copyable" :title="$t('volumes.copy')" @click="copy(vol.host_path || '')">{{ vol.host_path }} <span class="mdi mdi-content-copy"></span></code></div>
           <div><span class="detail-label">{{ $t('db.dockerName') }}</span><code class="copyable" :title="$t('volumes.copy')" @click="copy(vol.docker_name)">{{ vol.docker_name }} <span class="mdi mdi-content-copy"></span></code></div>
-          <div v-if="vol.server_name"><span class="detail-label">{{ $t('volumes.node') }}</span>{{ vol.server_name }}</div>
+          <div v-if="vol.server_name"><span class="detail-label">{{ $t('volumes.node') }}</span>{{ vol.server_name }}<code v-if="vol.node && vol.node !== vol.server_name" class="node-name">{{ vol.node }}</code></div>
           <div><span class="detail-label">{{ $t('dashboard.col.created') }}</span>{{ fmtTime(vol.created_at) }}</div>
         </div>
       </div>
@@ -1030,4 +1030,5 @@ tr:hover .table-actions {
   gap: 6px;
   min-width: 0;
 }
+.node-name { margin-left: 6px; }
 </style>

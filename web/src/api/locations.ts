@@ -23,6 +23,7 @@ export interface LocationSet {
 export interface LocationNode {
   id: number
   name: string
+  display_name: string
   is_local: boolean
   online: boolean
   cordoned: boolean

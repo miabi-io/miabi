@@ -1421,6 +1421,7 @@ export interface Application {
   workspace_id: number
   server_id?: number
   server_name?: string
+  node?: string
   /** Name of the GitOps project that manages the app; filled on the detail read. */
   gitops_source_name?: string
   cluster_id?: number
@@ -1903,6 +1904,7 @@ export interface DatabaseInstance {
   name: string
   server_id?: number
   server_name?: string
+  node?: string
   cluster_id?: number
   display_name: string
   engine: DBEngine
@@ -2105,6 +2107,7 @@ export interface Volume {
   name: string
   server_id?: number
   server_name?: string
+  node?: string
   cluster_id?: number
   display_name: string
   docker_name: string

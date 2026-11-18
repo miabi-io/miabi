@@ -221,6 +221,7 @@ func (s *Service) annotateServer(v *models.Volume) {
 	}
 	if srv, err := s.serverInfo.Get(v.ServerID); err == nil && srv != nil {
 		v.ServerName = srv.Label()
+		v.Node = srv.Name
 	}
 }
 

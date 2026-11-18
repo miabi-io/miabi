@@ -47,7 +47,7 @@ const pinned = computed({
 })
 
 function optionLabel(n: LocationNode): string {
-  return n.is_local ? `${n.name} (manager)` : n.name
+  return n.is_local ? `${n.display_name} (manager)` : n.display_name
 }
 </script>
 
