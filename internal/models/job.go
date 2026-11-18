@@ -60,9 +60,11 @@ type Job struct {
 	ID            uint `json:"id" gorm:"primaryKey"`
 	WorkspaceID   uint `json:"workspace_id" gorm:"index;not null"`
 	ApplicationID uint `json:"application_id" gorm:"index;not null"`
-	// ServerID is the node the job ran on (0 = local), copied from the app.
-	ServerID  uint `json:"server_id" gorm:"not null;default:0"`
-	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
+	// ServerID is the node the job ran on (0 = local): its pin, else the app's node-local volumes, else the app's node.
+	ServerID uint `json:"server_id" gorm:"not null;default:0"`
+	// Node is ServerID's fixed name (transient).
+	Node      string `json:"node,omitempty" gorm:"-"`
+	ClusterID uint   `json:"cluster_id" gorm:"index;not null;default:0"`
 	// CronJobID links runs spawned by a CronJob to their schedule.
 	CronJobID *uint `json:"cronjob_id,omitempty" gorm:"index"`
 	// NULL once the definition is deleted, so its history stays.
@@ -128,6 +130,9 @@ type CronJob struct {
 	RegistryID  *uint    `json:"registry_id,omitempty"`
 	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
 	RunAsUser string `json:"run_as_user,omitempty"`
+	// PinnedServerID is the node placement.node chose for every run (0 = follow the app).
+	PinnedServerID uint   `json:"-" gorm:"not null;default:0"`
+	Node           string `json:"node,omitempty" gorm:"-"`
 
 	Enabled           bool   `json:"enabled" gorm:"not null;default:true"`
 	ConcurrencyPolicy string `json:"concurrency_policy" gorm:"not null;default:allow"`
@@ -164,6 +169,9 @@ type JobDefinition struct {
 	RegistryID  *uint    `json:"registry_id,omitempty"`
 	RunAsUser   string   `json:"run_as_user,omitempty"`
 	TimeoutSecs int      `json:"timeout_secs" gorm:"not null;default:0"`
+	// PinnedServerID is the node placement.node chose for every run (0 = follow the app).
+	PinnedServerID uint   `json:"-" gorm:"not null;default:0"`
+	Node           string `json:"node,omitempty" gorm:"-"`
 
 	RunPolicy     string `json:"run_policy" gorm:"not null;default:onChange"`
 	WaitForDeploy bool   `json:"wait_for_deploy" gorm:"not null;default:true"`

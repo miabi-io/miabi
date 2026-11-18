@@ -2000,6 +2000,7 @@ export interface ConnectionInfo {
 export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'skipped'
 
 export interface Job {
+  node?: string
   id: number
   workspace_id: number
   application_id: number
@@ -2030,6 +2031,7 @@ export interface Job {
 }
 
 export interface CronJob {
+  node?: string
   id: number
   workspace_id: number
   application_id: number
@@ -2057,6 +2059,7 @@ export interface CronJob {
 
 // A declared Job (kind: Job), created by apply/GitOps; each run is a Job row.
 export interface JobDefinition {
+  node?: string
   id: number
   uid?: string
   workspace_id: number

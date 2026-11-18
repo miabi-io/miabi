@@ -820,7 +820,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	jobService.SetPaused(suspended)
 	jobService.SetQuota(quotaService)
 	jobService.SetDeployments(deploymentRepo)
-	jobService.SetVolumes(volumeRepo, job.ServerLabel(serverRepo))
+	jobService.SetVolumes(volumeRepo, job.NodeNames(serverRepo))
 	jobService.SetScheduler(cronManager)
 	jobService.LoadCronJobs()
 	if cronManager != nil {

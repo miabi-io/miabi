@@ -65,7 +65,9 @@ type CronJobInput struct {
 	Image       string // optional custom image override (blank = app's release)
 	RegistryID  *uint
 	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
-	RunAsUser         string
+	RunAsUser string
+	// PinnedServerID pins every run to a node (0 = follow the app).
+	PinnedServerID    uint
 	TimeoutSecs       int
 	Enabled           bool
 	ConcurrencyPolicy string
@@ -106,6 +108,9 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkPin(app, in.PinnedServerID); err != nil {
+		return nil, err
+	}
 	name, display, err := s.cronName(workspaceID, in.Name, in.DisplayName, 0)
 	if err != nil {
 		return nil, err
@@ -127,6 +132,7 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 		Image:             in.Image,
 		RegistryID:        in.RegistryID,
 		RunAsUser:         runAsUser,
+		PinnedServerID:    in.PinnedServerID,
 		TimeoutSecs:       in.TimeoutSecs,
 		Enabled:           in.Enabled,
 		ConcurrencyPolicy: normalizePolicy(in.ConcurrencyPolicy),
@@ -136,6 +142,9 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 	}
 	if err := s.repo.CreateCronJob(cj); err != nil {
 		return nil, err
+	}
+	if cj.PinnedServerID != 0 {
+		cj.Node = s.pinName(cj.PinnedServerID)
 	}
 	if cj.Enabled {
 		s.schedule(cj)
@@ -179,6 +188,10 @@ func (s *Service) UpdateCronJob(workspaceID, id uint, in CronJobInput) (*models.
 	if cj.RunAsUser, err = s.checkRunAsUser(app, in.RunAsUser); err != nil {
 		return nil, err
 	}
+	if err := s.checkPin(app, in.PinnedServerID); err != nil {
+		return nil, err
+	}
+	cj.PinnedServerID = in.PinnedServerID
 	cj.Image = in.Image
 	cj.RegistryID = in.RegistryID
 	cj.TimeoutSecs = in.TimeoutSecs
@@ -193,6 +206,10 @@ func (s *Service) UpdateCronJob(workspaceID, id uint, in CronJobInput) (*models.
 	}
 	if err := s.repo.UpdateCronJob(cj); err != nil {
 		return nil, err
+	}
+	cj.Node = ""
+	if cj.PinnedServerID != 0 {
+		cj.Node = s.pinName(cj.PinnedServerID)
 	}
 	// Re-register to pick up schedule/command changes, or unregister if disabled.
 	if cj.Enabled {
@@ -219,6 +236,9 @@ func (s *Service) ListCronJobs(workspaceID, appID uint) ([]models.CronJob, error
 	names := s.appNames(workspaceID)
 	for i := range list {
 		list[i].AppName = names[list[i].ApplicationID]
+		if list[i].PinnedServerID != 0 {
+			list[i].Node = s.pinName(list[i].PinnedServerID)
+		}
 	}
 	return list, nil
 }
@@ -236,6 +256,9 @@ func (s *Service) GetCronJob(workspaceID, id uint) (*models.CronJob, error) {
 	cj, err := s.repo.FindCronJobInWorkspace(workspaceID, id)
 	if err != nil {
 		return nil, ErrCronNotFound
+	}
+	if cj.PinnedServerID != 0 {
+		cj.Node = s.pinName(cj.PinnedServerID)
 	}
 	return cj, nil
 }
@@ -406,6 +429,7 @@ func (s *Service) spawnJob(ctx context.Context, cj *models.CronJob, source strin
 		Image:       cj.Image,
 		RegistryID:  cj.RegistryID,
 		RunAsUser:   cj.RunAsUser, // blank inherits the app's, resolved by Run
+		ServerID:    cj.PinnedServerID,
 		TimeoutSecs: cj.TimeoutSecs,
 		Source:      source,
 		TriggeredBy: triggeredBy,
@@ -455,5 +479,5 @@ func (in CronJobInput) OnlyToggles(cj *models.CronJob) bool {
 		slices.Equal(in.Command, cj.Command) && slices.Equal(in.Entrypoint, cj.Entrypoint) &&
 		strings.TrimSpace(in.Image) == strings.TrimSpace(cj.Image) && user == cj.RunAsUser &&
 		in.TimeoutSecs == cj.TimeoutSecs && normalizePolicy(in.ConcurrencyPolicy) == cj.ConcurrencyPolicy &&
-		in.HistoryLimit == cj.HistoryLimit
+		in.HistoryLimit == cj.HistoryLimit && in.PinnedServerID == cj.PinnedServerID
 }

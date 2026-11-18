@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/declarative"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/job"
+	"github.com/miabi-io/miabi/internal/services/placement"
 )
 
 // Nil makes a manifest declaring either fail with ErrUnsupportedKind.
@@ -59,6 +60,7 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 				HistoryLimit:      cj.HistoryLimit,
 				Suspend:           &suspended,
 				Security:          securitySpec(cj.RunAsUser),
+				Placement:         jobPlacement(cj.Node),
 			},
 		})
 	}
@@ -84,11 +86,33 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 				HistoryLimit:   d.HistoryLimit,
 				BackoffLimit:   d.BackoffLimit,
 				Security:       securitySpec(d.RunAsUser),
+				Placement:      jobPlacement(d.Node),
 				SpecFP:         d.SpecHash,
 			},
 		})
 	}
 	return nil
+}
+
+func jobPlacement(node string) *declarative.JobPlacementSpec {
+	if node == "" {
+		return nil
+	}
+	return &declarative.JobPlacementSpec{Node: node}
+}
+
+// 0 with ok for an unstated node; the caller keeps the current pin then.
+func (s *Service) jobNode(ctx context.Context, workspaceID uint, kind, name string, app *models.Application, node string) (uint, bool, error) {
+	if node == "" || s.placer == nil {
+		return 0, false, nil
+	}
+	res, err := s.placer.Place(placement.Request{
+		WorkspaceID: workspaceID, Location: s.placer.LocationName(app.ClusterID), Node: node, Admin: isAdmin(ctx),
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("%w: %s %q: %v", ErrInvalidManifest, kind, name, err)
+	}
+	return res.Pinned, true, nil
 }
 
 func registryName(names map[uint]string, id *uint) string {
@@ -154,6 +178,11 @@ func (s *Service) applyCronJob(ctx context.Context, workspaceID uint, ch declara
 		ConcurrencyPolicy: spec.ConcurrencyPolicy, HistoryLimit: spec.HistoryLimit,
 		Metadata: jobMetadata(ctx, desired), Annotations: desired.Metadata.Annotations,
 	}
+	pin, stated, err := s.jobNode(ctx, workspaceID, "cronjob", ch.Name, app, spec.NodeName())
+	if err != nil {
+		return err
+	}
+	in.PinnedServerID = pin
 	if ch.Action == declarative.ActionCreate {
 		in.Enabled = spec.Suspend == nil || !*spec.Suspend
 		_, err = s.jobs.CreateCronJob(workspaceID, app.ID, in)
@@ -162,6 +191,9 @@ func (s *Service) applyCronJob(ctx context.Context, workspaceID uint, ch declara
 	cj, err := s.jobs.GetCronJobByName(workspaceID, ch.Name)
 	if err != nil {
 		return fmt.Errorf("cronjob %q: %w", ch.Name, err)
+	}
+	if !stated {
+		in.PinnedServerID = cj.PinnedServerID
 	}
 	in.Enabled = cj.Enabled
 	if spec.Suspend != nil {
@@ -206,6 +238,13 @@ func (s *Service) applyJob(ctx context.Context, workspaceID uint, ch declarative
 		Image: spec.Image, RegistryID: regID, RunAsUser: spec.RunAsUser(), TimeoutSecs: spec.TimeoutSeconds,
 		RunPolicy: spec.Policy(), WaitForDeploy: spec.Waits(), HistoryLimit: spec.HistoryLimit,
 		BackoffLimit: spec.BackoffLimit, SpecHash: spec.Fingerprint(), Metadata: jobMetadata(ctx, desired), Annotations: desired.Metadata.Annotations,
+	}
+	pin, stated, err := s.jobNode(ctx, workspaceID, "job", ch.Name, app, spec.NodeName())
+	if err != nil {
+		return err
+	}
+	if stated {
+		in.PinnedServerID = &pin
 	}
 	_, _, err = s.jobs.SaveDefinition(ctx, workspaceID, in, run)
 	return err
@@ -265,6 +304,13 @@ func exportJobs(set, out *declarative.ResourceSet, app string) {
 				continue
 			}
 			r.Metadata = declarative.Meta{Name: r.Metadata.Name, Annotations: r.Metadata.Annotations}
+			// Node names are specific to this install.
+			if r.CronJob != nil {
+				r.CronJob.Placement = nil
+			}
+			if r.Job != nil {
+				r.Job.Placement = nil
+			}
 			if r.CronJob != nil && r.CronJob.Suspend != nil && !*r.CronJob.Suspend {
 				r.CronJob.Suspend = nil
 			}

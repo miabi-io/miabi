@@ -42,6 +42,8 @@ var (
 	ErrNotRunning  = errors.New("job is not running")
 	// ErrVolumesSplit means no single node holds every node-local volume the app mounts.
 	ErrVolumesSplit = errors.New("the app's node-local volumes live on different nodes")
+	// ErrNodeVolumeConflict refuses a job pin away from a node-local volume, where the job would see an empty one.
+	ErrNodeVolumeConflict = errors.New("NODE_VOLUME_CONFLICT")
 )
 
 // Enqueuer schedules background execution. Implemented by the worker producer.
@@ -81,8 +83,8 @@ type VolumeLookup interface {
 	NodeLocalOf(app *models.Application) []*models.Volume
 }
 
-// ServerLabel names a node for messages; server id 0 is the control plane.
-func ServerLabel(servers *repositories.ServerRepository) func(uint) string {
+// NodeNames returns a node's fixed name, the value placement.node takes; server id 0 is the control plane.
+func NodeNames(servers *repositories.ServerRepository) func(uint) string {
 	return func(id uint) string {
 		var srv *models.Server
 		var err error
@@ -94,7 +96,7 @@ func ServerLabel(servers *repositories.ServerRepository) func(uint) string {
 		if err != nil {
 			return ""
 		}
-		return srv.Label()
+		return srv.Name
 	}
 }
 
@@ -137,13 +139,25 @@ type RunRequest struct {
 	JobDefinitionID *uint
 	// The image is resolved from the release that deployment activated.
 	WaitDeploymentID *uint
+	// ServerID pins the run to a node (0 = follow the app and its node-local volumes).
+	ServerID uint
 	// Attempt numbers a retry of a declared Job's run; 0 means the first.
 	Attempt int
 }
 
 // A service app's ServerID is only the manager it was created through; its node-local volumes are on the node its tasks run on.
-func (s *Service) jobNode(app *models.Application) (uint, error) {
-	if app.RuntimeKind != models.RuntimeService || s.volumes == nil {
+func (s *Service) jobNode(app *models.Application, pinned uint) (uint, error) {
+	if pinned != 0 {
+		return pinned, s.checkPin(app, pinned)
+	}
+	if app.RuntimeKind != models.RuntimeService {
+		return app.ServerID, nil
+	}
+	// A pinned service runs on its pin, which PinNode already keeps on the node of its node-local volumes.
+	if app.PinnedServerID != 0 {
+		return app.PinnedServerID, nil
+	}
+	if s.volumes == nil {
 		return app.ServerID, nil
 	}
 	vols := s.volumes.NodeLocalOf(app)
@@ -157,6 +171,29 @@ func (s *Service) jobNode(app *models.Application) (uint, error) {
 		}
 	}
 	return node, nil
+}
+
+// Any runtime: a job pinned away from the app's node-local volume would get a new, empty volume of the same name.
+func (s *Service) checkPin(app *models.Application, pinned uint) error {
+	if pinned == 0 || s.volumes == nil {
+		return nil
+	}
+	for _, v := range s.volumes.NodeLocalOf(app) {
+		if v.ServerID != pinned {
+			return fmt.Errorf("%w: volume %q of app %q lives on %s; a job pinned to %s would not see its data",
+				ErrNodeVolumeConflict, v.Name, app.Name, s.name(v.ServerID), s.name(pinned))
+		}
+	}
+	return nil
+}
+
+func (s *Service) name(serverID uint) string {
+	if s.nodeName != nil {
+		if n := s.nodeName(serverID); n != "" {
+			return n
+		}
+	}
+	return fmt.Sprintf("node %d", serverID)
 }
 
 func (s *Service) volumeNodes(vols []*models.Volume) string {
@@ -204,7 +241,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	if err != nil {
 		return nil, err
 	}
-	serverID, err := s.jobNode(app)
+	serverID, err := s.jobNode(app, req.ServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +321,15 @@ func (s *Service) Get(workspaceID, id uint) (*models.Job, error) {
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	j.Node = s.pinName(j.ServerID)
 	return j, nil
+}
+
+func (s *Service) pinName(serverID uint) string {
+	if s.nodeName == nil {
+		return ""
+	}
+	return s.nodeName(serverID)
 }
 
 func (s *Service) List(workspaceID, appID uint, limit int) ([]models.Job, error) {
@@ -295,6 +340,7 @@ func (s *Service) List(workspaceID, appID uint, limit int) ([]models.Job, error)
 	names := s.appNames(workspaceID)
 	for i := range jobs {
 		jobs[i].AppName = names[jobs[i].ApplicationID]
+		jobs[i].Node = s.pinName(jobs[i].ServerID)
 	}
 	return jobs, nil
 }

@@ -378,7 +378,7 @@ func runServer(cli *okapicli.CLI) {
 			releaseJobs := job.NewService(repositories.NewJobRepository(res.db), repositories.NewApplicationRepository(res.db), repositories.NewReleaseRepository(res.db), nodeClients, res.producer, 3600)
 			releaseJobs.SetQuota(securityQuota)
 			releaseJobs.SetDeployments(repositories.NewDeploymentRepository(res.db))
-			releaseJobs.SetVolumes(repositories.NewVolumeRepository(res.db), job.ServerLabel(repositories.NewServerRepository(res.db)))
+			releaseJobs.SetVolumes(repositories.NewVolumeRepository(res.db), job.NodeNames(repositories.NewServerRepository(res.db)))
 			deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
 			jobHandler.SetFailureHook(releaseJobs.RunFailed)
 			// Restricted profile is Enterprise-only; without it every workspace is clamped to the image's user.

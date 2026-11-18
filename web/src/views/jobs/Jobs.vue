@@ -270,7 +270,7 @@ const noApps = computed(() => apps.value.length === 0)
           <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('jobs.exit') }}</th><th>{{ $t('jobs.started') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="j in jobs" :key="j.id">
-              <td class="cell-sub">{{ j.app_name || appName(j.application_id) }}</td>
+              <td class="cell-sub">{{ j.app_name || appName(j.application_id) }}<div v-if="j.node" class="cell-sub"><span class="mdi mdi-server-network"></span> {{ j.node }}</div></td>
               <td>
                 <span class="cell-title" style="font-family: monospace">{{ j.name || cmd(j.command) }}</span>
                 <div v-if="j.name" class="cell-sub" style="font-family: monospace">{{ cmd(j.command) }}</div>

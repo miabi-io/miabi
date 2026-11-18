@@ -110,7 +110,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		return
 	}
 
-	// The active-release image is already on the node; a custom one may be private or absent.
+	// A custom image may be private or absent; the release image can be missing on a node no task of the app ran on.
 	if j.Pull {
 		auth, aerr := h.registryAuth(app.WorkspaceID, j.RegistryID)
 		if aerr != nil {
@@ -119,6 +119,16 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		}
 		if perr := dc.PullImage(ctx, j.Image, auth); perr != nil {
 			h.fail(j, fmt.Errorf("pull image %s: %w", j.Image, perr))
+			return
+		}
+	} else if ok, ierr := dc.ImageExists(ctx, j.Image); ierr == nil && !ok {
+		auth, aerr := h.registryAuth(app.WorkspaceID, app.RegistryID)
+		if aerr != nil {
+			h.fail(j, aerr)
+			return
+		}
+		if perr := dc.PullImage(ctx, j.Image, auth); perr != nil {
+			h.fail(j, fmt.Errorf("image %s is not on the job's node and could not be pulled: %w", j.Image, perr))
 			return
 		}
 	}

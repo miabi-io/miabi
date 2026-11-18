@@ -472,6 +472,14 @@ type CronJobSpec struct {
 	Suspend *bool `yaml:"suspend,omitempty" json:"suspend,omitempty"`
 	// Security pins the account runs use; omitted inherits the app's when each run fires.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
+	// Placement pins runs to a node of the app's location; omitted keeps the current pin.
+	Placement *JobPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+}
+
+// JobPlacementSpec has no location: a run always lands in its app's location.
+type JobPlacementSpec struct {
+	// Node is a node's fixed name; omitted, runs follow the app and its node-local volumes.
+	Node string `yaml:"node,omitempty" json:"node,omitempty"`
 }
 
 // Job run policies.
@@ -507,6 +515,8 @@ type JobSpec struct {
 	BackoffLimit int `yaml:"backoffLimit,omitempty" json:"backoffLimit,omitempty"`
 	// Security pins the account runs use; omitted inherits the app's.
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
+	// Placement pins runs to a node of the app's location; omitted keeps the current pin.
+	Placement *JobPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
 	// SpecFP is derived state filled on the live side, never serialized.
 	SpecFP string `yaml:"-" json:"-"`
 }

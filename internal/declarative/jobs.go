@@ -155,6 +155,17 @@ func (j *JobSpec) Fingerprint() string {
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
+func (p *JobPlacementSpec) node() string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(p.Node)
+}
+
+func (c *CronJobSpec) NodeName() string { return c.Placement.node() }
+
+func (j *JobSpec) NodeName() string { return j.Placement.node() }
+
 func cronJobFields(c *CronJobSpec, f map[string]string) {
 	f["app"] = c.App
 	f["schedule"] = strings.TrimSpace(c.Schedule)
@@ -173,6 +184,9 @@ func cronJobFields(c *CronJobSpec, f map[string]string) {
 	f["security.runAsUser"] = user
 	if c.Suspend != nil {
 		f["suspend"] = strconv.FormatBool(*c.Suspend)
+	}
+	if n := c.NodeName(); n != "" {
+		f["placement.node"] = n
 	}
 }
 
@@ -196,6 +210,10 @@ func diffJob(actual, desired Resource) []FieldDiff {
 	add("runPolicy", a.Policy(), d.Policy())
 	add("waitForDeploy", strconv.FormatBool(a.Waits()), strconv.FormatBool(d.Waits()))
 	add("backoffLimit", strconv.Itoa(a.BackoffLimit), strconv.Itoa(d.BackoffLimit))
+	// Outside the fingerprint: moving where a Job runs is no reason to run it again.
+	if n := d.NodeName(); n != "" {
+		add("placement.node", a.NodeName(), n)
+	}
 	from := a.SpecFP
 	if from == "" {
 		from = a.Fingerprint()

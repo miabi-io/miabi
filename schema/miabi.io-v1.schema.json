@@ -235,6 +235,10 @@
           "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
           "type": "string"
         },
+        "placement": {
+          "$ref": "#/$defs/JobPlacementSpec",
+          "description": "Placement pins runs to a node of the app's location; omitted keeps the current pin."
+        },
         "registry": {
           "description": "Registry names the Registry credential that pulls Image. Only valid with image.",
           "type": "string"
@@ -593,6 +597,17 @@
       ],
       "type": "object"
     },
+    "JobPlacementSpec": {
+      "additionalProperties": false,
+      "description": "JobPlacementSpec has no location: a run always lands in its app's location.",
+      "properties": {
+        "node": {
+          "description": "Node is a node's fixed name; omitted, runs follow the app and its node-local volumes.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "JobSpec": {
       "additionalProperties": false,
       "description": "JobSpec never runs twice for the same commit; a failed run is not retried by the next sync.",
@@ -626,6 +641,10 @@
         "image": {
           "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
           "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/JobPlacementSpec",
+          "description": "Placement pins runs to a node of the app's location; omitted keeps the current pin."
         },
         "registry": {
           "description": "Registry names the Registry credential that pulls Image. Only valid with image.",
