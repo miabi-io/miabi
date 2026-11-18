@@ -97,7 +97,15 @@ type ServiceStatus struct {
 	RunningTasks uint64         `json:"running_tasks"` // currently running
 	Placement    map[string]int `json:"placement,omitempty"`
 	// StartedAt comes from the swarm control plane, so it is known even for nodes Miabi has no client for.
-	StartedAt string `json:"started_at,omitempty"`
+	StartedAt string        `json:"started_at,omitempty"`
+	Failures  []TaskFailure `json:"-"`
+}
+
+// TaskFailure is a task Swarm gave up on; it stays listed until the task history limit drops it.
+type TaskFailure struct {
+	At       time.Time `json:"at"`
+	ExitCode int       `json:"exit_code"`
+	Error    string    `json:"error,omitempty"`
 }
 
 type ServiceConfig struct {
@@ -360,12 +368,19 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 		st.Replicas = *svc.Spec.Mode.Replicated.Replicas
 	}
 	tasks, terr := e.cli.TaskList(ctx, client.TaskListOptions{
-		Filters: selectorFilters("service", svc.ID, "desired-state", "running"),
+		Filters: selectorFilters("service", svc.ID),
 	})
 	if terr == nil {
 		var oldest time.Time
 		for _, t := range tasks.Items {
-			if t.Status.State != swarm.TaskStateRunning {
+			if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateRejected {
+				f := TaskFailure{At: t.Status.Timestamp, Error: t.Status.Err}
+				if t.Status.ContainerStatus != nil {
+					f.ExitCode = t.Status.ContainerStatus.ExitCode
+				}
+				st.Failures = append(st.Failures, f)
+			}
+			if t.DesiredState != swarm.TaskStateRunning || t.Status.State != swarm.TaskStateRunning {
 				continue
 			}
 			st.RunningTasks++

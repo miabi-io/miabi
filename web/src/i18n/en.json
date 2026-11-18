@@ -497,10 +497,12 @@
     "logs": {
       "copyMatching": "Copy matching lines",
       "downloadMatching": "Download matching lines",
+      "failedStart": "Deployment #{number} failed before its container could start. The container was removed; its last output was saved in the deployment log.",
       "following": "Following new output — click to pause",
       "jumpToLatest": "Jump to latest and follow",
       "liveTab": "Live",
       "noMatches": "No lines match your search.",
+      "openDeploymentLog": "Open deployment log",
       "search": "Search logs…",
       "searchRegex": "Search logs (regex)…",
       "selectDeployment": "Select a deployment or click Deploy to stream logs.",
