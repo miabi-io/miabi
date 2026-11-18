@@ -16,6 +16,8 @@ export interface AppRuntimeInput {
   runtime_kind?: RuntimeKind
   replicas?: number
   placement_constraints?: string[]
+  // A node's fixed name; on update "" clears the pin.
+  node?: string
   update_config?: ServiceUpdateConfig
 }
 

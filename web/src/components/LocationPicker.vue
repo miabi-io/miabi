@@ -7,7 +7,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { locationLabel } from '@/utils/locations'
 
 // '' means the workspace default. A bound nodeName pins by the node's fixed name for anyone allowed; serverId is the admin-only form.
-const props = defineProps<{ modelValue: string; serverId?: number; nodeName?: string; allowPin?: boolean }>()
+const props = defineProps<{ modelValue: string; serverId?: number; nodeName?: string; allowPin?: boolean; nodeHint?: string }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void
   (e: 'update:serverId', v: number): void
@@ -96,7 +96,7 @@ function nodeLabel(n: LocationNode): string {
       <option value="">{{ $t('locationPicker.anyNodeInTheLocation') }}</option>
       <option v-for="n in nodes" :key="n.id" :value="n.name" :disabled="!n.pinnable">{{ nodeLabel(n) }}</option>
     </select>
-    <p class="form-hint">{{ $t('locationPicker.nodeIsFixed') }}</p>
+    <p class="form-hint">{{ nodeHint ?? $t('locationPicker.nodeIsFixed') }}</p>
   </div>
   <div v-else-if="showNodes" class="form-group">
     <label class="form-label">{{ $t('locationPicker.node') }} <span class="badge badge-muted">{{ $t('locationPicker.admin') }}</span></label>

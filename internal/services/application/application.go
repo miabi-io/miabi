@@ -72,6 +72,12 @@ var (
 	ErrStackNotFound      = errors.New("stack not found in workspace")
 	ErrAppRunning         = errors.New("stop the application before deleting it")
 	ErrNodeMismatch       = errors.New("the volume is on a different node than this application")
+	// ErrNodeConstraintConflict refuses a node pin beside a raw constraint that also picks the node.
+	ErrNodeConstraintConflict = errors.New("placement.node and a node.id or node.hostname constraint both choose the node; keep one")
+	// ErrNodeMoveDeployed refuses moving a deployed container app: its old container would be left on the old node.
+	ErrNodeMoveDeployed = errors.New("moving a deployed container app to another node is not supported yet; pin it before its first deploy, or run it as a service")
+	// ErrNodeVolumeConflict refuses a node pin away from a node-local volume the app mounts.
+	ErrNodeVolumeConflict = errors.New("NODE_VOLUME_CONFLICT")
 	ErrVolumeLocation     = errors.New("the volume is in a different location than this application")
 	ErrStackLocation      = errors.New("the stack is in a different location than this application")
 	ErrConfigNotFound     = errors.New("config not found in workspace")
@@ -146,7 +152,9 @@ type CreateInput struct {
 	RuntimeKind          models.RuntimeKind
 	Replicas             int
 	PlacementConstraints []string
-	UpdateConfig         *models.ServiceUpdateConfig
+	// PinnedServerID is the node placement.node chose (0 = none).
+	PinnedServerID uint
+	UpdateConfig   *models.ServiceUpdateConfig
 	// HTTP handlers must sanitize user input before setting reserved "miabi.io/" keys.
 	Metadata    models.Metadata
 	Annotations models.Metadata
@@ -356,6 +364,14 @@ func (s *Service) annotateServer(app *models.Application) {
 	if srv, err := s.serverInfo.Get(app.ServerID); err == nil && srv != nil {
 		app.ServerName = srv.Label()
 		app.Node = srv.Name
+	}
+	app.NodePinned = app.PinnedServerID != 0
+	// A service's ServerID is only the manager it was created through, so its node is the pin or none.
+	if app.RuntimeKind == models.RuntimeService {
+		app.Node = ""
+		if app.NodePinned {
+			app.Node = s.nodeName(app.PinnedServerID)
+		}
 	}
 }
 
@@ -1026,6 +1042,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		RuntimeKind:            in.RuntimeKind,
 		Replicas:               in.Replicas,
 		PlacementConstraints:   in.PlacementConstraints,
+		PinnedServerID:         in.PinnedServerID,
 		UpdateConfig:           in.UpdateConfig,
 		Status:                 models.AppStatusCreated,
 		Metadata:               models.DefaultManagedBy(in.Metadata, models.ManagedByUser),
@@ -2028,6 +2045,9 @@ func (s *Service) attachVolume(app *models.Application, volumeID uint, path stri
 		return ErrVolumeLocation
 	}
 	if nodeLocal(vol) {
+		if app.RuntimeKind == models.RuntimeService && app.PinnedServerID != 0 && vol.ServerID != app.PinnedServerID {
+			return s.volumeConflict(app, vol, app.PinnedServerID)
+		}
 		if app.RuntimeKind == models.RuntimeService {
 			// Deploy pins the task to its node-local volumes' node, so they must all share one node.
 			if n := s.localMountNode(app, vol.ID); n != 0 && n != vol.ServerID {
@@ -2064,6 +2084,57 @@ func (s *Service) attachVolume(app *models.Application, volumeID uint, path stri
 }
 
 // Host-path volumes exist on every node and rwx ones mount from their backend wherever the task runs.
+// PinNode sets or clears (serverID 0) the app's node pin; the caller saves the app.
+func (s *Service) PinNode(app *models.Application, serverID uint) error {
+	if serverID != 0 && HasNodeConstraint(app.PlacementConstraints) {
+		return ErrNodeConstraintConflict
+	}
+	if serverID != 0 {
+		for _, m := range app.Mounts {
+			if m.VolumeID == 0 || m.HostPath != "" {
+				continue
+			}
+			if v, err := s.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID); err == nil && nodeLocal(v) && v.ServerID != serverID {
+				return s.volumeConflict(app, v, serverID)
+			}
+		}
+	}
+	if app.RuntimeKind != models.RuntimeService && serverID != 0 && serverID != app.ServerID {
+		if app.CurrentReleaseID != nil {
+			return ErrNodeMoveDeployed
+		}
+		app.ServerID = serverID
+	}
+	app.PinnedServerID = serverID
+	s.annotateServer(app)
+	return nil
+}
+
+// HasNodeConstraint reports a raw constraint that already picks one node.
+func HasNodeConstraint(constraints []string) bool {
+	for _, c := range constraints {
+		c = strings.ReplaceAll(c, " ", "")
+		if strings.HasPrefix(c, "node.id==") || strings.HasPrefix(c, "node.hostname==") {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) volumeConflict(app *models.Application, v *models.Volume, target uint) error {
+	return fmt.Errorf("%w: volume %q lives on %s; move or detach it before pinning %q to %s",
+		ErrNodeVolumeConflict, v.Name, s.nodeName(v.ServerID), app.Name, s.nodeName(target))
+}
+
+func (s *Service) nodeName(serverID uint) string {
+	if s.serverInfo != nil {
+		if srv, err := s.serverInfo.Get(serverID); err == nil && srv != nil {
+			return srv.Name
+		}
+	}
+	return fmt.Sprintf("node %d", serverID)
+}
+
 func nodeLocal(v *models.Volume) bool {
 	return v.Driver != models.VolumeDriverHost && v.AccessMode != models.AccessRWX
 }

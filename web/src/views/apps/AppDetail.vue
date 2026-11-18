@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { appApi, isPipelineRun, type ExternalAccess, type GPUKind, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
+import { locationApi, type LocationNode } from '@/api/locations'
 import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
@@ -484,6 +485,43 @@ function emptySettingsForm(): SettingsForm {
   }
 }
 const settingsForm = ref<SettingsForm>(emptySettingsForm())
+
+const nodeChoices = ref<LocationNode[]>([])
+const nodeChoice = ref('')
+const savingNode = ref(false)
+const showNodeCard = computed(() => !!app.value?.node_pinned || nodeChoices.value.some((n) => n.pinnable))
+
+// Nodes come from the app's own location, which may not be the workspace default.
+async function loadNodeChoices() {
+  nodeChoices.value = []
+  if (!wid.value || !app.value) return
+  try {
+    const set = (await locationApi.list(wid.value)).data.data
+    const loc = set?.locations?.find((l) => l.id === app.value?.cluster_id)
+    nodeChoices.value = (await locationApi.nodes(wid.value, loc?.name)).data.data ?? []
+  } catch {
+    nodeChoices.value = []
+  }
+}
+
+// The settings tab can open before the app has loaded, so both follow the app rather than the tab.
+watch(() => [tab.value, app.value?.cluster_id] as const, ([t]) => { if (t === 'settings') void loadNodeChoices() })
+watch(() => [app.value?.node, app.value?.node_pinned] as const, () => {
+  nodeChoice.value = app.value?.node_pinned ? app.value.node || '' : ''
+}, { immediate: true })
+
+async function saveNode() {
+  if (!wid.value) return
+  savingNode.value = true
+  try {
+    app.value = (await appApi.update(wid.value, appId.value, { node: nodeChoice.value })).data.data
+    notify.success(t(isService.value ? 'appDetail.node.savedService' : 'appDetail.node.saved'))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingNode.value = false
+  }
+}
 
 // --- Source editing -------------------------------------------------------
 const SOURCE_TYPES: { value: 'image' | 'git'; label: string; hint: string; icon: string }[] = [
@@ -3465,6 +3503,22 @@ async function detachDatabase(d: AppDatabase) {
               {{ $t('appDetail.runtime.check') }}
             </button>
           </template>
+        </div>
+      </div>
+
+      <div v-if="showNodeCard" class="card mb-4">
+        <div class="card-header"><h2>{{ $t('appDetail.node.title') }}</h2></div>
+        <div class="card-body" style="max-width: 460px">
+          <div class="form-group">
+            <select v-model="nodeChoice" class="form-select" :aria-label="$t('appDetail.node.title')" :disabled="!ws.canEdit">
+              <option value="">{{ $t(isService ? 'appDetail.node.anyService' : 'appDetail.node.anyContainer') }}</option>
+              <option v-for="n in nodeChoices" :key="n.id" :value="n.name" :disabled="!n.pinnable && n.name !== nodeChoice">{{ n.display_name }}</option>
+            </select>
+            <p class="form-hint">{{ $t(isService ? 'appDetail.node.hintService' : 'appDetail.node.hintContainer') }}</p>
+          </div>
+          <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingNode || nodeChoice === (app.node_pinned ? app.node || '' : '')" @click="saveNode">
+            {{ savingNode ? $t('action.saving') : $t('appDetail.node.save') }}
+          </button>
         </div>
       </div>
 

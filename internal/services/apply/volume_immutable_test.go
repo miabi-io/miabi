@@ -85,3 +85,14 @@ func TestVolumePlacementReportsTheNodeOfNodeLocalVolumesOnly(t *testing.T) {
 		t.Errorf("a shared volume must not report a node, got %+v", p)
 	}
 }
+
+// An app's pin is applied through the app service, which owns the move rules.
+func TestRefuseImmutableLeavesAnAppNodeChangeToTheAppService(t *testing.T) {
+	ch := declarative.Change{
+		Action: declarative.ActionUpdate, Kind: declarative.KindApplication, Name: "api",
+		Fields: []declarative.FieldDiff{{Field: "placement.node", From: "", To: "safari-02"}},
+	}
+	if err := refuseImmutable(ch); err != nil {
+		t.Fatalf("an app node change must reach the app service, got %v", err)
+	}
+}

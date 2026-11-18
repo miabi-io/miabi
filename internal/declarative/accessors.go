@@ -36,6 +36,13 @@ func (a *ApplicationSpec) Location() string {
 	return a.Placement.Location
 }
 
+func (a *ApplicationSpec) NodeName() string {
+	if a == nil || a.Placement == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.Placement.Node)
+}
+
 // Constraints are the app's Swarm placement constraints; nil when unstated, empty when cleared.
 func (a *ApplicationSpec) Constraints() []string {
 	if a == nil || a.Placement == nil {
