@@ -315,8 +315,11 @@ type Application struct {
 	ServerID   uint   `json:"server_id" gorm:"index;not null;default:0"`
 	ClusterID  uint   `json:"cluster_id" gorm:"index;not null;default:0"`
 	ServerName string `json:"server_name,omitempty" gorm:"-"`
+	// PinnedServerID is the node placement.node chose (0 = none); for a container app it equals ServerID.
+	PinnedServerID uint `json:"-" gorm:"not null;default:0"`
 	// Node is the node's fixed name, the value placement.node takes; ServerName is its display name.
 	Node             string `json:"node,omitempty" gorm:"-"`
+	NodePinned       bool   `json:"node_pinned,omitempty" gorm:"-"`
 	GitOpsSourceName string `json:"gitops_source_name,omitempty" gorm:"-"`
 	// Transient: populated only on the detail read in cluster mode.
 	Nodes []NodePlacement `json:"nodes,omitempty" gorm:"-"`

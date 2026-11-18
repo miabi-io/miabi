@@ -210,6 +210,12 @@ func (h *DeployHandler) serviceConstraints(app *models.Application) []string {
 		return app.PlacementConstraints
 	}
 	out := append(append([]string{}, app.PlacementConstraints...), h.poolPolicy.PoolConstraints(app.WorkspaceID, app.ClusterID)...)
+	// Resolved per deploy, so a node that rejoins the swarm under a new id keeps its pin.
+	if app.PinnedServerID != 0 {
+		if pin := h.poolPolicy.NodeConstraint(app.PinnedServerID); pin != "" && !slices.Contains(out, pin) {
+			out = append(out, pin)
+		}
+	}
 	// A node-local volume exists on one node: a task scheduled anywhere else would start on a new, empty one.
 	for _, pin := range h.volumePins(app) {
 		if !slices.Contains(out, pin) {

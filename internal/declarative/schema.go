@@ -157,6 +157,8 @@ type ApplicationPlacementSpec struct {
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
 	// Constraints use Swarm syntax (node.labels.disk==ssd); an empty list clears them, omitting keeps them.
 	Constraints []string `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+	// Node is a node's fixed name inside the location; a service gets it as a constraint. Omitted keeps the current pin.
+	Node string `yaml:"node,omitempty" json:"node,omitempty"`
 }
 
 // DeploymentSpec is how an application runs and rolls out.

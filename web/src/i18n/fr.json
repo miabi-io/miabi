@@ -394,6 +394,16 @@
     },
     "deployment": "Déploiement",
     "deploymentStrategy": "Stratégie de déploiement",
+    "node": {
+      "title": "Nœud",
+      "anyService": "N’importe quel nœud — l’ordonnanceur décide",
+      "anyContainer": "Non épinglé",
+      "hintService": "Chaque tâche tourne sur ce nœud à partir du prochain déploiement. Un volume local au nœud garde déjà le service sur son nœud.",
+      "hintContainer": "Une application conteneur ne peut changer de nœud qu’avant son premier déploiement.",
+      "save": "Enregistrer le nœud",
+      "saved": "Nœud enregistré",
+      "savedService": "Nœud enregistré — redéployez pour l’appliquer"
+    },
     "runtime": {
       "title": "Runtime",
       "current": "Cette application tourne en {runtime}.",
@@ -821,6 +831,9 @@
       "resourcesRequired": "Le plan de cet espace de travail exige une limite CPU et une limite mémoire sur chaque application.",
       "memoryRequired": "Le plan de cet espace de travail exige une limite mémoire sur chaque application. Le CPU est partagé : une limite CPU est facultative."
     },
+    "nodeHintContainer": "L’application tourne sur ce nœud. Épinglez-la avant son premier déploiement ; un conteneur déployé ne peut pas encore changer de nœud.",
+    "nodeHintService": "Swarm exécute chaque tâche sur ce nœud, et un redéploiement applique un épinglage modifié.",
+    "nodeReplicasWarn": "Les {n} réplicas tourneront tous sur ce seul nœud.",
     "searchLabel": "Rechercher des applications",
     "searchPlaceholder": "Rechercher par nom, image, dépôt ou nœud…"
   },
@@ -3000,11 +3013,6 @@
     "builtForPlatforms": "Plateformes pour lesquelles cette image a été construite, publiées comme une seule image multiplateforme",
     "deploymentNumber": "Déploiement n°{number}",
     "deploymentLinkTitle": "Ouvrir le déploiement lancé par cette exécution"
-  },
-  "placement": {
-    "anyNodeTheSchedulerDecides": "N’importe quel nœud — l’ordonnanceur décide",
-    "pinAServiceThatMust": "Épinglez un service qui doit s’exécuter là où vivent ses données, ou pour le placer sur un nœud précis.",
-    "placement": "Placement"
   },
   "planDetail": {
     "active": "actif",

@@ -553,6 +553,9 @@ func specFields(r Resource) map[string]string {
 		if loc := a.Location(); loc != "" {
 			f["placement.location"] = loc
 		}
+		if n := a.NodeName(); n != "" {
+			f["placement.node"] = n
+		}
 		// Only compared when stated, so console-configured rollout settings don't diff.
 		if s := a.Strategy(); s != "" {
 			f["deployment.strategy"] = s

@@ -1423,6 +1423,7 @@ export interface Application {
   server_id?: number
   server_name?: string
   node?: string
+  node_pinned?: boolean
   /** Name of the GitOps project that manages the app; filled on the detail read. */
   gitops_source_name?: string
   cluster_id?: number

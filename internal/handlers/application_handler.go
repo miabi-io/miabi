@@ -139,10 +139,12 @@ type CreateAppRequest struct {
 		RestartPolicy          string   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 		ImagePullPolicy        string   `json:"image_pull_policy" enum:"always,if-not-present,never"`
 		// Omitted means container, which Okapi fills in so the stored kind is never empty.
-		RuntimeKind          string                   `json:"runtime_kind" enum:"container,service" default:"container"`
-		Replicas             int                      `json:"replicas" min:"0" max:"100"`
-		PlacementConstraints []string                 `json:"placement_constraints"`
-		UpdateConfig         *ServiceUpdateConfigBody `json:"update_config"`
+		RuntimeKind          string   `json:"runtime_kind" enum:"container,service" default:"container"`
+		Replicas             int      `json:"replicas" min:"0" max:"100"`
+		PlacementConstraints []string `json:"placement_constraints"`
+		// Node pins the app to a node by its fixed name; a service gets it as a placement constraint.
+		Node         string                   `json:"node"`
+		UpdateConfig *ServiceUpdateConfigBody `json:"update_config"`
 		// Metadata: user labels. Reserved "miabi.io/" keys are stripped.
 		Metadata map[string]string `json:"metadata"`
 	} `json:"body"`
@@ -166,34 +168,36 @@ type UpdateAppRequest struct {
 }
 
 type UpdateAppBody struct {
-	DisplayName                   string                   `json:"display_name"`
-	Image                         string                   `json:"image"`
-	Tag                           string                   `json:"tag"`
-	GitRepo                       string                   `json:"git_repo"`
-	GitRef                        string                   `json:"git_ref"`
-	RegistryID                    *uint                    `json:"registry_id"`
-	GitRepositoryID               *uint                    `json:"git_repository_id"`
-	StackID                       *uint                    `json:"stack_id"`
-	NetworkIDs                    []uint                   `json:"network_ids"`
-	Ports                         []PortSpecBody           `json:"ports"`
-	Command                       []string                 `json:"command"`
-	Port                          int                      `json:"port"`
-	MemoryBytes                   int64                    `json:"memory_bytes" min:"0"`
-	NanoCPUs                      int64                    `json:"nano_cpus" min:"0"`
-	GPUCount                      int                      `json:"gpu_count" min:"0"`
-	GPUKind                       string                   `json:"gpu_kind"`
-	GPUCapabilities               []string                 `json:"gpu_capabilities"`
-	RunAsUser                     string                   `json:"run_as_user"`
-	AddCapabilities               []string                 `json:"add_capabilities"`
-	Devices                       []string                 `json:"devices"`
-	ReadOnlyRootFilesystem        *bool                    `json:"read_only_root_filesystem"`
-	NoNewPrivileges               *bool                    `json:"no_new_privileges"`
-	DropCapabilities              []string                 `json:"drop_capabilities"`
-	RestartPolicy                 string                   `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
-	ImagePullPolicy               string                   `json:"image_pull_policy" enum:"always,if-not-present,never"`
-	RuntimeKind                   string                   `json:"runtime_kind" enum:"container,service"`
-	Replicas                      int                      `json:"replicas" min:"0" max:"100"`
-	PlacementConstraints          []string                 `json:"placement_constraints"`
+	DisplayName            string         `json:"display_name"`
+	Image                  string         `json:"image"`
+	Tag                    string         `json:"tag"`
+	GitRepo                string         `json:"git_repo"`
+	GitRef                 string         `json:"git_ref"`
+	RegistryID             *uint          `json:"registry_id"`
+	GitRepositoryID        *uint          `json:"git_repository_id"`
+	StackID                *uint          `json:"stack_id"`
+	NetworkIDs             []uint         `json:"network_ids"`
+	Ports                  []PortSpecBody `json:"ports"`
+	Command                []string       `json:"command"`
+	Port                   int            `json:"port"`
+	MemoryBytes            int64          `json:"memory_bytes" min:"0"`
+	NanoCPUs               int64          `json:"nano_cpus" min:"0"`
+	GPUCount               int            `json:"gpu_count" min:"0"`
+	GPUKind                string         `json:"gpu_kind"`
+	GPUCapabilities        []string       `json:"gpu_capabilities"`
+	RunAsUser              string         `json:"run_as_user"`
+	AddCapabilities        []string       `json:"add_capabilities"`
+	Devices                []string       `json:"devices"`
+	ReadOnlyRootFilesystem *bool          `json:"read_only_root_filesystem"`
+	NoNewPrivileges        *bool          `json:"no_new_privileges"`
+	DropCapabilities       []string       `json:"drop_capabilities"`
+	RestartPolicy          string         `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
+	ImagePullPolicy        string         `json:"image_pull_policy" enum:"always,if-not-present,never"`
+	RuntimeKind            string         `json:"runtime_kind" enum:"container,service"`
+	Replicas               int            `json:"replicas" min:"0" max:"100"`
+	PlacementConstraints   []string       `json:"placement_constraints"`
+	// Node pins the app to a node by its fixed name; "" clears the pin, omitted keeps it.
+	Node                          *string                  `json:"node"`
 	UpdateConfig                  *ServiceUpdateConfigBody `json:"update_config"`
 	BuildMethod                   string                   `json:"build_method" enum:"auto,dockerfile,buildpack"`
 	Builder                       string                   `json:"builder"`
@@ -458,8 +462,11 @@ type AttachVolumeRequest struct {
 
 func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) error {
 	wsID := middlewares.WorkspaceID(c)
+	if strings.TrimSpace(req.Body.Node) != "" && application.HasNodeConstraint(req.Body.PlacementConstraints) {
+		return c.AbortBadRequest(application.ErrNodeConstraintConflict.Error())
+	}
 	placed, err := h.placer.place(c, placement.Request{
-		Location: req.Body.Location, ServerID: req.Body.ServerID,
+		Location: req.Body.Location, ServerID: req.Body.ServerID, Node: req.Body.Node,
 		Service: req.Body.RuntimeKind == string(models.RuntimeService),
 		GPUs:    req.Body.GPUCount, GPUKind: req.Body.GPUKind,
 	})
@@ -492,6 +499,7 @@ func (h *ApplicationHandler) Create(c *okapi.Context, req *CreateAppRequest) err
 		RuntimeKind:            models.RuntimeKind(req.Body.RuntimeKind),
 		Replicas:               req.Body.Replicas,
 		PlacementConstraints:   req.Body.PlacementConstraints,
+		PinnedServerID:         placed.Pinned,
 		UpdateConfig:           req.Body.UpdateConfig.toModel(),
 		// Strip any reserved keys a client tries to set; Create stamps managed-by.
 		Metadata: models.SanitizeUserMetadata(req.Body.Metadata),
@@ -596,6 +604,9 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	}
 	b := &req.Body
 	b.applyTo(app)
+	if ok, a := h.applyNode(c, app, b.Node); !ok {
+		return a
+	}
 	app.Stack = nil    // cleared so the association isn't re-saved; StackID drives it
 	app.Networks = nil // managed separately via SetNetworks (avoid association save)
 	app.Ports = nil    // managed separately via SetPorts
@@ -812,6 +823,8 @@ func (h *ApplicationHandler) AttachVolume(c *okapi.Context, req *AttachVolumeReq
 		case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrLocalVolumeReplicated),
 			errors.Is(err, application.ErrVolumeUnverifiable), errors.Is(err, application.ErrVolumeLocation):
 			return c.AbortBadRequest(err.Error())
+		case errors.Is(err, application.ErrNodeVolumeConflict):
+			return c.AbortWithError(409, err)
 		default:
 			return c.AbortInternalServerError("failed to attach volume", err)
 		}
@@ -1481,6 +1494,32 @@ func sourceUnchangedLock(app *models.Application, req *UpdateAppRequest) error {
 	return sourceLock(app)
 }
 
+// ok is false once a refusal is written: okapi's abort helpers return nil, so the error alone can't signal it.
+func (h *ApplicationHandler) applyNode(c *okapi.Context, app *models.Application, node *string) (bool, error) {
+	target := app.PinnedServerID
+	if node != nil {
+		target = 0
+		if name := strings.TrimSpace(*node); name != "" {
+			location := ""
+			if h.placer != nil && h.placer.svc != nil {
+				location = h.placer.svc.LocationName(app.ClusterID)
+			}
+			res, err := h.placer.place(c, placement.Request{Location: location, Node: name, Service: app.RuntimeKind == models.RuntimeService})
+			if err != nil {
+				if a := placementAbort(c, err); a != nil {
+					return false, a
+				}
+				return false, h.mapErr(c, err)
+			}
+			target = res.Pinned
+		}
+	}
+	if err := h.svc.PinNode(app, target); err != nil {
+		return false, h.mapErr(c, err)
+	}
+	return true, nil
+}
+
 func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 	if a := quotaAbort(c, err); a != nil {
 		return a
@@ -1504,8 +1543,10 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound(err.Error())
 	case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrVolumeNotFound),
 		errors.Is(err, application.ErrMountPathRequired), errors.Is(err, application.ErrVolumeLocation),
-		errors.Is(err, application.ErrStackLocation):
+		errors.Is(err, application.ErrStackLocation), errors.Is(err, application.ErrNodeConstraintConflict):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, application.ErrNodeVolumeConflict), errors.Is(err, application.ErrNodeMoveDeployed):
+		return c.AbortWithError(409, err)
 	case errors.Is(err, nodes.ErrNodeOffline), errors.Is(err, node.ErrNodeCordoned), errors.Is(err, node.ErrNodeNotFound),
 		errors.Is(err, datavolume.ErrLost):
 		return c.AbortWithError(409, err)

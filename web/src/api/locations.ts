@@ -28,7 +28,6 @@ export interface LocationNode {
   online: boolean
   cordoned: boolean
   pinnable: boolean
-  swarm_node_id?: string
 }
 
 export const locationApi = {

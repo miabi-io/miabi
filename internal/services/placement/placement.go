@@ -184,6 +184,8 @@ type Request struct {
 type Result struct {
 	ClusterID uint `json:"cluster_id"`
 	ServerID  uint `json:"server_id"`
+	// Pinned is the node a Node request chose; for a service it differs from ServerID, which is the manager.
+	Pinned uint `json:"pinned,omitempty"`
 }
 
 // Place resolves the cluster and node a new resource lands on.
@@ -192,7 +194,22 @@ func (s *Service) Place(req Request) (Result, error) {
 		if req.ServerID != 0 {
 			return Result{}, ErrNodeAndServerID
 		}
-		return s.pinNode(req, name)
+		pin, err := s.pinNode(req, name)
+		if err != nil || !req.Service {
+			return pin, err
+		}
+		// Swarm schedules a service, so its ServerID stays the location's usual pick and the pin becomes a constraint.
+		c, err := s.clusters.FindByID(pin.ClusterID)
+		if err != nil {
+			return Result{}, ErrLocationNotFound
+		}
+		req.Node, req.Location = "", c.Name
+		res, err := s.Place(req)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Pinned = pin.ServerID
+		return res, nil
 	}
 	if req.ServerID != 0 && !req.Admin {
 		return Result{}, ErrNodePinAdminOnly
@@ -492,8 +509,8 @@ type Node struct {
 	Cordoned    bool   `json:"cordoned"`
 	// Pinnable is whether this workspace may set placement.node to it right now.
 	Pinnable bool `json:"pinnable"`
-	// Swarm schedules services, so a pin is a node.id== constraint rather than a server id.
-	SwarmNodeID string `json:"swarm_node_id,omitempty"`
+	// Kept server-side for NodeConstraint; workspaces pin by Name.
+	SwarmNodeID string `json:"-"`
 }
 
 // Nodes resolves the location exactly as Place does, so an unusable location is refused the same way.
@@ -558,7 +575,7 @@ func (s *Service) pinNode(req Request, name string) (Result, error) {
 		if srv.Cordoned {
 			return Result{}, fmt.Errorf("%w: %q", ErrNodeCordoned, name)
 		}
-		return Result{ClusterID: c.ID, ServerID: srv.ID}, nil
+		return Result{ClusterID: c.ID, ServerID: srv.ID, Pinned: srv.ID}, nil
 	}
 	return Result{}, fmt.Errorf("%w: %q in %q", ErrNodeNotInLocation, name, c.Name)
 }

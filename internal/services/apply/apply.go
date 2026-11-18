@@ -160,7 +160,7 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 	}
 	req := placement.Request{
 		WorkspaceID: workspaceID, Location: spec.Location(), Admin: isAdmin(ctx),
-		Service: spec.Runtime() == string(models.RuntimeService),
+		Service: spec.Runtime() == string(models.RuntimeService), Node: spec.NodeName(),
 	}
 	if spec.Resources != nil {
 		req.GPUs, req.GPUKind = spec.Resources.GPU, spec.Resources.GPUKind
@@ -198,6 +198,17 @@ func (s *Service) placeApp(ctx context.Context, workspaceID uint, name string, s
 			ErrInvalidManifest, name, mounted)
 	case err != nil:
 		return res, fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, name, err)
+	}
+	if res.Pinned != 0 {
+		for _, m := range spec.Mounts {
+			if m.Volume == "" {
+				continue
+			}
+			if v, err := s.findVolume(workspaceID, m.Volume); err == nil && v.NodeLocal() && v.ServerID != res.Pinned {
+				return res, fmt.Errorf("%w: NODE_VOLUME_CONFLICT: volume %q lives on %s; move or detach it before pinning %q to %q",
+					ErrInvalidManifest, m.Volume, s.nodeLabel(v.ServerID), name, spec.NodeName())
+			}
+		}
 	}
 	return res, nil
 }
@@ -267,6 +278,22 @@ func (s *Service) placeVolume(ctx context.Context, workspaceID uint, ch declarat
 			ErrInvalidManifest, ch.Name, node, appName, s.nodeLabel(colocate))
 	}
 	return res, nil
+}
+
+// An omitted node keeps the pin, re-checked against the manifest's constraints and mounts.
+func (s *Service) pinAppNode(ctx context.Context, workspaceID uint, app *models.Application, node string) error {
+	target := app.PinnedServerID
+	if node != "" && s.placer != nil {
+		res, err := s.placer.Place(placement.Request{
+			WorkspaceID: workspaceID, Location: s.placer.LocationName(app.ClusterID), Node: node,
+			Service: app.RuntimeKind == models.RuntimeService, Admin: isAdmin(ctx),
+		})
+		if err != nil {
+			return err
+		}
+		target = res.Pinned
+	}
+	return s.apps.PinNode(app, target)
 }
 
 func (s *Service) nodeLabel(serverID uint) string {
@@ -463,7 +490,7 @@ func (s *Service) locationName(clusterID uint) string {
 // Nothing is rescheduled after create.
 func refuseMove(ch declarative.Change) error {
 	for _, f := range ch.Fields {
-		if f.Field == "placement.node" {
+		if f.Field == "placement.node" && ch.Kind == declarative.KindVolume {
 			return fmt.Errorf("%w: %s %q lives on node %q and cannot move to %q; volumes do not move between nodes. Migrate the data, or delete it and apply again",
 				ErrInvalidManifest, strings.ToLower(string(ch.Kind)), ch.Name, f.From, f.To)
 		}
@@ -1583,6 +1610,8 @@ func trimDefaults(a *declarative.ApplicationSpec, defaultLocation string) {
 	// The export holds one app, not its Stack, and a manifest may only name a Stack it declares.
 	a.Stack = ""
 	if p := a.Placement; p != nil {
+		// A node name is specific to this install.
+		p.Node = ""
 		if p.Location == defaultLocation {
 			p.Location = ""
 		}
@@ -1736,6 +1765,12 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 		ext, pub := s.exposedPorts(workspaceID, full.ID)
 		r := appResource(full, ext, pub, volNameByID, regNameByID, cfgNameByID)
+		if full.PinnedServerID != 0 && s.storage != nil && r.Application != nil {
+			if r.Application.Placement == nil {
+				r.Application.Placement = &declarative.ApplicationPlacementSpec{}
+			}
+			r.Application.Placement.Node = s.storage.NodeName(full.PinnedServerID)
+		}
 		if r.Application.Digest != "" {
 			r.Application.Digest = s.liveDigest(full)
 		}
@@ -2884,6 +2919,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 			return err
 		}
 		in.ServerID = target.ServerID
+		in.PinnedServerID = target.Pinned
 		if s.placer != nil {
 			self := s.placementOf(target.ServerID, "", target.ClusterID)
 			if err := s.checkAppRefPlacement(workspaceID, ch.Name, refs, &self); err != nil {
@@ -2968,6 +3004,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		}
 		if c := spec.Constraints(); c != nil {
 			app.PlacementConstraints = c
+		}
+		if err := s.pinAppNode(ctx, workspaceID, app, spec.NodeName()); err != nil {
+			return fmt.Errorf("%w: application %q: %v", ErrInvalidManifest, ch.Name, err)
 		}
 		if spec.Update() != nil {
 			app.UpdateConfig = updateConfigOf(spec)

@@ -446,6 +446,14 @@ func (r *Resource) validateApplication() error {
 	if a == nil {
 		return fmt.Errorf("application %q: spec is required", r.Metadata.Name)
 	}
+	if a.NodeName() != "" {
+		for _, c := range a.Constraints() {
+			c = strings.ReplaceAll(c, " ", "")
+			if strings.HasPrefix(c, "node.id==") || strings.HasPrefix(c, "node.hostname==") {
+				return fmt.Errorf("application %q: placement.node and the constraint %q both choose the node; keep one", r.Metadata.Name, c)
+			}
+		}
+	}
 	switch {
 	case a.DeprecatedStrategy != "":
 		return fmt.Errorf("application %q: strategy is the old spelling of deployment.strategy; set only deployment.strategy", r.Metadata.Name)

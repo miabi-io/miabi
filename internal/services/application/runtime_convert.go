@@ -135,6 +135,8 @@ func (s *Service) planRuntime(app *models.Application, ch RuntimeChange) (Runtim
 		// The node the app was placed on, unless its node-local volume lives elsewhere.
 		if localNode != nil {
 			next.ServerID = *localNode
+		} else if app.PinnedServerID != 0 {
+			next.ServerID = app.PinnedServerID
 		}
 	}
 	p.Replicas, p.ServerID = next.Replicas, next.ServerID

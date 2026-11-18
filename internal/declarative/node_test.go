@@ -48,3 +48,10 @@ func TestNodeIsRefusedWhereItDoesNotApplyYet(t *testing.T) {
 		}
 	}
 }
+
+func TestApplicationNodeBesideANodeConstraintIsRefused(t *testing.T) {
+	doc := "apiVersion: miabi.io/v1\nkind: Application\nmetadata: {name: api}\nspec:\n  image: nginx\n  placement:\n    node: safari-02\n    constraints: [\"node.id==abc\"]\n"
+	if _, err := Parse([]byte(doc)); err == nil || !strings.Contains(err.Error(), "both choose the node") {
+		t.Errorf("err = %v, want a refusal", err)
+	}
+}

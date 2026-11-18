@@ -394,6 +394,16 @@
     },
     "deployment": "Deployment",
     "deploymentStrategy": "Deployment strategy",
+    "node": {
+      "title": "Node",
+      "anyService": "Any node — the scheduler decides",
+      "anyContainer": "Not pinned",
+      "hintService": "Every task runs on this node from the next deploy. A node-local volume already keeps the service on its node.",
+      "hintContainer": "A container app can change node only before its first deploy.",
+      "save": "Save node",
+      "saved": "Node saved",
+      "savedService": "Node saved — redeploy to apply it"
+    },
     "runtime": {
       "title": "Runtime",
       "current": "This app runs as a {runtime}.",
@@ -821,6 +831,9 @@
       "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app.",
       "memoryRequired": "This workspace's plan requires a memory limit on every app. CPU is shared, so a CPU limit is optional."
     },
+    "nodeHintContainer": "The app runs on this node. Pin it before its first deploy; a deployed container can't move nodes yet.",
+    "nodeHintService": "Swarm runs every task on this node, and redeploys pick up a changed pin.",
+    "nodeReplicasWarn": "All {n} replicas will run on this one node.",
     "searchLabel": "Search applications",
     "searchPlaceholder": "Search applications by name, image, repo, or node…"
   },
@@ -3000,11 +3013,6 @@
     "builtForPlatforms": "Platforms this image was built for, pushed as one multi-platform image",
     "deploymentNumber": "Deployment #{number}",
     "deploymentLinkTitle": "Open the deployment this run started"
-  },
-  "placement": {
-    "anyNodeTheSchedulerDecides": "Any node — the scheduler decides",
-    "pinAServiceThatMust": "Pin a service that must run where its data lives, or to place it on a specific node.",
-    "placement": "Placement"
   },
   "planDetail": {
     "active": "active",

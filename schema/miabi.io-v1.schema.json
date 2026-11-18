@@ -14,6 +14,10 @@
         "location": {
           "description": "Location defaults to the stack, a mounted volume or referenced databases, else the workspace default; fixed once created.",
           "type": "string"
+        },
+        "node": {
+          "description": "Node is a node's fixed name inside the location; a service gets it as a constraint. Omitted keeps the current pin.",
+          "type": "string"
         }
       },
       "type": "object"
