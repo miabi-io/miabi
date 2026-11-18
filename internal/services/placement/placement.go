@@ -456,11 +456,13 @@ func (s *Service) PoolConstraints(workspaceID, clusterID uint) []string {
 
 // Node is a node as a create form sees it: enough to pin a resource, never its address or capacity.
 type Node struct {
-	ID       uint   `json:"id"`
-	Name     string `json:"name"`
-	IsLocal  bool   `json:"is_local"`
-	Online   bool   `json:"online"`
-	Cordoned bool   `json:"cordoned"`
+	ID uint `json:"id"`
+	// Name is fixed at node creation, so manifests and API calls use it; DisplayName may change.
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	IsLocal     bool   `json:"is_local"`
+	Online      bool   `json:"online"`
+	Cordoned    bool   `json:"cordoned"`
 	// Swarm schedules services, so a pin is a node.id== constraint rather than a server id.
 	SwarmNodeID string `json:"swarm_node_id,omitempty"`
 }
@@ -484,7 +486,8 @@ func (s *Service) Nodes(workspaceID uint, location string, admin bool) ([]Node, 
 		}
 		out = append(out, Node{
 			ID:          srv.ID,
-			Name:        srv.Label(),
+			Name:        srv.Name,
+			DisplayName: srv.Label(),
 			IsLocal:     srv.IsLocal,
 			Online:      srv.IsLocal || (s.online != nil && s.online(srv.ID)),
 			Cordoned:    srv.Cordoned,

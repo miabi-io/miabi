@@ -304,6 +304,8 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound("job definition not found")
 	case errors.Is(err, job.ErrNotTerminal):
 		return c.AbortWithError(409, err)
+	case errors.Is(err, job.ErrVolumesSplit):
+		return c.AbortWithError(409, err)
 	case errors.Is(err, job.ErrAlreadyDone):
 		return c.AbortWithError(409, err)
 	default:

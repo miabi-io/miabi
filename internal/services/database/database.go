@@ -538,6 +538,7 @@ func (s *Service) annotateServer(inst *models.DatabaseInstance) {
 	}
 	if srv, err := s.serverInfo.Get(inst.ServerID); err == nil && srv != nil {
 		inst.ServerName = srv.Label()
+		inst.Node = srv.Name
 	}
 }
 

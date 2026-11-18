@@ -312,9 +312,11 @@ type Application struct {
 	// Generated once and reused as the proxy upstream; legacy apps fall back to "mb-app-<id>".
 	Alias string `json:"alias,omitempty" gorm:"index"`
 	// In cluster mode it is a placement hint; Swarm schedules subject to PlacementConstraints.
-	ServerID         uint   `json:"server_id" gorm:"index;not null;default:0"`
-	ClusterID        uint   `json:"cluster_id" gorm:"index;not null;default:0"`
-	ServerName       string `json:"server_name,omitempty" gorm:"-"`
+	ServerID   uint   `json:"server_id" gorm:"index;not null;default:0"`
+	ClusterID  uint   `json:"cluster_id" gorm:"index;not null;default:0"`
+	ServerName string `json:"server_name,omitempty" gorm:"-"`
+	// Node is the node's fixed name, the value placement.node takes; ServerName is its display name.
+	Node             string `json:"node,omitempty" gorm:"-"`
 	GitOpsSourceName string `json:"gitops_source_name,omitempty" gorm:"-"`
 	// Transient: populated only on the detail read in cluster mode.
 	Nodes []NodePlacement `json:"nodes,omitempty" gorm:"-"`

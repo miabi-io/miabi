@@ -23,6 +23,7 @@ package job
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -39,6 +40,8 @@ var (
 	ErrNotTerminal = errors.New("job is still active; cancel it before deleting")
 	ErrAlreadyDone = errors.New("job has already finished")
 	ErrNotRunning  = errors.New("job is not running")
+	// ErrVolumesSplit means no single node holds every node-local volume the app mounts.
+	ErrVolumesSplit = errors.New("the app's node-local volumes live on different nodes")
 )
 
 // Enqueuer schedules background execution. Implemented by the worker producer.
@@ -61,6 +64,8 @@ type Service struct {
 	apps        *repositories.ApplicationRepository
 	releases    *repositories.ReleaseRepository
 	clients     NodeDocker
+	volumes     VolumeLookup
+	nodeName    func(serverID uint) string
 	enqueuer    Enqueuer
 	scheduler   Scheduler
 	quota       *quota.Service
@@ -69,6 +74,33 @@ type Service struct {
 	registered map[uint]string
 	// defaultTimeoutSecs caps a job's runtime when the request leaves it unset.
 	defaultTimeoutSecs int
+}
+
+// VolumeLookup finds the volumes an app mounts that live on a single node.
+type VolumeLookup interface {
+	NodeLocalOf(app *models.Application) []*models.Volume
+}
+
+// ServerLabel names a node for messages; server id 0 is the control plane.
+func ServerLabel(servers *repositories.ServerRepository) func(uint) string {
+	return func(id uint) string {
+		var srv *models.Server
+		var err error
+		if id == 0 {
+			srv, err = servers.FindLocal()
+		} else {
+			srv, err = servers.FindByID(id)
+		}
+		if err != nil {
+			return ""
+		}
+		return srv.Label()
+	}
+}
+
+// SetVolumes wires the volume lookup; nil runs every job on the app's node.
+func (s *Service) SetVolumes(v VolumeLookup, nodeName func(serverID uint) string) {
+	s.volumes, s.nodeName = v, nodeName
 }
 
 // nil runs declared Jobs straight away.
@@ -109,6 +141,38 @@ type RunRequest struct {
 	Attempt int
 }
 
+// A service app's ServerID is only the manager it was created through; its node-local volumes are on the node its tasks run on.
+func (s *Service) jobNode(app *models.Application) (uint, error) {
+	if app.RuntimeKind != models.RuntimeService || s.volumes == nil {
+		return app.ServerID, nil
+	}
+	vols := s.volumes.NodeLocalOf(app)
+	if len(vols) == 0 {
+		return app.ServerID, nil
+	}
+	node := vols[0].ServerID
+	for _, v := range vols[1:] {
+		if v.ServerID != node {
+			return 0, fmt.Errorf("%w: %s", ErrVolumesSplit, s.volumeNodes(vols))
+		}
+	}
+	return node, nil
+}
+
+func (s *Service) volumeNodes(vols []*models.Volume) string {
+	parts := make([]string, 0, len(vols))
+	for _, v := range vols {
+		where := fmt.Sprintf("node %d", v.ServerID)
+		if s.nodeName != nil {
+			if n := s.nodeName(v.ServerID); n != "" {
+				where = n
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%q on %s", v.Name, where))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // Run snapshots the image from the active release so history shows exactly what ran.
 func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest) (*models.Job, error) {
 	if len(req.Command) == 0 {
@@ -140,6 +204,10 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	if err != nil {
 		return nil, err
 	}
+	serverID, err := s.jobNode(app)
+	if err != nil {
+		return nil, err
+	}
 	timeout := req.TimeoutSecs
 	if timeout <= 0 {
 		timeout = s.defaultTimeoutSecs
@@ -151,7 +219,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 	j := &models.Job{
 		WorkspaceID:      workspaceID,
 		ApplicationID:    appID,
-		ServerID:         app.ServerID,
+		ServerID:         serverID,
 		CronJobID:        req.CronJobID,
 		JobDefinitionID:  req.JobDefinitionID,
 		WaitDeploymentID: req.WaitDeploymentID,

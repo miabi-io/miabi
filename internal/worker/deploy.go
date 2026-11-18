@@ -224,14 +224,7 @@ func (h *DeployHandler) volumePins(app *models.Application) []string {
 		return nil
 	}
 	var out []string
-	for _, m := range app.Mounts {
-		if m.VolumeID == 0 || m.HostPath != "" {
-			continue
-		}
-		v, err := h.volumes.FindInWorkspace(app.WorkspaceID, m.VolumeID)
-		if err != nil || v.Driver == models.VolumeDriverHost || v.AccessMode == models.AccessRWX {
-			continue
-		}
+	for _, v := range h.volumes.NodeLocalOf(app) {
 		if pin := h.poolPolicy.NodeConstraint(v.ServerID); pin != "" && !slices.Contains(out, pin) {
 			out = append(out, pin)
 		}

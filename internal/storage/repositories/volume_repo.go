@@ -55,6 +55,22 @@ func (r *VolumeRepository) FindInWorkspace(workspaceID, id uint) (*models.Volume
 	return &v, nil
 }
 
+// Volumes that cannot be read back are skipped, so a dangling mount never pins anything.
+func (r *VolumeRepository) NodeLocalOf(app *models.Application) []*models.Volume {
+	var out []*models.Volume
+	for _, m := range app.Mounts {
+		if m.VolumeID == 0 || m.HostPath != "" {
+			continue
+		}
+		v, err := r.FindInWorkspace(app.WorkspaceID, m.VolumeID)
+		if err != nil || !v.NodeLocal() {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
 func (r *VolumeRepository) ListByWorkspace(workspaceID uint) ([]models.Volume, error) {
 	var vols []models.Volume
 	err := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC").Find(&vols).Error

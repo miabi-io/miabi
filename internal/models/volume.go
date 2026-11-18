@@ -47,6 +47,11 @@ const (
 )
 
 // Volume is a workspace-owned, managed Docker volume for persistent data.
+// NodeLocal reports whether the data exists on only one node, so whatever mounts it must run there.
+func (v *Volume) NodeLocal() bool {
+	return v.Driver != VolumeDriverHost && v.AccessMode != AccessRWX
+}
+
 type Volume struct {
 	UIDModel
 	ID          uint   `json:"id" gorm:"primaryKey"`
@@ -60,6 +65,7 @@ type Volume struct {
 	ClusterID uint `json:"cluster_id" gorm:"index;not null;default:0"`
 	// ServerName is the display name of the node (transient; populated on read).
 	ServerName      string     `json:"server_name,omitempty" gorm:"-"`
+	Node            string     `json:"node,omitempty" gorm:"-"`
 	Mountpoint      string     `json:"-"`
 	EngineCreatedAt string     `json:"engine_created_at,omitempty"`
 	SizeBytes       int64      `json:"size_bytes" gorm:"not null;default:0"`

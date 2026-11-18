@@ -64,10 +64,10 @@ function placeable(n: LocationNode): boolean {
   return n.is_local || (n.online && !n.cordoned)
 }
 function nodeLabel(n: LocationNode): string {
-  if (n.is_local) return `${n.name} (manager)`
-  if (!n.online) return `${n.name} — offline`
-  if (n.cordoned) return `${n.name} — cordoned`
-  return n.name
+  if (n.is_local) return `${n.display_name} (manager)`
+  if (!n.online) return `${n.display_name} — offline`
+  if (n.cordoned) return `${n.display_name} — cordoned`
+  return n.display_name
 }
 </script>
 

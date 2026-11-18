@@ -2131,7 +2131,7 @@ async function detachDatabase(d: AppDatabase) {
               <router-link v-if="app.source_type === 'git' && app.git_repository_id" class="prov-link" :to="{ name: 'git-repository', params: { id: app.git_repository_id } }">{{ app.git_repo }}</router-link>
               <template v-else>{{ app.image || app.git_repo }}</template>
               <!-- A service's replicas are spread by the scheduler, so its placement is shown in the overview. -->
-              <template v-if="!isService && app.server_name"> · <span class="mdi mdi-server-network"></span> {{ app.server_name }}</template>
+              <template v-if="!isService && app.server_name"> · <span class="mdi mdi-server-network"></span> <span :title="app.node">{{ app.server_name }}</span></template>
               <template v-else-if="isService && nodePlacement.length"> · <span class="mdi mdi-server-network"></span> {{ nodePlacementLabel }}</template>
               <LocationName :cluster-id="app.cluster_id" />
               <!-- Provenance: where this app came from, linking to its source. -->
