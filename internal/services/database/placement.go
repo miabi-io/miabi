@@ -22,6 +22,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jkaninda/logger"
@@ -195,6 +196,39 @@ func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine,
 }
 
 // Scoped to serverID's location because private networks don't span locations; an empty version matches any.
+// ResolveOnNode narrows reuse to instances on serverID, for a dependency whose manifest pins that node.
+func (s *Service) ResolveOnNode(ctx context.Context, workspaceID, serverID uint, base, declName string, engine models.DBEngine, version string, placement Placement, res Resources, meta models.Metadata) (*models.DatabaseInstance, *models.Database, ConnectionInfo, bool, error) {
+	sized := placement == PlacementAuto && res != (Resources{})
+	if !models.EngineSupportsLogicalDatabases(engine) || placement == PlacementDedicated || sized {
+		return s.ResolveDependency(ctx, workspaceID, serverID, 0, base, declName, engine, version, placement, res, meta)
+	}
+	if inst := s.reusableOnServer(workspaceID, engine, version, serverID); inst != nil {
+		return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
+	}
+	if placement == PlacementShared {
+		return nil, nil, ConnectionInfo{}, false, fmt.Errorf("%w on the pinned node", ErrNoSharedInstance)
+	}
+	return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
+}
+
+func (s *Service) reusableOnServer(workspaceID uint, engine models.DBEngine, version string, serverID uint) *models.DatabaseInstance {
+	list, err := s.List(workspaceID)
+	if err != nil {
+		return nil
+	}
+	version = strings.TrimSpace(version)
+	for i := range list {
+		inst := &list[i]
+		if inst.ServerID != serverID || inst.Engine != engine || inst.Status != models.DBStatusRunning || IsDedicated(inst) {
+			continue
+		}
+		if version == "" || inst.Version == version {
+			return inst
+		}
+	}
+	return nil
+}
+
 func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, version string, serverID uint) *models.DatabaseInstance {
 	cluster, scoped := s.clusterOfServer(serverID)
 	return s.reusableIn(workspaceID, engine, version, cluster, scoped)

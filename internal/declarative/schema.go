@@ -199,7 +199,7 @@ type HealthcheckSpec struct {
 type PlacementSpec struct {
 	// Location names where the resource is created; omitted, the workspace default. Fixed once created.
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
-	// Node is a node's fixed name inside the location (volumes only); omitted, Miabi picks one. Fixed once created.
+	// Node is a node's fixed name inside the location (volumes and database instances); omitted, Miabi picks one. Fixed once created.
 	Node string `yaml:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -207,6 +207,8 @@ type PlacementSpec struct {
 type DatabasePlacementSpec struct {
 	// Location names where the database is created; omitted, the workspace default. Fixed once created.
 	Location string `yaml:"location,omitempty" json:"location,omitempty"`
+	// Node is a node's fixed name for an instance this database provisions or reuses; fixed once created.
+	Node string `yaml:"node,omitempty" json:"node,omitempty"`
 
 	legacyInstance string
 }

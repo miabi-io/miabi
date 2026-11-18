@@ -1524,6 +1524,7 @@
       "volumeHint": "Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.",
       "volumeSize": "Data volume size (MB)"
     },
+    "nodeHint": "A database stays on the node it is created on, with its data volume.",
     "provision": "Provision a database",
     "provisioning": "Database provisioning…"
   },

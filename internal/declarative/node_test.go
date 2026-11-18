@@ -37,10 +37,9 @@ func TestOmittedNodeIsNotADiff(t *testing.T) {
 	}
 }
 
-func TestNodeIsRefusedWhereItDoesNotApplyYet(t *testing.T) {
+func TestNodeIsRefusedOnAStack(t *testing.T) {
 	for _, doc := range []string{
 		"apiVersion: miabi.io/v1\nkind: Stack\nmetadata: {name: shop}\nspec:\n  placement: {node: safari-02}\n",
-		"apiVersion: miabi.io/v1\nkind: DatabaseInstance\nmetadata: {name: pg}\nspec:\n  engine: postgres\n  placement: {node: safari-02}\n",
 	} {
 		_, err := Parse([]byte(doc))
 		if err == nil || !strings.Contains(err.Error(), "placement.node") {
@@ -72,5 +71,26 @@ func TestJobNodeDiffs(t *testing.T) {
 	cronD := Resource{Kind: KindCronJob, CronJob: &CronJobSpec{App: "api", Schedule: "0 3 * * *", Command: []string{"true"}}}
 	if d := diffFields(cronA, cronD); len(d) != 0 {
 		t.Errorf("an omitted cron node must not diff, got %+v", d)
+	}
+}
+
+func TestDatabaseNodeDiffs(t *testing.T) {
+	pinned := Resource{Kind: KindDatabaseInstance, DatabaseInstance: &DatabaseInstanceSpec{Engine: "postgres", Placement: &PlacementSpec{Node: "safari-02"}}}
+	silent := Resource{Kind: KindDatabaseInstance, DatabaseInstance: &DatabaseInstanceSpec{Engine: "postgres"}}
+	if d := diffFields(pinned, silent); len(d) != 0 {
+		t.Errorf("an omitted instance node must not diff, got %+v", d)
+	}
+	db := Resource{Kind: KindDatabase, Database: &DatabaseSpec{Engine: "postgres", Placement: &DatabasePlacementSpec{Node: "safari-02"}}}
+	moved := Resource{Kind: KindDatabase, Database: &DatabaseSpec{Engine: "postgres", Placement: &DatabasePlacementSpec{Node: "safari-03"}}}
+	if d := diffFields(db, moved); len(d) != 1 || d[0].Field != "placement.node" {
+		t.Errorf("a moved database must diff on placement.node, got %+v", d)
+	}
+	doc := "apiVersion: miabi.io/v1\nkind: Database\nmetadata: {name: shopdb}\nspec:\n  engine: postgres\n  placement: {location: safari-01, node: safari-02}\n"
+	set, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := set.Get("Database/shopdb"); r.Database.NodeName() != "safari-02" {
+		t.Errorf("node not parsed from the mapping form: %+v", r.Database.Placement)
 	}
 }

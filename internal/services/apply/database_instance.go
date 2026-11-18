@@ -230,6 +230,9 @@ func (s *Service) adoptRefusal(inst *models.DatabaseInstance, spec *declarative.
 	if loc := spec.Location(); loc != "" && loc != s.locationName(inst.ClusterID) {
 		return fmt.Errorf("%w: database instance %q is in %q, not %q", ErrInvalidManifest, name, s.locationName(inst.ClusterID), loc)
 	}
+	if n := spec.NodeName(); n != "" && n != inst.Node {
+		return fmt.Errorf("%w: database instance %q is on node %q, not %q", ErrInvalidManifest, name, inst.Node, n)
+	}
 	if sc := spec.StorageClass; sc != "" && sc != inst.StorageClassName {
 		return fmt.Errorf("%w: database instance %q is on storage class %q, not %q", ErrInvalidManifest, name, inst.StorageClassName, sc)
 	}
@@ -272,10 +275,10 @@ func (s *Service) checkRecoveryPoints(workspaceID uint, name string, rp *declara
 
 func (s *Service) checkNamedTarget(name string, spec *declarative.DatabaseSpec, inst *models.DatabaseInstance, desired *declarative.ResourceSet) error {
 	target := spec.Instance.Name
-	engine, version, location := "", "", ""
+	engine, version, location, node := "", "", "", ""
 	switch {
 	case inst != nil:
-		engine, version, location = string(inst.Engine), inst.Version, s.locationName(inst.ClusterID)
+		engine, version, location, node = string(inst.Engine), inst.Version, s.locationName(inst.ClusterID), inst.Node
 		if spec.Instance.Type == "dedicated" && !ownedBy(inst, declarative.KindDatabase, name) {
 			return fmt.Errorf("%w: database %q: instance %q already exists; a dedicated database provisions its own", ErrInvalidManifest, name, target)
 		}
@@ -290,7 +293,7 @@ func (s *Service) checkNamedTarget(name string, spec *declarative.DatabaseSpec, 
 			}
 			return nil
 		}
-		engine, version, location = di.DatabaseInstance.Engine, di.DatabaseInstance.Version, di.DatabaseInstance.Location()
+		engine, version, location, node = di.DatabaseInstance.Engine, di.DatabaseInstance.Version, di.DatabaseInstance.Location(), di.DatabaseInstance.NodeName()
 	}
 	if engine != spec.Engine {
 		return fmt.Errorf("%w: database %q: instance %q runs %s, not %s", ErrInvalidManifest, name, target, engine, spec.Engine)
@@ -300,6 +303,9 @@ func (s *Service) checkNamedTarget(name string, spec *declarative.DatabaseSpec, 
 	}
 	if loc := spec.Location(); loc != "" && location != "" && loc != location {
 		return fmt.Errorf("%w: database %q: instance %q is in %q, not %q", ErrInvalidManifest, name, target, location, loc)
+	}
+	if n := spec.NodeName(); n != "" && node != "" && n != node {
+		return fmt.Errorf("%w: database %q: instance %q is on node %q, not %q", ErrInvalidManifest, name, target, node, n)
 	}
 	return nil
 }
@@ -340,7 +346,7 @@ func (s *Service) applyDatabaseInstance(ctx context.Context, workspaceID uint, c
 			}
 			return s.reconcileRecoveryPoints(workspaceID, inst, ch.Name, spec.RecoveryPoints)
 		}
-		target, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
+		target, err := s.placeDatabase(ctx, workspaceID, ch, spec.Location(), spec.NodeName(), spec.StorageClass)
 		if err != nil {
 			return err
 		}
@@ -454,7 +460,7 @@ func (s *Service) createOnNamedInstance(ctx context.Context, workspaceID uint, c
 		if spec.Instance.Type == "shared" {
 			return nil, fmt.Errorf("database %q: instance %q does not exist", ch.Name, target)
 		}
-		place, err := s.place(ctx, workspaceID, ch, spec.Location(), false)
+		place, err := s.placeDatabase(ctx, workspaceID, ch, spec.Location(), spec.NodeName(), "")
 		if err != nil {
 			return nil, err
 		}

@@ -81,7 +81,9 @@ type CreateDatabaseRequest struct {
 		Location string `json:"location"`
 		// ServerID pins a node; platform admins only.
 		ServerID uint `json:"server_id"`
-		SizeMB   int  `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
+		// Node pins a node by its fixed name; fixed once created.
+		Node   string `json:"node"`
+		SizeMB int    `json:"size_mb"` // data-volume capacity in MB (0 = unspecified)
 		// Empty uses the workspace's default class; fixed at creation.
 		StorageClass string `json:"storage_class"`
 		// 0 = unlimited, or the engine's default size when the plan caps the database budget.
@@ -128,7 +130,12 @@ func (h *DatabaseHandler) Create(c *okapi.Context, req *CreateDatabaseRequest) e
 	if req.Body.SizeMB > 0 {
 		sizeBytes = int64(req.Body.SizeMB) * 1024 * 1024
 	}
-	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID})
+	if strings.TrimSpace(req.Body.Node) != "" {
+		if err := h.svc.NodeApplies(wsID, req.Body.StorageClass); err != nil {
+			return c.AbortBadRequest(err.Error())
+		}
+	}
+	placed, err := h.placer.place(c, placement.Request{Location: req.Body.Location, ServerID: req.Body.ServerID, Node: req.Body.Node})
 	if err != nil {
 		if a := placementAbort(c, err); a != nil {
 			return a

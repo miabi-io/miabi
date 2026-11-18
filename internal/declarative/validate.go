@@ -652,9 +652,6 @@ func (r *Resource) validateDatabaseInstance() error {
 	if d == nil {
 		return fmt.Errorf("databaseinstance %q: spec is required", name)
 	}
-	if d.Placement != nil && d.Placement.Node != "" {
-		return fmt.Errorf("databaseinstance %q: placement.node is not supported yet", name)
-	}
 	if !validEngines[models.DBEngine(d.Engine)] {
 		return fmt.Errorf("databaseinstance %q: unsupported engine %q", name, d.Engine)
 	}

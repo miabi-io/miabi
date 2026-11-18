@@ -149,6 +149,20 @@ func (d *DatabaseInstanceSpec) Location() string {
 	return d.Placement.Location
 }
 
+func (d *DatabaseInstanceSpec) NodeName() string {
+	if d == nil || d.Placement == nil {
+		return ""
+	}
+	return strings.TrimSpace(d.Placement.Node)
+}
+
+func (d *DatabaseSpec) NodeName() string {
+	if d == nil || d.Placement == nil {
+		return ""
+	}
+	return strings.TrimSpace(d.Placement.Node)
+}
+
 // UnmarshalYAML reads {type, name}, or the bare auto|dedicated|shared string the field held before it became one.
 func (i *DatabaseInstanceRef) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {
