@@ -122,6 +122,7 @@ export interface DatabaseSizeOffer {
 export interface PlanPlacement {
   locations?: number[]
   pool?: string
+  node_pinning?: boolean | null
 }
 
 // "restricted" forces a non-root platform UID (OpenShift-style); "default" is unchanged.

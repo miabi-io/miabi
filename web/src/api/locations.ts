@@ -27,6 +27,7 @@ export interface LocationNode {
   is_local: boolean
   online: boolean
   cordoned: boolean
+  pinnable: boolean
   swarm_node_id?: string
 }
 

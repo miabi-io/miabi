@@ -69,15 +69,20 @@ func (p *Placer) reach(a, b placement.Site, swarm func(clusterID uint) bool) err
 // placementAbort answers a placement refusal, or returns nil for any other error.
 func placementAbort(c *okapi.Context, err error) error {
 	switch {
-	case errors.Is(err, placement.ErrNodePinAdminOnly), errors.Is(err, placement.ErrLocationNotAllowed):
+	case errors.Is(err, placement.ErrNodePinAdminOnly), errors.Is(err, placement.ErrLocationNotAllowed),
+		errors.Is(err, placement.ErrNodePinningOff):
 		return c.AbortForbidden(err.Error())
+	case errors.Is(err, placement.ErrNodeNotInLocation):
+		return c.AbortNotFound(err.Error())
+	case errors.Is(err, placement.ErrNodeAndServerID):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, placement.ErrLocationNotFound):
 		return c.AbortNotFound(err.Error())
 	case errors.Is(err, node.ErrNodeNotFound):
 		return c.AbortNotFound("node not found")
 	case errors.Is(err, placement.ErrLocationMismatch):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, placement.ErrLocationCordoned), errors.Is(err, placement.ErrNoSchedulableNode),
+	case errors.Is(err, placement.ErrLocationCordoned), errors.Is(err, placement.ErrNoSchedulableNode), errors.Is(err, placement.ErrNodeCordoned),
 		errors.Is(err, placement.ErrNoLocation), errors.Is(err, placement.ErrNoGPUNode):
 		return c.AbortWithError(http.StatusConflict, err)
 	}

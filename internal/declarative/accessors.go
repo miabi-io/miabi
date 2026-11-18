@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -214,6 +215,13 @@ func (v *VolumeSpec) Location() string {
 		return ""
 	}
 	return v.Placement.Location
+}
+
+func (v *VolumeSpec) NodeName() string {
+	if v == nil || v.Placement == nil {
+		return ""
+	}
+	return strings.TrimSpace(v.Placement.Node)
 }
 
 // MemoryBytes parses the memory limit into bytes; empty or "0" is unlimited.

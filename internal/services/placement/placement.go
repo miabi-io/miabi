@@ -41,6 +41,10 @@ var (
 	ErrNodePinAdminOnly   = errors.New("only platform admins can choose a node; choose a location instead")
 	ErrLocationMismatch   = errors.New("the chosen node is not in the chosen location")
 	ErrNoGPUNode          = errors.New("no schedulable node in that location has enough enabled GPUs of the requested kind")
+	ErrNodePinningOff     = errors.New("choosing a node is turned off for this workspace; choose a location instead")
+	ErrNodeNotInLocation  = errors.New("node not found in this location")
+	ErrNodeCordoned       = errors.New("that node is cordoned and accepts no new resources")
+	ErrNodeAndServerID    = errors.New("set node or server_id, not both")
 )
 
 // GPUInventory lists a node's enabled, present GPUs. Satisfied by the GPU device repository.
@@ -59,13 +63,28 @@ type Service struct {
 	policy   Policy
 	orgs     Orgs
 	gpus     GPUInventory
+	pinning  bool
+}
+
+// SetNodePinning is the platform default for whether workspaces may choose a node; a plan may override it.
+func (s *Service) SetNodePinning(on bool) { s.pinning = on }
+
+// PinningAllowed reports whether a workspace may set placement.node; platform admins always may.
+func (s *Service) PinningAllowed(workspaceID uint, admin bool) bool {
+	if admin {
+		return true
+	}
+	if p, enforced := s.planPlacement(workspaceID); enforced && p.NodePinning != nil {
+		return *p.NodePinning
+	}
+	return s.pinning
 }
 
 // Unset (GPU support off) places GPU requests like any other app.
 func (s *Service) SetGPUInventory(g GPUInventory) { s.gpus = g }
 
 func NewService(clusters *repositories.ClusterRepository, servers *repositories.ServerRepository, online Online) *Service {
-	return &Service{clusters: clusters, servers: servers, online: online}
+	return &Service{clusters: clusters, servers: servers, online: online, pinning: true}
 }
 
 type Policy interface {
@@ -149,6 +168,8 @@ type Request struct {
 	Location string
 	// ServerID pins a node, which only platform admins may do.
 	ServerID uint
+	// Node pins a node by its fixed name, within the location and the nodes the workspace's plan may use.
+	Node string
 	// Colocate is a node the platform itself requires, such as the node of a database being reused.
 	Colocate uint
 	Admin    bool
@@ -167,6 +188,12 @@ type Result struct {
 
 // Place resolves the cluster and node a new resource lands on.
 func (s *Service) Place(req Request) (Result, error) {
+	if name := strings.TrimSpace(req.Node); name != "" {
+		if req.ServerID != 0 {
+			return Result{}, ErrNodeAndServerID
+		}
+		return s.pinNode(req, name)
+	}
 	if req.ServerID != 0 && !req.Admin {
 		return Result{}, ErrNodePinAdminOnly
 	}
@@ -463,38 +490,77 @@ type Node struct {
 	IsLocal     bool   `json:"is_local"`
 	Online      bool   `json:"online"`
 	Cordoned    bool   `json:"cordoned"`
+	// Pinnable is whether this workspace may set placement.node to it right now.
+	Pinnable bool `json:"pinnable"`
 	// Swarm schedules services, so a pin is a node.id== constraint rather than a server id.
 	SwarmNodeID string `json:"swarm_node_id,omitempty"`
 }
 
 // Nodes resolves the location exactly as Place does, so an unusable location is refused the same way.
 func (s *Service) Nodes(workspaceID uint, location string, admin bool) ([]Node, error) {
-	c, err := s.resolveCluster(workspaceID, location, admin)
+	_, servers, err := s.locationServers(workspaceID, location, admin)
 	if err != nil {
 		return nil, err
 	}
-	servers, err := s.servers.List()
-	if err != nil {
-		return nil, err
-	}
-	policy, enforced := s.planPlacement(workspaceID)
+	pinning := s.PinningAllowed(workspaceID, admin)
 	out := []Node{}
-	for i := range servers {
-		srv := &servers[i]
-		if s.resolveID(srv.ClusterID) != c.ID || (enforced && models.PoolOf(srv) != policy.Pool) {
-			continue
-		}
+	for _, srv := range servers {
+		online := srv.IsLocal || (s.online != nil && s.online(srv.ID))
 		out = append(out, Node{
 			ID:          srv.ID,
 			Name:        srv.Name,
 			DisplayName: srv.Label(),
 			IsLocal:     srv.IsLocal,
-			Online:      srv.IsLocal || (s.online != nil && s.online(srv.ID)),
+			Online:      online,
 			Cordoned:    srv.Cordoned,
+			Pinnable:    pinning && online && !srv.Cordoned,
 			SwarmNodeID: srv.SwarmNodeID,
 		})
 	}
 	return out, nil
+}
+
+// The servers a workspace sees in a location: the location's own, narrowed to the plan's pool.
+func (s *Service) locationServers(workspaceID uint, location string, admin bool) (*models.Cluster, []*models.Server, error) {
+	c, err := s.resolveCluster(workspaceID, location, admin)
+	if err != nil {
+		return nil, nil, err
+	}
+	servers, err := s.servers.List()
+	if err != nil {
+		return nil, nil, err
+	}
+	policy, enforced := s.planPlacement(workspaceID)
+	var out []*models.Server
+	for i := range servers {
+		srv := &servers[i]
+		if s.resolveID(srv.ClusterID) != c.ID || (enforced && models.PoolOf(srv) != policy.Pool) {
+			continue
+		}
+		out = append(out, srv)
+	}
+	return c, out, nil
+}
+
+// Only nodes the workspace can list are found, so a name outside its location or pool reads as unknown.
+func (s *Service) pinNode(req Request, name string) (Result, error) {
+	if !s.PinningAllowed(req.WorkspaceID, req.Admin) {
+		return Result{}, ErrNodePinningOff
+	}
+	c, servers, err := s.locationServers(req.WorkspaceID, req.Location, req.Admin)
+	if err != nil {
+		return Result{}, err
+	}
+	for _, srv := range servers {
+		if srv.Name != name {
+			continue
+		}
+		if srv.Cordoned {
+			return Result{}, fmt.Errorf("%w: %q", ErrNodeCordoned, name)
+		}
+		return Result{ClusterID: c.ID, ServerID: srv.ID}, nil
+	}
+	return Result{}, fmt.Errorf("%w: %q in %q", ErrNodeNotInLocation, name, c.Name)
 }
 
 // NodeConstraint returns "" for non-swarm nodes; server id 0 is the control plane.

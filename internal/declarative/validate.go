@@ -576,6 +576,9 @@ func (r *Resource) validateStack() error {
 	if st == nil {
 		return nil
 	}
+	if st.Placement != nil && st.Placement.Node != "" {
+		return fmt.Errorf("stack %q: placement.node is not supported; a stack's apps and volumes choose their own node", r.Metadata.Name)
+	}
 	for _, k := range st.SecretEnv {
 		if _, ok := st.Env[k]; !ok {
 			return fmt.Errorf("stack %q: secretEnv %q is not declared in env", r.Metadata.Name, k)
@@ -640,6 +643,9 @@ func (r *Resource) validateDatabaseInstance() error {
 	name := r.Metadata.Name
 	if d == nil {
 		return fmt.Errorf("databaseinstance %q: spec is required", name)
+	}
+	if d.Placement != nil && d.Placement.Node != "" {
+		return fmt.Errorf("databaseinstance %q: placement.node is not supported yet", name)
 	}
 	if !validEngines[models.DBEngine(d.Engine)] {
 		return fmt.Errorf("databaseinstance %q: unsupported engine %q", name, d.Engine)

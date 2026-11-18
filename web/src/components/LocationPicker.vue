@@ -6,11 +6,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { locationLabel } from '@/utils/locations'
 
-// '' means the workspace default; only platform admins may pin a node via server-id.
-const props = defineProps<{ modelValue: string; serverId?: number; allowPin?: boolean }>()
+// '' means the workspace default. A bound nodeName pins by the node's fixed name for anyone allowed; serverId is the admin-only form.
+const props = defineProps<{ modelValue: string; serverId?: number; nodeName?: string; allowPin?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void
   (e: 'update:serverId', v: number): void
+  (e: 'update:nodeName', v: string): void
 }>()
 
 const { currentWorkspaceId } = storeToRefs(useWorkspaceStore())
@@ -28,7 +29,8 @@ watch(currentWorkspaceId, async (id) => {
   }
 }, { immediate: true })
 
-const canPin = computed(() => props.allowPin !== false && auth.isAdmin)
+const byName = computed(() => props.nodeName !== undefined)
+const canPin = computed(() => props.allowPin !== false && (byName.value || auth.isAdmin))
 
 // Only the chosen location's nodes are offered, so a pin can never point outside it.
 let nodesRequest = 0
@@ -47,7 +49,10 @@ watch([canPin, currentWorkspaceId, () => props.modelValue], async ([on, ws, loc]
   if (req !== nodesRequest) return
   nodes.value = list
   if ((props.serverId ?? 0) > 0 && !list.some((n) => n.id === props.serverId)) emit('update:serverId', 0)
+  if (props.nodeName && !list.some((n) => n.name === props.nodeName && n.pinnable)) emit('update:nodeName', '')
 }, { immediate: true })
+
+watch(() => props.allowPin, (on) => { if (on === false && props.nodeName) emit('update:nodeName', '') })
 
 const defaultLocation = computed(() => locations.value.find((l) => l.default))
 
@@ -59,6 +64,11 @@ const node = computed({
   get: () => props.serverId ?? 0,
   set: (v: number) => emit('update:serverId', Number(v)),
 })
+const nodeName = computed({
+  get: () => props.nodeName ?? '',
+  set: (v: string) => emit('update:nodeName', v),
+})
+const showNodes = computed(() => canPin.value && nodes.value.length > 1 && (!byName.value || nodes.value.some((n) => n.pinnable)))
 
 function placeable(n: LocationNode): boolean {
   return n.is_local || (n.online && !n.cordoned)
@@ -80,7 +90,15 @@ function nodeLabel(n: LocationNode): string {
     </select>
     <p class="form-hint">{{ $t('locationPicker.privateNetworksDonTSpan') }}</p>
   </div>
-  <div v-if="canPin && nodes.length > 1" class="form-group">
+  <div v-if="showNodes && byName" class="form-group">
+    <label class="form-label">{{ $t('locationPicker.node') }}</label>
+    <select v-model="nodeName" class="form-select" :aria-label="$t('locationPicker.node')">
+      <option value="">{{ $t('locationPicker.anyNodeInTheLocation') }}</option>
+      <option v-for="n in nodes" :key="n.id" :value="n.name" :disabled="!n.pinnable">{{ nodeLabel(n) }}</option>
+    </select>
+    <p class="form-hint">{{ $t('locationPicker.nodeIsFixed') }}</p>
+  </div>
+  <div v-else-if="showNodes" class="form-group">
     <label class="form-label">{{ $t('locationPicker.node') }} <span class="badge badge-muted">{{ $t('locationPicker.admin') }}</span></label>
     <select v-model="node" class="form-select" :aria-label="$t('locationPicker.node')">
       <option :value="0">{{ $t('locationPicker.anyNodeInTheLocation') }}</option>

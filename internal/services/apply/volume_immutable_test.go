@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/declarative"
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 func TestRefuseImmutableStorageClass(t *testing.T) {
@@ -60,5 +61,27 @@ func TestRefuseImmutableAllowsAResize(t *testing.T) {
 	}
 	if err := refuseImmutable(ch); err != nil {
 		t.Fatalf("a resize must be allowed, got %v", err)
+	}
+}
+
+func TestRefuseImmutableRefusesANodeMove(t *testing.T) {
+	ch := declarative.Change{
+		Action: declarative.ActionUpdate, Kind: declarative.KindVolume, Name: "pgdata",
+		Fields: []declarative.FieldDiff{{Field: "placement.node", From: "safari-01", To: "safari-02"}},
+	}
+	err := refuseImmutable(ch)
+	if !errors.Is(err, ErrInvalidManifest) || !strings.Contains(err.Error(), `"safari-01"`) || !strings.Contains(err.Error(), `"safari-02"`) {
+		t.Fatalf("a node move must be refused naming both nodes, got %v", err)
+	}
+}
+
+func TestVolumePlacementReportsTheNodeOfNodeLocalVolumesOnly(t *testing.T) {
+	local := &models.Volume{Driver: models.VolumeDriverLocal, AccessMode: models.AccessRWO, Node: "safari-02"}
+	if p := volumePlacement("safari", local); p == nil || p.Node != "safari-02" || p.Location != "safari" {
+		t.Errorf("node-local volume placement = %+v", p)
+	}
+	shared := &models.Volume{Driver: models.VolumeDriverLocal, AccessMode: models.AccessRWX, Node: "safari-02"}
+	if p := volumePlacement("safari", shared); p == nil || p.Node != "" {
+		t.Errorf("a shared volume must not report a node, got %+v", p)
 	}
 }
