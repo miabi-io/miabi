@@ -511,14 +511,15 @@ func runServer(cli *okapicli.CLI) {
 			backupService.SetLogStore(logStore)
 			backupService.SetAlerter(backupAlerter{alertEngine})
 
-			backupService.SetReporter(backupReporter{alerting.NewWorkspaceNotifier(
+			backupService.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
 				repositories.NewWorkspaceRepository(res.db),
-				repositories.NewNotificationInboxRepository(res.db), bus)})
+				repositories.NewNotificationInboxRepository(res.db), bus)))
 
 			backupService.SetEventRecorder(eventsSvc)
 			res.cron = cronpkg.NewManager(backupService, dbRepo, backupRepo, repositories.NewDatabaseBackupSetRepository(res.db), backupsettings.NewService(repositories.NewWorkspaceBackupSettingsRepository(res.db)))
 			res.cron.SetLeader(elector)
 			res.cron.Start()
+			_ = res.cron.RegisterTask("backup_stale", 0, "Close abandoned backup runs", "@every 5m", backupService.FailStale)
 
 			if logStore.Enabled() {
 				_ = res.cron.RegisterTask("logstore", 0, "Log retention sweep", "@daily", func() error {

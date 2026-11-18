@@ -1662,6 +1662,7 @@
     "toast": {
       "adoptedDatabaseS": "Adopted {ref} — {adopted} database(s)",
       "backupDeleted": "Backup deleted",
+      "backupStarted": "Backup #{number} started — you'll get a notification when it finishes.",
       "copied": "Copied",
       "databaseDeleted": "Database deleted",
       "databaseIsReady": "Database is ready",
@@ -1671,6 +1672,7 @@
       "instanceDeleted": "Instance deleted",
       "networkConnected": "Network connected",
       "recoveryPointDeleted": "Recovery point deleted",
+      "recoveryPointStarted": "Recovery point started — you'll get a notification when it finishes.",
       "resourcesSavedTheInstanceRestarts": "Resources saved; the instance restarts to apply them",
       "restarted": "Database restarted",
       "restoredDatabaseSFrom": "Restored {count} database(s) from {ref}",

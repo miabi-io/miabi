@@ -162,17 +162,19 @@ func (h *BackupHandler) Run(c *okapi.Context, req *RunBackupRequest) error {
 				wd.GPGPassphrase, wd.AgeRecipients, wd.AgeIdentity, wd.SkipVerify
 		}
 	}
-	b, err := h.svc.Run(c.Request().Context(), inst, db,
-		backup.RunOptions{Trigger: "manual", Comment: strings.TrimSpace(req.Body.Comment)}, dest)
+	b, err := h.svc.RunInBackground(inst, db,
+		backup.RunOptions{Trigger: "manual", Comment: strings.TrimSpace(req.Body.Comment), RequestedBy: userIDPtr(c)}, dest)
 	if err != nil {
 		if errors.Is(err, backup.ErrUnsupportedEngine) {
 			return c.AbortBadRequest("backups are not supported for this engine yet")
 		}
+		if errors.Is(err, backup.ErrAlreadyRunning) {
+			return c.AbortWithError(http.StatusConflict, err)
+		}
 		return c.AbortInternalServerError("failed to run backup", err)
 	}
 	h.record(c, db.WorkspaceID, "backup.run", b.ID)
-	// Backup runs synchronously; the record's status reflects success/failure.
-	return ok(c, b)
+	return accepted(c, b)
 }
 
 // Update edits a backup's comment and retention pin.

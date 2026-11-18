@@ -486,18 +486,31 @@ async function runSet() {
   if (!wid.value) return
   runningSet.value = true
   try {
-    const set = (await backupApi.runSet(wid.value, instId.value, backupComment.value.trim())).data.data
-    notify[set.status === 'completed' ? 'success' : 'error'](
-      set.status === 'completed'
-        ? `Recovery point ${set.ref} created`
-        : `Recovery point failed: ${set.error ?? 'see the instance events'}`,
-    )
+    await backupApi.runSet(wid.value, instId.value, backupComment.value.trim())
+    notify.info(t('db.toast.recoveryPointStarted'))
     backupComment.value = ''
-    loadSets()
-    if (selected.value) loadBackups()
+    await loadSets()
   } catch (e) { notify.apiError(e) }
   finally { runningSet.value = false }
 }
+
+// Runs continue on the server after the request; the list follows them until none is left in progress, and the inbox reports the outcome.
+const inProgress = (status?: string) => status === 'running' || status === 'pending'
+let progressPoll: ReturnType<typeof setInterval> | null = null
+function stopProgress() {
+  if (progressPoll) clearInterval(progressPoll)
+  progressPoll = null
+}
+watch([backups, sets], () => {
+  const active = backups.value.some((b) => inProgress(b.status)) || sets.value.some((s) => inProgress(s.status))
+  if (!active) return stopProgress()
+  if (progressPoll) return
+  progressPoll = setInterval(() => {
+    if (selected.value) void loadBackups()
+    if (sets.value.some((s) => inProgress(s.status))) void loadSets()
+  }, 5000)
+})
+onUnmounted(stopProgress)
 // Reads the bucket, not workspace history, so it finds points taken by an install that is gone.
 async function scanBucket() {
   if (!wid.value) return
@@ -605,9 +618,9 @@ async function runBackup() {
   running.value = true
   try {
     const b = (await backupApi.run(wid.value, instId.value, selected.value.id, backupComment.value.trim())).data.data
-    notify[b.status === 'completed' ? 'success' : 'error'](`Backup #${b.number} ${b.status}`)
+    notify.info(t('db.toast.backupStarted', { number: b.number }))
     backupComment.value = ''
-    loadBackups()
+    await loadBackups()
   } catch (e) { notify.apiError(e) }
   finally { running.value = false }
 }

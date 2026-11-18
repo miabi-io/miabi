@@ -42,6 +42,11 @@ func ok[T any](c *okapi.Context, data T) error {
 	return c.JSON(http.StatusOK, dto.Response[T]{Success: true, Data: data})
 }
 
+// accepted answers a request whose work continues after the response.
+func accepted[T any](c *okapi.Context, data T) error {
+	return c.JSON(http.StatusAccepted, dto.Response[T]{Success: true, Data: data})
+}
+
 func created[T any](c *okapi.Context, data T) error {
 	return c.JSON(http.StatusCreated, dto.Response[T]{Success: true, Data: data})
 }

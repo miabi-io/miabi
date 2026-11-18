@@ -49,6 +49,10 @@ type SetOptions struct {
 	Trigger     string // manual | scheduled
 	Comment     string
 	Concurrency int
+	// RequestedBy is told when a manual run finishes.
+	RequestedBy *uint
+
+	started chan<- *models.DatabaseBackupSet
 }
 
 // Nil-safe: unset makes RunSet and prune report ErrSetsUnavailable.
@@ -98,22 +102,28 @@ func (s *Service) RunSet(ctx context.Context, inst *models.DatabaseInstance, opt
 	dest.S3.Path = SetPrefix(dest.S3.Path, inst.Name, ref)
 
 	set := &models.DatabaseBackupSet{
-		WorkspaceID: inst.WorkspaceID,
-		InstanceID:  inst.ID,
-		Ref:         ref,
-		Trigger:     opts.Trigger,
-		Status:      models.BackupRunning,
-		Engine:      inst.Engine,
-		Version:     inst.Version,
-		Destination: dest.Type,
-		S3Bucket:    dest.S3.Bucket,
-		S3Path:      dest.S3.Path,
-		Envelope:    envelope,
-		StartedAt:   &now,
+		WorkspaceID:   inst.WorkspaceID,
+		InstanceID:    inst.ID,
+		Ref:           ref,
+		Trigger:       opts.Trigger,
+		Status:        models.BackupRunning,
+		Engine:        inst.Engine,
+		Version:       inst.Version,
+		Destination:   dest.Type,
+		S3Bucket:      dest.S3.Bucket,
+		S3Path:        dest.S3.Path,
+		Envelope:      envelope,
+		StartedAt:     &now,
+		RequestedByID: opts.RequestedBy,
 	}
 	if err := s.sets.Create(set); err != nil {
 		return nil, err
 	}
+	if opts.started != nil {
+		row := *set
+		opts.started <- &row
+	}
+	defer beat(func() error { return s.sets.Touch(set.ID) })()
 
 	items := s.runSetItems(ctx, inst, dbs, set.ID, opts, dest)
 	done := s.finishSet(set, inst, items)
@@ -231,7 +241,7 @@ func (s *Service) finishSet(set *models.DatabaseBackupSet, inst *models.Database
 			s.alerter.BackupSetFailed(set.WorkspaceID, inst.ID, inst.Name, set.Ref, set.Error)
 		}
 	}
-	s.report(set.WorkspaceID, set.Trigger, BackupReport{
+	s.report(set.WorkspaceID, set.Trigger, set.RequestedByID, BackupReport{
 		Subject: inst.Name, Ref: set.Ref, Link: fmt.Sprintf("/databases/%d", inst.ID),
 		OK: ok, Databases: len(items), SizeBytes: set.SizeBytes, Err: set.Error,
 	})

@@ -855,6 +855,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupService.SetLogStore(logStore) // externalize backup run logs to the shared store
 	backupService.SetEventRecorder(eventsService)
 	backupService.SetSetRepository(backupSetRepo) // instance-wide recovery points
+	backupService.SetReporter(alerting.NewBackupReporter(alerting.NewWorkspaceNotifier(
+		workspaceRepo, repositories.NewNotificationInboxRepository(db), bus)))
 	// Volume backup: archives a volume to the workspace S3 target (volume-bkup).
 	volumeBackupService := volumebackup.NewService(volumeBackupRepo, volumeRepo, nodeClients, cfg.ProxyNetwork)
 	volumeBackupService.SetImageResolver(imageResolver)

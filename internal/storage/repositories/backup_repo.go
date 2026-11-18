@@ -20,6 +20,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -31,7 +33,33 @@ type BackupRepository struct {
 func NewBackupRepository(db *gorm.DB) *BackupRepository { return &BackupRepository{db: db} }
 
 func (r *BackupRepository) Create(b *models.Backup) error { return r.db.Create(b).Error }
-func (r *BackupRepository) Update(b *models.Backup) error { return r.db.Save(b).Error }
+// The heartbeat is left to Touch, or a mid-run save would blank it and make a live run look abandoned.
+func (r *BackupRepository) Update(b *models.Backup) error {
+	return r.db.Omit("HeartbeatAt").Save(b).Error
+}
+
+// Running reports a live single-database run, so a second click doesn't start another dump; an abandoned one doesn't count.
+func (r *BackupRepository) Running(databaseID uint, since time.Time) (bool, error) {
+	var n int64
+	err := r.db.Model(&models.Backup{}).
+		Where("database_id = ? AND set_id IS NULL AND status IN ?", databaseID, []models.BackupStatus{models.BackupPending, models.BackupRunning}).
+		Where("COALESCE(heartbeat_at, started_at) >= ?", since).
+		Count(&n).Error
+	return n > 0, err
+}
+
+// Touch records that a run is still alive.
+func (r *BackupRepository) Touch(id uint) error {
+	return r.db.Model(&models.Backup{}).Where("id = ?", id).Update("heartbeat_at", time.Now()).Error
+}
+
+// FailStale closes runs whose process stopped beating before cutoff, such as one a restart abandoned.
+func (r *BackupRepository) FailStale(cutoff time.Time, reason string) (int64, error) {
+	res := r.db.Model(&models.Backup{}).
+		Where("status IN ? AND COALESCE(heartbeat_at, started_at) < ?", []models.BackupStatus{models.BackupPending, models.BackupRunning}, cutoff).
+		Updates(map[string]any{"status": models.BackupFailed, "error": reason, "finished_at": time.Now()})
+	return res.RowsAffected, res.Error
+}
 
 // A zero ref is ignored so a store failure leaves the full DB tail intact.
 func (r *BackupRepository) SetLogMeta(id uint, ref, tail string, bytes int64, lines int, truncated bool) error {

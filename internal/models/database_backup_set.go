@@ -32,6 +32,8 @@ type DatabaseBackupSet struct {
 	Ref     string       `json:"ref" gorm:"uniqueIndex;not null"`
 	Trigger string       `json:"trigger"` // manual | scheduled
 	Status  BackupStatus `json:"status" gorm:"not null;default:pending"`
+	// RequestedByID is who started a manual run; they alone are told when it finishes.
+	RequestedByID *uint `json:"requested_by_id,omitempty"`
 
 	// Recorded on the set as well as its items so a restore preflight asks once.
 	Engine    DBEngine `json:"engine"`
@@ -49,7 +51,9 @@ type DatabaseBackupSet struct {
 
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	// HeartbeatAt is touched while a run is alive, so one a restart abandoned can be told apart from a slow one.
+	HeartbeatAt *time.Time `json:"-"`
+	CreatedAt   time.Time  `json:"created_at"`
 
 	// An empty VerifyStatus means never checked.
 	VerifiedAt   *time.Time `json:"verified_at,omitempty"`

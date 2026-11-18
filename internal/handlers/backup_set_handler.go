@@ -84,12 +84,15 @@ func (h *BackupHandler) RunSet(c *okapi.Context, req *RunBackupSetRequest) error
 	if err != nil {
 		return c.AbortInternalServerError("failed to resolve the backup destination", err)
 	}
-	set, err := h.svc.RunSet(c.Request().Context(), inst, backup.SetOptions{
+	set, err := h.svc.RunSetInBackground(inst, backup.SetOptions{
 		Trigger:     "manual",
 		Comment:     req.Body.Comment,
 		Concurrency: req.Body.Concurrency,
+		RequestedBy: userIDPtr(c),
 	}, dest)
 	switch {
+	case errors.Is(err, backup.ErrSetAlreadyRunning):
+		return c.AbortWithError(http.StatusConflict, err)
 	case errors.Is(err, backup.ErrS3Required):
 		return c.AbortBadRequest("recovery points need the workspace S3 backup target — configure it under Workspace settings → Backups")
 	case errors.Is(err, backup.ErrNoDatabases):
@@ -100,7 +103,7 @@ func (h *BackupHandler) RunSet(c *okapi.Context, req *RunBackupSetRequest) error
 		return c.AbortInternalServerError("failed to run the backup set", err)
 	}
 	h.record(c, inst.WorkspaceID, "database.backup_set_run", set.ID)
-	return ok(c, set)
+	return accepted(c, set)
 }
 
 // DeleteSet removes a recovery point and every artifact it carries.
