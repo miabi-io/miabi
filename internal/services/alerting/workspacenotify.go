@@ -35,6 +35,29 @@ func NewWorkspaceNotifier(members MemberLister, inbox InboxStore, bus Publisher)
 	return &WorkspaceNotifier{members: members, inbox: inbox, bus: bus}
 }
 
+// NotifyUser posts to one member's inbox, for something only they asked for.
+func (n *WorkspaceNotifier) NotifyUser(workspaceID, userID uint, item models.Notification) error {
+	if n == nil || n.inbox == nil || workspaceID == 0 || userID == 0 {
+		return nil
+	}
+	if item.Kind == "" {
+		item.Kind = models.NotificationKindInfo
+	}
+	if item.Severity == "" {
+		item.Severity = models.AlertInfo
+	}
+	item.UserID, item.WorkspaceID, item.AlertID = userID, workspaceID, nil
+	if err := n.inbox.Upsert(&item, false); err != nil {
+		return err
+	}
+	if n.bus != nil {
+		n.bus.Publish(NotificationTopic(userID), eventbus.Event{
+			Type: "notification", Data: map[string]any{"user_id": userID},
+		})
+	}
+	return nil
+}
+
 // One row per member per call; the role gate is the tenancy boundary, as for alerts.
 func (n *WorkspaceNotifier) NotifyWorkspace(workspaceID uint, minRole models.WorkspaceRole, item models.Notification) error {
 	if n == nil || n.members == nil || n.inbox == nil || workspaceID == 0 {

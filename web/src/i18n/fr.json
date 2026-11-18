@@ -1662,6 +1662,7 @@
     "toast": {
       "adoptedDatabaseS": "{ref} adopté — {adopted} base(s) de données",
       "backupDeleted": "Sauvegarde supprimée",
+      "backupStarted": "Sauvegarde n°{number} lancée — vous serez notifié à la fin.",
       "copied": "Copié",
       "databaseDeleted": "Base de données supprimée",
       "databaseIsReady": "La base de données est prête",
@@ -1671,6 +1672,7 @@
       "instanceDeleted": "Instance supprimée",
       "networkConnected": "Réseau connecté",
       "recoveryPointDeleted": "Point de restauration supprimé",
+      "recoveryPointStarted": "Point de restauration lancé — vous serez notifié à la fin.",
       "resourcesSavedTheInstanceRestarts": "Ressources enregistrées ; l’instance redémarre pour les appliquer",
       "restarted": "Base de données redémarrée",
       "restoredDatabaseSFrom": "{count} base(s) de données restaurée(s) depuis {ref}",

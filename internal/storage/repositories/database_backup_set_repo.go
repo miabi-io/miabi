@@ -20,6 +20,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -34,8 +36,32 @@ func (r *DatabaseBackupSetRepository) Create(s *models.DatabaseBackupSet) error 
 	return r.db.Create(s).Error
 }
 
+// Running reports a live recovery point for the instance; an abandoned one doesn't count.
+func (r *DatabaseBackupSetRepository) Running(instanceID uint, since time.Time) (bool, error) {
+	var n int64
+	err := r.db.Model(&models.DatabaseBackupSet{}).
+		Where("instance_id = ? AND status IN ?", instanceID, []models.BackupStatus{models.BackupPending, models.BackupRunning}).
+		Where("COALESCE(heartbeat_at, started_at) >= ?", since).
+		Count(&n).Error
+	return n > 0, err
+}
+
+// Touch records that a run is still alive.
+func (r *DatabaseBackupSetRepository) Touch(id uint) error {
+	return r.db.Model(&models.DatabaseBackupSet{}).Where("id = ?", id).Update("heartbeat_at", time.Now()).Error
+}
+
+// FailStale closes recovery points whose process stopped beating before cutoff.
+func (r *DatabaseBackupSetRepository) FailStale(cutoff time.Time, reason string) (int64, error) {
+	res := r.db.Model(&models.DatabaseBackupSet{}).
+		Where("status IN ? AND COALESCE(heartbeat_at, started_at) < ?", []models.BackupStatus{models.BackupPending, models.BackupRunning}, cutoff).
+		Updates(map[string]any{"status": models.BackupFailed, "error": reason, "finished_at": time.Now()})
+	return res.RowsAffected, res.Error
+}
+
+// The heartbeat is left to Touch, or a mid-run save would blank it and make a live run look abandoned.
 func (r *DatabaseBackupSetRepository) Update(s *models.DatabaseBackupSet) error {
-	return r.db.Save(s).Error
+	return r.db.Omit("HeartbeatAt").Save(s).Error
 }
 
 // Scoped so a set id from another tenant reads as not found.

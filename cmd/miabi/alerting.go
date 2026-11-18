@@ -23,10 +23,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/alerting"
-	"github.com/miabi-io/miabi/internal/services/backup"
 	"github.com/miabi-io/miabi/internal/services/quota"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -103,64 +101,6 @@ func (a volumeAlerter) VolumeBackupSucceeded(ws, volumeID uint) {
 		WorkspaceID: ws, Kind: "backup_ok", Resolve: true,
 		SubjectRef: fmt.Sprintf("volume:%d", volumeID),
 	})
-}
-
-type backupReporter struct{ n *alerting.WorkspaceNotifier }
-
-func (r backupReporter) ScheduledBackupFinished(ws uint, rep backup.BackupReport) {
-	item := models.Notification{
-		Category:    models.CategoryDatabase,
-		SubjectLink: rep.Link,
-		ActionText:  "View backups",
-	}
-	what := "Backup"
-	if rep.Ref != "" {
-		what = "Recovery point"
-	}
-	switch {
-	case rep.OK && rep.Databases > 0:
-		item.Severity = models.AlertInfo
-		item.Title = fmt.Sprintf("%s completed — %s", what, rep.Subject)
-		item.Body = fmt.Sprintf("%s covered %s and stored %s.",
-			rep.Ref, pluralDatabases(rep.Databases), humanBytes(rep.SizeBytes))
-	case rep.OK:
-		item.Severity = models.AlertInfo
-		item.Title = fmt.Sprintf("%s completed — %s", what, rep.Subject)
-		item.Body = fmt.Sprintf("The scheduled backup stored %s.", humanBytes(rep.SizeBytes))
-	default:
-
-		item.Severity = models.AlertWarning
-		item.Title = fmt.Sprintf("%s failed — %s", what, rep.Subject)
-		item.Body = rep.Err
-		if rep.Ref != "" {
-			item.Body = rep.Ref + ": " + rep.Err
-		}
-	}
-	// Developer and up, matching who receives the backup_failed alert: a viewer cannot act on either.
-	if err := r.n.NotifyWorkspace(ws, models.WorkspaceRoleDeveloper, item); err != nil {
-		logger.Warn("could not report a scheduled backup to the workspace inbox", "workspace", ws, "error", err)
-	}
-}
-
-func pluralDatabases(n int) string {
-	if n == 1 {
-		return "1 database"
-	}
-	return fmt.Sprintf("%d databases", n)
-}
-
-// Deliberately coarse: the exact byte count belongs on the backup row, not in a sentence.
-func humanBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	val, exp := float64(b), 0
-	for val >= unit && exp < 4 {
-		val /= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %sB", val, [...]string{"", "Ki", "Mi", "Gi", "Ti"}[exp])
 }
 
 // quotaScanner implements alerting.QuotaLister over plan quotas and per-workspace counts.

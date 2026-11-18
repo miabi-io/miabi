@@ -105,9 +105,10 @@ type BackupReport struct {
 	Err       string
 }
 
-// Scheduled runs only: nobody watches a 03:00 run, while a manual one reports in the row its operator is viewing.
+// A scheduled run reports to the workspace; a manual one runs in the background, so it reports to whoever started it.
 type BackupReporter interface {
 	ScheduledBackupFinished(workspaceID uint, rep BackupReport)
+	RequestedBackupFinished(workspaceID, userID uint, rep BackupReport)
 }
 
 // scheduledTrigger is the Trigger value the cron manager stamps on a run.
@@ -159,11 +160,14 @@ func (s *Service) SetAlerter(a BackupAlerter) { s.alerter = a }
 func (s *Service) SetReporter(r BackupReporter) { s.reporter = r }
 
 // Trigger-gated here so no call site has to remember which runs are worth reporting.
-func (s *Service) report(workspaceID uint, trigger string, rep BackupReport) {
-	if s.reporter == nil || trigger != scheduledTrigger {
-		return
+func (s *Service) report(workspaceID uint, trigger string, requestedBy *uint, rep BackupReport) {
+	switch {
+	case s.reporter == nil:
+	case trigger == scheduledTrigger:
+		s.reporter.ScheduledBackupFinished(workspaceID, rep)
+	case requestedBy != nil:
+		s.reporter.RequestedBackupFinished(workspaceID, *requestedBy, rep)
 	}
-	s.reporter.ScheduledBackupFinished(workspaceID, rep)
 }
 
 // On any error the full log stays in the DB tail.
@@ -260,6 +264,10 @@ type RunOptions struct {
 	Comment string
 	// Nil for an ordinary single-database backup.
 	SetID *uint
+	// RequestedBy is told when a manual run finishes.
+	RequestedBy *uint
+
+	started chan<- *models.Backup
 }
 
 func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, opts RunOptions, dest Destination) (*models.Backup, error) {
@@ -278,11 +286,17 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	b := &models.Backup{
 		WorkspaceID: db.WorkspaceID, DatabaseID: db.ID, Engine: inst.Engine, ServerID: inst.ServerID,
 		Status: models.BackupRunning, Trigger: opts.Trigger, Destination: dest.Type, StartedAt: &now,
-		Version: inst.Version, Comment: opts.Comment, SetID: opts.SetID,
+		Version: inst.Version, Comment: opts.Comment, SetID: opts.SetID, RequestedByID: opts.RequestedBy,
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
 	}
+	if opts.started != nil {
+		// A copy: the caller serializes it while this run keeps writing to b.
+		row := *b
+		opts.started <- &row
+	}
+	defer beat(func() error { return s.repo.Touch(b.ID) })()
 
 	env, err := s.connEnv(inst, db)
 	if err != nil {
@@ -373,7 +387,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 	}
 	// The set posts one item for all its databases; reporting here too would give N+1 notices.
 	if opts.SetID == nil {
-		s.report(b.WorkspaceID, opts.Trigger, BackupReport{
+		s.report(b.WorkspaceID, opts.Trigger, b.RequestedByID, BackupReport{
 			Subject: db.Name, Link: fmt.Sprintf("/databases/%d", inst.ID),
 			OK: true, SizeBytes: b.SizeBytes,
 		})
@@ -865,7 +879,7 @@ func (s *Service) fail(b *models.Backup, cause error) *models.Backup {
 		}
 	}
 	if b.SetID == nil {
-		s.report(b.WorkspaceID, b.Trigger, BackupReport{
+		s.report(b.WorkspaceID, b.Trigger, b.RequestedByID, BackupReport{
 			Subject: name, Link: fmt.Sprintf("/databases/%d", instanceID),
 			OK: false, Err: cause.Error(),
 		})

@@ -53,6 +53,13 @@ func (f *fakeAlerter) BackupSetSucceeded(_, instID uint) {
 type fakeReporter struct {
 	reports []BackupReport
 	ws      []uint
+	users   []uint
+}
+
+func (f *fakeReporter) RequestedBackupFinished(ws, user uint, rep BackupReport) {
+	f.ws = append(f.ws, ws)
+	f.users = append(f.users, user)
+	f.reports = append(f.reports, rep)
 }
 
 func (f *fakeReporter) ScheduledBackupFinished(ws uint, rep BackupReport) {
@@ -60,31 +67,34 @@ func (f *fakeReporter) ScheduledBackupFinished(ws uint, rep BackupReport) {
 	f.reports = append(f.reports, rep)
 }
 
-// A manual run is watched by its operator; repeating it in the inbox is how an inbox stops being read.
-func TestOnlyScheduledRunsReport(t *testing.T) {
+// A scheduled run reports to the workspace, a requested one to its requester, and an internal one (upgrade) to nobody.
+func TestReportGoesToTheRightAudience(t *testing.T) {
 	svc, _, _ := newSetService(t)
 	rep := &fakeReporter{}
 	svc.SetReporter(rep)
 
-	svc.report(1, "manual", BackupReport{Subject: "orders", OK: true})
-	svc.report(1, "upgrade", BackupReport{Subject: "orders", OK: true})
+	svc.report(1, "manual", nil, BackupReport{Subject: "orders", OK: true})
+	svc.report(1, "upgrade", nil, BackupReport{Subject: "orders", OK: true})
 	if len(rep.reports) != 0 {
-		t.Fatalf("got %d reports for non-scheduled runs, want 0", len(rep.reports))
+		t.Fatalf("got %d reports for runs nobody requested, want 0", len(rep.reports))
 	}
 
-	svc.report(1, "scheduled", BackupReport{Subject: "orders", OK: true})
-	if len(rep.reports) != 1 {
-		t.Fatalf("got %d reports for a scheduled run, want 1", len(rep.reports))
+	svc.report(1, "scheduled", nil, BackupReport{Subject: "orders", OK: true})
+	if len(rep.reports) != 1 || len(rep.users) != 0 || rep.ws[0] != 1 {
+		t.Fatalf("scheduled run: reports %d, user reports %d, ws %v; want one workspace report", len(rep.reports), len(rep.users), rep.ws)
 	}
-	if rep.ws[0] != 1 {
-		t.Errorf("reported against workspace %d, want 1", rep.ws[0])
+
+	user := uint(42)
+	svc.report(1, "manual", &user, BackupReport{Subject: "orders", OK: true})
+	if len(rep.users) != 1 || rep.users[0] != 42 {
+		t.Fatalf("manual run reported to %v, want the requester 42", rep.users)
 	}
 }
 
 // An unwired reporter must be silent, not fatal: a build that never wired one still takes backups.
 func TestReportWithoutAReporterIsSilent(t *testing.T) {
 	svc, _, _ := newSetService(t)
-	svc.report(1, "scheduled", BackupReport{Subject: "orders", OK: true})
+	svc.report(1, "scheduled", nil, BackupReport{Subject: "orders", OK: true})
 }
 
 func finishOne(t *testing.T, svc *Service, status models.BackupStatus, itemErr string) {
