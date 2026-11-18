@@ -55,3 +55,22 @@ func TestApplicationNodeBesideANodeConstraintIsRefused(t *testing.T) {
 		t.Errorf("err = %v, want a refusal", err)
 	}
 }
+
+func TestJobNodeDiffs(t *testing.T) {
+	actual := Resource{Kind: KindJob, Job: &JobSpec{App: "api", Command: []string{"true"}, Placement: &JobPlacementSpec{Node: "safari-02"}}}
+	same := Resource{Kind: KindJob, Job: &JobSpec{App: "api", Command: []string{"true"}}}
+	if d := diffJob(actual, same); len(d) != 0 {
+		t.Errorf("an omitted node must not diff, got %+v", d)
+	}
+	moved := Resource{Kind: KindJob, Job: &JobSpec{App: "api", Command: []string{"true"}, Placement: &JobPlacementSpec{Node: "safari-03"}}}
+	d := diffJob(actual, moved)
+	if len(d) != 1 || d[0].Field != "placement.node" {
+		t.Errorf("a moved Job must diff only on placement.node (no rerun), got %+v", d)
+	}
+
+	cronA := Resource{Kind: KindCronJob, CronJob: &CronJobSpec{App: "api", Schedule: "0 3 * * *", Command: []string{"true"}, Placement: &JobPlacementSpec{Node: "safari-02"}}}
+	cronD := Resource{Kind: KindCronJob, CronJob: &CronJobSpec{App: "api", Schedule: "0 3 * * *", Command: []string{"true"}}}
+	if d := diffFields(cronA, cronD); len(d) != 0 {
+		t.Errorf("an omitted cron node must not diff, got %+v", d)
+	}
+}

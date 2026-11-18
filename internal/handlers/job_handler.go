@@ -195,6 +195,8 @@ func (h *JobHandler) UpdateCronJob(c *okapi.Context, req *CronJobRequest) error 
 	wsID := middlewares.WorkspaceID(c)
 	in := req.input()
 	if cur, err := h.svc.GetCronJob(wsID, h.cronJobID(c)); err == nil {
+		// Job placement is manifest-only, so a console edit keeps whatever pin a manifest set.
+		in.PinnedServerID = cur.PinnedServerID
 		if owner, owned := models.SourceOwnedElsewhere(cur.Metadata); owned && !in.OnlyToggles(cur) {
 			return c.AbortWithError(http.StatusConflict, ownedErr("cronjob", owner))
 		}
@@ -305,6 +307,8 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, job.ErrNotTerminal):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, job.ErrVolumesSplit):
+		return c.AbortWithError(409, err)
+	case errors.Is(err, job.ErrNodeVolumeConflict):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, job.ErrAlreadyDone):
 		return c.AbortWithError(409, err)

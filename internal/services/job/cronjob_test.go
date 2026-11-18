@@ -46,6 +46,7 @@ type cronRow struct {
 	Image             string
 	RegistryID        *uint
 	RunAsUser         string
+	PinnedServerID    uint
 	Enabled           bool
 	ConcurrencyPolicy string
 	HistoryLimit      int

@@ -44,12 +44,13 @@ func TestJobNode(t *testing.T) {
 		{"service follows its volume", service, fakeVolumes{onNode3, {Name: "uploads", ServerID: 3}}, 3},
 		{"service without node-local volumes stays on its node", service, nil, 1},
 		{"container keeps its node", container, fakeVolumes{onNode3}, 1},
+		{"pinned service follows its pin", &models.Application{RuntimeKind: models.RuntimeService, ServerID: 1, PinnedServerID: 4}, nil, 4},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &Service{}
 			s.SetVolumes(tc.vols, nil)
-			got, err := s.jobNode(tc.app)
+			got, err := s.jobNode(tc.app, 0)
 			if err != nil || got != tc.want {
 				t.Fatalf("jobNode = %d, %v; want %d", got, err, tc.want)
 			}
@@ -62,7 +63,7 @@ func TestJobNodeRefusesVolumesOnDifferentNodes(t *testing.T) {
 	s.SetVolumes(fakeVolumes{{Name: "pgdata", ServerID: 3}, {Name: "uploads", ServerID: 4}}, func(id uint) string {
 		return map[uint]string{3: "safari-01", 4: "safari-02"}[id]
 	})
-	_, err := s.jobNode(&models.Application{RuntimeKind: models.RuntimeService, ServerID: 1})
+	_, err := s.jobNode(&models.Application{RuntimeKind: models.RuntimeService, ServerID: 1}, 0)
 	if !errors.Is(err, ErrVolumesSplit) {
 		t.Fatalf("err = %v, want ErrVolumesSplit", err)
 	}
@@ -72,8 +73,40 @@ func TestJobNodeRefusesVolumesOnDifferentNodes(t *testing.T) {
 }
 
 func TestJobNodeWithoutVolumeLookupKeepsTheAppNode(t *testing.T) {
-	got, err := (&Service{}).jobNode(&models.Application{RuntimeKind: models.RuntimeService, ServerID: 1})
+	got, err := (&Service{}).jobNode(&models.Application{RuntimeKind: models.RuntimeService, ServerID: 1}, 0)
 	if err != nil || got != 1 {
 		t.Fatalf("jobNode = %d, %v", got, err)
+	}
+}
+
+func TestJobNodePin(t *testing.T) {
+	s := &Service{}
+	s.SetVolumes(fakeVolumes{{Name: "pgdata", ServerID: 3}}, func(id uint) string {
+		return map[uint]string{3: "safari-01", 5: "safari-03"}[id]
+	})
+	app := &models.Application{Name: "api", RuntimeKind: models.RuntimeContainer, ServerID: 3}
+	if got, err := s.jobNode(app, 3); err != nil || got != 3 {
+		t.Errorf("pin to the volume's node = %d, %v", got, err)
+	}
+	_, err := s.jobNode(app, 5)
+	if !errors.Is(err, ErrNodeVolumeConflict) || !strings.Contains(err.Error(), `volume "pgdata" of app "api" lives on safari-01`) {
+		t.Errorf("pin away from the volume err = %v, want NODE_VOLUME_CONFLICT naming it", err)
+	}
+
+	s.SetVolumes(fakeVolumes{}, nil)
+	if got, err := s.jobNode(app, 5); err != nil || got != 5 {
+		t.Errorf("pin with no node-local volume = %d, %v; want 5", got, err)
+	}
+}
+
+func TestOnlyTogglesSeesANodeChange(t *testing.T) {
+	cj := &models.CronJob{Name: "nightly", Schedule: "0 3 * * *", Command: []string{"true"}, ConcurrencyPolicy: "allow", PinnedServerID: 3}
+	in := CronJobInput{Schedule: cj.Schedule, Command: cj.Command, ConcurrencyPolicy: "allow", PinnedServerID: 3}
+	if !in.OnlyToggles(cj) {
+		t.Fatal("same pin must read as unchanged")
+	}
+	in.PinnedServerID = 5
+	if in.OnlyToggles(cj) {
+		t.Error("a changed pin is not a toggle")
 	}
 }

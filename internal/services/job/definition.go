@@ -48,9 +48,11 @@ type DefinitionInput struct {
 	HistoryLimit  int
 	BackoffLimit  int
 	// SpecHash is the manifest's fingerprint of the run template.
-	SpecHash    string
-	Metadata    models.Metadata
-	Annotations models.Metadata
+	SpecHash string
+	// PinnedServerID pins every run to a node; nil keeps the current pin, 0 clears it.
+	PinnedServerID *uint
+	Metadata       models.Metadata
+	Annotations    models.Metadata
 }
 
 // SaveDefinition runs a new onRelease definition against an active release so the first sync isn't a no-op.
@@ -88,6 +90,12 @@ func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in Defin
 	def.HistoryLimit = in.HistoryLimit
 	def.BackoffLimit = in.BackoffLimit
 	def.SpecHash = in.SpecHash
+	if in.PinnedServerID != nil {
+		if err := s.checkPin(app, *in.PinnedServerID); err != nil {
+			return nil, nil, err
+		}
+		def.PinnedServerID = *in.PinnedServerID
+	}
 	def.Metadata = in.Metadata
 	def.Annotations = in.Annotations
 	if created {
@@ -186,6 +194,7 @@ func (s *Service) runAttempt(ctx context.Context, def *models.JobDefinition, sou
 		Image:           def.Image,
 		RegistryID:      def.RegistryID,
 		RunAsUser:       def.RunAsUser,
+		ServerID:        def.PinnedServerID,
 		TimeoutSecs:     def.TimeoutSecs,
 		Source:          source,
 		TriggeredBy:     triggeredBy,
@@ -243,6 +252,9 @@ func (s *Service) ListDefinitions(workspaceID, appID uint) ([]models.JobDefiniti
 	names := s.appNames(workspaceID)
 	for i := range list {
 		list[i].AppName = names[list[i].ApplicationID]
+		if list[i].PinnedServerID != 0 {
+			list[i].Node = s.pinName(list[i].PinnedServerID)
+		}
 		if list[i].LastJobID != nil {
 			list[i].LastStatus = status[*list[i].LastJobID]
 		}

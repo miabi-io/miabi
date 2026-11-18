@@ -202,7 +202,7 @@ func runWorker() error {
 	releaseJobs := job.NewService(repositories.NewJobRepository(db), appRepo, repositories.NewReleaseRepository(db), nodeClients, producer, 3600)
 	releaseJobs.SetQuota(securityQuota)
 	releaseJobs.SetDeployments(repositories.NewDeploymentRepository(db))
-	releaseJobs.SetVolumes(repositories.NewVolumeRepository(db), job.ServerLabel(repositories.NewServerRepository(db)))
+	releaseJobs.SetVolumes(repositories.NewVolumeRepository(db), job.NodeNames(repositories.NewServerRepository(db)))
 	deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
 	jobHandler.SetFailureHook(releaseJobs.RunFailed)
 	// Restricted profile is Enterprise-only; the same edition governs analytics retention below.
