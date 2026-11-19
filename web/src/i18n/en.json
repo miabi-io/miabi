@@ -2144,7 +2144,19 @@
       "onRelease": "on every release"
     },
     "attempt": "attempt {n}",
-    "applyHint": "Applied from a manifest: the next miabi apply overwrites changes made here."
+    "applyHint": "Applied from a manifest: the next miabi apply overwrites changes made here.",
+    "env": {
+      "label": "Environment variables",
+      "key": "Variable name",
+      "value": "Value",
+      "secret": "Secret",
+      "secretHint": "Stored encrypted and never shown again",
+      "keepSecret": "Unchanged — type to replace",
+      "add": "Add variable",
+      "hint": "Added on top of the app's variables; a value here replaces the app's. Reference a workspace secret with {ref}.",
+      "inherit": "Inherit the app's variables",
+      "inheritHint": "Turn off to run with only these variables and Miabi's MIABI_* set, for example when a third-party image shouldn't see the app's secrets."
+    }
   },
   "ldap": {
     "testConnection": "Test connection"

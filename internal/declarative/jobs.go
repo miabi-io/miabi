@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -59,7 +60,10 @@ func (r *Resource) validateCronJob() error {
 	if c.ConcurrencyPolicy != "" && !contains(concurrencyPolicies, c.ConcurrencyPolicy) {
 		return fmt.Errorf("cronjob %q: concurrencyPolicy must be one of %s", name, strings.Join(concurrencyPolicies, ", "))
 	}
-	return validateRunTemplate("cronjob", name, c.Command, c.Image, c.Registry, c.TimeoutSeconds, c.HistoryLimit, c.Security)
+	if err := validateRunTemplate("cronjob", name, c.Command, c.Image, c.Registry, c.TimeoutSeconds, c.HistoryLimit, c.Security); err != nil {
+		return err
+	}
+	return validateJobEnv("cronjob", name, c.Env, c.SecretEnv)
 }
 
 func (r *Resource) validateJob() error {
@@ -82,7 +86,24 @@ func (r *Resource) validateJob() error {
 	if j.BackoffLimit < 0 || j.BackoffLimit > maxBackoffLimit {
 		return fmt.Errorf("job %q: backoffLimit must be between 0 and %d", name, maxBackoffLimit)
 	}
-	return validateRunTemplate("job", name, j.Command, j.Image, j.Registry, j.TimeoutSeconds, j.HistoryLimit, j.Security)
+	if err := validateRunTemplate("job", name, j.Command, j.Image, j.Registry, j.TimeoutSeconds, j.HistoryLimit, j.Security); err != nil {
+		return err
+	}
+	return validateJobEnv("job", name, j.Env, j.SecretEnv)
+}
+
+func validateJobEnv(kind, name string, env map[string]string, secretEnv []string) error {
+	for k := range env {
+		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, "= \t\r\n") {
+			return fmt.Errorf("%s %q: env key %q is not a valid variable name", kind, name, k)
+		}
+	}
+	for _, k := range secretEnv {
+		if _, ok := env[k]; !ok {
+			return fmt.Errorf("%s %q: secretEnv names %q, which is not in env", kind, name, k)
+		}
+	}
+	return nil
 }
 
 func validateRunTemplate(kind, name string, command []string, image, registry string, timeout, history int, sec *SecuritySpec) error {
@@ -141,18 +162,51 @@ func (c *CronJobSpec) RunAsUser() string {
 	return c.Security.RunAsUser
 }
 
+// Inherits reports whether runs get the app's and stack's variables.
+func (j *JobSpec) Inherits() bool { return j.InheritEnv == nil || *j.InheritEnv }
+
+// Inherits reports whether runs get the app's and stack's variables.
+func (c *CronJobSpec) Inherits() bool { return c.InheritEnv == nil || *c.InheritEnv }
+
 // Fingerprint covers what a run executes; policy, history and app are excluded.
 func (j *JobSpec) Fingerprint() string {
 	user, _ := models.NormalizeRunAsUser(j.RunAsUser())
 	h := sha256.New()
-	for _, part := range []string{
+	parts := []string{
 		strings.Join(j.Command, "\x1f"), strings.Join(j.Entrypoint, "\x1f"),
 		strings.TrimSpace(j.Image), j.Registry, user, strconv.Itoa(j.TimeoutSeconds),
-	} {
+	}
+	// Appended only when used, so a Job without env keeps the fingerprint it was stored with.
+	if env := envFingerprint(j.Env, j.SecretEnv); env != "" || !j.Inherits() {
+		parts = append(parts, env, strconv.FormatBool(j.Inherits()))
+	}
+	for _, part := range parts {
 		h.Write([]byte(part))
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func envFingerprint(env map[string]string, secretEnv []string) string {
+	if len(env) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k)
+		if contains(secretEnv, k) {
+			b.WriteString("\x1e")
+		}
+		b.WriteString("=")
+		b.WriteString(env[k])
+		b.WriteString("\x1f")
+	}
+	return b.String()
 }
 
 func (p *JobPlacementSpec) node() string {
@@ -187,6 +241,14 @@ func cronJobFields(c *CronJobSpec, f map[string]string) {
 	}
 	if n := c.NodeName(); n != "" {
 		f["placement.node"] = n
+	}
+	f["inheritEnv"] = strconv.FormatBool(c.Inherits())
+	for k, v := range c.Env {
+		if contains(c.SecretEnv, k) {
+			f["env."+k] = "(secret)" // never surface secret values in a plan
+			continue
+		}
+		f["env."+k] = v
 	}
 }
 

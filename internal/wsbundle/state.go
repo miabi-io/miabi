@@ -131,21 +131,24 @@ type Middleware struct {
 }
 
 type CronJob struct {
-	Name              string            `json:"name"`
-	App               string            `json:"app"`
-	Schedule          string            `json:"schedule"`
-	Command           []string          `json:"command,omitempty"`
-	Entrypoint        []string          `json:"entrypoint,omitempty"`
-	Image             string            `json:"image,omitempty"`
-	Registry          string            `json:"registry,omitempty"`
-	TimeoutSecs       int               `json:"timeout_secs,omitempty"`
-	Enabled           bool              `json:"enabled"`
-	ConcurrencyPolicy string            `json:"concurrency_policy,omitempty"`
-	HistoryLimit      int               `json:"history_limit,omitempty"`
-	DisplayName       string            `json:"display_name,omitempty"`
-	RunAsUser         string            `json:"run_as_user,omitempty"`
-	Metadata          map[string]string `json:"metadata,omitempty"`
-	Annotations       map[string]string `json:"annotations,omitempty"`
+	Name              string   `json:"name"`
+	App               string   `json:"app"`
+	Schedule          string   `json:"schedule"`
+	Command           []string `json:"command,omitempty"`
+	Entrypoint        []string `json:"entrypoint,omitempty"`
+	Image             string   `json:"image,omitempty"`
+	Registry          string   `json:"registry,omitempty"`
+	TimeoutSecs       int      `json:"timeout_secs,omitempty"`
+	Enabled           bool     `json:"enabled"`
+	ConcurrencyPolicy string   `json:"concurrency_policy,omitempty"`
+	HistoryLimit      int      `json:"history_limit,omitempty"`
+	DisplayName       string   `json:"display_name,omitempty"`
+	RunAsUser         string   `json:"run_as_user,omitempty"`
+	Env               []EnvVar `json:"env,omitempty"`
+	// InheritEnv is nil for the default, true, so bundles from before job env read the same.
+	InheritEnv  *bool             `json:"inherit_env,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // JobDefinition is a declared Job. Its fingerprint travels with it; its runs do not.
@@ -157,6 +160,8 @@ type JobDefinition struct {
 	Image         string            `json:"image,omitempty"`
 	Registry      string            `json:"registry,omitempty"`
 	RunAsUser     string            `json:"run_as_user,omitempty"`
+	Env           []EnvVar          `json:"env,omitempty"`
+	InheritEnv    *bool             `json:"inherit_env,omitempty"`
 	TimeoutSecs   int               `json:"timeout_secs,omitempty"`
 	RunPolicy     string            `json:"run_policy,omitempty"`
 	WaitForDeploy bool              `json:"wait_for_deploy"`

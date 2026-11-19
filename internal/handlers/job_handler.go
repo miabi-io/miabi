@@ -66,6 +66,10 @@ type RunJobRequest struct {
 		// Empty inherits the app's; a restricted-profile workspace must give a non-root numeric uid.
 		RunAsUser   string `json:"run_as_user"`
 		TimeoutSecs int    `json:"timeout_secs"`
+		// Env is the run's own variables, on top of the app's; a secret value is stored encrypted.
+		Env []models.JobEnvVar `json:"env"`
+		// InheritEnv false runs without the app's and stack's variables; omitted is true.
+		InheritEnv *bool `json:"inherit_env"`
 	} `json:"body"`
 }
 
@@ -73,6 +77,10 @@ type RunJobRequest struct {
 func (h *JobHandler) Run(c *okapi.Context, req *RunJobRequest) error {
 	wsID := middlewares.WorkspaceID(c)
 	actor := middlewares.UserID(c)
+	env, err := h.svc.SealEnv(wsID, req.Body.Env, nil)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
 	j, err := h.svc.Run(c.Request().Context(), wsID, req.Body.ApplicationID, job.RunRequest{
 		Name:        req.Body.Name,
 		Command:     req.Body.Command,
@@ -81,6 +89,8 @@ func (h *JobHandler) Run(c *okapi.Context, req *RunJobRequest) error {
 		RegistryID:  req.Body.RegistryID,
 		RunAsUser:   req.Body.RunAsUser,
 		TimeoutSecs: req.Body.TimeoutSecs,
+		Env:         env,
+		InheritEnv:  req.Body.InheritEnv,
 		Source:      "manual",
 		TriggeredBy: &actor,
 	})
@@ -142,6 +152,9 @@ type CronJobRequest struct {
 		Enabled           bool   `json:"enabled"`
 		ConcurrencyPolicy string `json:"concurrency_policy" enum:"allow,forbid,replace"`
 		HistoryLimit      int    `json:"history_limit"`
+		// Env replaces the schedule's variables; a secret sent back as the mask keeps its stored value.
+		Env        []models.JobEnvVar `json:"env"`
+		InheritEnv *bool              `json:"inherit_env"`
 	} `json:"body"`
 }
 
@@ -159,6 +172,8 @@ func (r *CronJobRequest) input() job.CronJobInput {
 		Enabled:           r.Body.Enabled,
 		ConcurrencyPolicy: r.Body.ConcurrencyPolicy,
 		HistoryLimit:      r.Body.HistoryLimit,
+		Env:               r.Body.Env,
+		InheritEnv:        r.Body.InheritEnv,
 	}
 }
 
@@ -298,6 +313,8 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, job.ErrInvalidSchedule):
 		return c.AbortBadRequest("invalid cron schedule")
+	case errors.Is(err, job.ErrInvalidEnv):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, job.ErrCronNotFound):
 		return c.AbortNotFound("cronjob not found")
 	case errors.Is(err, job.ErrCronNameTaken):

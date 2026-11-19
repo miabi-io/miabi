@@ -72,8 +72,14 @@ func (s *ResourceSet) References() []Reference {
 			out = append(out, ruleRefs(fmt.Sprintf("middleware %q rule", r.Metadata.Name), r.Middleware.Rule)...)
 		case r.CronJob != nil:
 			out = append(out, Reference{Where: fmt.Sprintf("cronjob %q app", r.Metadata.Name), Collection: "applications", Name: r.CronJob.App})
+			for k, v := range r.CronJob.Env {
+				out = append(out, envRefs(fmt.Sprintf("cronjob %q env %s", r.Metadata.Name, k), v)...)
+			}
 		case r.Job != nil:
 			out = append(out, Reference{Where: fmt.Sprintf("job %q app", r.Metadata.Name), Collection: "applications", Name: r.Job.App})
+			for k, v := range r.Job.Env {
+				out = append(out, envRefs(fmt.Sprintf("job %q env %s", r.Metadata.Name, k), v)...)
+			}
 		case r.Config != nil:
 			action := actionPattern
 			if d := r.Config.Delimiters; len(d) == 2 && (d[0] != "{{" || d[1] != "}}") {

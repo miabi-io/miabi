@@ -478,6 +478,12 @@ type CronJobSpec struct {
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// Placement pins runs to a node of the app's location; omitted keeps the current pin.
 	Placement *JobPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Env is the run's own variables, on top of the app's; values support interpolation like an app's env.
+	Env map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	// SecretEnv names the env keys whose literal values are stored encrypted.
+	SecretEnv []string `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
+	// InheritEnv false runs without the app's and stack's variables; omitted is true.
+	InheritEnv *bool `yaml:"inheritEnv,omitempty" json:"inheritEnv,omitempty"`
 }
 
 // JobPlacementSpec has no location: a run always lands in its app's location.
@@ -521,6 +527,12 @@ type JobSpec struct {
 	Security *SecuritySpec `yaml:"security,omitempty" json:"security,omitempty"`
 	// Placement pins runs to a node of the app's location; omitted keeps the current pin.
 	Placement *JobPlacementSpec `yaml:"placement,omitempty" json:"placement,omitempty"`
+	// Env is the run's own variables, on top of the app's; values support interpolation like an app's env.
+	Env map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	// SecretEnv names the env keys whose literal values are stored encrypted.
+	SecretEnv []string `yaml:"secretEnv,omitempty" json:"secretEnv,omitempty"`
+	// InheritEnv false runs without the app's and stack's variables; omitted is true.
+	InheritEnv *bool `yaml:"inheritEnv,omitempty" json:"inheritEnv,omitempty"`
 	// SpecFP is derived state filled on the live side, never serialized.
 	SpecFP string `yaml:"-" json:"-"`
 }

@@ -7,9 +7,10 @@ import { useNotificationStore } from '@/stores/notification'
 import { jobApi, usageApi, type CronJobInput } from '@/api/resources'
 import { appApi } from '@/api/apps'
 import { registryApi } from '@/api/registries'
-import type { Job, CronJob, JobDefinition, Application, Registry } from '@/api/types'
+import type { Job, CronJob, JobDefinition, JobEnvVar, Application, Registry } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
+import JobEnvEditor from '@/components/JobEnvEditor.vue'
 
 const ws = useWorkspaceStore()
 const { t } = useI18n()
@@ -84,9 +85,9 @@ function appName(id: number) {
 // --- Run a one-off job ---
 const showRun = ref(false)
 const running = ref(false)
-const runForm = ref<{ app: number | null; name: string; command: string; image: string; registry: number | null; run_as_user: string; timeout: number }>({ app: null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0 })
+const runForm = ref<{ app: number | null; name: string; command: string; image: string; registry: number | null; run_as_user: string; timeout: number; env: JobEnvVar[]; inherit_env: boolean }>({ app: null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0, env: [], inherit_env: true })
 function openRun() {
-  runForm.value = { app: apps.value[0]?.id ?? null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0 }
+  runForm.value = { app: apps.value[0]?.id ?? null, name: '', command: '', image: '', registry: null, run_as_user: '', timeout: 0, env: [], inherit_env: true }
   showRun.value = true
 }
 async function run() {
@@ -106,6 +107,8 @@ async function run() {
       registry_id: image ? runForm.value.registry : undefined,
       run_as_user: runForm.value.run_as_user.trim() || undefined,
       timeout_secs: runForm.value.timeout > 0 ? runForm.value.timeout : undefined,
+      env: envRows(runForm.value.env),
+      inherit_env: runForm.value.inherit_env,
     })
     notify.success(t('notify.jobs.jobStarted'))
     showRun.value = false
@@ -113,6 +116,11 @@ async function run() {
     load()
   } catch (e) { notify.apiError(e) }
   finally { running.value = false }
+}
+
+// Blank rows are the editor's spare lines, not variables.
+function envRows(env: JobEnvVar[]): JobEnvVar[] {
+  return env.filter((v) => v.key.trim() !== '').map((v) => ({ ...v, key: v.key.trim() }))
 }
 
 const logModal = ref<Job | null>(null)
@@ -137,8 +145,8 @@ const editingCronId = ref<number | null>(null)
 const cronManaged = ref('')
 const cronLocked = computed(() => cronManaged.value === 'gitops')
 const editingCron = ref<CronJob | null>(null)
-const cronForm = ref<{ app: number | null; name: string; display_name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
-  { app: null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
+const cronForm = ref<{ app: number | null; name: string; display_name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number; env: JobEnvVar[]; inherit_env: boolean }>(
+  { app: null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0, env: [], inherit_env: true },
 )
 const cronCommandStr = ref('')
 
@@ -146,7 +154,7 @@ function openCreateCron() {
   editingCronId.value = null
   editingCron.value = null
   cronManaged.value = ''
-  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 }
+  cronForm.value = { app: apps.value[0]?.id ?? null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0, env: [], inherit_env: true }
   cronCommandStr.value = ''
   showCron.value = true
 }
@@ -154,7 +162,7 @@ function openEditCron(c: CronJob) {
   editingCronId.value = c.id
   editingCron.value = c
   cronManaged.value = managedBy(c.metadata)
-  cronForm.value = { app: c.application_id, name: c.name, display_name: c.display_name || '', schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, run_as_user: c.run_as_user || '', concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit }
+  cronForm.value = { app: c.application_id, name: c.name, display_name: c.display_name || '', schedule: c.schedule, image: c.image || '', registry: c.registry_id ?? null, run_as_user: c.run_as_user || '', concurrency_policy: c.concurrency_policy, enabled: c.enabled, timeout_secs: c.timeout_secs, history_limit: c.history_limit, env: (c.env ?? []).map((v) => ({ ...v })), inherit_env: c.inherit_env !== false }
   cronCommandStr.value = (c.command || []).join(' ')
   showCron.value = true
 }
@@ -174,6 +182,7 @@ async function saveCron() {
     command: orig.command, entrypoint: orig.entrypoint, image: orig.image, registry_id: orig.registry_id ?? null,
     run_as_user: orig.run_as_user || '', concurrency_policy: orig.concurrency_policy, enabled: cronForm.value.enabled,
     timeout_secs: orig.timeout_secs, history_limit: orig.history_limit,
+    env: orig.env ?? [], inherit_env: orig.inherit_env !== false,
   } : {
     application_id: cronForm.value.app,
     name: cronForm.value.name, display_name: cronForm.value.display_name.trim(), schedule: cronForm.value.schedule, command,
@@ -182,6 +191,8 @@ async function saveCron() {
     run_as_user: cronForm.value.run_as_user.trim(),
     concurrency_policy: cronForm.value.concurrency_policy, enabled: cronForm.value.enabled,
     timeout_secs: cronForm.value.timeout_secs, history_limit: cronForm.value.history_limit,
+    env: envRows(cronForm.value.env),
+    inherit_env: cronForm.value.inherit_env,
   }
   try {
     if (editingCronId.value) await jobApi.updateCronJob(id, editingCronId.value, input)
@@ -408,6 +419,7 @@ const noApps = computed(() => apps.value.length === 0)
                 <span v-if="requireNonRoot"> {{ $t('jobs.nonRootRequired') }}</span>
               </p>
             </div>
+            <JobEnvEditor v-model="runForm.env" v-model:inherit="runForm.inherit_env" />
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">{{ $t('jobs.timeoutLabel') }}</label>
               <input v-model.number="runForm.timeout" type="number" min="0" class="form-input" style="max-width: 160px" :aria-label="$t('jobs.timeoutLabel')" />
@@ -473,6 +485,7 @@ const noApps = computed(() => apps.value.length === 0)
               <p v-if="cronUserError" class="form-hint" style="color: var(--danger)">{{ cronUserError }}</p>
               <p v-else class="form-hint">{{ $t('jobs.cronRunAsUserHint') }}</p>
             </div>
+            <JobEnvEditor v-model="cronForm.env" v-model:inherit="cronForm.inherit_env" />
             <div class="flex items-center gap-3" style="flex-wrap: wrap">
               <label class="form-group" style="margin-bottom: 0">
                 <span class="form-label">{{ $t('jobs.concurrency') }}</span>

@@ -986,6 +986,7 @@ func (r *restoreRun) applyDelivery() {
 			Name: c.Name, DisplayName: c.DisplayName, Schedule: c.Schedule, Command: c.Command, Entrypoint: c.Entrypoint,
 			Image: c.Image, RunAsUser: c.RunAsUser, TimeoutSecs: c.TimeoutSecs, Enabled: c.Enabled,
 			ConcurrencyPolicy: c.ConcurrencyPolicy, HistoryLimit: c.HistoryLimit,
+			Env: r.jobEnv(c.Env), InheritEnv: c.InheritEnv,
 			Metadata: c.Metadata, Annotations: c.Annotations,
 		}
 		if id := regIDs[c.Registry]; c.Registry != "" && id != 0 {
@@ -1013,6 +1014,7 @@ func (r *restoreRun) applyDelivery() {
 			Name: d.Name, ApplicationID: appID, Command: d.Command, Entrypoint: d.Entrypoint, Image: d.Image,
 			RunAsUser: d.RunAsUser, TimeoutSecs: d.TimeoutSecs, RunPolicy: d.RunPolicy,
 			WaitForDeploy: d.WaitForDeploy, HistoryLimit: d.HistoryLimit, BackoffLimit: d.BackoffLimit, SpecHash: d.SpecHash,
+			Env: r.jobEnv(d.Env), InheritEnv: d.InheritEnv,
 			Metadata: d.Metadata, Annotations: d.Annotations,
 		}
 		if id := regIDs[d.Registry]; d.Registry != "" && id != 0 {
@@ -1024,6 +1026,18 @@ func (r *restoreRun) applyDelivery() {
 		}
 		r.add("job", d.Name, "created", "")
 	}
+}
+
+// Plaintext, as the job service expects; it seals the secret values with the target's key.
+func (r *restoreRun) jobEnv(env []wsbundle.EnvVar) models.JobEnv {
+	if len(env) == 0 {
+		return nil
+	}
+	out := make(models.JobEnv, len(env))
+	for i, e := range env {
+		out[i] = models.JobEnvVar{Key: e.Key, Value: r.rewrite(e.Value), IsSecret: e.IsSecret}
+	}
+	return out
 }
 
 // Never creates users: a bundle that could mint accounts would grant access by uploading a file.

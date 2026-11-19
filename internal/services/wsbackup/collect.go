@@ -280,6 +280,11 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 		if c.RegistryID != nil {
 			entry.Registry = regName[*c.RegistryID]
 		}
+		if entry.Env, err = bundleJobEnv(c.Env); err != nil {
+			report.Add("cron-job", c.Name, "skipped", err.Error())
+			continue
+		}
+		entry.InheritEnv = bundleInherit(c.InheritEnv)
 		st.CronJobs = append(st.CronJobs, entry)
 		report.Add("cron-job", c.Name, "captured", "")
 	}
@@ -304,6 +309,11 @@ func (s *Service) collectDelivery(workspaceID uint, st *wsbundle.State, report *
 		if d.RegistryID != nil {
 			entry.Registry = regName[*d.RegistryID]
 		}
+		if entry.Env, err = bundleJobEnv(d.Env); err != nil {
+			report.Add("job", d.Name, "skipped", err.Error())
+			continue
+		}
+		entry.InheritEnv = bundleInherit(d.InheritEnv)
 		st.JobDefinitions = append(st.JobDefinitions, entry)
 		report.Add("job", d.Name, "captured", "")
 	}
@@ -678,6 +688,26 @@ func (s *Service) appEnv(app *models.Application) ([]wsbundle.EnvVar, error) {
 }
 
 var secretRef = regexp.MustCompile(`^\s*\$\{\{\s*secrets\.[A-Za-z][A-Za-z0-9_-]{0,62}\s*\}\}\s*$`)
+
+func bundleJobEnv(env models.JobEnv) ([]wsbundle.EnvVar, error) {
+	var out []wsbundle.EnvVar
+	for _, v := range env {
+		e, err := envEntry(v.Key, v.Value, v.IsSecret)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+func bundleInherit(v *bool) *bool {
+	if models.InheritsEnv(v) {
+		return nil
+	}
+	off := false
+	return &off
+}
 
 // A vault reference travels as the pointer: resolving would duplicate the secret and cut the rotation link.
 func envEntry(key, stored string, isSecret bool) (wsbundle.EnvVar, error) {

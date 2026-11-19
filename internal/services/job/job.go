@@ -131,7 +131,10 @@ type RunRequest struct {
 	Image      string
 	RegistryID *uint
 	// Empty inherits the app's; a one-off may need different privileges, e.g. a migration writing a volume.
-	RunAsUser   string
+	RunAsUser string
+	// Env is already sealed (SealEnv); InheritEnv nil means true.
+	Env         models.JobEnv
+	InheritEnv  *bool
 	Source      string // manual | api | scheduled
 	TriggeredBy *uint  // user id (nil for scheduled)
 	CronJobID   *uint  // set when spawned by a cronjob
@@ -268,6 +271,8 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		RegistryID:       registryID,
 		Pull:             pull,
 		RunAsUser:        runAsUser,
+		Env:              req.Env,
+		InheritEnv:       inheritOrDefault(req.InheritEnv),
 		Status:           models.JobPending,
 		TimeoutSecs:      timeout,
 		Source:           source,
