@@ -589,10 +589,46 @@ async function saveSource() {
 
     await loadRepoPipeline()
     loadApp()
+    if (res.change.switched && res.change.to === 'git') void suggestDockerfilePorts()
   } catch (e) {
     notify.apiError(e)
   } finally {
     savingSource.value = false
+  }
+}
+
+// A running app's ports are never rewritten behind its back, so the Dockerfile's are offered rather than applied.
+const dockerfilePorts = ref<{ port: number; protocol: 'tcp' | 'udp' }[]>([])
+const applyingPorts = ref(false)
+const portLabel = (ps: { port?: number; container_port?: number; protocol: string }[]) =>
+  ps.map((p) => `${p.port ?? p.container_port}/${p.protocol}`).join(', ')
+async function suggestDockerfilePorts() {
+  dockerfilePorts.value = []
+  if (!wid.value || !app.value) return
+  try {
+    const res = (await gitRepositoryApi.inspect(wid.value, {
+      git_repo: app.value.git_repo || undefined, git_ref: app.value.git_ref || undefined,
+      git_repository_id: app.value.git_repository_id ?? null,
+    })).data.data
+    const exposed = res?.exposed_ports ?? []
+    const current = (app.value.ports || []).map((p) => `${p.container_port}/${p.protocol}`).sort().join(',')
+    if (exposed.length && exposed.map((p) => `${p.port}/${p.protocol}`).sort().join(',') !== current) dockerfilePorts.value = exposed
+  } catch { /* the suggestion is optional; the switch already succeeded */ }
+}
+async function applyDockerfilePorts() {
+  if (!wid.value || !dockerfilePorts.value.length) return
+  applyingPorts.value = true
+  try {
+    app.value = (await appApi.update(wid.value, appId.value, {
+      ports: dockerfilePorts.value.map((p) => ({ container_port: p.port, protocol: p.protocol, scheme: 'http' as const, name: '' })),
+    })).data.data
+    dockerfilePorts.value = []
+    syncSettingsForm()
+    notify.success(t('appDetail.dockerfilePorts.applied'))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    applyingPorts.value = false
   }
 }
 
@@ -919,6 +955,12 @@ const settingsEdited = computed(() => JSON.stringify(settingsForm.value) !== set
 // Explicit resets (cancel, source switch, save) call syncSettingsForm directly.
 function refillSettingsForm() {
   if (settingsSyncedFor.value !== (app.value?.id ?? null) || !settingsEdited.value) syncSettingsForm()
+}
+
+// The default network is always attached, so its box shows ticked without being part of the selection.
+function toggleSettingsNetwork(id: number, on: boolean) {
+  const ids = settingsForm.value.network_ids.filter((x) => x !== id)
+  settingsForm.value.network_ids = on ? [...ids, id] : ids
 }
 
 function syncSettingsForm() {
@@ -1809,10 +1851,23 @@ function openDelete() {
   showDelete.value = true
 }
 
+// Delete is refused while the app runs; stopping is the step every user takes next, so the dialog takes it for them.
+async function stopForDelete() {
+  if (!wid.value) return
+  await appApi.stop(wid.value, appId.value)
+  for (let i = 0; i < 30; i++) {
+    const st = (await appApi.status(wid.value, appId.value)).data.data
+    if (!st?.running) return
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  throw new Error(t('appDetail.danger.stillRunning'))
+}
+
 async function removeApp() {
   if (!wid.value || deleteConfirm.value !== app.value?.name) return
   deleting.value = true
   try {
+    if (liveStatus.value?.running) await stopForDelete()
     await appApi.remove(wid.value, appId.value)
     notify.success(t('notify.appDetail.appDeleted'))
     router.push('/apps')
@@ -2696,7 +2751,7 @@ async function detachDatabase(d: AppDatabase) {
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
                 <td>
                   <span class="cell-title">#{{ d.number }}</span><code v-if="d.image_tag" class="image-tag" :title="$t('versioning.imageTagTitle')">{{ d.image_tag }}</code>
-                  <div v-if="d.error" class="dep-err" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
+                  <div v-if="d.error" class="dep-err" :class="{ 'dep-err-full': streamingId === d.id }" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
                 </td>
                 <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
                 <!-- A person when one asked for it, otherwise what did: pipeline, auto, reconcile. -->
@@ -3182,6 +3237,16 @@ async function detachDatabase(d: AppDatabase) {
 
     <!-- Settings -->
     <div v-else-if="tab === 'settings'">
+      <div v-if="dockerfilePorts.length" class="app-banner app-banner--info mb-4">
+        <span class="mdi mdi-lan app-banner-icon"></span>
+        <div class="app-banner-content">
+          <p class="app-banner-text">{{ $t('appDetail.dockerfilePorts.found', { exposed: portLabel(dockerfilePorts), current: portLabel(app.ports || []) || '—' }) }}</p>
+          <div class="mt-2">
+            <button class="btn btn-primary btn-sm" :disabled="applyingPorts" @click="applyDockerfilePorts">{{ $t('appDetail.dockerfilePorts.use') }}</button>
+            <button class="btn btn-ghost btn-sm" @click="dockerfilePorts = []">{{ $t('appDetail.dockerfilePorts.keep') }}</button>
+          </div>
+        </div>
+      </div>
       <!-- Separate: switching image/git clears the other source's fields, may drop a repo pipeline, and needs a redeploy. -->
       <div class="card mb-4">
         <div class="card-header source-header">
@@ -3428,7 +3493,7 @@ async function detachDatabase(d: AppDatabase) {
           <div class="form-group">
             <label class="form-label">{{ $t('appDetail.networks') }}</label>
             <label v-for="n in networks" :key="n.id" class="checkbox-label">
-              <input type="checkbox" :value="n.id" v-model="settingsForm.network_ids" :disabled="!ws.canEdit || n.is_default" />
+              <input type="checkbox" :checked="n.is_default || settingsForm.network_ids.includes(n.id)" :disabled="!ws.canEdit || n.is_default" @change="toggleSettingsNetwork(n.id, ($event.target as HTMLInputElement).checked)" />
               {{ n.name }} <span v-if="n.is_default" class="text-muted">{{ $t('appDetail.defaultAlwaysAttached') }}</span>
             </label>
           </div>
@@ -3893,10 +3958,10 @@ async function detachDatabase(d: AppDatabase) {
           <div style="font-weight: 600; color: var(--text-primary)">{{ $t('appDetail.deleteThisApplication') }}</div>
           <div class="text-muted text-sm">
             {{ $t('appDetail.danger.deleteHint') }}
-            <span v-if="liveStatus?.running"> {{ $t('appDetail.danger.stopFirst') }}</span>
+            <span v-if="liveStatus?.running"> {{ $t('appDetail.danger.stoppedFirst') }}</span>
           </div>
         </div>
-        <button v-if="ws.canEdit" class="btn btn-danger" :disabled="liveStatus?.running" :title="$t(liveStatus?.running ? 'appDetail.danger.stopBeforeDelete' : 'appDetail.deleteApplication')" @click="openDelete">{{ $t('appDetail.deleteApplication') }}</button>
+        <button v-if="ws.canEdit" class="btn btn-danger" :title="$t('appDetail.deleteApplication')" @click="openDelete">{{ $t('appDetail.deleteApplication') }}</button>
         <span v-else class="text-muted text-sm">{{ $t('appDetail.needsDeveloper') }}</span>
       </div>
       </div>
@@ -3942,6 +4007,7 @@ async function detachDatabase(d: AppDatabase) {
         <form @submit.prevent="removeApp">
           <div class="modal-body">
             <i18n-t keypath="appDetail.danger.deleteWarning" tag="p"><template #name><strong>{{ app.name }}</strong></template></i18n-t>
+            <p v-if="liveStatus?.running" class="form-hint form-hint-warn">{{ $t('appDetail.danger.runningStopsFirst') }}</p>
             <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
               <i18n-t keypath="appDetail.danger.typeToConfirm" tag="label" class="form-label"><template #name><code>{{ app.name }}</code></template></i18n-t>
               <input v-model="deleteConfirm" class="form-input" :placeholder="app.name" autofocus autocomplete="off" />
@@ -3949,7 +4015,7 @@ async function detachDatabase(d: AppDatabase) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showDelete = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-danger" :disabled="deleteConfirm !== app.name || deleting">{{ deleting ? 'Deleting…' : 'Delete application' }}</button>
+            <button type="submit" class="btn btn-danger" :disabled="deleteConfirm !== app.name || deleting">{{ deleting ? $t('appDetail.danger.deleting') : $t(liveStatus?.running ? 'appDetail.danger.stopAndDelete' : 'appDetail.deleteApplication') }}</button>
           </div>
         </form>
       </AppModal>
@@ -4542,6 +4608,8 @@ async function detachDatabase(d: AppDatabase) {
 .dot-stable { background: var(--success-500, #22c55e); }
 .dot-canary { background: var(--warning-500, #f59e0b); }
 .dep-err { margin-top: 3px; font-size: 12px; color: var(--danger-600); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The deployment whose log is open shows its whole error next to it. */
+.dep-err-full { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .streaming-tag { display: block; margin-top: 2px; }
 .trunc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

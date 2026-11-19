@@ -138,12 +138,25 @@ func TestTaskCrashLoopCountsOnlyThisDeploy(t *testing.T) {
 	fail := func(d time.Duration) docker.TaskFailure {
 		return docker.TaskFailure{At: start.Add(d), ExitCode: 1, Error: "task: non-zero exit (1)"}
 	}
-	if err := taskCrashLoop([]docker.TaskFailure{old, old, old, fail(time.Second), fail(2 * time.Second)}, start); err != nil {
+	if err := taskCrashLoop([]docker.TaskFailure{old, old, old, fail(time.Second), fail(2 * time.Second)}, start, nil); err != nil {
 		t.Fatalf("earlier deploys' failures counted: %v", err)
 	}
-	err := taskCrashLoop([]docker.TaskFailure{old, fail(time.Second), fail(3 * time.Second), fail(2 * time.Second)}, start)
+	err := taskCrashLoop([]docker.TaskFailure{old, fail(time.Second), fail(3 * time.Second), fail(2 * time.Second)}, start, nil)
 	want := "service tasks keep failing during startup (exit code 1, 3 failed tasks): task: non-zero exit (1)"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+func TestTaskCrashLoopNamesTheNodes(t *testing.T) {
+	start := time.Now()
+	fail := func(d time.Duration, node string) docker.TaskFailure {
+		return docker.TaskFailure{At: start.Add(d), ExitCode: 1, NodeID: node}
+	}
+	names := map[string]string{"sw-a": "safari-02"}
+	err := taskCrashLoop([]docker.TaskFailure{fail(time.Second, "sw-a"), fail(2*time.Second, "sw-a"), fail(3*time.Second, "sw-unknown-node")},
+		start, func(id string) string { return names[id] })
+	if err == nil || !strings.Contains(err.Error(), "3 failed tasks on safari-02, sw-unknown") {
+		t.Fatalf("err = %v, want the nodes named (an unknown one by its short id)", err)
 	}
 }

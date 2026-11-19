@@ -354,8 +354,11 @@
     "danger": {
       "deleteHint": "Permanently removes the application and its container.",
       "deleteWarning": "This permanently removes {name}, its running container, env vars, ports, and deployment history. This cannot be undone.",
-      "stopBeforeDelete": "Stop the application before deleting",
-      "stopFirst": "Stop it first — running apps can't be deleted.",
+      "deleting": "Deleting…",
+      "runningStopsFirst": "It is running: it will be stopped first, then deleted.",
+      "stillRunning": "The app did not stop in time; try again.",
+      "stopAndDelete": "Stop and delete",
+      "stoppedFirst": "A running app is stopped first.",
       "typeToConfirm": "Type {name} to confirm"
     },
     "database": "Database",
@@ -394,6 +397,12 @@
     },
     "deployment": "Deployment",
     "deploymentStrategy": "Deployment strategy",
+    "dockerfilePorts": {
+      "found": "The repository's Dockerfile exposes {exposed}; this app uses {current}.",
+      "use": "Use the Dockerfile's ports",
+      "keep": "Keep the current ports",
+      "applied": "Ports updated — redeploy to apply them"
+    },
     "node": {
       "title": "Node",
       "anyService": "Any node — the scheduler decides",
@@ -772,6 +781,8 @@
       "source": "Source"
     },
     "created": "Application created",
+    "createdDeployFailed": "Application created, but the first deploy could not start",
+    "createdDeploying": "Application created — first deploy started",
     "deployFirst": "Deploy your first application",
     "emptyHint": "Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.",
     "form": {
@@ -789,6 +800,7 @@
       "containerPorts": "Container ports",
       "continueOnError": "continue on error",
       "defaultAttached": "(default is always attached)",
+      "deployNow": "Deploy right after creating",
       "deploys": "Deploys",
       "forPrivate": "(for private images)",
       "image": "Image",
@@ -812,6 +824,7 @@
       "portName": "Port name",
       "portNamePlaceholder": "name (opt)",
       "portProtocol": "Port protocol",
+      "portsFromDockerfile": "Taken from the EXPOSE lines of the repository's Dockerfile.",
       "publicUrl": "Public URL (no saved repository)",
       "registryCredential": "Registry credential",
       "registryNone": "Public / none",
@@ -1567,6 +1580,7 @@
     "deleteSchedule": "Delete schedule",
     "deleteThisDatabaseInstance": "Delete this database instance",
     "destination": "Destination",
+    "detachBeforeDelete": "Detach its databases from apps before deleting",
     "details": "Details",
     "disabled": "disabled",
     "fromManifest": "manifest",
@@ -1644,12 +1658,15 @@
     "restoringBannerSub": "Apps that use this database may see partial data until it finishes. You'll get a notification when it does.",
     "retention": "Retention",
     "revealConnection": "Reveal connection",
+    "runningStopsFirst": "It is running: it will be stopped first.",
     "save": "Save",
     "schedule": "Schedule",
     "selectADatabase": "Select a database…",
     "setsNeedEnterprise": "Taking recovery points needs an Enterprise license",
     "sqlGzOrDumpFiles": "SQL, GZ, or DUMP files supported",
     "start": "Start",
+    "stillRunning": "The database did not stop in time; try again.",
+    "stopAndDelete": "Stop and delete",
     "syncSizes": "Sync sizes",
     "tab": {
       "logs": "Logs",

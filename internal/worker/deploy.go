@@ -85,6 +85,7 @@ type DeployHandler struct {
 	releaseHook   ReleaseHook
 	builderPolicy BuilderPolicy
 	poolPolicy    PoolPolicy
+	nodeName      func(swarmNodeID string) string
 	// Nil keeps shared-class volumes without a driver config, so a task on another node gets an empty volume.
 	storageClasses StorageClassLookup
 	clusterSlots   *clusterSlots
@@ -174,6 +175,9 @@ type Distributor interface {
 
 // SetDistributor wires the internal-registry image distributor (optional).
 func (h *DeployHandler) SetDistributor(d Distributor) { h.distributor = d }
+
+// SetNodeNamer resolves a Swarm node ID to the node's name, for naming where service tasks failed.
+func (h *DeployHandler) SetNodeNamer(f func(swarmNodeID string) string) { h.nodeName = f }
 
 type buildConfig struct {
 	resolver ImageRefResolver
@@ -972,7 +976,7 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 			return nil
 		}
 		if err == nil {
-			if ferr := taskCrashLoop(st.Failures, start); ferr != nil {
+			if ferr := taskCrashLoop(st.Failures, start, h.nodeName); ferr != nil {
 				return ferr
 			}
 		}
@@ -1670,9 +1674,11 @@ func (h *DeployHandler) healthGate(ctx context.Context, app *models.Application,
 const serviceFailureLimit = 3
 
 // Only failures since this deploy count: the task history still holds those of earlier deploys.
-func taskCrashLoop(failures []docker.TaskFailure, since time.Time) error {
+func taskCrashLoop(failures []docker.TaskFailure, since time.Time, nodeName func(string) string) error {
 	var n int
 	var last docker.TaskFailure
+	var nodes []string
+	seen := map[string]bool{}
 	for _, f := range failures {
 		if f.At.Before(since) {
 			continue
@@ -1681,11 +1687,27 @@ func taskCrashLoop(failures []docker.TaskFailure, since time.Time) error {
 		if f.At.After(last.At) {
 			last = f
 		}
+		if f.NodeID != "" && !seen[f.NodeID] {
+			seen[f.NodeID] = true
+			name := ""
+			if nodeName != nil {
+				name = nodeName(f.NodeID)
+			}
+			if name == "" {
+				name = shortID(f.NodeID)
+			}
+			nodes = append(nodes, name)
+		}
 	}
 	if n < serviceFailureLimit {
 		return nil
 	}
-	msg := fmt.Sprintf("service tasks keep failing during startup (exit code %d, %d failed tasks)", last.ExitCode, n)
+	where := ""
+	if len(nodes) > 0 {
+		sort.Strings(nodes)
+		where = " on " + strings.Join(nodes, ", ")
+	}
+	msg := fmt.Sprintf("service tasks keep failing during startup (exit code %d, %d failed tasks%s)", last.ExitCode, n, where)
 	if last.Error != "" {
 		msg += ": " + last.Error
 	}

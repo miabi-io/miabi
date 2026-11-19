@@ -106,6 +106,8 @@ type TaskFailure struct {
 	At       time.Time `json:"at"`
 	ExitCode int       `json:"exit_code"`
 	Error    string    `json:"error,omitempty"`
+	// NodeID is the Swarm node the task ran on, so a failure confined to one node can be named.
+	NodeID string `json:"node_id,omitempty"`
 }
 
 type ServiceConfig struct {
@@ -374,7 +376,7 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 		var oldest time.Time
 		for _, t := range tasks.Items {
 			if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateRejected {
-				f := TaskFailure{At: t.Status.Timestamp, Error: t.Status.Err}
+				f := TaskFailure{At: t.Status.Timestamp, Error: t.Status.Err, NodeID: t.NodeID}
 				if t.Status.ContainerStatus != nil {
 					f.ExitCode = t.Status.ContainerStatus.ExitCode
 				}

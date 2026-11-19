@@ -6,7 +6,7 @@ import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { appApi } from '@/api/apps'
+import { appApi, isPipelineRun } from '@/api/apps'
 import { usageApi } from '@/api/resources'
 import { registryApi } from '@/api/registries'
 import { gitRepositoryApi, type GitInspectResult } from '@/api/gitRepositories'
@@ -75,12 +75,14 @@ interface AppForm {
   placement_constraints: string[]
   // Only offered once a probe has actually found .miabi/pipeline.yaml.
   use_pipeline: boolean
+  // Deploy straight after creating, so the first release needs no second trip.
+  deploy_now: boolean
   // Only asked for when the plan requires limits; prefilled with its defaults.
   cpu_cores: number
   memory_mb: number
 }
 function emptyForm(): AppForm {
-  return { name: '', node: '', location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true, cpu_cores: 0, memory_mb: 0 }
+  return { name: '', node: '', location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true, deploy_now: true, cpu_cores: 0, memory_mb: 0 }
 }
 
 // Probing is a server-side depth-1 clone, so it runs only once the input settles on a whole repository URL.
@@ -88,6 +90,16 @@ const INSPECT_DEBOUNCE_MS = 800
 const inspecting = ref(false)
 const inspected = ref<GitInspectResult | null>(null)
 const inspectError = ref('')
+// Ports the form took from the Dockerfile; a later probe may replace them, but never ports the user typed.
+const portsFromDockerfile = ref('')
+const portsKey = () => JSON.stringify(form.value.ports.map((p) => [p.container_port, p.protocol, p.scheme, p.name]))
+const defaultPortsKey = JSON.stringify([[8080, 'tcp', 'http', '']])
+function adoptExposedPorts(exposed: GitInspectResult['exposed_ports']) {
+  const current = portsKey()
+  if (!exposed?.length || (current !== defaultPortsKey && current !== portsFromDockerfile.value)) return
+  form.value.ports = exposed.map((p) => ({ container_port: p.port, protocol: p.protocol, scheme: 'http' as const, name: '' }))
+  portsFromDockerfile.value = portsKey()
+}
 // What the current result (or error) was probed for, so an unchanged input is never re-probed.
 let inspectedKey = ''
 // Bumped on every probe and reset, so a response for input that has since changed is dropped.
@@ -179,6 +191,7 @@ async function inspectRepo() {
     inspectedKey = key
     // Default from the probe so the create call never claims a pipeline it didn't see.
     form.value.use_pipeline = result?.has_pipeline === true
+    adoptExposedPorts(result?.exposed_ports)
   } catch (e) {
     if (seq !== inspectSeq) return
     inspectError.value = apiErrorMessage(e, t('apps.form.inspectFailed'))
@@ -231,12 +244,18 @@ function openCreateFromLink() {
   if (ws.canEdit && apps.value.length > 0) openCreate()
 }
 
+function toggleNetwork(id: number, on: boolean) {
+  const ids = form.value.network_ids.filter((x) => x !== id)
+  form.value.network_ids = on ? [...ids, id] : ids
+}
+
 function openCreate() {
   form.value = emptyForm()
   // Mirrors the backend's cluster-mode default.
   if (clusterEnabled.value) form.value.runtime_kind = 'service'
   form.value.cpu_cores = planResources.value.cpuMillicores / 1000
   form.value.memory_mb = planResources.value.memoryMB
+  portsFromDockerfile.value = ''
   showCreate.value = true
 }
 
@@ -245,7 +264,7 @@ async function create() {
   creating.value = true
   try {
     const isImage = form.value.source_type === 'image'
-    await appApi.create(currentWorkspaceId.value, {
+    const created = (await appApi.create(currentWorkspaceId.value, {
       display_name: form.value.name.trim(),
       node: form.value.node || undefined,
       location: form.value.location || undefined,
@@ -272,10 +291,23 @@ async function create() {
         nano_cpus: Math.max(0, Math.round((form.value.cpu_cores || 0) * 1e9)),
         memory_bytes: Math.max(0, Math.round((form.value.memory_mb || 0) * 1024 * 1024)),
       } : {}),
-    })
-    notify.success(t('apps.created'))
+    })).data.data
     showCreate.value = false
-    await load(currentWorkspaceId.value)
+    if (!form.value.deploy_now) {
+      notify.success(t('apps.created'))
+      void router.push({ name: 'app-detail', params: { id: created.id } })
+      return
+    }
+    try {
+      const res = (await appApi.deploy(currentWorkspaceId.value, created.id)).data.data
+      notify.success(t('apps.createdDeploying'))
+      if (isPipelineRun(res)) void router.push({ name: 'pipeline-run', params: { id: res.run.pipeline_id, runId: res.run.id } })
+      else void router.push({ name: 'app-detail', params: { id: created.id }, query: { tab: 'deployments' } })
+    } catch (e) {
+      // The app exists either way; its page has a Deploy button for a retry.
+      notify.apiError(e, t('apps.createdDeployFailed'))
+      void router.push({ name: 'app-detail', params: { id: created.id } })
+    }
   } catch (e) {
     notify.apiError(e, 'Failed to create application')
   } finally {
@@ -306,7 +338,8 @@ function formatCreated(ts?: string) {
         <h1>{{ $t('nav.deploy.applications') }}</h1>
         <p class="subtitle">Containerized apps Miabi builds, deploys, and runs for {{ ws.contextLabel }}.</p>
       </div>
-      <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
+      <!-- The empty state carries its own create and marketplace choices, so the header button would repeat one of them. -->
+      <button v-if="ws.canEdit && apps.length > 0" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span> {{ $t('dashboard.newApplication') }}
       </button>
     </div>
@@ -427,7 +460,7 @@ function formatCreated(ts?: string) {
                   <input v-model="form.tag" class="form-input" placeholder="latest" />
                 </div>
               </div>
-              <p class="form-hint">{{ $t('apps.form.deploys') }} <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
+              <p v-if="form.image.trim()" class="form-hint">{{ $t('apps.form.deploys') }} <code>{{ form.image.trim() }}:{{ form.tag || 'latest' }}</code></p>
               <div class="form-group">
                 <label class="form-label">{{ $t('apps.form.registryCredential') }} <span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
                 <select v-model="form.registry_id" class="form-select">
@@ -474,7 +507,8 @@ function formatCreated(ts?: string) {
                   {{ $t('apps.form.buildAutoHint') }}
                 </p>
               </div>
-              <div v-if="form.build_method !== 'dockerfile'" class="form-group">
+              <!-- Auto builds a found Dockerfile, so the Buildpacks builder would never be used. -->
+              <div v-if="form.build_method !== 'dockerfile' && !(form.build_method === 'auto' && inspected?.has_dockerfile)" class="form-group">
                 <label class="form-label">{{ $t('apps.form.builderImage') }} <span class="text-muted">{{ $t('apps.form.optionalAdvanced') }}</span></label>
                 <input v-model="form.builder" class="form-input" placeholder="paketobuildpacks/builder-jammy-base" />
                 <p class="form-hint">{{ $t('apps.form.builderHint') }}</p>
@@ -543,6 +577,7 @@ function formatCreated(ts?: string) {
             </template>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
+              <p v-if="form.source_type === 'git' && portsFromDockerfile && portsKey() === portsFromDockerfile" class="form-hint" style="margin-top: 0">{{ $t('apps.form.portsFromDockerfile') }}</p>
               <div v-for="(p, i) in form.ports" :key="i" class="port-row">
                 <input :value="p.container_port || ''" type="number" min="1" max="65535" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" style="flex: 1" @input="p.container_port = Number(($event.target as HTMLInputElement).value) || 0" />
                 <select v-model="p.protocol" class="form-select" :aria-label="$t('apps.form.portProtocol')" style="width: 84px" @change="p.protocol === 'udp' && (p.scheme = 'http')">
@@ -561,7 +596,7 @@ function formatCreated(ts?: string) {
             <div v-if="networks.length" class="form-group">
               <label class="form-label">{{ $t('nav.networking.networks') }} <span class="text-muted">{{ $t('apps.form.defaultAttached') }}</span></label>
               <label v-for="n in networks" :key="n.id" class="checkbox-label">
-                <input type="checkbox" :value="n.id" v-model="form.network_ids" :disabled="n.is_default" />
+                <input type="checkbox" :checked="n.is_default || form.network_ids.includes(n.id)" :disabled="n.is_default" @change="toggleNetwork(n.id, ($event.target as HTMLInputElement).checked)" />
                 {{ n.name }} <span v-if="n.is_default" class="text-muted">{{ $t('apps.form.isDefault') }}</span>
               </label>
             </div>
@@ -577,6 +612,10 @@ function formatCreated(ts?: string) {
             </div>
           </div>
           <div class="modal-footer">
+            <label class="checkbox-label deploy-now">
+              <input v-model="form.deploy_now" type="checkbox" />
+              {{ $t('apps.form.deployNow') }}
+            </label>
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="creating || (form.source_type === 'git' && inspecting)">{{ creating ? 'Creating…' : 'Create application' }}</button>
           </div>
@@ -587,7 +626,7 @@ function formatCreated(ts?: string) {
 </template>
 
 <style scoped>
-.form-hint-warn { color: var(--warning, #b45309); }
+.deploy-now { margin-right: auto; }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .empty-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

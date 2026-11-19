@@ -439,6 +439,12 @@ func runServer(cli *okapicli.CLI) {
 			registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 			registryDistributor.SetEntitlements(edition)
 			deployHandler.SetDistributor(registryDistributor)
+			deployHandler.SetNodeNamer(func(swarmNodeID string) string {
+				if srv, err := repositories.NewServerRepository(res.db).FindBySwarmNodeID(swarmNodeID); err == nil {
+					return srv.Name
+				}
+				return ""
+			})
 			wireDeployPortPolicy(deployHandler, res.db, edition, cfg)
 			volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(res.db), repositories.NewVolumeRepository(res.db), nodeClients, cfg.ProxyNetwork)
 			volumeBackupSvc.SetImageResolver(imageResolver) // honor admin override for the volume-bkup image
