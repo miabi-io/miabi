@@ -422,6 +422,8 @@ type Application struct {
 	CurrentReleaseID *uint     `json:"current_release_id"`
 	// Start/Restart then redeploy instead of reusing the stale container; any successful deploy clears it.
 	RedeployRequired bool `json:"redeploy_required" gorm:"not null;default:false"`
+	// Inverted so existing rows and GORM's zero-value create both mean "on".
+	MiabiEnvDisabled bool `json:"miabi_env_disabled" gorm:"not null;default:false"`
 
 	// Deploys are not recorded here, or a restart would look like a release; nil means unknown, not never.
 	LastLifecycleAt     *time.Time `json:"last_lifecycle_at,omitempty" gorm:"index"`

@@ -129,6 +129,14 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Summary:     "List env vars",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        base + "/{appID}/env/managed",
+			Group:       apps,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.app.ManagedEnv,
+			Summary:     "List the MIABI_* variables the next deploy sets",
+		},
+		{
 			Method:      http.MethodPut,
 			Path:        base + "/{appID}/env",
 			Group:       apps,

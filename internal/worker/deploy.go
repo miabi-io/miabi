@@ -36,6 +36,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/healthprobe"
 	"github.com/miabi-io/miabi/internal/logstore"
+	"github.com/miabi-io/miabi/internal/managedenv"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/runners"
 	"github.com/miabi-io/miabi/internal/services/crypto"
@@ -508,7 +509,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// Routing uses the alias, not the container name.
 	name := fmt.Sprintf("%s-%d", node.AppAlias(app), dep.ID)
 	// The same builder a one-off Job uses, so they can't drift.
-	rc, err := h.buildRuntimeContext(ctx, h.eng(app), app)
+	rc, err := h.buildRuntimeContext(ctx, h.eng(app), app, h.deployRun(ctx, app, dep, image))
 	if err != nil {
 		_ = h.fail(dep, fmt.Errorf("prepare the container: %w", err))
 		return
@@ -755,7 +756,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		ingressNet = node.IngressOverlay
 	}
 
-	env, err := h.buildEnv(app)
+	env, err := h.buildEnv(app, h.deployRun(ctx, app, dep, image))
 	if err != nil {
 		_ = h.fail(dep, fmt.Errorf("build env: %w", err))
 		return
@@ -1527,6 +1528,36 @@ func (h *DeployHandler) releaseImageTag(appID uint, dep *models.Deployment, imag
 		}
 	}
 	return dep.ImageTag
+}
+
+// The release row is written after the container starts; the per-app deploy lock keeps the predicted version exact.
+func (h *DeployHandler) deployRun(ctx context.Context, app *models.Application, dep *models.Deployment, image string) managedRun {
+	run := managedRun{
+		kind: managedenv.KindApp, deploymentID: dep.ID, commit: dep.Commit, image: image,
+		imageTag: h.releaseImageTag(app.ID, dep, image),
+	}
+	if app.MiabiEnvDisabled {
+		return run
+	}
+	if h.releases != nil {
+		if v, err := h.releases.NextVersion(app.ID); err == nil {
+			run.release = v
+		}
+	}
+	run.digest = refDigest(image)
+	if run.digest == "" && image != "" {
+		if insp, err := h.eng(app).InspectImage(ctx, image); err == nil && insp.RepoDigest {
+			run.digest = insp.Digest
+		}
+	}
+	return run
+}
+
+func refDigest(ref string) string {
+	if _, d, ok := strings.Cut(ref, "@"); ok {
+		return d
+	}
+	return ""
 }
 
 // Best-effort: a recording failure must not fail an otherwise-successful deploy.

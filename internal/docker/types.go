@@ -144,7 +144,9 @@ type Image struct {
 type ImageInspect struct {
 	ID     string `json:"id"`     // content-addressable image ID (sha256:…)
 	Digest string `json:"digest"` // repo digest when present, else the image ID
-	Size   int64  `json:"size"`
+	// RepoDigest tells a registry digest from the ID fallback; under the containerd store the two can be equal.
+	RepoDigest bool  `json:"repo_digest,omitempty"`
+	Size       int64 `json:"size"`
 }
 
 type DiskUsage struct {

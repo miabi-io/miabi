@@ -30,6 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/appref"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/hostmount"
+	"github.com/miabi-io/miabi/internal/managedenv"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/crypto"
@@ -120,6 +121,8 @@ type runtimeBuilder struct {
 	routes   *repositories.RouteRepository
 	secrets  SecretResolver
 	appRefs  AppRefResolver
+	// nil still sets the values the app row carries; the Source adds names, location, node and address.
+	managed *managedenv.Source
 	// securityInitImage chowns a restricted app's managed volumes to the platform UID.
 	security          SecurityResolver
 	securityInitImage string
@@ -165,6 +168,38 @@ type ClusterCap interface {
 }
 
 func (b *runtimeBuilder) SetCluster(c ClusterCap) { b.cluster = c }
+
+func (b *runtimeBuilder) SetManagedEnv(src *managedenv.Source) { b.managed = src }
+
+// managedRun is what the managed layer needs from the caller: what runs, and from which deployment or job.
+type managedRun struct {
+	kind         managedenv.Kind
+	jobName      string
+	jobRunID     uint
+	deploymentID uint
+	release      int
+	imageTag     string
+	commit       string
+	image        string
+	digest       string
+}
+
+func (b *runtimeBuilder) managedVars(app *models.Application, run managedRun) []managedenv.Var {
+	if app.MiabiEnvDisabled {
+		return nil
+	}
+	in := b.managed.ForApp(app)
+	if run.kind != "" {
+		in.Kind = run.kind
+	}
+	in.JobName, in.JobRunID = run.jobName, run.jobRunID
+	in.DeploymentID, in.Release = run.deploymentID, run.release
+	in.ImageTag, in.Image, in.Digest = run.imageTag, run.image, run.digest
+	if run.commit != "" {
+		in.Commit = run.commit
+	}
+	return managedenv.Build(in)
+}
 
 // SetConfigs supplies the projector that turns config mounts into files.
 func (b *runtimeBuilder) SetConfigs(c ConfigProjector) { b.configs = c }
@@ -327,7 +362,7 @@ type RuntimeContext struct {
 }
 
 // eng must be the Docker client for the app's node.
-func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Client, app *models.Application) (RuntimeContext, error) {
+func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Client, app *models.Application, run managedRun) (RuntimeContext, error) {
 	if err := b.syncNetworks(ctx, eng, app); err != nil {
 		return RuntimeContext{}, err
 	}
@@ -378,7 +413,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 			readOnly = append(readOnly, m.DockerName)
 		}
 	}
-	env, err := b.buildEnv(app)
+	env, err := b.buildEnv(app, run)
 	if err != nil {
 		return RuntimeContext{}, fmt.Errorf("environment: %w", err)
 	}
@@ -497,8 +532,8 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 	return nil
 }
 
-// App-level keys override stack defaults; an unknown secret reference fails rather than injecting blank.
-func (b *runtimeBuilder) buildEnv(app *models.Application) ([]string, error) {
+// Managed < stack < app; an unknown secret reference fails rather than injecting blank.
+func (b *runtimeBuilder) buildEnv(app *models.Application, run managedRun) ([]string, error) {
 	merged := map[string]string{}
 	var order []string
 	add := func(key, val string) {
@@ -506,6 +541,9 @@ func (b *runtimeBuilder) buildEnv(app *models.Application) ([]string, error) {
 			order = append(order, key)
 		}
 		merged[key] = val
+	}
+	for _, v := range b.managedVars(app, run) {
+		add(v.Name, v.Value)
 	}
 	if app.StackID != nil && b.stackEnv != nil {
 		if shared, err := b.stackEnv.ListByStack(*app.StackID); err == nil {

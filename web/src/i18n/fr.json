@@ -774,7 +774,21 @@
       "memoryRequired": "Ce plan exige une limite mémoire. Le CPU est partagé : une limite CPU est facultative."
     },
     "pipelineLink": "Pipeline lié à cette application",
-    "morePipelines": "+{count} de plus"
+    "morePipelines": "+{count} de plus",
+    "managedEnv": {
+      "title": "Définies par Miabi",
+      "subtitle": "Variables MIABI_* que Miabi définit à chaque déploiement : l'application, sa version, où elle tourne et son adresse publique. Une variable à vous du même nom l'emporte.",
+      "toggle": "Définir les variables MIABI_*",
+      "off": "Miabi ne définit aucune variable dans cette application. Activez l'option pour les avoir au prochain déploiement.",
+      "perReplica": "par réplique",
+      "replacedByApp": "remplacée par votre variable",
+      "replacedByStack": "remplacée par la variable de la stack",
+      "replaces": "Remplace une variable Miabi",
+      "replacesHint": "Miabi définit une variable de ce nom ; la vôtre la remplace.",
+      "nextDeploy": "Valeurs que le prochain déploiement définit. L'ID de déploiement, le digest de l'image et le commit ne sont connus qu'à ce déploiement.",
+      "enabled": "Les variables MIABI_* seront définies au prochain déploiement",
+      "disabled": "Les variables MIABI_* seront retirées au prochain déploiement"
+    }
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",

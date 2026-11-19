@@ -72,14 +72,15 @@ type MiddlewareSeeder interface {
 }
 
 type Service struct {
-	repo   *repositories.WorkspaceRepository
-	users  *repositories.UserRepository
-	orgs   Orgs
-	nets   NetworkEnsurer
-	seeder MiddlewareSeeder
-	plans  *repositories.PlanRepository
-	quota  *quota.Service
-	keys   KeyShredder
+	onRename func(workspaceID uint)
+	repo     *repositories.WorkspaceRepository
+	users    *repositories.UserRepository
+	orgs     Orgs
+	nets     NetworkEnsurer
+	seeder   MiddlewareSeeder
+	plans    *repositories.PlanRepository
+	quota    *quota.Service
+	keys     KeyShredder
 	// adopter claims a user's first workspace as their landing workspace.
 	adopter                DefaultAdopter
 	globalLimit            func() int
@@ -361,6 +362,27 @@ func (s *Service) ListForUser(userID uint) ([]models.WorkspaceWithRole, error) {
 }
 
 func (s *Service) Update(ws *models.Workspace) error { return s.repo.Update(ws) }
+
+// SetRenameListener hears about a saved rename, so apps that carry the name can be marked for redeploy.
+func (s *Service) SetRenameListener(fn func(workspaceID uint)) { s.onRename = fn }
+
+// Rename saves a new handle, validated as SetName does.
+func (s *Service) Rename(ws *models.Workspace, newName string) error {
+	before := ws.Name
+	if err := s.SetName(ws, newName); err != nil {
+		return err
+	}
+	if ws.Name == before {
+		return nil
+	}
+	if err := s.repo.Update(ws); err != nil {
+		return err
+	}
+	if s.onRename != nil {
+		s.onRename(ws.ID)
+	}
+	return nil
+}
 
 // Unlike Create it doesn't auto-suffix, so a rename onto a taken handle is an error.
 func (s *Service) SetName(ws *models.Workspace, newName string) error {

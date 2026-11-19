@@ -19,7 +19,11 @@
 
 package declarative
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/miabi-io/miabi/internal/appref"
+)
 
 // Must match what the renderer resolves, or a dry run disagrees with apply.
 func TestRefFieldsMatchRenderer(t *testing.T) {
@@ -35,6 +39,12 @@ func TestRefFieldsMatchRenderer(t *testing.T) {
 	for _, f := range applicationRefFields {
 		if _, err := r.ref("applications", "web", f); err != nil {
 			t.Errorf("application field %q: the check allows it but the renderer refuses: %v", f, err)
+		}
+	}
+	r.inEnv = true
+	for _, f := range appref.Fields {
+		if _, err := r.ref("applications", "web", f); err != nil {
+			t.Errorf("application field %q: the check allows it in env but the renderer refuses: %v", f, err)
 		}
 	}
 	if _, err := r.ref("databases", "db", "uri2"); err == nil {

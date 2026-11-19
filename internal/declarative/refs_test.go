@@ -160,6 +160,32 @@ func TestCheckReferencesAcceptsKnownNames(t *testing.T) {
 	}
 }
 
+func TestCheckReferencesAcceptsPublicAddress(t *testing.T) {
+	env := `    A: "{{ .applications.api.public_url }}/cb"
+    B: "{{ .apps.api.public_host }}"
+    C: "${{ apps.api.external_url }}"
+`
+	if err := checkBundle(t, envApp(env), known(nil, nil, []string{"api"})); err != nil {
+		t.Errorf("public address references were refused: %v", err)
+	}
+	bad := checkBundle(t, envApp(`    A: "${{ applications.api.pubic_url }}"`+"\n"), known(nil, nil, []string{"api"}))
+	if bad == nil || !strings.Contains(bad.Error(), `has no field "pubic_url"`) {
+		t.Errorf("error = %v, want the runtime-form typo flagged", bad)
+	}
+	missing := checkBundle(t, envApp(`    A: "{{ .apps.web.public_url }}"`+"\n"), known(nil, nil, []string{"api"}))
+	if missing == nil || !strings.Contains(missing.Error(), `unknown application "web"`) {
+		t.Errorf("error = %v, want the unknown app named", missing)
+	}
+}
+
+func TestCheckReferencesRefusesPublicAddressOutsideEnv(t *testing.T) {
+	refs := []d.Reference{{Where: `config "c" file app.ini`, Collection: "applications", Name: "api", Field: "public_url"}}
+	err := d.CheckReferences(refs, known(nil, nil, []string{"api"}))
+	if err == nil || !strings.Contains(err.Error(), "can only be used in env") {
+		t.Errorf("error = %v, want a refusal outside env", err)
+	}
+}
+
 func TestCheckReferencesFlagsBadField(t *testing.T) {
 	err := checkBundle(t, envApp(`    A: "{{ .databases.shop-db.uri2 }}"`+"\n"), known([]string{"shop-db"}, nil, nil))
 	if err == nil || !strings.Contains(err.Error(), `database "shop-db" has no field "uri2"`) {

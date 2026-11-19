@@ -323,6 +323,7 @@ func runServer(cli *okapicli.CLI) {
 				secretService,
 			)
 			deployHandler.SetLogStore(logStore)
+			deployHandler.SetManagedEnv(managedEnvSource(res.db))
 			deployHandler.SetDeployLock(worker.NewRedisDeployLock(res.redis))
 			deployHandler.SetConfigs(configsvc.NewService(repositories.NewConfigRepository(res.db)))
 			dbRepo := repositories.NewDatabaseRepository(res.db)
@@ -349,7 +350,7 @@ func runServer(cli *okapicli.CLI) {
 			)
 			upgradeAppService.SetPortBindings(repositories.NewPortBindingRepository(res.db))
 			upgradeAppService.SetStackEnv(repositories.NewStackEnvVarRepository(res.db))
-			deployRouteSvc.SetAddressListener(upgradeAppService.MarkAddressConsumers)
+			deployRouteSvc.SetAddressListener(upgradeAppService.AddressChanged)
 			upgradeBackupService := backup.NewService(repositories.NewBackupRepository(res.db), dbRepo, nodeClients)
 			upgradeBackupService.SetDDLRunner(dbService)
 			upgradeBackupService.SetImageResolver(imageResolver)
@@ -368,6 +369,7 @@ func runServer(cli *okapicli.CLI) {
 				secretService,
 			)
 			jobHandler.SetLogStore(logStore)
+			jobHandler.SetManagedEnv(managedEnvSource(res.db))
 
 			securityQuota := quota.NewService(
 				repositories.NewPlanRepository(res.db),

@@ -37,16 +37,16 @@ func (s stubAppRefs) ResolveAll(_ uint, env []string) ([]string, error) {
 }
 
 func TestBuildEnvResolvesAppRefs(t *testing.T) {
-	app := &models.Application{EnvVars: []models.AppEnvVar{{Key: "PUBLIC", Value: "${{ apps.web.public_url }}/cb"}}}
+	app := &models.Application{MiabiEnvDisabled: true, EnvVars: []models.AppEnvVar{{Key: "PUBLIC", Value: "${{ apps.web.public_url }}/cb"}}}
 
 	b := &runtimeBuilder{appRefs: stubAppRefs{value: "https://shop.example.com"}}
-	env, err := b.buildEnv(app)
+	env, err := b.buildEnv(app, managedRun{})
 	if err != nil || len(env) != 1 || env[0] != "PUBLIC=https://shop.example.com/cb" {
 		t.Fatalf("env = %v, err = %v", env, err)
 	}
 
 	// A process without a resolver must refuse rather than start the app with the literal token.
-	if _, err := (&runtimeBuilder{}).buildEnv(app); err == nil || !strings.Contains(err.Error(), "PUBLIC") {
+	if _, err := (&runtimeBuilder{}).buildEnv(app, managedRun{}); err == nil || !strings.Contains(err.Error(), "PUBLIC") {
 		t.Fatalf("want a refusal naming PUBLIC, got %v", err)
 	}
 }
