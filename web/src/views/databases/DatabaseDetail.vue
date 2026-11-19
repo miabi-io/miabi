@@ -556,7 +556,7 @@ async function restoreSet(set: DatabaseBackupSet) {
   if (!wid.value) return
   try {
     await backupApi.restoreSet(wid.value, instId.value, set.id)
-    notify.info(t('db.toast.restoreStarted', { source: set.ref }))
+    notify.info(t('notify.restoreStarted', { source: set.ref }))
     await loadRestores()
   } catch (e) { notify.apiError(e) }
 }
@@ -701,16 +701,16 @@ async function runRestore() {
   if (!wid.value || !selected.value || !restoreModal.value || restoring.value) return
   restoring.value = true
   try {
+    let rec: Restore
     if (restoreModal.value.backupId != null) {
-      const rec = (await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value, restoreAgeIdentity.value.trim())).data.data
-      notify.info(t('db.toast.restoreStarted', { source: rec.source }))
-      await loadRestores()
+      rec = (await backupApi.restore(wid.value, instId.value, selected.value.id, restoreModal.value.backupId, restoreMethod.value, restoreAgeIdentity.value.trim())).data.data
     } else {
       if (!restoreFile.value) { notify.error(t('notify.databaseDetail.chooseADumpFile')); restoring.value = false; return }
-      // An uploaded dump streams with the request, so it still finishes before the response.
-      await backupApi.restoreFile(wid.value, instId.value, selected.value.id, restoreFile.value, restoreMethod.value)
-      notify.success(t('db.toast.databaseRestored'))
+      // The upload finishes with the request; the restore after it runs in the background.
+      rec = (await backupApi.restoreFile(wid.value, instId.value, selected.value.id, restoreFile.value, restoreMethod.value)).data.data
     }
+    notify.info(t('notify.restoreStarted', { source: rec.source }))
+    await loadRestores()
     restoreModal.value = null
     loadBackups()
   } catch (e) { notify.apiError(e) }

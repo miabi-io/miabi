@@ -1668,7 +1668,6 @@
       "copied": "Copié",
       "databaseDeleted": "Base de données supprimée",
       "databaseIsReady": "La base de données est prête",
-      "databaseRestored": "Base de données restaurée",
       "disconnectedFrom": "Déconnecté de {name}",
       "forwardOpenedConnectYourClient": "Redirection ouverte — connectez votre client à l’adresse affichée",
       "instanceDeleted": "Instance supprimée",
@@ -1677,7 +1676,6 @@
       "recoveryPointStarted": "Point de restauration lancé — vous serez notifié à la fin.",
       "resourcesSavedTheInstanceRestarts": "Ressources enregistrées ; l’instance redémarre pour les appliquer",
       "restarted": "Base de données redémarrée",
-      "restoreStarted": "Restauration depuis {source} lancée — vous serez notifié à la fin.",
       "scheduleCreated": "Planification créée",
       "scheduleDeleted": "Planification supprimée",
       "sizesRefreshed": "Tailles actualisées",
@@ -2743,6 +2741,7 @@
       "approved": "Approbation enregistrée",
       "promoted": "{name} promue"
     },
+    "restoreStarted": "Restauration depuis {source} lancée — vous serez notifié à la fin.",
     "roles": {
       "created": "Rôle créé",
       "deleted": "Rôle supprimé",
@@ -4070,7 +4069,6 @@
     "refresh": "Actualiser",
     "restore": "Restaurer",
     "restoreHint": "Restaurer cette sauvegarde dans le volume",
-    "restoreStarted": "Restauration depuis {source} lancée — vous serez notifié à la fin.",
     "restoringBanner": "Restauration depuis {source}…",
     "restoringBannerSub": "Les applications qui montent ce volume peuvent voir des fichiers partiels jusqu’à la fin. Vous serez notifié à la fin.",
     "rwoHint": "Stockage propre au nœud (RWO) — réside sur un seul nœud",

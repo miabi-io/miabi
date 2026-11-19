@@ -1668,7 +1668,6 @@
       "copied": "Copied",
       "databaseDeleted": "Database deleted",
       "databaseIsReady": "Database is ready",
-      "databaseRestored": "Database restored",
       "disconnectedFrom": "Disconnected from {name}",
       "forwardOpenedConnectYourClient": "Forward opened — connect your client to the shown address",
       "instanceDeleted": "Instance deleted",
@@ -1677,7 +1676,6 @@
       "recoveryPointStarted": "Recovery point started — you'll get a notification when it finishes.",
       "resourcesSavedTheInstanceRestarts": "Resources saved; the instance restarts to apply them",
       "restarted": "Database restarted",
-      "restoreStarted": "Restore from {source} started — you'll get a notification when it finishes.",
       "scheduleCreated": "Schedule created",
       "scheduleDeleted": "Schedule deleted",
       "sizesRefreshed": "Sizes refreshed",
@@ -2743,6 +2741,7 @@
       "approved": "Approval recorded",
       "promoted": "{name} promoted"
     },
+    "restoreStarted": "Restore from {source} started — you'll get a notification when it finishes.",
     "roles": {
       "created": "Role created",
       "deleted": "Role deleted",
@@ -4070,7 +4069,6 @@
     "refresh": "Refresh",
     "restore": "Restore",
     "restoreHint": "Restore this backup into the volume",
-    "restoreStarted": "Restore from {source} started — you'll get a notification when it finishes.",
     "restoringBanner": "Restoring from {source}…",
     "restoringBannerSub": "Apps that mount this volume may see partial files until it finishes. You'll get a notification when it does.",
     "rwoHint": "Node-local (RWO) storage — lives on one node",
