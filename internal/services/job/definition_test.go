@@ -55,7 +55,7 @@ func newDefinitionSvc(t *testing.T) (*Service, *gorm.DB, *fakeEnqueuer) {
 		`CREATE TABLE releases (id INTEGER PRIMARY KEY, application_id INTEGER, image TEXT, active BOOLEAN)`,
 		`CREATE TABLE deployments (id INTEGER PRIMARY KEY, application_id INTEGER, status TEXT, number INTEGER)`,
 		`CREATE TABLE job_definitions (id INTEGER PRIMARY KEY, uid TEXT, workspace_id INTEGER, application_id INTEGER,
-			name TEXT, command TEXT, entrypoint TEXT, image TEXT, registry_id INTEGER, run_as_user TEXT, pinned_server_id INTEGER DEFAULT 0,
+			name TEXT, command TEXT, entrypoint TEXT, image TEXT, registry_id INTEGER, run_as_user TEXT, env TEXT, inherit_env BOOLEAN DEFAULT true, pinned_server_id INTEGER DEFAULT 0,
 			timeout_secs INTEGER, run_policy TEXT, wait_for_deploy BOOLEAN, history_limit INTEGER, spec_hash TEXT,
 			last_release_id INTEGER, last_job_id INTEGER, backoff_limit INTEGER, metadata TEXT, annotations TEXT,
 			created_at DATETIME, updated_at DATETIME)`,

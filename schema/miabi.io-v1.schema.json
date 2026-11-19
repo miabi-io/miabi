@@ -231,6 +231,13 @@
           },
           "type": "array"
         },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Env is the run's own variables, on top of the app's; values support interpolation like an app's env.",
+          "type": "object"
+        },
         "historyLimit": {
           "description": "HistoryLimit is how many finished runs to keep; 0 keeps the default 20.",
           "type": "integer"
@@ -238,6 +245,10 @@
         "image": {
           "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
           "type": "string"
+        },
+        "inheritEnv": {
+          "description": "InheritEnv false runs without the app's and stack's variables; omitted is true.",
+          "type": "boolean"
         },
         "placement": {
           "$ref": "#/$defs/JobPlacementSpec",
@@ -250,6 +261,13 @@
         "schedule": {
           "description": "Schedule is a standard 5-field cron expression, evaluated in UTC.",
           "type": "string"
+        },
+        "secretEnv": {
+          "description": "SecretEnv names the env keys whose literal values are stored encrypted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "security": {
           "$ref": "#/$defs/SecuritySpec",
@@ -642,6 +660,13 @@
           },
           "type": "array"
         },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Env is the run's own variables, on top of the app's; values support interpolation like an app's env.",
+          "type": "object"
+        },
         "historyLimit": {
           "description": "HistoryLimit is how many finished runs to keep; 0 keeps the default 20.",
           "type": "integer"
@@ -649,6 +674,10 @@
         "image": {
           "description": "Image runs a different image in the app's runtime context; omitted runs the app's active release.",
           "type": "string"
+        },
+        "inheritEnv": {
+          "description": "InheritEnv false runs without the app's and stack's variables; omitted is true.",
+          "type": "boolean"
         },
         "placement": {
           "$ref": "#/$defs/JobPlacementSpec",
@@ -660,6 +689,13 @@
         },
         "runPolicy": {
           "type": "string"
+        },
+        "secretEnv": {
+          "description": "SecretEnv names the env keys whose literal values are stored encrypted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "security": {
           "$ref": "#/$defs/SecuritySpec",

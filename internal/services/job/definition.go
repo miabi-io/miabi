@@ -43,6 +43,9 @@ type DefinitionInput struct {
 	RegistryID    *uint
 	RunAsUser     string
 	TimeoutSecs   int
+	// Env is plaintext here; the service seals it.
+	Env           models.JobEnv
+	InheritEnv    *bool
 	RunPolicy     string
 	WaitForDeploy bool
 	HistoryLimit  int
@@ -84,6 +87,10 @@ func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in Defin
 	def.Image = in.Image
 	def.RegistryID = in.RegistryID
 	def.RunAsUser = runAsUser
+	if def.Env, err = s.SealEnv(workspaceID, in.Env, def.Env); err != nil {
+		return nil, nil, err
+	}
+	def.InheritEnv = inheritOrDefault(in.InheritEnv)
 	def.TimeoutSecs = in.TimeoutSecs
 	def.RunPolicy = runPolicy(in.RunPolicy)
 	def.WaitForDeploy = in.WaitForDeploy
@@ -194,6 +201,8 @@ func (s *Service) runAttempt(ctx context.Context, def *models.JobDefinition, sou
 		Image:           def.Image,
 		RegistryID:      def.RegistryID,
 		RunAsUser:       def.RunAsUser,
+		Env:             def.Env,
+		InheritEnv:      def.InheritEnv,
 		ServerID:        def.PinnedServerID,
 		TimeoutSecs:     def.TimeoutSecs,
 		Source:          source,

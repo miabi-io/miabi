@@ -2,7 +2,7 @@ import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
   Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, Restore, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput, CreateServiceAccountKeyInput, User,
-  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
+  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, JobEnvVar, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
   SecurityStatus, SecurityOverview, SecurityPolicy, SavePolicyInput, SecurityEvent, ApprovedBinding,
 } from './types'
 
@@ -25,13 +25,15 @@ export interface CronJobInput {
   enabled?: boolean
   concurrency_policy?: 'allow' | 'forbid' | 'replace'
   history_limit?: number
+  env?: JobEnvVar[]
+  inherit_env?: boolean
 }
 
 // Each job targets an application but is managed at the workspace level.
 export const jobApi = {
   list: (ws: number, appId?: number) =>
     api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs${appId ? `?app_id=${appId}` : ''}`),
-  run: (ws: number, body: { application_id: number; name?: string; command: string[]; entrypoint?: string[]; image?: string; registry_id?: number | null; run_as_user?: string; timeout_secs?: number }) =>
+  run: (ws: number, body: { application_id: number; name?: string; command: string[]; entrypoint?: string[]; image?: string; registry_id?: number | null; run_as_user?: string; timeout_secs?: number; env?: JobEnvVar[]; inherit_env?: boolean }) =>
     api.post<ApiResponse<Job>>(`${w(ws)}/jobs`, body),
   get: (ws: number, jobId: number) => api.get<ApiResponse<Job>>(`${w(ws)}/jobs/${jobId}`),
   cancel: (ws: number, jobId: number) => api.post<ApiResponse<{ message: string }>>(`${w(ws)}/jobs/${jobId}/cancel`),

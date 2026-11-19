@@ -1069,6 +1069,14 @@ func (s *Service) render(workspaceID uint, desired *declarative.ResourceSet) {
 			res.Stack.Env = r.RenderEnvLenient(res.Metadata.Name, res.Stack.Env)
 			res.Stack.SecretEnv = withKeys(res.Stack.SecretEnv, r.CredentialKeys())
 			desired.Add(res)
+		case res.Job != nil && len(res.Job.Env) > 0:
+			res.Job.Env = r.RenderEnvLenient(res.Metadata.Name, res.Job.Env)
+			res.Job.SecretEnv = withKeys(res.Job.SecretEnv, r.CredentialKeys())
+			desired.Add(res)
+		case res.CronJob != nil && len(res.CronJob.Env) > 0:
+			res.CronJob.Env = r.RenderEnvLenient(res.Metadata.Name, res.CronJob.Env)
+			res.CronJob.SecretEnv = withKeys(res.CronJob.SecretEnv, r.CredentialKeys())
+			desired.Add(res)
 		case res.Registry != nil:
 			s.renderRegistryPasswordLenient(r, res.Metadata.Name, res.Registry)
 			desired.Add(res)

@@ -83,7 +83,10 @@ type Job struct {
 	RegistryID *uint `json:"registry_id,omitempty"`
 	Pull       bool  `json:"pull"`
 	// Snapshotted so history shows what actually ran; empty means the image's own user. See NormalizeRunAsUser.
-	RunAsUser   string    `json:"run_as_user,omitempty"`
+	RunAsUser string `json:"run_as_user,omitempty"`
+	// Env is the run's own variables, references unresolved, so history never holds a resolved secret.
+	Env         JobEnv    `json:"env,omitempty" gorm:"type:text"`
+	InheritEnv  *bool     `json:"inherit_env" gorm:"not null;default:true"`
 	Status      JobStatus `json:"status" gorm:"not null;default:pending"`
 	ExitCode    *int      `json:"exit_code,omitempty"`
 	ContainerID string    `json:"container_id,omitempty"`
@@ -130,6 +133,9 @@ type CronJob struct {
 	RegistryID  *uint    `json:"registry_id,omitempty"`
 	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
 	RunAsUser string `json:"run_as_user,omitempty"`
+	Env       JobEnv `json:"env,omitempty" gorm:"type:text"`
+	// InheritEnv false runs without the app's and stack's variables; nil is the column default, true.
+	InheritEnv *bool `json:"inherit_env" gorm:"not null;default:true"`
 	// PinnedServerID is the node placement.node chose for every run (0 = follow the app).
 	PinnedServerID uint   `json:"-" gorm:"not null;default:0"`
 	Node           string `json:"node,omitempty" gorm:"-"`
@@ -169,6 +175,8 @@ type JobDefinition struct {
 	RegistryID  *uint    `json:"registry_id,omitempty"`
 	RunAsUser   string   `json:"run_as_user,omitempty"`
 	TimeoutSecs int      `json:"timeout_secs" gorm:"not null;default:0"`
+	Env         JobEnv   `json:"env,omitempty" gorm:"type:text"`
+	InheritEnv  *bool    `json:"inherit_env" gorm:"not null;default:true"`
 	// PinnedServerID is the node placement.node chose for every run (0 = follow the app).
 	PinnedServerID uint   `json:"-" gorm:"not null;default:0"`
 	Node           string `json:"node,omitempty" gorm:"-"`

@@ -1998,6 +1998,13 @@ export interface ConnectionInfo {
   readonly_uri?: string
 }
 
+export interface JobEnvVar {
+  key: string
+  // A secret comes back as the mask; sending the mask back keeps the stored value.
+  value: string
+  is_secret?: boolean
+}
+
 export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'skipped'
 
 export interface Job {
@@ -2018,6 +2025,9 @@ export interface Job {
   registry_id?: number
   pull?: boolean
   run_as_user?: string
+  env?: JobEnvVar[]
+  // false runs without the app's and stack's variables.
+  inherit_env?: boolean
   add_capabilities?: string[]
   devices?: string[]
   status: JobRunStatus
@@ -2048,6 +2058,9 @@ export interface CronJob {
   image?: string
   registry_id?: number
   run_as_user?: string
+  env?: JobEnvVar[]
+  // false runs without the app's and stack's variables.
+  inherit_env?: boolean
   add_capabilities?: string[]
   devices?: string[]
   timeout_secs: number
@@ -2071,6 +2084,9 @@ export interface JobDefinition {
   entrypoint?: string[]
   image?: string
   run_as_user?: string
+  env?: JobEnvVar[]
+  // false runs without the app's and stack's variables.
+  inherit_env?: boolean
   timeout_secs: number
   run_policy: 'onChange' | 'once' | 'onRelease'
   wait_for_deploy: boolean

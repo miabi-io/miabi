@@ -66,6 +66,9 @@ type CronJobInput struct {
 	RegistryID  *uint
 	// RunAsUser pins spawned runs to an account (blank = inherit the app's).
 	RunAsUser string
+	// Env is plaintext here; the service seals it. A masked secret keeps its stored value.
+	Env        models.JobEnv
+	InheritEnv *bool
 	// PinnedServerID pins every run to a node (0 = follow the app).
 	PinnedServerID    uint
 	TimeoutSecs       int
@@ -111,6 +114,10 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 	if err := s.checkPin(app, in.PinnedServerID); err != nil {
 		return nil, err
 	}
+	env, err := s.SealEnv(workspaceID, in.Env, nil)
+	if err != nil {
+		return nil, err
+	}
 	name, display, err := s.cronName(workspaceID, in.Name, in.DisplayName, 0)
 	if err != nil {
 		return nil, err
@@ -132,6 +139,8 @@ func (s *Service) CreateCronJob(workspaceID, appID uint, in CronJobInput) (*mode
 		Image:             in.Image,
 		RegistryID:        in.RegistryID,
 		RunAsUser:         runAsUser,
+		Env:               env,
+		InheritEnv:        inheritOrDefault(in.InheritEnv),
 		PinnedServerID:    in.PinnedServerID,
 		TimeoutSecs:       in.TimeoutSecs,
 		Enabled:           in.Enabled,
@@ -191,6 +200,10 @@ func (s *Service) UpdateCronJob(workspaceID, id uint, in CronJobInput) (*models.
 	if err := s.checkPin(app, in.PinnedServerID); err != nil {
 		return nil, err
 	}
+	if cj.Env, err = s.SealEnv(workspaceID, in.Env, cj.Env); err != nil {
+		return nil, err
+	}
+	cj.InheritEnv = inheritOrDefault(in.InheritEnv)
 	cj.PinnedServerID = in.PinnedServerID
 	cj.Image = in.Image
 	cj.RegistryID = in.RegistryID
@@ -429,6 +442,8 @@ func (s *Service) spawnJob(ctx context.Context, cj *models.CronJob, source strin
 		Image:       cj.Image,
 		RegistryID:  cj.RegistryID,
 		RunAsUser:   cj.RunAsUser, // blank inherits the app's, resolved by Run
+		Env:         cj.Env,
+		InheritEnv:  cj.InheritEnv,
 		ServerID:    cj.PinnedServerID,
 		TimeoutSecs: cj.TimeoutSecs,
 		Source:      source,
@@ -479,5 +494,6 @@ func (in CronJobInput) OnlyToggles(cj *models.CronJob) bool {
 		slices.Equal(in.Command, cj.Command) && slices.Equal(in.Entrypoint, cj.Entrypoint) &&
 		strings.TrimSpace(in.Image) == strings.TrimSpace(cj.Image) && user == cj.RunAsUser &&
 		in.TimeoutSecs == cj.TimeoutSecs && normalizePolicy(in.ConcurrencyPolicy) == cj.ConcurrencyPolicy &&
-		in.HistoryLimit == cj.HistoryLimit && in.PinnedServerID == cj.PinnedServerID
+		in.HistoryLimit == cj.HistoryLimit && in.PinnedServerID == cj.PinnedServerID &&
+		SameEnv(cj.Env, in.Env) && models.InheritsEnv(in.InheritEnv) == models.InheritsEnv(cj.InheritEnv)
 }

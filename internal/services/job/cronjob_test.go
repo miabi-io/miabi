@@ -46,6 +46,8 @@ type cronRow struct {
 	Image             string
 	RegistryID        *uint
 	RunAsUser         string
+	Env               string
+	InheritEnv        bool `gorm:"default:true"`
 	PinnedServerID    uint
 	Enabled           bool
 	ConcurrencyPolicy string

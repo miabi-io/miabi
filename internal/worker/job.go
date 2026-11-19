@@ -89,7 +89,10 @@ func (h *JobHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
 }
 
 func (h *JobHandler) jobRun(j *models.Job) managedRun {
-	run := managedRun{kind: managedenv.KindJob, jobName: j.Name, jobRunID: j.ID, image: j.Image}
+	run := managedRun{
+		kind: managedenv.KindJob, jobName: j.Name, jobRunID: j.ID, image: j.Image,
+		jobEnv: j.Env, isolated: !models.InheritsEnv(j.InheritEnv),
+	}
 	if j.CronJobID != nil {
 		run.kind = managedenv.KindCronJob
 	}

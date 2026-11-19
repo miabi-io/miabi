@@ -22,6 +22,8 @@ package apply
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/miabi-io/miabi/internal/declarative"
@@ -45,6 +47,8 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 	for i := range crons {
 		cj := crons[i]
 		suspended := !cj.Enabled
+		env, secretEnv := jobEnvSpec(cj.Env)
+		inherit := models.InheritsEnv(cj.InheritEnv)
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindCronJob,
 			Metadata: metaA(cj.UID, cj.Name, cj.Metadata, cj.Annotations),
@@ -61,6 +65,9 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 				Suspend:           &suspended,
 				Security:          securitySpec(cj.RunAsUser),
 				Placement:         jobPlacement(cj.Node),
+				Env:               env,
+				SecretEnv:         secretEnv,
+				InheritEnv:        &inherit,
 			},
 		})
 	}
@@ -71,6 +78,8 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 	for i := range defs {
 		d := defs[i]
 		wait := d.WaitForDeploy
+		env, secretEnv := jobEnvSpec(d.Env)
+		inherit := models.InheritsEnv(d.InheritEnv)
 		set.Add(declarative.Resource{
 			APIVersion: declarative.APIVersion, Kind: declarative.KindJob,
 			Metadata: metaA(d.UID, d.Name, d.Metadata, d.Annotations),
@@ -87,11 +96,59 @@ func (s *Service) snapshotJobs(workspaceID uint, set *declarative.ResourceSet, a
 				BackoffLimit:   d.BackoffLimit,
 				Security:       securitySpec(d.RunAsUser),
 				Placement:      jobPlacement(d.Node),
+				Env:            env,
+				SecretEnv:      secretEnv,
+				InheritEnv:     &inherit,
 				SpecFP:         d.SpecHash,
 			},
 		})
 	}
 	return nil
+}
+
+// Secret values are blanked: the plan masks them, comparing only presence and secrecy.
+func jobEnvSpec(env models.JobEnv) (map[string]string, []string) {
+	if len(env) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(env))
+	var secretEnv []string
+	for _, v := range env {
+		if v.IsSecret {
+			secretEnv = append(secretEnv, v.Key)
+			out[v.Key] = ""
+			continue
+		}
+		out[v.Key] = v.Value
+	}
+	return out, secretEnv
+}
+
+// Strict, like an app's env: a reference that still cannot resolve at execution time is a real error.
+func (s *Service) renderJobEnv(workspaceID uint, kind string, env map[string]string, secretEnv []string, set *declarative.ResourceSet) (models.JobEnv, error) {
+	if len(env) == 0 {
+		return nil, nil
+	}
+	r := declarative.NewRenderer(declarative.RenderContext{
+		Databases: s.databaseViews(workspaceID),
+		Secrets:   s.secretViews(workspaceID),
+		Apps:      s.appViews(workspaceID, set),
+	})
+	rendered, err := r.RenderEnv(kind, env)
+	if err != nil {
+		return nil, err
+	}
+	secret := withKeys(append([]string(nil), secretEnv...), r.CredentialKeys())
+	keys := make([]string, 0, len(rendered))
+	for k := range rendered {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make(models.JobEnv, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, models.JobEnvVar{Key: k, Value: rendered[k], IsSecret: slices.Contains(secret, k)})
+	}
+	return out, nil
 }
 
 func jobPlacement(node string) *declarative.JobPlacementSpec {
@@ -172,10 +229,16 @@ func (s *Service) applyCronJob(ctx context.Context, workspaceID uint, ch declara
 	if err != nil {
 		return err
 	}
+	env, err := s.renderJobEnv(workspaceID, "cronjob", spec.Env, spec.SecretEnv, nil)
+	if err != nil {
+		return fmt.Errorf("%w: cronjob %q: %v", ErrInvalidManifest, ch.Name, err)
+	}
+	inherit := spec.Inherits()
 	in := job.CronJobInput{
 		Name: ch.Name, Schedule: spec.Schedule, Command: spec.Command, Entrypoint: spec.Entrypoint,
 		Image: spec.Image, RegistryID: regID, RunAsUser: spec.RunAsUser(), TimeoutSecs: spec.TimeoutSeconds,
 		ConcurrencyPolicy: spec.ConcurrencyPolicy, HistoryLimit: spec.HistoryLimit,
+		Env: env, InheritEnv: &inherit,
 		Metadata: jobMetadata(ctx, desired), Annotations: desired.Metadata.Annotations,
 	}
 	pin, stated, err := s.jobNode(ctx, workspaceID, "cronjob", ch.Name, app, spec.NodeName())
@@ -233,9 +296,15 @@ func (s *Service) applyJob(ctx context.Context, workspaceID uint, ch declarative
 	if err != nil {
 		return err
 	}
+	env, err := s.renderJobEnv(workspaceID, "job", spec.Env, spec.SecretEnv, nil)
+	if err != nil {
+		return fmt.Errorf("%w: job %q: %v", ErrInvalidManifest, ch.Name, err)
+	}
+	inherit := spec.Inherits()
 	in := job.DefinitionInput{
 		Name: ch.Name, ApplicationID: app.ID, Command: spec.Command, Entrypoint: spec.Entrypoint,
 		Image: spec.Image, RegistryID: regID, RunAsUser: spec.RunAsUser(), TimeoutSecs: spec.TimeoutSeconds,
+		Env: env, InheritEnv: &inherit,
 		RunPolicy: spec.Policy(), WaitForDeploy: spec.Waits(), HistoryLimit: spec.HistoryLimit,
 		BackoffLimit: spec.BackoffLimit, SpecHash: spec.Fingerprint(), Metadata: jobMetadata(ctx, desired), Annotations: desired.Metadata.Annotations,
 	}
@@ -313,6 +382,12 @@ func exportJobs(set, out *declarative.ResourceSet, app string) {
 			}
 			if r.CronJob != nil && r.CronJob.Suspend != nil && !*r.CronJob.Suspend {
 				r.CronJob.Suspend = nil
+			}
+			if r.CronJob != nil && r.CronJob.Inherits() {
+				r.CronJob.InheritEnv = nil
+			}
+			if r.Job != nil && r.Job.Inherits() {
+				r.Job.InheritEnv = nil
 			}
 			if r.Job != nil && r.Job.Waits() == (r.Job.Policy() == declarative.RunOnChange) {
 				r.Job.WaitForDeploy = nil

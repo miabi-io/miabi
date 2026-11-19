@@ -182,6 +182,9 @@ type managedRun struct {
 	commit       string
 	image        string
 	digest       string
+	// jobEnv is a run's own layer, on top of the app's; isolated leaves the app's and stack's out.
+	jobEnv   models.JobEnv
+	isolated bool
 }
 
 func (b *runtimeBuilder) managedVars(app *models.Application, run managedRun) []managedenv.Var {
@@ -532,7 +535,7 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 	return nil
 }
 
-// Managed < stack < app; an unknown secret reference fails rather than injecting blank.
+// Managed < stack < app < job; an unknown secret reference fails rather than injecting blank.
 func (b *runtimeBuilder) buildEnv(app *models.Application, run managedRun) ([]string, error) {
 	merged := map[string]string{}
 	var order []string
@@ -545,14 +548,19 @@ func (b *runtimeBuilder) buildEnv(app *models.Application, run managedRun) ([]st
 	for _, v := range b.managedVars(app, run) {
 		add(v.Name, v.Value)
 	}
-	if app.StackID != nil && b.stackEnv != nil {
-		if shared, err := b.stackEnv.ListByStack(*app.StackID); err == nil {
-			for _, v := range shared {
-				add(v.Key, decryptIfSecret(v.Value, v.IsSecret))
+	if !run.isolated {
+		if app.StackID != nil && b.stackEnv != nil {
+			if shared, err := b.stackEnv.ListByStack(*app.StackID); err == nil {
+				for _, v := range shared {
+					add(v.Key, decryptIfSecret(v.Value, v.IsSecret))
+				}
 			}
 		}
+		for _, v := range app.EnvVars {
+			add(v.Key, decryptIfSecret(v.Value, v.IsSecret))
+		}
 	}
-	for _, v := range app.EnvVars {
+	for _, v := range run.jobEnv {
 		add(v.Key, decryptIfSecret(v.Value, v.IsSecret))
 	}
 	env := make([]string, 0, len(order))

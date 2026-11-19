@@ -2144,7 +2144,19 @@
       "onRelease": "à chaque release"
     },
     "attempt": "tentative {n}",
-    "applyHint": "Appliqué depuis un manifeste : le prochain miabi apply écrase les modifications faites ici."
+    "applyHint": "Appliqué depuis un manifeste : le prochain miabi apply écrase les modifications faites ici.",
+    "env": {
+      "label": "Variables d'environnement",
+      "key": "Nom de la variable",
+      "value": "Valeur",
+      "secret": "Secret",
+      "secretHint": "Stockée chiffrée et jamais réaffichée",
+      "keepSecret": "Inchangée — saisissez pour la remplacer",
+      "add": "Ajouter une variable",
+      "hint": "Ajoutées aux variables de l'application ; une valeur ici remplace celle de l'application. Référencez un secret de l'espace de travail avec {ref}.",
+      "inherit": "Hériter des variables de l'application",
+      "inheritHint": "Désactivez pour n'utiliser que ces variables et celles de Miabi (MIABI_*), par exemple quand une image tierce ne doit pas voir les secrets de l'application."
+    }
   },
   "ldap": {
     "testConnection": "Tester la connexion"

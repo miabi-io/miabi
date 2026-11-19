@@ -101,3 +101,34 @@ func TestJobRunKinds(t *testing.T) {
 		t.Fatalf("cron run = %+v", r)
 	}
 }
+
+func TestBuildEnvJobLayer(t *testing.T) {
+	app := &models.Application{Name: "api", MiabiEnvDisabled: true, EnvVars: []models.AppEnvVar{
+		{Key: "DATABASE_URL", Value: "postgres://app"}, {Key: "LOG_LEVEL", Value: "info"},
+	}}
+	run := managedRun{jobEnv: models.JobEnv{{Key: "LOG_LEVEL", Value: "debug"}, {Key: "EXPORT", Value: "nightly"}}}
+	env, err := (&runtimeBuilder{}).buildEnv(app, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := envMapOf(env)
+	if got["LOG_LEVEL"] != "debug" || got["EXPORT"] != "nightly" || got["DATABASE_URL"] != "postgres://app" {
+		t.Fatalf("job env must win over the app's and keep the rest: %v", got)
+	}
+
+	run.isolated = true
+	env, err = (&runtimeBuilder{}).buildEnv(app, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = envMapOf(env)
+	if _, leaked := got["DATABASE_URL"]; leaked || got["LOG_LEVEL"] != "debug" || len(got) != 2 {
+		t.Fatalf("an isolated run must get only its own env: %v", got)
+	}
+
+	app.MiabiEnvDisabled = false
+	env, _ = (&runtimeBuilder{}).buildEnv(app, run)
+	if envMapOf(env)["MIABI_APP_NAME"] != "api" {
+		t.Fatalf("an isolated run still gets the MIABI_* set: %v", env)
+	}
+}
