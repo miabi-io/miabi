@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>The open-source, self-hosted PaaS for shipping apps, not infrastructure.</strong><br/>
-  Docker Compose isn't enough. Kubernetes is overkill. Miabi is the middle.
+  Kubernetes is overkill. Docker Compose isn't enough anymore. Miabi is the middle.
 </p>
 
 <p align="center">
@@ -15,13 +15,14 @@
   <a href="#features">Features</a> ·
   <a href="#how-miabi-compares">Comparison</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="https://docs.miabi.io">Docs</a> .
+  <a href="https://docs.miabi.io">Docs</a> ·
+  <a href="https://docs.miabi.io/docs/use-cases/overview/">Use cases</a> ·
   <a href="https://github.com/miabi-io/examples">Examples</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/miabi-io/miabi/actions/workflows/ci.yml"><img src="https://github.com/miabi-io/miabi/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/miabi-io/miabi" alt="Go Report Card"/></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/miabi-io/miabi" alt="Go version"/></a>
   <a href="https://github.com/miabi-io/miabi/releases"><img src="https://img.shields.io/github/v/release/miabi-io/miabi" alt="Release" /></a>
   <a href="https://hub.docker.com/r/miabi/miabi"><img src="https://img.shields.io/docker/pulls/miabi/miabi" alt="Docker Pulls" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/miabi-io/miabi" alt="License" /></a>
@@ -44,6 +45,7 @@ It runs wherever you already have a server — a VPS, a dedicated server, bare m
 
 - [Quick Start](#quick-start)
 - [Why Miabi](#why-miabi)
+- [Who it's for](#who-its-for)
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [How Miabi compares](#how-miabi-compares)
@@ -58,7 +60,7 @@ It runs wherever you already have a server — a VPS, a dedicated server, bare m
 
 ## Quick Start
 
-**Requirements:** a Linux host with a reachable Docker socket, a domain pointing at it, and ports 80/443 free. PostgreSQL and Redis are brought up as part of the stack.
+**Requirements:** a Linux host with a reachable Docker socket, a domain pointing at it, and ports 80/443 free. 2 vCPU and 2 GB run the platform itself; size up for your apps and databases. PostgreSQL and Redis are brought up as part of the stack.
 
 ```bash
 curl -fsSL https://get.miabi.io | sudo MIABI_DOMAIN=miabi.example.com \
@@ -100,7 +102,7 @@ Prefer to drive Compose yourself? [`examples/compose/`](./examples/compose/) bri
 
 </details>
 
-Full options, the `/etc/miabi/miabi.yaml` manifest, the built-in registry, and custom gateway config are in the **[installation docs](https://docs.miabi.io/docs/getting-started/installation)**.
+Full options, the `/etc/miabi/miabi.yaml` manifest, the built-in registry, and custom gateway config are in the **[installation docs](https://docs.miabi.io/docs/getting-started/installation)**. Already running containers on the server? See **[install on a server you already use](https://docs.miabi.io/docs/getting-started/existing-server)**.
 
 ---
 
@@ -122,77 +124,90 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 
 ---
 
+## Who it's for
+
+| You are | What you get | Guide |
+| --- | --- | --- |
+| A solo developer or homelabber | Side projects on one VPS or a mini PC, with Git-push deploys, TLS and backups | [One server](https://docs.miabi.io/docs/use-cases/single-node) · [Homelab](https://docs.miabi.io/docs/use-cases/homelab) |
+| A startup or company team | A workspace per team or stage, SSO, GitOps, and production kept apart from staging | [Teams and companies](https://docs.miabi.io/docs/use-cases/teams) |
+| A hosting provider or agency | A workspace per client, plans sold as products, quotas and white-label branding | [Hosting providers and agencies](https://docs.miabi.io/docs/use-cases/hosting-providers) |
+| A multi-tenant platform (Enterprise) | Organizations with their own users, sign-in and dedicated hardware | [Several organizations](https://docs.miabi.io/docs/use-cases/multiple-organizations) |
+| A university or training provider | A workspace per student or course, with sign-in through the university | [Universities and training](https://docs.miabi.io/docs/use-cases/education) |
+
+It grows from one server to a cluster to several regions without a reinstall. See **[all use cases](https://docs.miabi.io/docs/use-cases/overview/)**.
+
+---
+
 ## Features
 
 ### Applications & deployments
 
-- Deploy from a **Git repo** (build), a **Docker image** (pull), or a **marketplace template**
-- Buildpack builds with no Dockerfile required, with configurable memory and time limits
-- **Releases** with one-click **rollback** and full deployment history
-- **Zero-downtime** updates, canary aliases, and weighted traffic splitting
-- Env vars, a workspace **secret vault**, and per-app **resource limits**
-- **Jobs** — one-off commands in an app's runtime context
-- **Stacks** (compose-style app groups) and **Environments** (dev → staging → prod)
-- Per-app **timeline** of lifecycle events
-- **Built-in container registry**, multi-tenant and namespaced per workspace, with local or S3/MinIO storage and an optional garbage collector:
+- Deploy from a **Git repo**, a **Docker image**, or a **marketplace template**; buildpacks build repos without a Dockerfile
+- **Releases** with one-click **rollback**, **zero-downtime** rolling updates, and **canary** releases with weighted traffic splitting
+- **Environments** — promotion between stages, with approval gates
+- **Jobs** — one-off commands in an app's runtime, plus declarative `Job` and `CronJob` manifests
+- **Stacks** — groups of apps, importable from a `docker-compose.yml`
+- **GPUs** — cards allocated per app or job, GPU-aware placement, and GPU settings kept on Docker Compose import
+- Env vars, a workspace **secret vault**, per-app **resource limits**, and a **timeline** of lifecycle events
+- **Built-in container registry**, namespaced per workspace, on local or S3/MinIO storage:
   ```bash
   docker login <registry> -u <workspace-name> -p <api-token>
   ```
 
 ### Domains, networking & TLS
 
-- **Domains** with DNS-verified ownership, routed through Goma Gateway with workspace-owned **middlewares**
-- **Automatic TLS** — HTTP-01 ACME by default, managed **wildcard / DNS-01** certs via a connected DNS provider (auto-renewed), and uploaded **custom certs** (encrypted)
-- **Workspace-isolated Docker networks** carved from a managed address pool, so a busy multi-tenant host never exhausts Docker's small default pool
-- Configurable CIDR for the shared proxy network, per-node **edge gateways**, and on-demand **port forwarding** to managed databases
+- **Domains** with DNS-verified ownership and workspace-owned **middlewares**, routed through Goma Gateway
+- **Automatic TLS** — HTTP-01 by default, **wildcard / DNS-01** through a connected DNS provider, or uploaded **custom certs**
+- **An isolated network per workspace**, drawn from a managed pool so a busy host never runs out of Docker networks
+- Per-node **edge gateways** and on-demand **port forwarding** to managed databases
 
 ### Data, storage & backups
 
-- **Databases** — PostgreSQL, MySQL, MariaDB, Redis, libSQL, and MongoDB, with managed credentials and in-place **version upgrades**
-- **Volumes** — workspace-owned Docker volumes, node-local by default, or **shared (RWX)** storage a replicated app can mount across nodes: **NFS**, **CIFS/SMB**, or a **host-path bind** to operator-managed storage under `/mnt/*` (privileged workspaces)
-- **Backups** — scheduled and manual database backup/restore plus volume archives, to **local, MinIO, or S3**
+- **Databases** — PostgreSQL, MySQL, MariaDB, Redis, libSQL and MongoDB, with managed credentials, in-place **version upgrades**, and `DatabaseInstance` manifests
+- **Volumes** — node-local by default, or **shared**: NFS, CIFS/SMB, or a storage class on a filesystem every node mounts, such as CephFS, so a service fails over to another node with its data
+- **Backups** — scheduled and manual backups and restores of databases and volumes to **local, MinIO or S3**; console backups and restores run in the background and notify you when they finish
+- **Portable workspace backups** — a whole workspace, encrypted, restorable on any install
+- **Workspace migration** — move a workspace and its data to another Miabi install
+- **Platform backup** (Enterprise) — back up and restore the control plane itself
 
 ### Multi-node & clustering
 
-- **Nodes** — add remote Docker hosts; the [node agent](https://github.com/miabi-io/agent) dials the control plane over an **outbound** WebSocket tunnel, so it works behind NAT and firewalls
-- **Cluster mode** — optional, auto-detected **Docker Swarm** with encrypted overlay networks
-- **Replicated service apps** — in cluster mode apps deploy as replicated Swarm services by default (opt out per app); stateful apps with node-local storage stay pinned automatically
-- **Multiple clusters & locations** — one control plane drives many clusters: the default cluster, standalone nodes connected over their agent tunnel, and remote Docker Swarms in other regions. Workspaces pick a location, and apps, databases and volumes are placed inside it
-- **Cluster ingress** — each cluster is served by its own gateway (the central gateway, a node's own edge gateway, or a remote swarm's ingress node) with DNS pointing at it; traffic reaches a clustered app's tasks wherever the scheduler placed them, and the app detail view shows the real nodes replicas run on
-- **Node pools** — group nodes by tier; Enterprise plan placement keeps each plan's workspaces on its locations and pool
-- **Image distribution** — built images are pushed to the internal registry so any node can pull them, making multi-node deploys and rollbacks of Git-built apps work across the cluster
-- **Housekeeping** to reconcile drift and reclaim disk, and **Docker import** to adopt pre-existing containers, volumes, and networks
+- **Nodes** — the [node agent](https://github.com/miabi-io/agent) dials out to the control plane, so a node works behind NAT and firewalls
+- **Cluster mode** — optional Docker Swarm with encrypted overlay networks; apps run as replicated services and move off a failed node
+- **Several clusters as locations** — one control plane drives clusters in other regions or sites, each serving its traffic through its own gateway; workspaces pick a location
+- **Placement** — pin an app, database, volume or job to a node by name; node pools and Enterprise plan placement keep a plan's workspaces on its own hardware
+- **Live migration between locations** (Enterprise) — an app with its volumes and databases, with near-zero downtime
+- **Docker import** of existing containers, volumes and networks, and **housekeeping** that reconciles drift and reclaims disk
 
 ### CI/CD & GitOps
 
-- **Pipelines** — pipeline-as-code CI/CD
-- **Build runners** — dedicated build machines that keep build load off app-hosting nodes; a co-located runner ships for single-node and homelab use, and an optional "builds require a runner" guarantee keeps builds off production nodes entirely
-- **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply** with dry-run, diff, and prune. No separate controller to run: no Argo CD, no Flux
+- **Pipelines** as code, run on dedicated **build runners** that keep build load off app nodes
+- **GitOps** — pull-based reconciliation from `miabi.io/v1` manifests, or a one-shot `miabi apply` with dry-run, diff and prune; no Argo CD or Flux to run
 - **Git push deploy**, stored Git and registry credentials, signed **webhooks**, and **notifications**
-- **[Examples](https://github.com/miabi-io/examples)** — complete CI/CD and GitOps for Node.js, Go, Python, PHP, Laravel, Java and Spring Boot apps: tests, Dockerfiles, pipelines, and manifests that deploy as-is
-- REST + OpenAPI everywhere, plus a **CLI** and an official [Terraform / OpenTofu provider](https://github.com/miabi-io/terraform-provider-miabi)
+- **[Examples](https://github.com/miabi-io/examples)** — complete CI/CD and GitOps for Node.js, Go, Python, PHP, Laravel, Java and Spring Boot apps, deployable as-is
+- REST + OpenAPI everywhere, a **CLI**, a [Terraform / OpenTofu provider](https://github.com/miabi-io/terraform-provider-miabi), and **`miabi mcp`**, which exposes the platform to AI agents, read-only by default
 
 ### Identity, teams & access
 
-- **Auth** — registration, login with email or username, password reset, JWT sessions with Redis-backed revocation, **API tokens**, and **2FA (TOTP)**
-- **SSO & directory** — OAuth 2.0 / OIDC (GitHub, Google, generic OIDC), attachable to an organization so a customer's people land in the customer's realm. Enterprise adds **SAML 2.0**, **SCIM** provisioning, and **LDAP / Active Directory** sign-in on the normal login form, with directory groups mapped onto platform-admin and per-workspace roles
-- **Workspaces & teams** — members and invitations; each workspace has a unique **name** handle (its URL and `docker login` namespace) plus a display name, and each user a unique username
-- **Organizations** — tenant realms that own workspaces and the accounts in them, each with an owner, a workspace cap, its own SSO provider (accounts registered through it land in that realm), and optionally its own **dedicated locations**: nodes nobody else can place on.
-- **RBAC** — **Owner · Admin · Developer · Viewer**, enforced in middleware *and* by `workspace_id` scoping. Enterprise adds custom roles and per-resource policies (a role on a single app, domain, or database)
-- **Container security profiles** — an optional non-root "restricted" profile runs app and job containers as a platform UID with `no-new-privileges`; outbound webhooks are SSRF-guarded
-- **Plans & quotas**, per-workspace **encryption keys** (keyring/DEK), key rotation, and crypto-shred on delete
+- **Sign-in** — email or username, **2FA (TOTP)**, **passkeys**, API tokens and **service accounts**
+- **SSO** — OAuth 2.0 / OIDC (GitHub, Google, any OIDC provider); Enterprise adds **SAML 2.0**, **SCIM** and **LDAP / Active Directory**, with directory groups mapped to roles
+- **Workspaces and organizations** — members and invitations; organizations are tenant realms with their own owner, workspace cap, SSO provider and, optionally, **dedicated locations**
+- **RBAC** — **Owner · Admin · Developer · Viewer**; Enterprise adds custom roles and per-resource policies
+- **Restricted container profile** — app and job containers run as an unprivileged UID with `no-new-privileges`
+- **Plans & quotas**, per-workspace **encryption keys** with rotation and crypto-shred on delete, and **sealed secrets** safe to commit to Git
 
 ### Monitoring, analytics & operations
 
-- Container CPU/memory/disk metrics and workspace health with **retained history**, **Prometheus** integration, and health endpoints
-- **Analytics** — requests/sec, status mix, bandwidth, top routes; p50/p95/p99 latency with a **gateway-vs-upstream split** ("is my app slow, or the gateway?"), error rate, and Apdex; unique visitors, top pages, referrers, countries, and device families. Cookieless, no consent banner, IPs never stored, unique visitors via **HyperLogLog** sketches rather than per-person rows
-- **Log storage** — deployment, pipeline, job, and backup logs externalized from Postgres to a shared filesystem store with a bounded DB tail, retention, size caps, and full-log download; live tailing unchanged
-- Append-only **audit log** of every mutating action, with optional **SIEM streaming** over syslog or webhook (Enterprise)
-- **Admin platform** — nodes and clusters, organizations, users, plans, settings, OAuth providers, SSO, license, and SIEM
+- Container and workspace **metrics** with history, **Prometheus** integration, and health endpoints
+- **Analytics with no instrumentation** — traffic, p50/p95/p99 latency split between gateway and app, error rate, Apdex, and cookieless web analytics; IPs are never stored
+- **Alerts and notifications** — a per-user inbox for failed deploys, finished backups and other events
+- **Logs** — deployment, pipeline, job and backup logs kept with retention and full download, plus live tailing
+- **Audit log** of every change, streamed to a **SIEM** over syslog or webhook (Enterprise)
+- **Admin platform** — nodes, clusters, organizations, users, plans, settings, SSO and license
 
 ### Marketplace
 
-Official, versioned templates: WordPress, Ghost, Nextcloud, n8n, Gitea, Forgejo, Umami, NGINX, pgAdmin, phpMyAdmin, mongo-express, libSQL, Posta, PostgreSQL, MySQL, Redis, and MongoDB.
+More than 50 official, versioned templates: databases (PostgreSQL, MySQL, MongoDB, Redis, Valkey), Git (Gitea, Forgejo, GitLab), monitoring (Grafana, Uptime Kuma, Umami, Matomo), identity (Keycloak, authentik, Vaultwarden), AI (Open WebUI, Qdrant), and apps such as WordPress, Ghost, Nextcloud and n8n. Browse them at **[marketplace.miabi.io](https://marketplace.miabi.io/)**.
 
 ---
 
@@ -245,9 +260,8 @@ All four projects are self-hosted, open source, and deploy from Git or a Docker 
 
 | Feature | Miabi | Coolify | Dokploy | CapRover |
 | --- | :---: | :---: | :---: | :---: |
-| Multi-tenancy & workspace isolation | ✅ | ❌ | ❌ | ❌ |
+| Multi-tenancy & shared hosting (isolated workspaces) | ✅ | ❌ | ❌ | ❌ |
 | Organizations, teams & RBAC | ✅ | Limited | ❌ | ❌ |
-| Shared hosting | ✅ | ❌ | ❌ | ❌ |
 | Canary deployments | ✅ | ❌ | ❌ | ❌ |
 | Zero-downtime deployments | ✅ | Limited | Limited | Limited |
 | Built-in CI/CD pipelines | ✅ | ❌ | ❌ | ❌ |
@@ -297,7 +311,7 @@ Clusters (Docker Engine, optional Swarm per cluster)
 
 | Layer | Technology |
 | --- | --- |
-| Backend | Go 1.25+, [Okapi](https://github.com/jkaninda/okapi) framework, REST + OpenAPI |
+| Backend | Go 1.27+, [Okapi](https://github.com/jkaninda/okapi) framework, REST + OpenAPI |
 | Frontend | Vue 3 + Pinia + Vite, built and statically served by the binary |
 | Database | PostgreSQL (GORM) |
 | Queue / cache | Redis + Asynq |
@@ -333,7 +347,7 @@ Switch workspaces from the picker to watch the console re-scope, then sign in as
 
 ## Development
 
-Building from source needs **Go 1.25+**, Node (for the console), a PostgreSQL and a Redis instance, and a reachable Docker socket.
+Building from source needs **Go 1.27+**, Node (for the console), a PostgreSQL and a Redis instance, and a reachable Docker socket.
 
 ```bash
 git clone https://github.com/miabi-io/miabi.git
@@ -364,13 +378,14 @@ Miabi is part of a family of self-hosting tools by the same author:
 | [marketplace](https://github.com/miabi-io/marketplace) | Official app template catalog |
 | [examples](https://github.com/miabi-io/examples) | Example apps with complete CI/CD pipelines and GitOps manifests |
 | [Posta](https://github.com/goposta/posta) | Self-hosted email delivery and inbound |
-| [pg-bkup](https://github.com/jkaninda/pg-bkup) / [mysql-bkup](https://github.com/jkaninda/mysql-bkup) | Database backup tools |
+| [pg-bkup](https://github.com/jkaninda/pg-bkup) · [mysql-bkup](https://github.com/jkaninda/mysql-bkup) · [mongodb-bkup](https://github.com/jkaninda/mongodb-bkup) · [libsql-bkup](https://github.com/jkaninda/libsql-bkup) · [volume-bkup](https://github.com/jkaninda/volume-bkup) | Backup tools for databases and volumes |
 
 ---
 
 ## Support & contributing
 
 - **Docs** — <https://docs.miabi.io>
+- **Use cases** — [one server to several regions, teams to hosting providers](https://docs.miabi.io/docs/use-cases/overview/)
 - **Questions & ideas** — [GitHub Discussions](https://github.com/miabi-io/miabi/discussions)
 - **Bugs & features** — [open an issue](https://github.com/miabi-io/miabi/issues). External pull requests are not accepted at the moment; see [CONTRIBUTING.md](./CONTRIBUTING.md)
 - **Security** — report vulnerabilities privately to <security@miabi.io>. Please don't file public issues for security problems
