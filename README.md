@@ -149,7 +149,7 @@ It grows from one server to a cluster to several regions without a reinstall. Se
 - **Stacks** — groups of apps, importable from a `docker-compose.yml`
 - **GPUs** — cards allocated per app or job, GPU-aware placement, and GPU settings kept on Docker Compose import
 - Env vars, a workspace **secret vault**, per-app **resource limits**, and a **timeline** of lifecycle events
-- **Built-in container registry**, namespaced per workspace, on local or S3/MinIO storage:
+- **Built-in container registry**, namespaced per workspace, on local storage or S3/MinIO (Enterprise):
   ```bash
   docker login <registry> -u <workspace-name> -p <api-token>
   ```
@@ -166,7 +166,7 @@ It grows from one server to a cluster to several regions without a reinstall. Se
 - **Databases** — PostgreSQL, MySQL, MariaDB, Redis, libSQL and MongoDB, with managed credentials, in-place **version upgrades**, and `DatabaseInstance` manifests
 - **Volumes** — node-local by default, or **shared**: NFS, CIFS/SMB, or a storage class on a filesystem every node mounts, such as CephFS, so a service fails over to another node with its data
 - **Backups** — scheduled and manual backups and restores of databases and volumes to **local, MinIO or S3**; console backups and restores run in the background and notify you when they finish
-- **Portable workspace backups** — a whole workspace, encrypted, restorable on any install
+- **Portable workspace backups** — a whole workspace in one bundle, sealed with a passphrase when one is set, restorable on any install
 - **Workspace migration** — move a workspace and its data to another Miabi install
 - **Platform backup** (Enterprise) — back up and restore the control plane itself
 
@@ -280,7 +280,7 @@ All four projects are self-hosted, open source, and deploy from Git or a Docker 
 | Live migration between locations (app, volumes & databases, near-zero downtime) | ✅ (Enterprise) | ❌ | ❌ | ❌ |
 | Docker import (adopt existing containers) | ✅ | ❌ | ❌ | ❌ |
 | Scheduled backups | ✅ | Partial | Partial | ❌ |
-| Portable workspace backups (whole workspace, encrypted, restore anywhere) | ✅ | ❌ | ❌ | ❌ |
+| Portable workspace backups (whole workspace, passphrase-sealed, restore anywhere) | ✅ | ❌ | ❌ | ❌ |
 | Workspace migration to another install, with data | ✅ | ❌ | ❌ | ❌ |
 | SAML / LDAP | ✅ (Enterprise) | ❌ | ❌ | ❌ |
 
