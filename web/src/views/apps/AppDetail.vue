@@ -2876,7 +2876,7 @@ async function detachDatabase(d: AppDatabase) {
               <tr v-for="p in app.ports" :key="p.id">
                 <td class="cell-title">{{ p.container_port }}</td>
                 <td class="cell-sub">{{ p.protocol }}</td>
-                <td class="cell-sub">{{ p.scheme || 'http' }}</td>
+                <td class="cell-sub">{{ p.protocol === 'udp' ? '—' : p.scheme || 'http' }}</td>
                 <td class="cell-sub">{{ p.name || '—' }}</td>
                 <td class="text-right table-actions">
                   <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :disabled="bindBlocked" :title="bindBlockedReason" @click="openBindReq(p)">{{ $t('appDetail.requestHostBinding') }}</button>
@@ -3411,12 +3411,12 @@ async function detachDatabase(d: AppDatabase) {
           <div class="form-group">
             <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
             <div v-for="(p, i) in settingsForm.ports" :key="i" class="port-row">
-              <input v-model.number="p.container_port" type="number" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" :disabled="!ws.canEdit" style="flex: 1" />
-              <select v-model="p.protocol" class="form-select" :disabled="!ws.canEdit" :aria-label="$t('apps.form.portProtocol')" style="width: 84px">
+              <input :value="p.container_port || ''" type="number" min="1" max="65535" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" :disabled="!ws.canEdit" style="flex: 1" @input="p.container_port = Number(($event.target as HTMLInputElement).value) || 0" />
+              <select v-model="p.protocol" class="form-select" :disabled="!ws.canEdit" :aria-label="$t('apps.form.portProtocol')" style="width: 84px" @change="p.protocol === 'udp' && (p.scheme = 'http')">
                 <option value="tcp">TCP</option>
                 <option value="udp">UDP</option>
               </select>
-              <select v-model="p.scheme" class="form-select" :disabled="!ws.canEdit" :title="$t('appDetail.ports.schemeHint')" :aria-label="$t('appDetail.ports.schemeHint')" style="width: 96px">
+              <select v-if="p.protocol !== 'udp'" v-model="p.scheme" class="form-select" :disabled="!ws.canEdit" :title="$t('appDetail.ports.schemeHint')" :aria-label="$t('appDetail.ports.schemeHint')" style="width: 96px">
                 <option value="http">http</option>
                 <option value="https">https</option>
               </select>
@@ -4120,13 +4120,13 @@ async function detachDatabase(d: AppDatabase) {
             <div class="flex items-center gap-3">
               <div class="form-group" style="flex: 1">
                 <label class="form-label">{{ $t('apps.form.containerPort') }}</label>
-                <input v-model.number="portForm.container_port" type="number" min="1" max="65535" class="form-input" placeholder="8080" required autofocus />
+                <input :value="portForm.container_port || ''" type="number" min="1" max="65535" class="form-input" placeholder="8080" required autofocus @input="portForm.container_port = Number(($event.target as HTMLInputElement).value) || 0" />
               </div>
               <div class="form-group" style="width: 110px">
                 <label class="form-label">{{ $t('appDetail.protocol') }}</label>
-                <select v-model="portForm.protocol" class="form-select"><option value="tcp">tcp</option><option value="udp">udp</option></select>
+                <select v-model="portForm.protocol" class="form-select" @change="portForm.protocol === 'udp' && (portForm.scheme = 'http')"><option value="tcp">tcp</option><option value="udp">udp</option></select>
               </div>
-              <div class="form-group" style="width: 120px">
+              <div v-if="portForm.protocol !== 'udp'" class="form-group" style="width: 120px">
                 <label class="form-label">{{ $t('appDetail.scheme') }}</label>
                 <select v-model="portForm.scheme" class="form-select"><option value="http">http</option><option value="https">https</option></select>
               </div>

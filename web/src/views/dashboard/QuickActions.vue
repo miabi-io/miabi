@@ -1,14 +1,15 @@
 <script setup lang="ts">
 // Everything here is also in the sidebar, so the list stays short: what you start often.
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
+const props = defineProps<{ newAppTarget?: RouteLocationRaw }>()
 const router = useRouter()
 const { t } = useI18n()
 
 const actions = computed(() => [
-  { to: '/apps', icon: 'mdi-cube-outline', label: t('dashboard.quick.deployApplication.label'), hint: t('dashboard.quick.deployApplication.hint'), tone: 'primary' },
+  { to: props.newAppTarget ?? '/apps', icon: 'mdi-cube-outline', label: t('dashboard.quick.deployApplication.label'), hint: t('dashboard.quick.deployApplication.hint'), tone: 'primary' },
   { to: '/databases', icon: 'mdi-database-plus-outline', label: t('dashboard.quick.newDatabase.label'), hint: t('dashboard.quick.newDatabase.hint'), tone: 'primary' },
   { to: '/stacks', icon: 'mdi-layers-outline', label: t('dashboard.quick.createStack.label'), hint: t('dashboard.quick.createStack.hint'), tone: 'primary' },
   { to: '/marketplace', icon: 'mdi-storefront-outline', label: t('dashboard.quick.marketplace.label'), hint: t('dashboard.quick.marketplace.hint'), tone: 'primary' },
@@ -25,7 +26,7 @@ const actions = computed(() => [
   <div class="quick-actions">
     <button
       v-for="a in actions"
-      :key="a.to"
+      :key="a.label"
       class="qa"
       :class="`qa-${a.tone}`"
       :title="a.hint"

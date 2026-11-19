@@ -75,7 +75,8 @@ async function loadAppPorts(appId: number | null) {
   const cached = portCache.get(appId)
   if (cached) { appPorts.value = cached; return }
   try {
-    const ports = (await appApi.get(props.workspaceId, appId)).data.data?.ports ?? []
+    // A route speaks HTTP, so a UDP port is never a target it can reach.
+    const ports = ((await appApi.get(props.workspaceId, appId)).data.data?.ports ?? []).filter((p) => p.protocol !== 'udp')
     portCache.set(appId, ports)
     appPorts.value = ports
   } catch { /* leave empty → manual port input shown */ }

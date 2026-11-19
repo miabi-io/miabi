@@ -42,6 +42,8 @@ const { connected: streamLive, freshEventId, open: openStream, FEED_CAP } = useW
 const showOnboarding = computed(() => !auth.user?.onboarding_dismissed)
 const hasWorkspace = computed(() => ws.workspaces.some((w) => !w.system))
 const hasApp = computed(() => hasWorkspace.value && (overview.value?.total_apps ?? 0) > 0)
+// A workspace with no app yet lands on the empty state, which also offers the marketplace.
+const newAppTarget = computed(() => (hasApp.value ? { name: 'apps', query: { new: '1' } } : { name: 'apps' }))
 const hasDomain = computed(() => hasApp.value && domainCount.value > 0)
 
 // Time-of-day greeting with the user's first name.
@@ -165,7 +167,7 @@ watch(
         </p>
       </div>
       <div class="page-header-actions">
-        <button v-if="ws.canEdit" class="btn btn-primary" @click="router.push('/apps')">
+        <button v-if="ws.canEdit" class="btn btn-primary" @click="router.push(newAppTarget)">
           <span class="mdi mdi-plus"></span> {{ $t('dashboard.newApplication') }}
         </button>
       </div>
@@ -189,7 +191,7 @@ watch(
       @accept="accept"
     />
 
-    <QuickActions v-if="ws.isWorkspaceContext && ws.canEdit" />
+    <QuickActions v-if="ws.isWorkspaceContext && ws.canEdit" :new-app-target="newAppTarget" />
 
     <div v-if="loading && !overview" class="stats-grid">
       <div v-for="i in 4" :key="i" class="stat-card">
