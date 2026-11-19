@@ -1459,6 +1459,7 @@ export interface Application {
   status: AppStatus
   current_release_id?: number | null
   redeploy_required?: boolean
+  miabi_env_disabled?: boolean
   deploy_strategy?: DeployStrategy
   canary_initial_weight?: number
   canary_step_weight?: number

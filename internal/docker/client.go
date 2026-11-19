@@ -893,14 +893,14 @@ func (e *engineClient) InspectImage(ctx context.Context, ref string) (ImageInspe
 	if err != nil {
 		return ImageInspect{}, wrapNotFound(err)
 	}
-	digest := insp.ID
+	digest, fromRepo := insp.ID, false
 	// Prefer the repo digest so provenance survives a registry round-trip; a local build only has its ID.
 	if len(insp.RepoDigests) > 0 {
 		if _, d, ok := strings.Cut(insp.RepoDigests[0], "@"); ok && d != "" {
-			digest = d
+			digest, fromRepo = d, true
 		}
 	}
-	return ImageInspect{ID: insp.ID, Digest: digest, Size: insp.Size}, nil
+	return ImageInspect{ID: insp.ID, Digest: digest, RepoDigest: fromRepo, Size: insp.Size}, nil
 }
 
 func (e *engineClient) ImageExists(ctx context.Context, ref string) (bool, error) {

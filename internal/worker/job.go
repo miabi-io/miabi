@@ -30,6 +30,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/logstore"
+	"github.com/miabi-io/miabi/internal/managedenv"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -87,6 +88,20 @@ func (h *JobHandler) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	return nil
 }
 
+func (h *JobHandler) jobRun(j *models.Job) managedRun {
+	run := managedRun{kind: managedenv.KindJob, jobName: j.Name, jobRunID: j.ID, image: j.Image}
+	if j.CronJobID != nil {
+		run.kind = managedenv.KindCronJob
+	}
+	if h.releases != nil {
+		if rel, err := h.releases.FindActive(j.ApplicationID); err == nil && rel.Image == j.Image {
+			run.deploymentID, run.release = rel.DeploymentID, rel.Version
+			run.imageTag, run.commit, run.digest = rel.ImageTag, rel.Commit, rel.Digest
+		}
+	}
+	return run
+}
+
 func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 	if j.WaitDeploymentID != nil && h.deployments != nil {
 		if !h.awaitDeploy(ctx, j) {
@@ -104,7 +119,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		return
 	}
 
-	rc, err := h.buildRuntimeContext(ctx, dc, app)
+	rc, err := h.buildRuntimeContext(ctx, dc, app, h.jobRun(j))
 	if err != nil {
 		h.fail(j, fmt.Errorf("prepare runtime: %w", err))
 		return

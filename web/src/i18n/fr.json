@@ -774,16 +774,28 @@
       "memoryRequired": "Ce plan exige une limite mémoire. Le CPU est partagé : une limite CPU est facultative."
     },
     "pipelineLink": "Pipeline lié à cette application",
-    "morePipelines": "+{count} de plus"
+    "morePipelines": "+{count} de plus",
+    "managedEnv": {
+      "title": "Définies par Miabi",
+      "subtitle": "Variables MIABI_* que Miabi définit à chaque déploiement : l'application, sa version, où elle tourne et son adresse publique. Une variable à vous du même nom l'emporte.",
+      "toggle": "Définir les variables MIABI_*",
+      "off": "Miabi ne définit aucune variable dans cette application. Activez l'option pour les avoir au prochain déploiement.",
+      "perReplica": "par réplique",
+      "replacedByApp": "remplacée par votre variable",
+      "replacedByStack": "remplacée par la variable de la stack",
+      "replaces": "Remplace une variable Miabi",
+      "replacesHint": "Miabi définit une variable de ce nom ; la vôtre la remplace.",
+      "nextDeploy": "Valeurs que le prochain déploiement définit. L'ID de déploiement, le digest de l'image et le commit ne sont connus qu'à ce déploiement.",
+      "enabled": "Les variables MIABI_* seront définies au prochain déploiement",
+      "disabled": "Les variables MIABI_* seront retirées au prochain déploiement"
+    }
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
     "col": {
       "source": "Source"
     },
-    "created": "Application créée",
-    "createdDeployFailed": "Application créée, mais le premier déploiement n’a pas pu démarrer",
-    "createdDeploying": "Application créée — premier déploiement lancé",
+    "created": "Application créée — configurez son environnement, puis déployez-la",
     "deployFirst": "Déployer votre première application",
     "emptyHint": "Déployez depuis une image Docker ou un dépôt Git — ou installez une application prête à l’emploi depuis la marketplace.",
     "form": {
@@ -801,7 +813,6 @@
       "containerPorts": "Ports du conteneur",
       "continueOnError": "continuer en cas d’erreur",
       "defaultAttached": "(le réseau par défaut est toujours attaché)",
-      "deployNow": "Déployer juste après la création",
       "deploys": "Déploie",
       "forPrivate": "(pour les images privées)",
       "image": "Image",

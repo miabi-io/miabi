@@ -1656,6 +1656,9 @@ func (s *Service) ExportApplication(ctx context.Context, workspaceID uint, name 
 func trimDefaults(a *declarative.ApplicationSpec, defaultLocation string) {
 	// The export holds one app, not its Stack, and a manifest may only name a Stack it declares.
 	a.Stack = ""
+	if a.MiabiEnv != nil && *a.MiabiEnv {
+		a.MiabiEnv = nil
+	}
 	if p := a.Placement; p != nil {
 		// A node name is specific to this install.
 		p.Node = ""
@@ -2148,6 +2151,9 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	if app.ReloadPolicy != "" && app.ReloadPolicy != models.ReloadRestart {
 		spec.ReloadPolicy = app.ReloadPolicy
 	}
+	// Always stated, or a manifest's miabiEnv: true would diff against an absent live value forever.
+	miabiEnv := !app.MiabiEnvDisabled
+	spec.MiabiEnv = &miabiEnv
 	if app.RuntimeKind == models.RuntimeService && len(app.PlacementConstraints) > 0 {
 		spec.Placement = &declarative.ApplicationPlacementSpec{Constraints: app.PlacementConstraints}
 	}
@@ -3074,6 +3080,9 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		app.Devices = spec.Devices()
 		app.ReadOnlyRootFilesystem = spec.ReadOnlyRootFilesystem()
 		app.NoNewPrivileges = spec.NoNewPrivileges()
+		if spec.MiabiEnv != nil {
+			app.MiabiEnvDisabled = !*spec.MiabiEnv
+		}
 		// A manifest silent on strategy must not reset the console setting to rolling.
 		if s := spec.Strategy(); s != "" {
 			app.DeployStrategy = models.DeployStrategy(s)
@@ -3295,6 +3304,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		DropCapabilities:       spec.DropCapabilities(),
 		ReadOnlyRootFilesystem: spec.ReadOnlyRootFilesystem(),
 		NoNewPrivileges:        spec.NoNewPrivileges(),
+		MiabiEnvDisabled:       spec.MiabiEnv != nil && !*spec.MiabiEnv,
 
 		RuntimeKind:          models.RuntimeKind(spec.Runtime()),
 		Replicas:             spec.Replicas(),
@@ -3495,6 +3505,19 @@ func staleConsumers(consumers []models.Application, deploySeq map[uint]int, chan
 	return out
 }
 
+// An app with managed env reads its own address through MIABI_PUBLIC_URL.
+func withSelf(consumers []models.Application, target *models.Application) []models.Application {
+	if target.MiabiEnvDisabled {
+		return consumers
+	}
+	for i := range consumers {
+		if consumers[i].ID == target.ID {
+			return consumers
+		}
+	}
+	return append(consumers, *target)
+}
+
 // Consumers outside this run are only marked by the route service; ones this run deployed too early get the new address now.
 func (s *Service) redeployStaleAddresses(workspaceID uint, run *runState, seen map[uint]bool) []Failure {
 	var out []Failure
@@ -3508,6 +3531,7 @@ func (s *Service) redeployStaleAddresses(workspaceID uint, run *runState, seen m
 			out = append(out, Failure{Kind: string(declarative.KindApplication), Name: target.Name, Action: "redeploy", Error: err.Error()})
 			continue
 		}
+		consumers = withSelf(consumers, target)
 		for _, c := range staleConsumers(consumers, run.deploySeq, changedAt, seen) {
 			if _, err := s.apps.Deploy(c, nil, "", ""); err != nil {
 				out = append(out, Failure{

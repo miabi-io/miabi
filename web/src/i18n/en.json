@@ -774,16 +774,28 @@
       "memoryRequired": "This plan requires a memory limit. CPU is shared, so a CPU limit is optional."
     },
     "pipelineLink": "Pipeline bound to this application",
-    "morePipelines": "+{count} more"
+    "morePipelines": "+{count} more",
+    "managedEnv": {
+      "title": "Set by Miabi",
+      "subtitle": "MIABI_* variables Miabi sets at each deploy: the app, its release, where it runs and its public address. A variable of your own with the same name wins.",
+      "toggle": "Set MIABI_* variables",
+      "off": "Miabi sets no variables in this app. Turn the switch on to have them at the next deploy.",
+      "perReplica": "per replica",
+      "replacedByApp": "replaced by your variable",
+      "replacedByStack": "replaced by the stack's variable",
+      "replaces": "Replaces a Miabi variable",
+      "replacesHint": "Miabi sets a variable of this name; yours replaces it.",
+      "nextDeploy": "Values the next deploy sets. The deployment ID, image digest and commit are known only at that deploy.",
+      "enabled": "MIABI_* variables will be set at the next deploy",
+      "disabled": "MIABI_* variables will be dropped at the next deploy"
+    }
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
     "col": {
       "source": "Source"
     },
-    "created": "Application created",
-    "createdDeployFailed": "Application created, but the first deploy could not start",
-    "createdDeploying": "Application created — first deploy started",
+    "created": "Application created — set its environment, then deploy it",
     "deployFirst": "Deploy your first application",
     "emptyHint": "Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.",
     "form": {
@@ -801,7 +813,6 @@
       "containerPorts": "Container ports",
       "continueOnError": "continue on error",
       "defaultAttached": "(default is always attached)",
-      "deployNow": "Deploy right after creating",
       "deploys": "Deploys",
       "forPrivate": "(for private images)",
       "image": "Image",

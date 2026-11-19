@@ -191,6 +191,7 @@ type UpdateAppBody struct {
 	Devices                []string       `json:"devices"`
 	ReadOnlyRootFilesystem *bool          `json:"read_only_root_filesystem"`
 	NoNewPrivileges        *bool          `json:"no_new_privileges"`
+	MiabiEnv               *bool          `json:"miabi_env"`
 	DropCapabilities       []string       `json:"drop_capabilities"`
 	RestartPolicy          string         `json:"restart_policy" enum:"no,always,unless-stopped,on-failure"`
 	ImagePullPolicy        string         `json:"image_pull_policy" enum:"always,if-not-present,never"`
@@ -309,6 +310,12 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 	}
 	if b.NoNewPrivileges != nil {
 		app.NoNewPrivileges = *b.NoNewPrivileges
+	}
+	if b.MiabiEnv != nil && *b.MiabiEnv == app.MiabiEnvDisabled {
+		app.MiabiEnvDisabled = !*b.MiabiEnv
+		if app.CurrentReleaseID != nil {
+			app.RedeployRequired = true
+		}
 	}
 	if b.DropCapabilities != nil {
 		app.DropCapabilities = b.DropCapabilities
@@ -667,6 +674,14 @@ func (h *ApplicationHandler) AddressReferences(c *okapi.Context) error {
 		}
 	}
 	return ok(c, out)
+}
+
+func (h *ApplicationHandler) ManagedEnv(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	return ok(c, h.svc.ManagedEnvPreview(app))
 }
 
 func (h *ApplicationHandler) ListEnvVars(c *okapi.Context) error {

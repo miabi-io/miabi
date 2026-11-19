@@ -146,6 +146,7 @@ func runWorker() error {
 		secretService,
 	)
 	deployHandler.SetLogStore(logStore)
+	deployHandler.SetManagedEnv(managedEnvSource(db))
 	// Serialize concurrent deploys of the same app across workers.
 	deployHandler.SetDeployLock(worker.NewRedisDeployLock(cfg.Redis.Client))
 
@@ -171,7 +172,7 @@ func runWorker() error {
 	)
 	upgradeAppService.SetPortBindings(repositories.NewPortBindingRepository(db))
 	upgradeAppService.SetStackEnv(repositories.NewStackEnvVarRepository(db))
-	workerRouteSvc.SetAddressListener(upgradeAppService.MarkAddressConsumers)
+	workerRouteSvc.SetAddressListener(upgradeAppService.AddressChanged)
 	upgradeBackupService := backup.NewService(repositories.NewBackupRepository(db), repositories.NewDatabaseRepository(db), nodeClients)
 	upgradeBackupService.SetDDLRunner(dbService)
 	upgradeBackupService.SetImageResolver(imageResolver)
@@ -191,6 +192,7 @@ func runWorker() error {
 		secretService,
 	)
 	jobHandler.SetLogStore(logStore)
+	jobHandler.SetManagedEnv(managedEnvSource(db))
 
 	securityQuota := quota.NewService(
 		repositories.NewPlanRepository(db),

@@ -80,7 +80,23 @@ export interface CreateAppInput extends AppRuntimeInput {
   command?: string[]
 }
 
+export interface ManagedEnvVar {
+  name: string
+  value: string
+  // A Swarm template the engine expands per task, such as the replica slot.
+  per_replica?: boolean
+  replaced_by?: 'app' | 'stack'
+}
+
+export interface ManagedEnvPreview {
+  enabled: boolean
+  names: string[]
+  variables: ManagedEnvVar[]
+}
+
 export interface UpdateAppInput extends AppResourceInput, AppRuntimeInput {
+  // false stops Miabi setting its MIABI_* variables at the next deploy.
+  miabi_env?: boolean
   image?: string
   tag?: string
   git_repo?: string
@@ -201,6 +217,9 @@ export const appApi = {
   },
   gpuKinds(ws: number, id: number) {
     return api.get<ApiResponse<GPUKind[]>>(`/workspaces/${ws}/apps/${id}/gpu-kinds`)
+  },
+  managedEnv(ws: number, id: number) {
+    return api.get<ApiResponse<ManagedEnvPreview>>(`/workspaces/${ws}/apps/${id}/env/managed`)
   },
   addressReferences(ws: number, id: number) {
     return api.get<ApiResponse<{ id: number; name: string }[]>>(`/workspaces/${ws}/apps/${id}/address-references`)

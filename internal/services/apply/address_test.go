@@ -44,3 +44,17 @@ func TestStaleConsumers(t *testing.T) {
 		t.Fatal("an app must be redeployed once per run")
 	}
 }
+
+func TestWithSelf(t *testing.T) {
+	target := &models.Application{ID: 5}
+	if got := withSelf(nil, target); len(got) != 1 || got[0].ID != 5 {
+		t.Fatalf("managed env on: got %v", got)
+	}
+	if got := withSelf([]models.Application{{ID: 5}}, target); len(got) != 1 {
+		t.Fatalf("a self-referencing app must appear once, got %v", got)
+	}
+	target.MiabiEnvDisabled = true
+	if got := withSelf(nil, target); len(got) != 0 {
+		t.Fatalf("opted out: got %v", got)
+	}
+}

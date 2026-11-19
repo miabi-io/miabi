@@ -143,6 +143,8 @@ type ApplicationSpec struct {
 	ExternalLabel string `yaml:"externalLabel,omitempty" json:"externalLabel,omitempty"`
 	// ReloadPolicy "restart" (default) redeploys on config change; "none" suits apps that watch their own config.
 	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
+	// MiabiEnv false stops Miabi setting its MIABI_* variables; omitted keeps the current choice.
+	MiabiEnv *bool `yaml:"miabiEnv,omitempty" json:"miabiEnv,omitempty"`
 	// Deprecated: use security.runAsUser. Still accepted; setting both is an error.
 	DeprecatedRunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
 	// Deprecated: use deployment.strategy. Still accepted; setting both is an error.

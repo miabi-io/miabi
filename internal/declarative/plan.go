@@ -329,7 +329,7 @@ var optionalWhenUnset = map[string]bool{
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
 	"healthcheck.type": true, "healthcheck.path": true, "healthcheck.port": true, "healthcheck.command": true,
 	"healthcheck.intervalSeconds": true, "healthcheck.timeoutSeconds": true, "healthcheck.retries": true,
-	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "mounts": true,
+	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "mounts": true, "miabiEnv": true,
 }
 
 // Config mounts are always read-only and their content is compared by configFP, so only where they land counts.
@@ -540,6 +540,9 @@ func specFields(r Resource) map[string]string {
 		}
 		f["command"] = strings.Join(a.Command, " ")
 		f["registry"] = a.Registry
+		if a.MiabiEnv != nil {
+			f["miabiEnv"] = strconv.FormatBool(*a.MiabiEnv)
+		}
 		if a.Stack != "" {
 			f["stack"] = a.Stack
 		}

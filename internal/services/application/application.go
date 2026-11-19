@@ -35,6 +35,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/dotenv"
 	"github.com/miabi-io/miabi/internal/hostmount"
+	"github.com/miabi-io/miabi/internal/managedenv"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/nodes"
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
@@ -142,6 +143,7 @@ type CreateInput struct {
 	Devices                []string
 	ReadOnlyRootFilesystem bool
 	NoNewPrivileges        bool
+	MiabiEnvDisabled       bool
 	DropCapabilities       []string
 	// Empty leaves the model default (rolling).
 	DeployStrategy models.DeployStrategy
@@ -197,6 +199,7 @@ type Service struct {
 	imageGuard    ImageGuard
 	configs       ConfigReader
 	stackEnv      StackEnvReader
+	managedEnv    *managedenv.Source
 }
 
 // ConfigReader reads a mounted config's files, for the secret-reference scan.
@@ -1037,6 +1040,7 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		DropCapabilities:       dropCaps,
 		ReadOnlyRootFilesystem: in.ReadOnlyRootFilesystem,
 		NoNewPrivileges:        in.NoNewPrivileges,
+		MiabiEnvDisabled:       in.MiabiEnvDisabled,
 		DeployStrategy:         validStrategyOrDefault(in.DeployStrategy),
 		RestartPolicy:          normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:        normalizeImagePullPolicy(in.ImagePullPolicy),
@@ -1267,14 +1271,35 @@ func (s *Service) AppsReferencingApp(workspaceID uint, name string) ([]models.Ap
 	return out, nil
 }
 
+// AddressChanged also marks the app itself, whose MIABI_PUBLIC_URL reads the same address.
+func (s *Service) AddressChanged(app *models.Application) {
+	self := false
+	if !app.MiabiEnvDisabled {
+		marked, err := s.MarkRedeployRequired(app)
+		if err != nil {
+			logger.Warn("marking an app for redeploy failed", "app", app.Name, "error", err)
+		}
+		if marked {
+			self = true
+			s.emit(app, models.EventEnvUpdated, "The public address of "+app.Name+" changed: redeploy to update MIABI_PUBLIC_URL")
+		}
+	}
+	s.markAddressConsumers(app, self)
+}
+
 // MarkAddressConsumers flags deployed apps whose env reads app's public address; they pick it up on their next deploy.
-func (s *Service) MarkAddressConsumers(app *models.Application) {
+func (s *Service) MarkAddressConsumers(app *models.Application) { s.markAddressConsumers(app, false) }
+
+func (s *Service) markAddressConsumers(app *models.Application, skipSelf bool) {
 	consumers, err := s.AppsReferencingApp(app.WorkspaceID, app.Name)
 	if err != nil {
 		logger.Warn("finding apps that reference an address failed", "app", app.Name, "error", err)
 		return
 	}
 	for i := range consumers {
+		if skipSelf && consumers[i].ID == app.ID {
+			continue
+		}
 		marked, err := s.MarkRedeployRequired(&consumers[i])
 		if err != nil {
 			logger.Warn("marking an app for redeploy failed", "app", consumers[i].Name, "error", err)
@@ -2426,6 +2451,25 @@ func (s *Service) MarkRedeployRequired(app *models.Application) (bool, error) {
 	}
 	app.RedeployRequired = true
 	return true, nil
+}
+
+// MarkWorkspaceRenamed flags deployed apps with managed env, whose MIABI_WORKSPACE_NAME is now stale.
+func (s *Service) MarkWorkspaceRenamed(workspaceID uint) {
+	apps, err := s.apps.ListByWorkspace(workspaceID)
+	if err != nil {
+		logger.Warn("listing apps after a workspace rename failed", "workspace", workspaceID, "error", err)
+		return
+	}
+	for i := range apps {
+		if apps[i].MiabiEnvDisabled {
+			continue
+		}
+		if marked, err := s.MarkRedeployRequired(&apps[i]); err != nil {
+			logger.Warn("marking an app for redeploy failed", "app", apps[i].Name, "error", err)
+		} else if marked {
+			s.emit(&apps[i], models.EventEnvUpdated, "The workspace was renamed: redeploy to update MIABI_WORKSPACE_NAME")
+		}
+	}
 }
 
 // The reserved-prefix protection lives in docker.SanitizeUserLabels.

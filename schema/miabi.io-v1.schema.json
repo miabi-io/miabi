@@ -64,6 +64,10 @@
         "image": {
           "type": "string"
         },
+        "miabiEnv": {
+          "description": "MiabiEnv false stops Miabi setting its MIABI_* variables; omitted keeps the current choice.",
+          "type": "boolean"
+        },
         "mounts": {
           "items": {
             "$ref": "#/$defs/MountSpec"

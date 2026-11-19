@@ -6,7 +6,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
-import { appApi, isPipelineRun, type ExternalAccess, type GPUKind, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
+import { appApi, isPipelineRun, type ExternalAccess, type GPUKind, type ManagedEnvPreview, type PipelineRunAccepted, type SetSourceInput } from '@/api/apps'
 import { locationApi, type LocationNode } from '@/api/locations'
 import { pipelineApi } from '@/api/pipelines'
 import { volumeApi, monitoringApi, databaseApi, usageApi } from '@/api/resources'
@@ -332,6 +332,26 @@ const filteredEnvVars = computed(() => {
   return envVars.value.filter((e) => e.key.toLowerCase().includes(q) || (!e.is_secret && e.value.toLowerCase().includes(q)))
 })
 const secretEnvCount = computed(() => envVars.value.filter((e) => e.is_secret).length)
+const managedEnv = ref<ManagedEnvPreview | null>(null)
+const managedNames = computed(() => new Set(managedEnv.value?.names ?? []))
+const savingMiabiEnv = ref(false)
+async function loadManagedEnv() {
+  if (!wid.value) return
+  try { managedEnv.value = (await appApi.managedEnv(wid.value, appId.value)).data.data ?? null } catch { managedEnv.value = null }
+}
+async function setMiabiEnv(on: boolean) {
+  if (!wid.value) return
+  savingMiabiEnv.value = true
+  try {
+    app.value = (await appApi.update(wid.value, appId.value, { miabi_env: on })).data.data
+    await loadManagedEnv()
+    notify.success(t(on ? 'appDetail.managedEnv.enabled' : 'appDetail.managedEnv.disabled'))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingMiabiEnv.value = false
+  }
+}
 const showEnvImport = ref(false)
 const envImport = ref({ content: '', secret: false })
 const importingEnv = ref(false)
@@ -1062,7 +1082,7 @@ async function loadTab() {
         streamLogs(target.id)
       }
     }
-    else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; hideAllEnv() }
+    else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; hideAllEnv(); loadManagedEnv() }
     else if (tab.value === 'routes') appRoutes.value = (await routeApi.listByApp(wid.value, appId.value)).data.data ?? []
     else if (tab.value === 'ports') { loadPortPolicy(); appBindings.value = (await portBindingApi.listByApp(wid.value, appId.value)).data.data ?? [] }
     else if (tab.value === 'volumes') { volumes.value = (await volumeApi.list(wid.value)).data.data ?? []; await loadHostPresets() }
@@ -2852,6 +2872,7 @@ async function detachDatabase(d: AppDatabase) {
               <td class="cell-title">
                 <span class="env-key">{{ e.key }}</span>
                 <span v-if="e.is_secret" class="badge badge-neutral env-secret-tag" :title="$t('stacks.encryptedAtRest')"><span class="mdi mdi-lock-outline"></span>{{ $t('appDetail.secret') }}</span>
+                <span v-if="managedEnv?.enabled && managedNames.has(e.key)" class="badge badge-warning env-secret-tag" :title="$t('appDetail.managedEnv.replacesHint')"><span class="mdi mdi-swap-horizontal"></span>{{ $t('appDetail.managedEnv.replaces') }}</span>
               </td>
               <td class="text-muted env-value-cell">
                 <template v-if="e.is_secret">
@@ -2882,6 +2903,37 @@ async function detachDatabase(d: AppDatabase) {
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="managedEnv" class="managed-env">
+        <div class="card-header">
+          <div>
+            <h2>{{ $t('appDetail.managedEnv.title') }}</h2>
+            <p class="card-subtitle">{{ $t('appDetail.managedEnv.subtitle') }}</p>
+          </div>
+          <label class="checkbox-label" style="white-space: nowrap">
+            <input type="checkbox" :checked="managedEnv.enabled" :disabled="!ws.canEdit || savingMiabiEnv" @change="setMiabiEnv(($event.target as HTMLInputElement).checked)" />
+            {{ $t('appDetail.managedEnv.toggle') }}
+          </label>
+        </div>
+        <div v-if="!managedEnv.enabled" class="empty-state">
+          <p>{{ $t('appDetail.managedEnv.off') }}</p>
+        </div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead><tr><th>{{ $t('appDetail.key') }}</th><th>{{ $t('appDetail.value') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="v in managedEnv.variables" :key="v.name" class="env-row" :class="{ 'text-muted': v.replaced_by }">
+                <td class="cell-title"><span class="env-key">{{ v.name }}</span></td>
+                <td class="text-muted env-value-cell">
+                  <span v-if="v.per_replica">{{ $t('appDetail.managedEnv.perReplica') }}</span>
+                  <code v-else class="env-revealed">{{ v.value }}</code>
+                  <span v-if="v.replaced_by" class="text-sm"> · {{ $t(v.replaced_by === 'stack' ? 'appDetail.managedEnv.replacedByStack' : 'appDetail.managedEnv.replacedByApp') }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="form-hint" style="padding: 0 16px 12px">{{ $t('appDetail.managedEnv.nextDeploy') }}</p>
+        </div>
       </div>
     </div>
 
@@ -4460,6 +4512,7 @@ async function detachDatabase(d: AppDatabase) {
 }
 .env-row .cell-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .env-key { font-family: var(--font-mono, monospace); font-size: 13px; }
+.managed-env { border-top: 1px solid var(--border-primary); margin-top: 16px; padding-top: 8px; }
 .env-secret-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
 .env-value-cell { max-width: 420px; }
 .env-mask { letter-spacing: 2px; color: var(--text-muted); }

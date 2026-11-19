@@ -173,7 +173,7 @@ func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceName
 		return c.AbortNotFound("workspace not found")
 	}
 	newName := strings.TrimSpace(req.Body.Name)
-	if err := h.svc.SetName(ws, newName); err != nil {
+	if err := h.svc.Rename(ws, newName); err != nil {
 		switch {
 		case errors.Is(err, workspace.ErrNameInvalid):
 			return c.AbortBadRequest(err.Error())
@@ -182,9 +182,6 @@ func (h *WorkspaceHandler) UpdateName(c *okapi.Context, req *UpdateWorkspaceName
 		default:
 			return c.AbortInternalServerError("failed to update workspace name", err)
 		}
-	}
-	if err := h.svc.Update(ws); err != nil {
-		return c.AbortInternalServerError("failed to update workspace name", err)
 	}
 	h.record(c, ws.ID, "workspace.rename", "workspace", strconv.Itoa(int(ws.ID)))
 	return ok(c, ws)

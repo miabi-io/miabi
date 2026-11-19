@@ -25,6 +25,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/miabi-io/miabi/internal/appref"
 )
 
 // Reference is one {{ .collection.name.field }} reference a bundle's templates make.
@@ -34,6 +36,8 @@ type Reference struct {
 	Collection string // databases | secrets | applications | inputs
 	Name       string
 	Field      string // empty when the reference names no field
+	// InEnv allows the public address fields, which only an env value can defer to deploy time.
+	InEnv bool
 }
 
 func (r Reference) String() string {
@@ -106,8 +110,14 @@ func ruleRefs(where string, v any) []Reference {
 // Checks the runtime `${{ secrets.NAME }}` form too, so a typo in either spelling fails the dry run.
 func envRefs(where, s string) []Reference {
 	out := refsIn(where, s, actionPattern)
+	for i := range out {
+		out[i].InEnv = true
+	}
 	for _, m := range runtimeSecretRef.FindAllStringSubmatch(s, -1) {
 		out = append(out, Reference{Where: where, Collection: "secrets", Name: m[1]})
+	}
+	for _, r := range appref.Refs(s) {
+		out = append(out, Reference{Where: where, Collection: "applications", Name: r.App, Field: r.Field, InEnv: true})
 	}
 	return out
 }
@@ -117,7 +127,11 @@ func refsIn(where, s string, action *regexp.Regexp) []Reference {
 	for _, a := range action.FindAllString(s, -1) {
 		for _, m := range refPattern.FindAllStringSubmatch(a, -1) {
 			keys := strings.Split(strings.Trim(m[2], "."), ".")
-			ref := Reference{Where: where, Collection: m[1], Name: keys[0]}
+			collection := m[1]
+			if collection == "apps" {
+				collection = "applications"
+			}
+			ref := Reference{Where: where, Collection: collection, Name: keys[0]}
 			if len(keys) > 1 {
 				ref.Field = keys[1]
 			}
@@ -141,7 +155,18 @@ func CheckReferences(refs []Reference, known KnownNames) error {
 		case r.Collection == "databases" && r.Field != "" && !slices.Contains(databaseRefFields, r.Field):
 			msg = fmt.Sprintf("database %q has no field %q (%s); use one of %s", r.Name, r.Field, r, strings.Join(databaseRefFields, ", "))
 		case r.Collection == "applications" && r.Field != "" && !slices.Contains(applicationRefFields, r.Field):
-			msg = fmt.Sprintf("application %q has no field %q (%s); use one of %s", r.Name, r.Field, r, strings.Join(applicationRefFields, ", "))
+			if appref.IsField(r.Field) {
+				if r.InEnv {
+					continue
+				}
+				msg = fmt.Sprintf("application %q: %s is filled in when the app deploys, so it can only be used in env (%s)", r.Name, r.Field, r)
+				break
+			}
+			fields := applicationRefFields
+			if r.InEnv {
+				fields = append(slices.Clone(fields), appref.Fields...)
+			}
+			msg = fmt.Sprintf("application %q has no field %q (%s); use one of %s", r.Name, r.Field, r, strings.Join(fields, ", "))
 		default:
 			continue
 		}
