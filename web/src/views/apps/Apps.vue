@@ -3,7 +3,7 @@ import { serviceReplicas } from '@/utils/replicas'
 import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { appApi } from '@/api/apps'
@@ -23,6 +23,7 @@ const ws = useWorkspaceStore()
 const { t } = useI18n()
 const notify = useNotificationStore()
 const router = useRouter()
+const route = useRoute()
 const { currentWorkspaceId } = storeToRefs(ws)
 
 const apps = ref<Application[]>([])
@@ -218,8 +219,17 @@ async function load(id: number | null) {
   } finally {
     loading.value = false
   }
+  openCreateFromLink()
 }
 watch(currentWorkspaceId, load, { immediate: true })
+
+// ?new=1 (the Dashboard's New application) opens the form at once; with no app yet, the empty state still offers the marketplace.
+function openCreateFromLink() {
+  if (route.query.new !== '1') return
+  const { new: _, ...rest } = route.query
+  void router.replace({ query: rest })
+  if (ws.canEdit && apps.value.length > 0) openCreate()
+}
 
 function openCreate() {
   form.value = emptyForm()
@@ -410,7 +420,7 @@ function formatCreated(ts?: string) {
               <div class="form-row">
                 <div class="form-group" style="flex: 2; margin-bottom: 0">
                   <label class="form-label">{{ $t('apps.form.image') }}</label>
-                  <input v-model="form.image" class="form-input" placeholder="nginx" required />
+                  <input v-model="form.image" class="form-input" placeholder="ghcr.io/acme/web-api" required />
                 </div>
                 <div class="form-group" style="flex: 1; margin-bottom: 0">
                   <label class="form-label">{{ $t('apps.form.tag') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
@@ -534,12 +544,12 @@ function formatCreated(ts?: string) {
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
               <div v-for="(p, i) in form.ports" :key="i" class="port-row">
-                <input v-model.number="p.container_port" type="number" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" style="flex: 1" />
-                <select v-model="p.protocol" class="form-select" :aria-label="$t('apps.form.portProtocol')" style="width: 84px">
+                <input :value="p.container_port || ''" type="number" min="1" max="65535" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" style="flex: 1" @input="p.container_port = Number(($event.target as HTMLInputElement).value) || 0" />
+                <select v-model="p.protocol" class="form-select" :aria-label="$t('apps.form.portProtocol')" style="width: 84px" @change="p.protocol === 'udp' && (p.scheme = 'http')">
                   <option value="tcp">TCP</option>
                   <option value="udp">UDP</option>
                 </select>
-                <select v-model="p.scheme" class="form-select" :title="$t('apps.form.appProtocol')" :aria-label="$t('apps.form.appProtocol')" style="width: 96px">
+                <select v-if="p.protocol !== 'udp'" v-model="p.scheme" class="form-select" :title="$t('apps.form.appProtocol')" :aria-label="$t('apps.form.appProtocol')" style="width: 96px">
                   <option value="http">http</option>
                   <option value="https">https</option>
                 </select>
