@@ -15,7 +15,8 @@
   <a href="#features">Features</a> ·
   <a href="#how-miabi-compares">Comparison</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="https://docs.miabi.io">Docs</a> .
+  <a href="https://docs.miabi.io">Docs</a> ·
+  <a href="https://docs.miabi.io/docs/use-cases/overview/">Use cases</a> ·
   <a href="https://github.com/miabi-io/examples">Examples</a>
 </p>
 
@@ -112,7 +113,7 @@ Miabi sits in the middle — production deployment strategies on plain Docker, w
 
 Three things set it apart from other self-hosted PaaS options:
 
-**Multi-tenancy from day one.** Most self-hosted PaaS tools assume one operator and one set of apps. Miabi is built around **workspaces**: every app, database, domain, volume, registry image, secret, backup, and deployment belongs to one. That makes it workable for shared hosting providers, agencies running client apps, SaaS platforms, internal developer platforms, and universities — not just single-tenant homelabs.
+**Multi-tenancy from day one.** Most self-hosted PaaS tools assume one operator and one set of apps. Miabi is built around **workspaces**: every app, database, domain, volume, registry image, secret, backup, and deployment belongs to one. That makes it workable for shared hosting providers, agencies running client apps, SaaS platforms, internal developer platforms, and universities — not just single-tenant homelabs. See the **[use cases](https://docs.miabi.io/docs/use-cases/overview/)** for how each of them sets it up.
 
 **Deployment strategies without a mesh.** Rolling and canary deployments with weighted traffic splitting, rollbacks, and zero-downtime updates, on Docker, because routing already flows through [Goma Gateway](https://github.com/jkaninda/goma-gateway).
 
@@ -371,6 +372,7 @@ Miabi is part of a family of self-hosting tools by the same author:
 ## Support & contributing
 
 - **Docs** — <https://docs.miabi.io>
+- **Use cases** — [one server to several regions, teams to hosting providers](https://docs.miabi.io/docs/use-cases/overview/)
 - **Questions & ideas** — [GitHub Discussions](https://github.com/miabi-io/miabi/discussions)
 - **Bugs & features** — [open an issue](https://github.com/miabi-io/miabi/issues). External pull requests are not accepted at the moment; see [CONTRIBUTING.md](./CONTRIBUTING.md)
 - **Security** — report vulnerabilities privately to <security@miabi.io>. Please don't file public issues for security problems
