@@ -85,7 +85,7 @@ var defaults = []models.Setting{
 	{Key: KeyMaxMemoryMB, Value: "0", Type: models.SettingTypeInt},
 	{Key: KeyCustomLabelsEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyRepoPipelinesEnabled, Value: "true", Type: models.SettingTypeBool},
-	{Key: KeyControlManagerMode, Value: "observe", Type: models.SettingTypeString},
+	{Key: KeyControlManagerMode, Value: "enforce", Type: models.SettingTypeString},
 }
 
 // Provider caches settings in memory and exposes typed getters.
