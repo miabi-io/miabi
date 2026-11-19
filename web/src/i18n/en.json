@@ -795,9 +795,7 @@
     "col": {
       "source": "Source"
     },
-    "created": "Application created",
-    "createdDeployFailed": "Application created, but the first deploy could not start",
-    "createdDeploying": "Application created — first deploy started",
+    "created": "Application created — set its environment, then deploy it",
     "deployFirst": "Deploy your first application",
     "emptyHint": "Deploy from a Docker image or a Git repository — or install a ready-made app from the Marketplace.",
     "form": {
@@ -815,7 +813,6 @@
       "containerPorts": "Container ports",
       "continueOnError": "continue on error",
       "defaultAttached": "(default is always attached)",
-      "deployNow": "Deploy right after creating",
       "deploys": "Deploys",
       "forPrivate": "(for private images)",
       "image": "Image",

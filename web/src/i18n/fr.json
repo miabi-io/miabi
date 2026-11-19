@@ -795,9 +795,7 @@
     "col": {
       "source": "Source"
     },
-    "created": "Application créée",
-    "createdDeployFailed": "Application créée, mais le premier déploiement n’a pas pu démarrer",
-    "createdDeploying": "Application créée — premier déploiement lancé",
+    "created": "Application créée — configurez son environnement, puis déployez-la",
     "deployFirst": "Déployer votre première application",
     "emptyHint": "Déployez depuis une image Docker ou un dépôt Git — ou installez une application prête à l’emploi depuis la marketplace.",
     "form": {
@@ -815,7 +813,6 @@
       "containerPorts": "Ports du conteneur",
       "continueOnError": "continuer en cas d’erreur",
       "defaultAttached": "(le réseau par défaut est toujours attaché)",
-      "deployNow": "Déployer juste après la création",
       "deploys": "Déploie",
       "forPrivate": "(pour les images privées)",
       "image": "Image",
