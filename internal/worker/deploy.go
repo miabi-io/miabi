@@ -1578,7 +1578,7 @@ func (h *DeployHandler) resolveRegistryAuth(app *models.Application, dep *models
 }
 
 const (
-	startupOutputLines   = 100
+	startupOutputLines   = 500
 	startupOutputLineMax = 2000
 )
 
@@ -1612,10 +1612,20 @@ func (h *DeployHandler) logOutput(deploymentID uint, what string, read func(ctx 
 	case len(lines) == 0:
 		h.logTo(deploymentID, "the "+what+" produced no output")
 	default:
-		h.logTo(deploymentID, fmt.Sprintf("%s output (last %d lines):", what, len(lines)))
+		block := make([]string, 0, len(lines)+1)
+		block = append(block, fmt.Sprintf("%s output (last %d lines):", what, len(lines)))
 		for _, l := range lines {
-			h.logTo(deploymentID, "  | "+l)
+			block = append(block, "  | "+l)
 		}
+		h.logLines(deploymentID, block)
+	}
+}
+
+// One database write for the block, so hundreds of output lines don't cost hundreds of updates; viewers still get each line.
+func (h *DeployHandler) logLines(deploymentID uint, lines []string) {
+	_ = h.deployments.AppendLog(deploymentID, strings.Join(lines, "\n"))
+	for _, l := range lines {
+		h.bus.Publish(DeployTopic(deploymentID), eventbus.Event{Type: "log", Data: l})
 	}
 }
 
