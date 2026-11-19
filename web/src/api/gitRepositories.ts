@@ -29,6 +29,8 @@ export interface GitInspectResult {
   ref: string
   commit: string
   has_dockerfile: boolean
+  /** The Dockerfile's final-stage EXPOSE ports; empty when it has none or only variable ones. */
+  exposed_ports?: { port: number; protocol: 'tcp' | 'udp' }[]
   has_pipeline: boolean
   pipeline_path?: string
   pipeline_name?: string

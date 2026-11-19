@@ -65,9 +65,11 @@ type InspectGitResponse struct {
 	Ref           string `json:"ref"`
 	Commit        string `json:"commit"`
 	HasDockerfile bool   `json:"has_dockerfile"`
-	HasPipeline   bool   `json:"has_pipeline"`
-	PipelinePath  string `json:"pipeline_path,omitempty"`
-	PipelineName  string `json:"pipeline_name,omitempty"`
+	// ExposedPorts are the Dockerfile's final-stage EXPOSE ports, for defaulting the app's ports.
+	ExposedPorts []pipeline.ExposedPort `json:"exposed_ports,omitempty"`
+	HasPipeline  bool                   `json:"has_pipeline"`
+	PipelinePath string                 `json:"pipeline_path,omitempty"`
+	PipelineName string                 `json:"pipeline_name,omitempty"`
 	// HasPipeline is false then; the file is reported so the user can fix it instead of getting a plain build.
 	PipelineError string           `json:"pipeline_error,omitempty"`
 	Steps         []InspectGitStep `json:"steps,omitempty"`
@@ -107,6 +109,7 @@ func (h *GitInspectHandler) Inspect(c *okapi.Context, req *InspectGitRequest) er
 		Ref:           found.Ref,
 		Commit:        found.Commit,
 		HasDockerfile: found.HasDockerfile,
+		ExposedPorts:  found.ExposedPorts,
 		HasPipeline:   found.HasPipeline(),
 		PipelinePath:  found.Path,
 		PipelineError: found.SpecError,

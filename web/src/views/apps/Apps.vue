@@ -88,6 +88,16 @@ const INSPECT_DEBOUNCE_MS = 800
 const inspecting = ref(false)
 const inspected = ref<GitInspectResult | null>(null)
 const inspectError = ref('')
+// Ports the form took from the Dockerfile; a later probe may replace them, but never ports the user typed.
+const portsFromDockerfile = ref('')
+const portsKey = () => JSON.stringify(form.value.ports.map((p) => [p.container_port, p.protocol, p.scheme, p.name]))
+const defaultPortsKey = JSON.stringify([[8080, 'tcp', 'http', '']])
+function adoptExposedPorts(exposed: GitInspectResult['exposed_ports']) {
+  const current = portsKey()
+  if (!exposed?.length || (current !== defaultPortsKey && current !== portsFromDockerfile.value)) return
+  form.value.ports = exposed.map((p) => ({ container_port: p.port, protocol: p.protocol, scheme: 'http' as const, name: '' }))
+  portsFromDockerfile.value = portsKey()
+}
 // What the current result (or error) was probed for, so an unchanged input is never re-probed.
 let inspectedKey = ''
 // Bumped on every probe and reset, so a response for input that has since changed is dropped.
@@ -179,6 +189,7 @@ async function inspectRepo() {
     inspectedKey = key
     // Default from the probe so the create call never claims a pipeline it didn't see.
     form.value.use_pipeline = result?.has_pipeline === true
+    adoptExposedPorts(result?.exposed_ports)
   } catch (e) {
     if (seq !== inspectSeq) return
     inspectError.value = apiErrorMessage(e, t('apps.form.inspectFailed'))
@@ -237,6 +248,7 @@ function openCreate() {
   if (clusterEnabled.value) form.value.runtime_kind = 'service'
   form.value.cpu_cores = planResources.value.cpuMillicores / 1000
   form.value.memory_mb = planResources.value.memoryMB
+  portsFromDockerfile.value = ''
   showCreate.value = true
 }
 
@@ -306,7 +318,8 @@ function formatCreated(ts?: string) {
         <h1>{{ $t('nav.deploy.applications') }}</h1>
         <p class="subtitle">Containerized apps Miabi builds, deploys, and runs for {{ ws.contextLabel }}.</p>
       </div>
-      <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
+      <!-- The empty state carries its own create and marketplace choices, so the header button would repeat one of them. -->
+      <button v-if="ws.canEdit && apps.length > 0" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span> {{ $t('dashboard.newApplication') }}
       </button>
     </div>
@@ -427,7 +440,7 @@ function formatCreated(ts?: string) {
                   <input v-model="form.tag" class="form-input" placeholder="latest" />
                 </div>
               </div>
-              <p class="form-hint">{{ $t('apps.form.deploys') }} <code>{{ form.image || 'image' }}:{{ form.tag || 'latest' }}</code></p>
+              <p v-if="form.image.trim()" class="form-hint">{{ $t('apps.form.deploys') }} <code>{{ form.image.trim() }}:{{ form.tag || 'latest' }}</code></p>
               <div class="form-group">
                 <label class="form-label">{{ $t('apps.form.registryCredential') }} <span class="text-muted">{{ $t('apps.form.forPrivate') }}</span></label>
                 <select v-model="form.registry_id" class="form-select">
@@ -543,6 +556,7 @@ function formatCreated(ts?: string) {
             </template>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.containerPorts') }}</label>
+              <p v-if="form.source_type === 'git' && portsFromDockerfile && portsKey() === portsFromDockerfile" class="form-hint" style="margin-top: 0">{{ $t('apps.form.portsFromDockerfile') }}</p>
               <div v-for="(p, i) in form.ports" :key="i" class="port-row">
                 <input :value="p.container_port || ''" type="number" min="1" max="65535" class="form-input" :aria-label="$t('apps.form.containerPort')" placeholder="8080" style="flex: 1" @input="p.container_port = Number(($event.target as HTMLInputElement).value) || 0" />
                 <select v-model="p.protocol" class="form-select" :aria-label="$t('apps.form.portProtocol')" style="width: 84px" @change="p.protocol === 'udp' && (p.scheme = 'http')">

@@ -812,6 +812,7 @@
       "portName": "Nom du port",
       "portNamePlaceholder": "nom (opt.)",
       "portProtocol": "Protocole du port",
+      "portsFromDockerfile": "Repris des lignes EXPOSE du Dockerfile du dépôt.",
       "publicUrl": "URL publique (aucun dépôt enregistré)",
       "registryCredential": "Identifiants du registre",
       "registryNone": "Public / aucun",

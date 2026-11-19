@@ -50,6 +50,8 @@ type Found struct {
 	Commit string
 	// What the "auto" build method keys off, so the caller can explain the no-pipeline fallback.
 	HasDockerfile bool
+	// ExposedPorts lets a create form default the app's ports to what the image listens on.
+	ExposedPorts []ExposedPort
 	// Path is the repo-relative path the document was read from ("" = none found).
 	Path string
 	// Stored verbatim so the definition's spec is byte-identical to the repo file.
@@ -101,6 +103,12 @@ func Discover(ctx context.Context, url, ref string, auth transport.AuthMethod) (
 	fsys := root.FS()
 	if st, err := fs.Stat(fsys, "Dockerfile"); err == nil && !st.IsDir() {
 		f.HasDockerfile = true
+		// A real Dockerfile is a few KiB; the cap keeps a hostile one from being read whole.
+		if st.Size() <= maxDockerfileBytes {
+			if raw, err := fs.ReadFile(fsys, "Dockerfile"); err == nil {
+				f.ExposedPorts = parseExpose(string(raw))
+			}
+		}
 	}
 
 	path, raw, spec, err := DiscoverFS(fsys)
