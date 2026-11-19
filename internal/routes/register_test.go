@@ -61,8 +61,19 @@ func TestRegisterAttachesTheScopeGuard(t *testing.T) {
 
 	noop := func(c *okapi.Context) error { return c.Next() }
 	defs := []okapi.RouteDefinition{
-		{Method: http.MethodGet, Path: "/a", Group: v1, Handler: noop},
-		{Method: http.MethodPost, Path: "/b", Group: v1, Middlewares: []okapi.Middleware{noop}, Handler: noop},
+		{
+			Method:  http.MethodGet,
+			Path:    "/a",
+			Group:   v1,
+			Handler: noop,
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/b",
+			Group:       v1,
+			Middlewares: []okapi.Middleware{noop},
+			Handler:     noop,
+		},
 	}
 	before := []int{len(defs[0].Middlewares), len(defs[1].Middlewares)}
 

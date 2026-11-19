@@ -34,20 +34,64 @@ func (r *Router) inboxRoutes() []okapi.RouteDefinition {
 	auth := []okapi.Middleware{r.authenticate}
 
 	return []okapi.RouteDefinition{
-		{Method: http.MethodGet, Path: "", Group: g, Middlewares: auth, Handler: r.h.inbox.List,
-			Summary: "List my notifications (?workspace=&unread=&before=&limit=)"},
-		{Method: http.MethodGet, Path: "/unread-count", Group: g, Middlewares: auth, Handler: r.h.inbox.UnreadCount,
-			Summary: "My unread notification count (bell badge)"},
-		{Method: http.MethodGet, Path: "/stream", Group: g, Middlewares: auth, Handler: r.h.inbox.Stream,
-			Summary: "Live inbox updates (SSE)"},
-		{Method: http.MethodPost, Path: "/read", Group: g, Middlewares: auth, Handler: okapi.H(r.h.inbox.MarkRead),
-			Request: &handlers.MarkReadRequest{}, Summary: "Mark notifications read"},
-		{Method: http.MethodPost, Path: "/read-all", Group: g, Middlewares: auth, Handler: r.h.inbox.MarkAllRead,
-			Summary: "Mark all my notifications read (?workspace=)"},
-		{Method: http.MethodGet, Path: "/banners", Group: g, Middlewares: auth, Handler: r.h.inbox.Banners,
-			Summary: "My pinned, undismissed notices (app-wide banner)"},
-		{Method: http.MethodPost, Path: "/dismiss", Group: g, Middlewares: auth, Handler: okapi.H(r.h.inbox.Dismiss),
-			Request: &handlers.DismissRequest{}, Summary: "Dismiss notices from the banner"},
+		{
+			Method:      http.MethodGet,
+			Path:        "",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     r.h.inbox.List,
+			Summary:     "List my notifications (?workspace=&unread=&before=&limit=)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/unread-count",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     r.h.inbox.UnreadCount,
+			Summary:     "My unread notification count (bell badge)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/stream",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     r.h.inbox.Stream,
+			Summary:     "Live inbox updates (SSE)",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/read",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     okapi.H(r.h.inbox.MarkRead),
+			Request:     &handlers.MarkReadRequest{},
+			Summary:     "Mark notifications read",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/read-all",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     r.h.inbox.MarkAllRead,
+			Summary:     "Mark all my notifications read (?workspace=)",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/banners",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     r.h.inbox.Banners,
+			Summary:     "My pinned, undismissed notices (app-wide banner)",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/dismiss",
+			Group:       g,
+			Middlewares: auth,
+			Handler:     okapi.H(r.h.inbox.Dismiss),
+			Request:     &handlers.DismissRequest{},
+			Summary:     "Dismiss notices from the banner",
+		},
 	}
 }
 
@@ -60,11 +104,29 @@ func (r *Router) alertRoutes() []okapi.RouteDefinition {
 	const base = "/{workspace}/alerts"
 
 	return []okapi.RouteDefinition{
-		{Method: http.MethodGet, Path: base, Group: g, Middlewares: scoped(models.WorkspaceRoleViewer),
-			Handler: r.h.alerts.List, Summary: "List workspace alerts (?active=true)"},
-		{Method: http.MethodPost, Path: base + "/{alertID}/ack", Group: g, Middlewares: scoped(models.WorkspaceRoleDeveloper),
-			Handler: r.h.alerts.Acknowledge, Summary: "Acknowledge an alert"},
-		{Method: http.MethodPost, Path: base + "/{alertID}/resolve", Group: g, Middlewares: scoped(models.WorkspaceRoleDeveloper),
-			Handler: r.h.alerts.Resolve, Summary: "Resolve an alert"},
+		{
+			Method:      http.MethodGet,
+			Path:        base,
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.alerts.List,
+			Summary:     "List workspace alerts (?active=true)",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{alertID}/ack",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.alerts.Acknowledge,
+			Summary:     "Acknowledge an alert",
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        base + "/{alertID}/resolve",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.alerts.Resolve,
+			Summary:     "Resolve an alert",
+		},
 	}
 }
