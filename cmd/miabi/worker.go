@@ -267,6 +267,12 @@ func runWorker() error {
 	registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 	registryDistributor.SetEntitlements(edition)
 	deployHandler.SetDistributor(registryDistributor)
+	deployHandler.SetNodeNamer(func(swarmNodeID string) string {
+		if srv, err := repositories.NewServerRepository(db).FindBySwarmNodeID(swarmNodeID); err == nil {
+			return srv.Name
+		}
+		return ""
+	})
 	wireDeployPortPolicy(deployHandler, db, edition, cfg)
 
 	volumeBackupSvc := volumebackup.NewService(repositories.NewVolumeBackupRepository(db), repositories.NewVolumeRepository(db), nodeClients, cfg.ProxyNetwork)

@@ -354,8 +354,11 @@
     "danger": {
       "deleteHint": "Supprime définitivement l’application et son conteneur.",
       "deleteWarning": "Cela supprime définitivement {name}, son conteneur en cours d’exécution, ses variables d’environnement, ses ports et son historique de déploiement. Cette action est irréversible.",
-      "stopBeforeDelete": "Arrêtez l’application avant de la supprimer",
-      "stopFirst": "Arrêtez-la d’abord — une application en cours d’exécution ne peut pas être supprimée.",
+      "deleting": "Suppression…",
+      "runningStopsFirst": "Elle est en cours d’exécution : elle sera d’abord arrêtée, puis supprimée.",
+      "stillRunning": "L’application ne s’est pas arrêtée à temps ; réessayez.",
+      "stopAndDelete": "Arrêter et supprimer",
+      "stoppedFirst": "Une application en cours d’exécution est d’abord arrêtée.",
       "typeToConfirm": "Saisissez {name} pour confirmer"
     },
     "database": "Base de données",
@@ -394,6 +397,12 @@
     },
     "deployment": "Déploiement",
     "deploymentStrategy": "Stratégie de déploiement",
+    "dockerfilePorts": {
+      "found": "Le Dockerfile du dépôt expose {exposed} ; cette application utilise {current}.",
+      "use": "Utiliser les ports du Dockerfile",
+      "keep": "Garder les ports actuels",
+      "applied": "Ports mis à jour — redéployez pour les appliquer"
+    },
     "node": {
       "title": "Nœud",
       "anyService": "N’importe quel nœud — l’ordonnanceur décide",
@@ -772,6 +781,8 @@
       "source": "Source"
     },
     "created": "Application créée",
+    "createdDeployFailed": "Application créée, mais le premier déploiement n’a pas pu démarrer",
+    "createdDeploying": "Application créée — premier déploiement lancé",
     "deployFirst": "Déployer votre première application",
     "emptyHint": "Déployez depuis une image Docker ou un dépôt Git — ou installez une application prête à l’emploi depuis la marketplace.",
     "form": {
@@ -789,6 +800,7 @@
       "containerPorts": "Ports du conteneur",
       "continueOnError": "continuer en cas d’erreur",
       "defaultAttached": "(le réseau par défaut est toujours attaché)",
+      "deployNow": "Déployer juste après la création",
       "deploys": "Déploie",
       "forPrivate": "(pour les images privées)",
       "image": "Image",
@@ -1568,6 +1580,7 @@
     "deleteSchedule": "Supprimer la planification",
     "deleteThisDatabaseInstance": "Supprimer cette instance de base de données",
     "destination": "Destination",
+    "detachBeforeDelete": "Détachez ses bases des applications avant de la supprimer",
     "details": "Détails",
     "disabled": "désactivé",
     "fromManifest": "manifeste",
@@ -1645,12 +1658,15 @@
     "restoringBannerSub": "Les applications qui utilisent cette base peuvent voir des données partielles jusqu’à la fin. Vous serez notifié à la fin.",
     "retention": "Rétention",
     "revealConnection": "Afficher la connexion",
+    "runningStopsFirst": "Elle est en cours d’exécution : elle sera d’abord arrêtée.",
     "save": "Enregistrer",
     "schedule": "Planification",
     "selectADatabase": "Sélectionnez une base de données…",
     "setsNeedEnterprise": "Créer des points de restauration nécessite une licence Enterprise",
     "sqlGzOrDumpFiles": "Fichiers SQL, GZ ou DUMP pris en charge",
     "start": "Démarrer",
+    "stillRunning": "La base ne s’est pas arrêtée à temps ; réessayez.",
+    "stopAndDelete": "Arrêter et supprimer",
     "syncSizes": "Synchroniser les tailles",
     "tab": {
       "logs": "Journaux",

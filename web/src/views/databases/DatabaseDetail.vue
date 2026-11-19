@@ -72,11 +72,8 @@ const canCreateLogical = computed(
   () => supportsLogical.value && inst.value?.engine !== 'libsql' && !isDedicated.value,
 )
 const attachedCount = computed(() => databases.value.filter((d) => d.application_id).length)
-const deleteBlockedReason = computed(() => {
-  if (inst.value?.status === 'running') return 'Stop the database before deleting it'
-  if (attachedCount.value > 0) return 'Detach its databases from apps before deleting'
-  return ''
-})
+// A running instance is stopped by the delete itself; attached apps still need the user, since stopping doesn't detach them.
+const deleteBlockedReason = computed(() => (attachedCount.value > 0 ? t('db.detachBeforeDelete') : ''))
 const appName = (id?: number | null) => apps.value.find((a) => a.id === id)?.name
 // Only apps that can reach the database by name: its own node, or anywhere in its cluster on an overlay.
 const appsOnNode = computed(() => apps.value.filter((a) => !!inst.value && canReachDatabase(a, inst.value)))
@@ -257,6 +254,12 @@ async function load() {
       if (selected.value) {
         const still = databases.value.find((d) => d.id === selected.value?.id)
         selected.value = still ?? null
+      }
+      if (!selected.value) {
+        // The usual instance holds one database, so the Backups tab opens on it; with several, on the last one picked.
+        const remembered = databases.value.find((d) => d.id === rememberedDb())
+        const pick = remembered ?? (databases.value.length === 1 ? databases.value[0] : null)
+        if (pick) void selectDb(pick)
       }
     }
     await loadNetworks()
@@ -451,7 +454,14 @@ async function revealDb(d: LogicalDatabase) {
 // --- Backups (for the selected logical database) ---
 async function selectDb(d: LogicalDatabase) {
   selected.value = d
+  try { localStorage.setItem(`mb_db_selected_${instId.value}`, String(d.id)) } catch { /* per-viewer convenience only */ }
   await loadBackups()
+}
+function rememberedDb(): number | null {
+  try {
+    const v = localStorage.getItem(`mb_db_selected_${instId.value}`)
+    return v ? Number(v) : null
+  } catch { return null }
 }
 // Open the Backups tab focused on a database (from the Databases table).
 async function viewBackups(d: LogicalDatabase) {
@@ -831,9 +841,11 @@ function askRedeploy() {
 function askDelete() {
   deleteConfirm.value = ''
   confirm.value = {
-    kind: 'delete', title: t('confirm.title.databaseDetail.deleteDatabaseInstance'), confirmLabel: t('action.delete'), variant: 'danger',
+    kind: 'delete', title: t('confirm.title.databaseDetail.deleteDatabaseInstance'),
+    confirmLabel: inst.value?.status === 'running' ? t('db.stopAndDelete') : t('action.delete'), variant: 'danger',
     requireName: true,
-    message: t('confirm.message.databaseDetail.deleteAllItsDatabases', { name: inst.value?.name }),
+    message: t('confirm.message.databaseDetail.deleteAllItsDatabases', { name: inst.value?.name })
+      + (inst.value?.status === 'running' ? ' ' + t('db.runningStopsFirst') : ''),
     run: () => removeInstance(),
   }
 }
@@ -858,8 +870,22 @@ async function revealInstance() {
 }
 async function removeInstance() {
   if (!wid.value) return
-  try { await databaseApi.remove(wid.value, instId.value); notify.success(t('db.toast.instanceDeleted')); router.push('/databases') }
-  catch (e) { notify.apiError(e) }
+  try {
+    if (inst.value?.status === 'running') await stopForDelete()
+    await databaseApi.remove(wid.value, instId.value)
+    notify.success(t('db.toast.instanceDeleted'))
+    router.push('/databases')
+  } catch (e) { notify.apiError(e) }
+}
+async function stopForDelete() {
+  if (!wid.value) return
+  await databaseApi.stop(wid.value, instId.value)
+  for (let i = 0; i < 30; i++) {
+    const cur = (await databaseApi.get(wid.value, instId.value)).data.data
+    if (cur?.status !== 'running') return
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  throw new Error(t('db.stillRunning'))
 }
 
 async function copy(text: string) {
