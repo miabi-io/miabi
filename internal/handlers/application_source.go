@@ -33,7 +33,7 @@ import (
 
 // A PUT, not a PATCH field: switching image <-> git changes which fields mean anything.
 type SetSourceRequest struct {
-	WorkspaceID string `path:"workspaceID"`
+	WorkspaceID string `path:"workspace"`
 	AppID       string `path:"appID"`
 	Body        struct {
 		// SourceType is required: "image" pulls a prebuilt image, "git" builds from a repository.
@@ -105,7 +105,7 @@ func sourceLock(app *models.Application) error {
 
 // ResyncPipelineRequest re-reads the repository's pipeline-as-code for a git application.
 type ResyncPipelineRequest struct {
-	WorkspaceID string `path:"workspaceID"`
+	WorkspaceID string `path:"workspace"`
 	AppID       string `path:"appID"`
 }
 
