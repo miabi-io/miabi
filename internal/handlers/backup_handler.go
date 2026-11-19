@@ -304,11 +304,37 @@ func (h *BackupHandler) RestoreFile(c *okapi.Context) error {
 		return c.AbortBadRequest("file exceeds the maximum restore size")
 	}
 	force := c.Request().FormValue("method") == "force"
-	if err := h.svc.RestoreUpload(c.Request().Context(), inst, db, header.Filename, file, header.Size, force); err != nil {
+	// Refused before the upload is staged, so a busy database doesn't cost a copy that is thrown away.
+	if h.svc.BackupRunning(db.ID) {
+		return c.AbortWithError(http.StatusConflict, errors.New("a backup of this database is running; restore once it finishes"))
+	}
+	target := models.Restore{InstanceID: inst.ID, DatabaseID: db.ID}
+	if busy, a := restoreBusy(c, h.restores, target, "restore once it finishes"); busy {
+		return a
+	}
+	spec, cleanup, err := h.svc.StageUpload(c.Request().Context(), inst, db, header.Filename, file, header.Size, force)
+	if errors.Is(err, backup.ErrUnsupportedEngine) {
+		return c.AbortBadRequest("backups are not supported for this engine yet")
+	}
+	if err != nil {
+		return c.AbortInternalServerError("upload the dump", err)
+	}
+	rec, err := h.restores.Start(&models.Restore{
+		WorkspaceID: db.WorkspaceID, Kind: models.RestoreDatabase, InstanceID: inst.ID, DatabaseID: db.ID,
+		Source: "uploaded file " + header.Filename, Force: force, RequestedByID: userIDPtr(c),
+	}, db.Name, fmt.Sprintf("/databases/%d", inst.ID), func(ctx context.Context) (restores.Outcome, error) {
+		defer cleanup()
+		return restores.Outcome{}, h.svc.Restore(ctx, inst, db, spec)
+	})
+	if err != nil {
+		cleanup()
+		if errors.Is(err, restores.ErrRunning) {
+			return c.AbortWithError(http.StatusConflict, err)
+		}
 		return c.AbortInternalServerError("restore failed", err)
 	}
 	h.record(c, db.WorkspaceID, "backup.restore_upload", db.ID)
-	return message(c, "database restored from upload")
+	return accepted(c, rec)
 }
 
 // Delete removes a backup and (for local backups) its artifact file.

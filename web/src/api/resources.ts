@@ -183,7 +183,7 @@ export const backupApi = {
     const form = new FormData()
     form.append('file', file)
     form.append('method', method)
-    return api.post<ApiResponse<{ message: string }>>(`${b(ws, inst, db)}/restore-file`, form, {
+    return api.post<ApiResponse<Restore>>(`${b(ws, inst, db)}/restore-file`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },

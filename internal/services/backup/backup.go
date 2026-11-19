@@ -455,10 +455,6 @@ func uploadName(orig string) string {
 	return name + ".sql.gz"
 }
 
-func (s *Service) RestoreUpload(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, origName string, content io.Reader, size int64, force bool) error {
-	return s.restoreStream(ctx, inst, db, uploadName(origName), content, size, force)
-}
-
 // RestoreFile keeps the name so the tool reads the format from its extension.
 func (s *Service) RestoreFile(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, file string, content io.Reader, size int64) error {
 	b := make([]byte, 4)
@@ -467,34 +463,49 @@ func (s *Service) RestoreFile(ctx context.Context, inst *models.DatabaseInstance
 }
 
 func (s *Service) restoreStream(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, name string, content io.Reader, size int64, force bool) error {
-	if _, ok := s.bkupImage(inst.Engine); !ok {
-		return ErrUnsupportedEngine
-	}
-	dc, err := s.clients.For(inst.ServerID)
+	spec, cleanup, err := s.stage(ctx, inst, db, name, content, size, force)
 	if err != nil {
 		return err
 	}
+	defer cleanup()
+	return s.Restore(ctx, inst, db, spec)
+}
+
+// StageUpload copies an uploaded dump onto the database's node, so the restore can run after the request that carried it.
+func (s *Service) StageUpload(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, origName string, content io.Reader, size int64, force bool) (RestoreSpec, func(), error) {
+	return s.stage(ctx, inst, db, uploadName(origName), content, size, force)
+}
+
+// cleanup removes the staged dump; it is safe to call once the restore is done, however it ended.
+func (s *Service) stage(ctx context.Context, inst *models.DatabaseInstance, db *models.Database, name string, content io.Reader, size int64, force bool) (RestoreSpec, func(), error) {
+	if _, ok := s.bkupImage(inst.Engine); !ok {
+		return RestoreSpec{}, nil, ErrUnsupportedEngine
+	}
+	dc, err := s.clients.For(inst.ServerID)
+	if err != nil {
+		return RestoreSpec{}, nil, err
+	}
 	volume := workspaceBackupVolume(db.WorkspaceID)
 	if _, err := dc.CreateVolume(ctx, volume, map[string]string{docker.LabelWorkspace: fmt.Sprint(db.WorkspaceID)}, 0); err != nil {
-		return fmt.Errorf("create backup volume: %w", err)
+		return RestoreSpec{}, nil, fmt.Errorf("create backup volume: %w", err)
 	}
 	helper := s.helperImage()
 	if err := dc.PullImage(ctx, helper, nil); err != nil {
-		return fmt.Errorf("pull helper image: %w", err)
+		return RestoreSpec{}, nil, fmt.Errorf("pull helper image: %w", err)
 	}
-	if err := dc.CopyToVolume(ctx, volume, helper, name, content, size); err != nil {
-		return fmt.Errorf("upload dump: %w", err)
-	}
-	defer func() {
-		// Best-effort cleanup of the temp upload artifact.
+	cleanup := func() {
 		_, _, _ = dc.RunOneShot(context.Background(), docker.RunSpec{
 			Name:   "mb-rmupload-" + name,
 			Image:  helper,
 			Cmd:    []string{"sh", "-c", "rm -f " + backupMount + "/" + name},
 			Mounts: map[string]string{volume: backupMount},
 		})
-	}()
-	return s.Restore(ctx, inst, db, RestoreSpec{Filename: name, Destination: "local", VolumeName: volume, Force: force})
+	}
+	if err := dc.CopyToVolume(ctx, volume, helper, name, content, size); err != nil {
+		cleanup()
+		return RestoreSpec{}, nil, fmt.Errorf("upload dump: %w", err)
+	}
+	return RestoreSpec{Filename: name, Destination: "local", VolumeName: volume, Force: force}, cleanup, nil
 }
 
 type DDLRunner interface {

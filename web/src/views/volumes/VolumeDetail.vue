@@ -302,7 +302,7 @@ async function doRestore() {
   restoring.value = true
   try {
     const rec = (await volumeApi.restoreBackup(wid.value, volId.value, pendingRestore.value.id)).data.data
-    notify.info(t('volumes.restoreStarted', { source: rec.source }))
+    notify.info(t('notify.restoreStarted', { source: rec.source }))
     restoreConfirmOpen.value = false
     pendingRestore.value = null
     await loadRestores()
