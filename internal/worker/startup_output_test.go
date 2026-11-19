@@ -22,6 +22,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,8 +66,8 @@ func TestLogContainerOutputCopiesTheTailIntoTheDeploymentLog(t *testing.T) {
 	h.logContainerOutput(app, dep.ID, "c1")
 
 	got, _ := h.deployments.FindByID(dep.ID)
-	if fake.tail != "100" {
-		t.Fatalf("tail = %q, want 100", fake.tail)
+	if want := strconv.Itoa(startupOutputLines); fake.tail != want {
+		t.Fatalf("tail = %q, want %s", fake.tail, want)
 	}
 	if !strings.Contains(got.Logs, "container output (last 2 lines):\n  | Error: DATABASE_URL is not set\n") {
 		t.Fatalf("output not copied:\n%s", got.Logs)
