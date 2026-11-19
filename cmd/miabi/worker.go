@@ -170,6 +170,8 @@ func runWorker() error {
 		eventsSvc,
 	)
 	upgradeAppService.SetPortBindings(repositories.NewPortBindingRepository(db))
+	upgradeAppService.SetStackEnv(repositories.NewStackEnvVarRepository(db))
+	workerRouteSvc.SetAddressListener(upgradeAppService.MarkAddressConsumers)
 	upgradeBackupService := backup.NewService(repositories.NewBackupRepository(db), repositories.NewDatabaseRepository(db), nodeClients)
 	upgradeBackupService.SetDDLRunner(dbService)
 	upgradeBackupService.SetImageResolver(imageResolver)

@@ -80,6 +80,7 @@ type Service struct {
 	dnsAddr   DNSAddresser
 	reloader  EdgeReloader
 	cluster   ClusterCap
+	onAddress func(app *models.Application)
 	external  ExternalDomains
 	// externalCerts serves a cluster's generated URLs from one certificate; nil leaves each its own.
 	externalCerts ExternalCertificates
@@ -401,6 +402,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if err != nil {
 		return nil, ErrAppRequired
 	}
+	defer s.trackAddress(app.ID)()
 	in.Hosts = normalizeHosts(in.Hosts)
 
 	if len(in.Hosts) == 0 {
@@ -468,6 +470,10 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	rt, err := s.routes.FindInWorkspace(workspaceID, id)
 	if err != nil {
 		return nil, ErrNotFound
+	}
+	defer s.trackAddress(rt.ApplicationID)()
+	if in.ApplicationID != rt.ApplicationID {
+		defer s.trackAddress(in.ApplicationID)()
 	}
 	// apply/GitOps passes the app every reconcile so a stale link converges; the UI passes 0 to keep the link.
 	if in.ApplicationID != 0 && in.ApplicationID != rt.ApplicationID {
@@ -554,6 +560,7 @@ func (s *Service) SetEnabled(ctx context.Context, workspaceID, id uint, enabled 
 	if err != nil {
 		return nil, ErrNotFound
 	}
+	defer s.trackAddress(rt.ApplicationID)()
 	rt.Enabled = enabled
 	if err := s.routes.Update(rt); err != nil {
 		return nil, err
@@ -744,6 +751,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	if err != nil {
 		return ErrNotFound
 	}
+	defer s.trackAddress(rt.ApplicationID)()
 	if err := s.routes.Delete(rt.ID); err != nil {
 		return err
 	}
@@ -808,6 +816,7 @@ func (s *Service) RemoveAppRoutes(ctx context.Context, appID uint) error {
 
 // SyncRoute removes routes while the app has no active release, else upserts enabled routes.
 func (s *Service) SyncRoute(ctx context.Context, appID uint) error {
+	defer s.trackAddress(appID)()
 	app, err := s.apps.FindByID(appID)
 	if err != nil {
 		return err

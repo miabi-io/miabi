@@ -294,6 +294,14 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 			Summary:     "Expose/unexpose app ports externally",
 			Request:     &handlers.SetExternalAccessRequest{},
 		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/{appID}/address-references",
+			Group:       apps,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.app.AddressReferences,
+			Summary:     "List apps whose env reads this app's public address",
+		},
 
 		// Privileged host binds (allow-listed; Admin-only, privileged workspace only).
 		{

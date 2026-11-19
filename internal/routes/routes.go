@@ -562,6 +562,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Only route-exposed apps stay on the proxy network, reconciled live without a redeploy.
 	proxyReconciler := worker.NewProxyNetworkReconciler(appRepo, releaseRepo, nodeClients)
 	routeService.SetProxyAttacher(proxyReconciler)
+	routeService.SetAddressListener(appService.MarkAddressConsumers)
 	// Re-asserted on every refresh so a gateway recreate cannot leave clustered apps dark, and once now at boot.
 	clusterService.SetIngressReconciler(proxyReconciler.ReconcileIngressGateway)
 	// A swarm outside the default cluster is served by its own ingress node's gateway.

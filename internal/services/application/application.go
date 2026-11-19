@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/appref"
 	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/dotenv"
@@ -1251,6 +1252,74 @@ func (s *Service) AppsReferencingSecret(workspaceID uint, name string) ([]models
 	return out, nil
 }
 
+func (s *Service) AppsReferencingApp(workspaceID uint, name string) ([]models.Application, error) {
+	apps, err := s.apps.ListByWorkspaceWithEnv(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	stacks := map[uint][]models.StackEnvVar{}
+	out := make([]models.Application, 0)
+	for i := range apps {
+		if s.appReferencesApp(&apps[i], name, stacks) {
+			out = append(out, apps[i])
+		}
+	}
+	return out, nil
+}
+
+// MarkAddressConsumers flags deployed apps whose env reads app's public address; they pick it up on their next deploy.
+func (s *Service) MarkAddressConsumers(app *models.Application) {
+	consumers, err := s.AppsReferencingApp(app.WorkspaceID, app.Name)
+	if err != nil {
+		logger.Warn("finding apps that reference an address failed", "app", app.Name, "error", err)
+		return
+	}
+	for i := range consumers {
+		marked, err := s.MarkRedeployRequired(&consumers[i])
+		if err != nil {
+			logger.Warn("marking an app for redeploy failed", "app", consumers[i].Name, "error", err)
+			continue
+		}
+		if marked {
+			s.emit(&consumers[i], models.EventEnvUpdated, "The public address of "+app.Name+" changed: redeploy to use it")
+		}
+	}
+}
+
+func (s *Service) appReferencesApp(app *models.Application, name string, stacks map[uint][]models.StackEnvVar) bool {
+	matches := func(value string, isSecret bool) bool {
+		if isSecret {
+			dec, err := crypto.Decrypt(value)
+			if err != nil {
+				return false
+			}
+			value = dec
+		}
+		return appref.References(value, name)
+	}
+	own := make(map[string]bool, len(app.EnvVars))
+	for _, ev := range app.EnvVars {
+		own[ev.Key] = true
+		if matches(ev.Value, ev.IsSecret) {
+			return true
+		}
+	}
+	if app.StackID == nil || s.stackEnv == nil {
+		return false
+	}
+	shared, ok := stacks[*app.StackID]
+	if !ok {
+		shared, _ = s.stackEnv.ListByStack(*app.StackID)
+		stacks[*app.StackID] = shared
+	}
+	for _, ev := range shared {
+		if !own[ev.Key] && matches(ev.Value, ev.IsSecret) {
+			return true
+		}
+	}
+	return false
+}
+
 // Covers own env, stack shared env, and mounted configs; stacks caches each stack's env for one scan.
 func (s *Service) appReferencesSecret(app *models.Application, name string, stacks map[uint][]models.StackEnvVar) bool {
 	own := make(map[string]bool, len(app.EnvVars))
@@ -1877,7 +1946,11 @@ func (s *Service) Delete(ctx context.Context, app *models.Application) error {
 			logger.Warn("could not clean up the app's pipelines", "app", app.Name, "error", err)
 		}
 	}
-	return s.apps.Delete(app.ID)
+	if err := s.apps.Delete(app.ID); err != nil {
+		return err
+	}
+	s.MarkAddressConsumers(app)
+	return nil
 }
 
 func (s *Service) SetEnvVar(appID uint, key, value string, isSecret bool) error {

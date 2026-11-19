@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/jkaninda/logger"
+	"github.com/miabi-io/miabi/internal/appref"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/hostmount"
 	"github.com/miabi-io/miabi/internal/models"
@@ -57,6 +58,18 @@ func (b *runtimeBuilder) credentialSecret(workspaceID uint, enc, ref string) (st
 		return crypto.Decrypt(enc)
 	}
 	return b.secrets.CredentialSecret(workspaceID, enc, ref)
+}
+
+type AppRefResolver interface {
+	ResolveAll(workspaceID uint, env []string) ([]string, error)
+}
+
+// Typed-nil repositories must not become a non-nil resolver that panics on first use.
+func newAppRefs(apps *repositories.ApplicationRepository, routes *repositories.RouteRepository) AppRefResolver {
+	if apps == nil || routes == nil {
+		return nil
+	}
+	return appref.NewResolver(apps, routes)
 }
 
 // User and Restricted are independent: the profile hardens the container whichever non-root user it runs as.
@@ -106,6 +119,7 @@ type runtimeBuilder struct {
 	stackEnv *repositories.StackEnvVarRepository
 	routes   *repositories.RouteRepository
 	secrets  SecretResolver
+	appRefs  AppRefResolver
 	// securityInitImage chowns a restricted app's managed volumes to the platform UID.
 	security          SecurityResolver
 	securityInitImage string
@@ -366,7 +380,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	}
 	env, err := b.buildEnv(app)
 	if err != nil {
-		return RuntimeContext{}, err
+		return RuntimeContext{}, fmt.Errorf("environment: %w", err)
 	}
 	files, ferr := b.projectConfigs(app, b.configResolver(app, env))
 	if ferr != nil {
@@ -506,6 +520,19 @@ func (b *runtimeBuilder) buildEnv(app *models.Application) ([]string, error) {
 	env := make([]string, 0, len(order))
 	for _, k := range order {
 		env = append(env, k+"="+merged[k])
+	}
+	if b.appRefs != nil {
+		resolved, err := b.appRefs.ResolveAll(app.WorkspaceID, env)
+		if err != nil {
+			return nil, err
+		}
+		env = resolved
+	} else {
+		for _, kv := range env {
+			if appref.HasRef(kv) {
+				return nil, fmt.Errorf("%s references an application's address, which this process cannot resolve", strings.SplitN(kv, "=", 2)[0])
+			}
+		}
 	}
 	if b.secrets != nil {
 		return b.secrets.ResolveAll(app.WorkspaceID, env)

@@ -28,6 +28,8 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+
+	"github.com/miabi-io/miabi/internal/appref"
 )
 
 type ConnView struct {
@@ -90,6 +92,8 @@ type Renderer struct {
 	// credential holds keys whose value resolved a credential rather than deferring it; see CredentialKeys.
 	cur        string
 	credential map[string]bool
+	// Deploy-time application fields are only valid where the worker substitutes them: env values.
+	inEnv bool
 }
 
 // NewRenderer builds a renderer (nil maps are tolerated).
@@ -127,6 +131,7 @@ func (r *Renderer) data() map[string]any {
 		"inputs":       r.ctx.Inputs,
 		"databases":    dbs,
 		"applications": apps,
+		"apps":         apps,
 		"secrets":      r.ctx.Secrets,
 	}
 }
@@ -147,7 +152,7 @@ var funcMap = template.FuncMap{
 
 // actionPattern bounds the rewrite to inside "{{ ... }}" so literal text is never touched.
 var (
-	refPattern    = regexp.MustCompile(`\.(databases|secrets|applications|inputs)((?:\.[A-Za-z0-9_-]+)+)`)
+	refPattern    = regexp.MustCompile(`\.(databases|secrets|applications|apps|inputs)((?:\.[A-Za-z0-9_-]+)+)`)
 	actionPattern = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 )
 
@@ -156,7 +161,20 @@ var (
 	pureSecretAction   = regexp.MustCompile(`^\{\{(-?\s*)\.secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})(\s*-?)\}\}$`)
 	pureDatabaseAction = regexp.MustCompile(`^\{\{(-?\s*)\.databases\.([A-Za-z0-9_-]+)(?:\.(password|uri|url))?(\s*-?)\}\}$`)
 	runtimeSecretRef   = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_-]{0,62})\s*\}\}`)
+	runtimeAppRef      = regexp.MustCompile(`\$\{\{\s*(?:applications|apps)\.([A-Za-z0-9][A-Za-z0-9_-]*)\.([A-Za-z0-9_]+)\s*\}\}`)
+	deferredAppField   = regexp.MustCompile(`\.(?:applications|apps)\.[A-Za-z0-9_-]+\.(?:public_url|public_host|external_url)\b`)
+	pureDeferredApp    = regexp.MustCompile(`^\{\{-?\s*\.(?:applications|apps)\.[A-Za-z0-9_-]+\.(?:public_url|public_host|external_url)\s*-?\}\}$`)
 )
+
+// A pipe or function would transform the placeholder, not the address the worker substitutes later.
+func checkDeferredAppRefs(s string) error {
+	for _, action := range actionPattern.FindAllString(s, -1) {
+		if deferredAppField.MatchString(action) && !pureDeferredApp.MatchString(action) {
+			return fmt.Errorf("%s: an application's public_url, public_host or external_url is filled in at deploy, so it must stand alone in its {{ }}; put any text outside the braces", action)
+		}
+	}
+	return nil
+}
 
 // credentialFields are the database fields whose value is a credential.
 var credentialFields = map[string]bool{
@@ -167,6 +185,7 @@ var credentialFields = map[string]bool{
 // The stored env points at the vault so it follows secret rotations.
 func deferSecrets(s string) string {
 	s = runtimeSecretRef.ReplaceAllString(s, `{{ secretRef "$1" }}`)
+	s = runtimeAppRef.ReplaceAllString(s, `{{ ref "applications" "$1" "$2" }}`)
 	return actionPattern.ReplaceAllStringFunc(s, func(action string) string {
 		if m := pureSecretAction.FindStringSubmatch(action); m != nil {
 			return `{{` + m[1] + `secretRef "` + m[2] + `"` + m[3] + `}}`
@@ -224,6 +243,9 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 	if len(keys) > 1 {
 		field = keys[1]
 	}
+	if coll == "apps" {
+		coll = "applications"
+	}
 	if coll == "secrets" || (coll == "databases" && (field == "" || credentialFields[field])) {
 		r.markCredential()
 	}
@@ -261,6 +283,12 @@ func (r *Renderer) ref(coll string, keys ...string) (string, error) {
 		a, ok := r.ctx.Apps[name]
 		if !ok {
 			return "", fmt.Errorf("unknown application %q", name)
+		}
+		if appref.IsField(field) {
+			if !r.inEnv {
+				return "", fmt.Errorf("application %q: %s is filled in when the app deploys, so it can only be used in env", name, field)
+			}
+			return appref.Token(name, field), nil
 		}
 		fields := map[string]string{
 			"host": a.Host, "port": a.Port, "scheme": a.Scheme,
@@ -376,10 +404,14 @@ func (r *Renderer) RenderFiles(scope string, files map[string]string, delimiters
 // RenderEnv keeps secrets and database credentials as `${{ secrets.NAME }}` pointers resolved at deploy.
 func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]string, error) {
 	r.credential = map[string]bool{}
-	defer func() { r.cur = "" }()
+	r.inEnv = true
+	defer func() { r.cur, r.inEnv = "", false }()
 	out := make(map[string]string, len(env))
 	for k, v := range env {
 		r.cur = k
+		if err := checkDeferredAppRefs(v); err != nil {
+			return nil, fmt.Errorf("%s.env.%s: %w", scope, k, err)
+		}
 		rv, err := r.RenderString(scope+".env."+k, deferSecrets(v))
 		if err != nil {
 			return nil, err
@@ -392,10 +424,15 @@ func (r *Renderer) RenderEnv(scope string, env map[string]string) (map[string]st
 // RenderEnvLenient leaves unresolvable values as templates for plan/diff; apply re-renders strictly.
 func (r *Renderer) RenderEnvLenient(scope string, env map[string]string) map[string]string {
 	r.credential = map[string]bool{}
-	defer func() { r.cur = "" }()
+	r.inEnv = true
+	defer func() { r.cur, r.inEnv = "", false }()
 	out := make(map[string]string, len(env))
 	for k, v := range env {
 		r.cur = k
+		if checkDeferredAppRefs(v) != nil {
+			out[k] = v
+			continue
+		}
 		if rv, err := r.RenderString(scope+".env."+k, deferSecrets(v)); err == nil {
 			out[k] = rv
 		} else {
