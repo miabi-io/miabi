@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/appref"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/application"
@@ -294,6 +295,9 @@ func (h *StackHandler) SetEnvVar(c *okapi.Context, req *SetStackEnvVarRequest) e
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := appref.ValidateFields(req.Body.Value); err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
 	stale, err := h.svc.SetEnvVar(wsID, id, req.Body.Key, req.Body.Value, req.Body.IsSecret)
 	if err != nil {
 		return h.mapErr(c, err)
@@ -309,6 +313,9 @@ func (h *StackHandler) ImportEnvVars(c *okapi.Context, req *ImportEnvVarsRequest
 		return c.AbortBadRequest("invalid stack id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := appref.ValidateFields(req.Body.Content); err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
 	n, stale, err := h.svc.ImportEnvVars(wsID, id, req.Body.Content, req.Body.IsSecret)
 	if err != nil {
 		return h.mapErr(c, err)

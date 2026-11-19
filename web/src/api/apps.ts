@@ -202,6 +202,9 @@ export const appApi = {
   gpuKinds(ws: number, id: number) {
     return api.get<ApiResponse<GPUKind[]>>(`/workspaces/${ws}/apps/${id}/gpu-kinds`)
   },
+  addressReferences(ws: number, id: number) {
+    return api.get<ApiResponse<{ id: number; name: string }[]>>(`/workspaces/${ws}/apps/${id}/address-references`)
+  },
   externalAccess(ws: number, id: number) {
     return api.get<ApiResponse<ExternalAccess>>(`/workspaces/${ws}/apps/${id}/external-access`)
   },

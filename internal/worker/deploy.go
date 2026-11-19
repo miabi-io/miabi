@@ -265,7 +265,7 @@ func NewDeployHandler(
 	producer *Producer,
 	secrets SecretResolver,
 ) *DeployHandler {
-	return &DeployHandler{runtimeBuilder: &runtimeBuilder{stackEnv: stackEnv, routes: routeRepo, secrets: secrets}, apps: apps, deployments: deployments, releases: releases, registries: registries, gitRepos: gitRepos, portBindings: portBindings, volumes: volumes, clients: clients, bus: bus, routes: routes, events: evts, producer: producer}
+	return &DeployHandler{runtimeBuilder: &runtimeBuilder{stackEnv: stackEnv, routes: routeRepo, secrets: secrets, appRefs: newAppRefs(apps, routeRepo)}, apps: apps, deployments: deployments, releases: releases, registries: registries, gitRepos: gitRepos, portBindings: portBindings, volumes: volumes, clients: clients, bus: bus, routes: routes, events: evts, producer: producer}
 }
 
 // A disconnected node yields an offline client: critical ops fail clearly and best-effort cleanups no-op.
@@ -510,7 +510,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	// The same builder a one-off Job uses, so they can't drift.
 	rc, err := h.buildRuntimeContext(ctx, h.eng(app), app)
 	if err != nil {
-		_ = h.fail(dep, fmt.Errorf("sync networks: %w", err))
+		_ = h.fail(dep, fmt.Errorf("prepare the container: %w", err))
 		return
 	}
 	// Buildpack images run the CNB launcher and read $PORT, so the command is never overridden.

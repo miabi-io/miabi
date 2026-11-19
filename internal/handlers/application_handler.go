@@ -28,6 +28,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/appref"
 	"github.com/miabi-io/miabi/internal/datavolume"
 	"github.com/miabi-io/miabi/internal/enterprise"
 	"github.com/miabi-io/miabi/internal/hostmount"
@@ -644,6 +645,30 @@ func (h *ApplicationHandler) Delete(c *okapi.Context) error {
 	return message(c, "application deleted")
 }
 
+// AddressReference is an app whose env reads another app's public address.
+type AddressReference struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+func (h *ApplicationHandler) AddressReferences(c *okapi.Context) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	apps, err := h.svc.AppsReferencingApp(app.WorkspaceID, app.Name)
+	if err != nil {
+		return c.AbortInternalServerError("failed to list referencing applications", err)
+	}
+	out := make([]AddressReference, 0, len(apps))
+	for i := range apps {
+		if apps[i].ID != app.ID {
+			out = append(out, AddressReference{ID: apps[i].ID, Name: apps[i].Name})
+		}
+	}
+	return ok(c, out)
+}
+
 func (h *ApplicationHandler) ListEnvVars(c *okapi.Context) error {
 	app, err := h.load(c)
 	if err != nil {
@@ -661,6 +686,9 @@ func (h *ApplicationHandler) SetEnvVar(c *okapi.Context, req *SetEnvVarRequest) 
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
+	if err := appref.ValidateFields(req.Body.Value); err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
 	if err := h.svc.SetEnvVar(app.ID, req.Body.Key, req.Body.Value, req.Body.IsSecret); err != nil {
 		return c.AbortInternalServerError("failed to set env var", err)
 	}
@@ -673,6 +701,9 @@ func (h *ApplicationHandler) ImportEnvVars(c *okapi.Context, req *ImportEnvVarsR
 	app, err := h.load(c)
 	if err != nil {
 		return c.AbortNotFound("application not found")
+	}
+	if err := appref.ValidateFields(req.Body.Content); err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
 	n, err := h.svc.ImportEnvVars(app.ID, req.Body.Content, req.Body.IsSecret)
 	if err != nil {

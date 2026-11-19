@@ -352,6 +352,7 @@
     "cpuLimitCores": "CPU limit (cores)",
     "currentRelease": "Current release",
     "danger": {
+      "addressReferenced": "{apps} read this app's public address in their env; their next deploy will fail until you change it.",
       "deleteHint": "Permanently removes the application and its container.",
       "deleteWarning": "This permanently removes {name}, its running container, env vars, ports, and deployment history. This cannot be undone.",
       "deleting": "Deleting…",
@@ -450,7 +451,7 @@
       "emptyHint": "Add variables to configure your app, or bulk-import an existing .env file.",
       "filterPlaceholder": "Filter variables…",
       "manageSecrets": "manage secrets",
-      "subtitle": "Injected into the container at runtime. Reference a workspace secret with {ref} — {link}."
+      "subtitle": "Injected into the container at runtime. Reference a workspace secret with {ref} — {link}. An app's public address is {appRef}, filled in at each deploy."
     },
     "envVarPrefix": "Env var prefix",
     "envVars": "Env vars",

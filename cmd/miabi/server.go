@@ -348,6 +348,8 @@ func runServer(cli *okapicli.CLI) {
 				eventsSvc,
 			)
 			upgradeAppService.SetPortBindings(repositories.NewPortBindingRepository(res.db))
+			upgradeAppService.SetStackEnv(repositories.NewStackEnvVarRepository(res.db))
+			deployRouteSvc.SetAddressListener(upgradeAppService.MarkAddressConsumers)
 			upgradeBackupService := backup.NewService(repositories.NewBackupRepository(res.db), dbRepo, nodeClients)
 			upgradeBackupService.SetDDLRunner(dbService)
 			upgradeBackupService.SetImageResolver(imageResolver)

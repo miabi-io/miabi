@@ -628,10 +628,15 @@ type runState struct {
 	changedStacks  map[uint]bool
 	rotatedSecrets map[string]bool
 	deployedApps   map[uint]bool
+	// Ordered so a consumer deployed before an address it reads changed is redeployed, and one deployed after is not.
+	seq            int
+	deploySeq      map[uint]int
+	addressChanged map[uint]int
 }
 
 func withRunState(ctx context.Context) (context.Context, *runState) {
-	st := &runState{changedStacks: map[uint]bool{}, rotatedSecrets: map[string]bool{}, deployedApps: map[uint]bool{}}
+	st := &runState{changedStacks: map[uint]bool{}, rotatedSecrets: map[string]bool{}, deployedApps: map[uint]bool{},
+		deploySeq: map[uint]int{}, addressChanged: map[uint]int{}}
 	return context.WithValue(ctx, runStateCtxKey{}, st), st
 }
 
@@ -652,6 +657,30 @@ func appDeployed(ctx context.Context, appID uint) {
 	if st, ok := ctx.Value(runStateCtxKey{}).(*runState); ok {
 		st.mu.Lock()
 		st.deployedApps[appID] = true
+		st.seq++
+		st.deploySeq[appID] = st.seq
+		st.mu.Unlock()
+	}
+}
+
+// watchAddress is deferred around a route change; Route resources apply after Applications, so a consumer may already have deployed.
+func (s *Service) watchAddress(ctx context.Context, workspaceID, appID uint) func() {
+	st := runStateOf(ctx)
+	if st == nil || s.routes == nil || appID == 0 {
+		return func() {}
+	}
+	before, err := s.routes.PublicAddress(workspaceID, appID)
+	if err != nil {
+		return func() {}
+	}
+	return func() {
+		after, err := s.routes.PublicAddress(workspaceID, appID)
+		if err != nil || after == before {
+			return
+		}
+		st.mu.Lock()
+		st.seq++
+		st.addressChanged[appID] = st.seq
 		st.mu.Unlock()
 	}
 }
@@ -2596,6 +2625,7 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 			return ierr
 		}
 		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
+		defer s.watchAddress(ctx, workspaceID, app.ID)()
 		_, err = s.routes.Create(ctx, workspaceID, in)
 		return err
 	case declarative.ActionUpdate:
@@ -2612,6 +2642,10 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 			return ierr
 		}
 		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
+		defer s.watchAddress(ctx, workspaceID, rt.ApplicationID)()
+		if app.ID != rt.ApplicationID {
+			defer s.watchAddress(ctx, workspaceID, app.ID)()
+		}
 		_, err = s.routes.Update(ctx, workspaceID, rt.ID, in)
 		return err
 	case declarative.ActionDelete:
@@ -2619,6 +2653,7 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 		if err != nil {
 			return err
 		}
+		defer s.watchAddress(ctx, workspaceID, rt.ApplicationID)()
 		return s.routes.Delete(ctx, workspaceID, rt.ID)
 	}
 	return nil
@@ -3158,7 +3193,10 @@ func (s *Service) reconcileExposure(ctx context.Context, workspaceID uint, app *
 				ext = append(ext, p.Container)
 			}
 		}
-		if _, err := s.routes.SetExternalAccess(ctx, workspaceID, app.ID, ext); err != nil {
+		watch := s.watchAddress(ctx, workspaceID, app.ID)
+		_, err := s.routes.SetExternalAccess(ctx, workspaceID, app.ID, ext)
+		watch()
+		if err != nil {
 			return fmt.Errorf("external access: %w", err)
 		}
 	}
@@ -3440,6 +3478,44 @@ func (s *Service) redeployChanged(workspaceID uint, run *runState) []Failure {
 			continue
 		}
 		redeploy(apps, fmt.Sprintf("secret %q changed", name))
+	}
+	return append(out, s.redeployStaleAddresses(workspaceID, run, seen)...)
+}
+
+func staleConsumers(consumers []models.Application, deploySeq map[uint]int, changedAt int, seen map[uint]bool) []*models.Application {
+	var out []*models.Application
+	for i := range consumers {
+		deployedAt, ok := deploySeq[consumers[i].ID]
+		if !ok || deployedAt > changedAt || seen[consumers[i].ID] {
+			continue
+		}
+		seen[consumers[i].ID] = true
+		out = append(out, &consumers[i])
+	}
+	return out
+}
+
+// Consumers outside this run are only marked by the route service; ones this run deployed too early get the new address now.
+func (s *Service) redeployStaleAddresses(workspaceID uint, run *runState, seen map[uint]bool) []Failure {
+	var out []Failure
+	for appID, changedAt := range run.addressChanged {
+		target, err := s.apps.Get(workspaceID, appID)
+		if err != nil {
+			continue
+		}
+		consumers, err := s.apps.AppsReferencingApp(workspaceID, target.Name)
+		if err != nil {
+			out = append(out, Failure{Kind: string(declarative.KindApplication), Name: target.Name, Action: "redeploy", Error: err.Error()})
+			continue
+		}
+		for _, c := range staleConsumers(consumers, run.deploySeq, changedAt, seen) {
+			if _, err := s.apps.Deploy(c, nil, "", ""); err != nil {
+				out = append(out, Failure{
+					Kind: string(declarative.KindApplication), Name: c.Name, Action: "redeploy",
+					Error: fmt.Sprintf("public address of %q changed: %v", target.Name, err),
+				})
+			}
+		}
 	}
 	return out
 }

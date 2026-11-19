@@ -127,3 +127,57 @@ spec:
 	}
 	t.Error("no app-ref edge from web to api")
 }
+
+// Deploy-time fields stay placeholders so the worker fills in the address the app has when it deploys.
+func TestApplicationPublicFieldsDeferInEnv(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{Apps: apiView()})
+	env, err := r.RenderEnv("application", map[string]string{
+		"PUBLIC":   "{{ .applications.api.public_url }}",
+		"CALLBACK": "{{ .apps.api.public_url }}/auth/callback",
+		"HOST":     "{{- .applications.api.public_host -}}",
+		"EXT":      "{{ .applications.api.external_url }}",
+		"RUNTIME":  "${{ apps.api.public_url }}/x",
+		"INTERNAL": "{{ .apps.api.url }}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"PUBLIC":   "${{ applications.api.public_url }}",
+		"CALLBACK": "${{ applications.api.public_url }}/auth/callback",
+		"HOST":     "${{ applications.api.public_host }}",
+		"EXT":      "${{ applications.api.external_url }}",
+		"RUNTIME":  "${{ applications.api.public_url }}/x",
+		"INTERNAL": "http://api:8080",
+	}
+	for k, w := range want {
+		if env[k] != w {
+			t.Errorf("%s = %q, want %q", k, env[k], w)
+		}
+	}
+}
+
+func TestApplicationPublicFieldsRefusals(t *testing.T) {
+	r := d.NewRenderer(d.RenderContext{Apps: apiView()})
+	for name, v := range map[string]string{
+		"piped":         "{{ .applications.api.public_url | upper }}",
+		"unknown app":   "{{ .applications.web.public_url }}",
+		"runtime typo":  "${{ apps.api.pubic_url }}",
+		"unknown field": "{{ .apps.api.pubic_url }}",
+	} {
+		if _, err := r.RenderEnv("application", map[string]string{"K": v}); err == nil {
+			t.Errorf("%s: %q rendered, want an error", name, v)
+		}
+	}
+	if _, err := r.RenderString("registry.password", "{{ .applications.api.public_url }}"); err == nil {
+		t.Error("public_url outside env must be refused")
+	}
+	if _, err := r.RenderFiles("config.app", map[string]string{"f": "{{ .applications.api.public_url }}"}, nil); err == nil {
+		t.Error("public_url in a Config file must be refused")
+	}
+
+	lenient := r.RenderEnvLenient("application", map[string]string{"K": "{{ .applications.api.public_url | upper }}"})
+	if lenient["K"] != "{{ .applications.api.public_url | upper }}" {
+		t.Errorf("lenient render must keep the refused template, got %q", lenient["K"])
+	}
+}

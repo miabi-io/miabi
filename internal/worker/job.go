@@ -67,7 +67,7 @@ func (h *JobHandler) SetDeployWait(deployments *repositories.DeploymentRepositor
 func (h *JobHandler) SetLogStore(s *logstore.Store) { h.logs = s }
 
 func NewJobHandler(jobs *repositories.JobRepository, apps *repositories.ApplicationRepository, stackEnv *repositories.StackEnvVarRepository, routeRepo *repositories.RouteRepository, registries *repositories.RegistryRepository, clients NodeDocker, secrets SecretResolver) *JobHandler {
-	return &JobHandler{runtimeBuilder: &runtimeBuilder{stackEnv: stackEnv, routes: routeRepo, secrets: secrets}, jobs: jobs, apps: apps, registries: registries, clients: clients}
+	return &JobHandler{runtimeBuilder: &runtimeBuilder{stackEnv: stackEnv, routes: routeRepo, secrets: secrets, appRefs: newAppRefs(apps, routeRepo)}, jobs: jobs, apps: apps, registries: registries, clients: clients}
 }
 
 // ProcessTask implements asynq.Handler for the run-job task.

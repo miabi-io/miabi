@@ -44,6 +44,7 @@ import { envFields, linksWholeInstance, prefixedName, sanitizePrefix, type DBEnv
 
 // Built here so `}}` doesn't break the template's mustache parser.
 const secretRefHint = '${{ secrets.NAME }}'
+const appRefHint = '${{ applications.<name>.public_url }}'
 
 const STRATEGIES: { value: DeployStrategy; label: string; hint: string }[] = [
   { value: 'recreate', label: 'appDetail.strategy.recreate', hint: 'appDetail.strategy.recreateHint' },
@@ -1846,9 +1847,17 @@ async function detachHostMount(preset?: string) {
   loadApp()
 }
 
+const addressReferences = ref<{ id: number; name: string }[]>([])
+
 function openDelete() {
   deleteConfirm.value = ''
+  addressReferences.value = []
   showDelete.value = true
+  if (wid.value) {
+    appApi.addressReferences(wid.value, appId.value)
+      .then((r) => { addressReferences.value = r.data.data ?? [] })
+      .catch(() => {})
+  }
 }
 
 // Delete is refused while the app runs; stopping is the step every user takes next, so the dialog takes it for them.
@@ -2795,6 +2804,7 @@ async function detachDatabase(d: AppDatabase) {
           <i18n-t keypath="appDetail.env.subtitle" tag="p" class="card-subtitle">
             <template #ref><code>{{ secretRefHint }}</code></template>
             <template #link><RouterLink to="/secrets">{{ $t('appDetail.env.manageSecrets') }}</RouterLink></template>
+            <template #appRef><code>{{ appRefHint }}</code></template>
           </i18n-t>
         </div>
         <div v-if="ws.canEdit" class="flex items-center gap-2">
@@ -4008,6 +4018,9 @@ async function detachDatabase(d: AppDatabase) {
           <div class="modal-body">
             <i18n-t keypath="appDetail.danger.deleteWarning" tag="p"><template #name><strong>{{ app.name }}</strong></template></i18n-t>
             <p v-if="liveStatus?.running" class="form-hint form-hint-warn">{{ $t('appDetail.danger.runningStopsFirst') }}</p>
+            <i18n-t v-if="addressReferences.length" keypath="appDetail.danger.addressReferenced" tag="p" class="form-hint form-hint-warn">
+              <template #apps><strong>{{ addressReferences.map((a) => a.name).join(', ') }}</strong></template>
+            </i18n-t>
             <div class="form-group" style="margin-bottom: 0; margin-top: 12px">
               <i18n-t keypath="appDetail.danger.typeToConfirm" tag="label" class="form-label"><template #name><code>{{ app.name }}</code></template></i18n-t>
               <input v-model="deleteConfirm" class="form-input" :placeholder="app.name" autofocus autocomplete="off" />

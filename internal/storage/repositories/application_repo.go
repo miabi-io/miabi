@@ -188,6 +188,14 @@ func (r *ApplicationRepository) ListByCluster(clusterID uint) ([]models.Applicat
 	return apps, err
 }
 
+func (r *ApplicationRepository) FindByName(workspaceID uint, name string) (*models.Application, error) {
+	var app models.Application
+	if err := r.db.Where("workspace_id = ? AND name = ?", workspaceID, name).First(&app).Error; err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
 func (r *ApplicationRepository) ExistsByName(workspaceID uint, name string) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Application{}).

@@ -352,6 +352,7 @@
     "cpuLimitCores": "Limite CPU (cœurs)",
     "currentRelease": "Version actuelle",
     "danger": {
+      "addressReferenced": "{apps} lisent l’adresse publique de cette application dans leur environnement ; leur prochain déploiement échouera tant que vous ne l’aurez pas modifié.",
       "deleteHint": "Supprime définitivement l’application et son conteneur.",
       "deleteWarning": "Cela supprime définitivement {name}, son conteneur en cours d’exécution, ses variables d’environnement, ses ports et son historique de déploiement. Cette action est irréversible.",
       "deleting": "Suppression…",
@@ -450,7 +451,7 @@
       "emptyHint": "Ajoutez des variables pour configurer votre application, ou importez en masse un fichier .env existant.",
       "filterPlaceholder": "Filtrer les variables…",
       "manageSecrets": "gérer les secrets",
-      "subtitle": "Injecté dans le conteneur au moment de l’exécution. Référencez un secret d’espace de travail avec {ref} — {link}."
+      "subtitle": "Injecté dans le conteneur au moment de l’exécution. Référencez un secret d’espace de travail avec {ref} — {link}. L’adresse publique d’une application s’écrit {appRef}, renseignée à chaque déploiement."
     },
     "envVarPrefix": "Préfixe des variables d’environnement",
     "envVars": "Variables d’env.",

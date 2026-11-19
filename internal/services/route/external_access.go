@@ -129,6 +129,7 @@ func (s *Service) SetExternalAccess(ctx context.Context, workspaceID, appID uint
 	if err != nil {
 		return nil, ErrAppRequired
 	}
+	defer s.trackAddress(app.ID)()
 	want := map[int]bool{}
 	for _, p := range ports {
 		if p > 0 {
