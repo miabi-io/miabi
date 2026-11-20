@@ -117,7 +117,10 @@ to count. Details are in the header of
 Comparing on speed? See the
 [Goma Gateway vs Traefik benchmark](https://github.com/jkaninda/goma-gateway-vs-traefik):
 neither wins across the board (Traefik leads at moderate concurrency, Goma at high
-concurrency), and Goma uses 3–4× less memory.
+concurrency), and Goma uses 3–4× less memory. The
+[Goma Gateway benchmark](https://github.com/jkaninda/goma-gateway-benchmark) adds route
+changes and backend failover: with one of four backends down, 0.05% of requests fail on
+Goma against 17% on Traefik.
 
 **DNS:** point both records at this host so Goma can issue certs and serve
 one-click URLs:
