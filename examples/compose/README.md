@@ -114,6 +114,11 @@ publishes, and requests never reach the control plane, so there is nothing else
 to count. Details are in the header of
 [`compose.traefik.yaml`](./compose.traefik.yaml).
 
+Comparing on speed? See the
+[Goma Gateway vs Traefik benchmark](https://github.com/jkaninda/goma-gateway-vs-traefik):
+neither wins across the board (Traefik leads at moderate concurrency, Goma at high
+concurrency), and Goma uses 3–4× less memory.
+
 **DNS:** point both records at this host so Goma can issue certs and serve
 one-click URLs:
 
