@@ -45,7 +45,8 @@ services:
 
   # Only containers with traefik.enable=true are exposed, reached over `miabi-proxy`.
   traefik:
-    image: traefik:v3.3
+    # v3.7 is the version measured in https://github.com/jkaninda/goma-gateway-vs-traefik
+    image: traefik:v3.7
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: gateway

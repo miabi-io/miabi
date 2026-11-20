@@ -128,11 +128,11 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 
 | You are | What you get | Guide |
 | --- | --- | --- |
-| A solo developer or homelabber | Side projects on one VPS or a mini PC, with Git-push deploys, TLS and backups | [One server](https://docs.miabi.io/docs/use-cases/single-node) · [Homelab](https://docs.miabi.io/docs/use-cases/homelab) |
-| A startup or company team | A workspace per team or stage, SSO, GitOps, and production kept apart from staging | [Teams and companies](https://docs.miabi.io/docs/use-cases/teams) |
-| A hosting provider or agency | A workspace per client, plans sold as products, quotas and white-label branding | [Hosting providers and agencies](https://docs.miabi.io/docs/use-cases/hosting-providers) |
-| A multi-tenant platform (Enterprise) | Organizations with their own users, sign-in and dedicated hardware | [Several organizations](https://docs.miabi.io/docs/use-cases/multiple-organizations) |
-| A university or training provider | A workspace per student or course, with sign-in through the university | [Universities and training](https://docs.miabi.io/docs/use-cases/education) |
+| A solo developer or homelabber | Deploy and manage your applications on your own server, VPS or homelab | [One server](https://docs.miabi.io/docs/use-cases/single-node) · [Homelab](https://docs.miabi.io/docs/use-cases/homelab) |
+| A startup or company | A private application platform for your teams, with GitOps, SSO and isolated environments | [Teams and companies](https://docs.miabi.io/docs/use-cases/teams) |
+| A hosting provider or MSP | Your own multi-tenant hosting platform, with customer workspaces, plans and quotas; white-label branding and premium tiers come with a Service Provider license | [Hosting providers and agencies](https://docs.miabi.io/docs/use-cases/hosting-providers) |
+| A platform serving several organizations (Enterprise) | Organizations with their own users, sign-in and dedicated infrastructure | [Several organizations](https://docs.miabi.io/docs/use-cases/multiple-organizations) |
+| A university or training provider | Isolated application environments for students, courses and training programs | [Universities and training](https://docs.miabi.io/docs/use-cases/education) |
 
 It grows from one server to a cluster to several regions without a reinstall. See **[all use cases](https://docs.miabi.io/docs/use-cases/overview/)**.
 
