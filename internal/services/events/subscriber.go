@@ -23,6 +23,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -38,6 +39,29 @@ type Subscriber struct {
 	releases  *repositories.ReleaseRepository
 	databases *repositories.DatabaseRepository
 	rec       Recorder
+	removed   *RemovalHook
+}
+
+// RemovalHook is filled in once the control manager exists, which is after the subscribers start.
+type RemovalHook struct {
+	fn atomic.Pointer[func(appID uint)]
+}
+
+func (h *RemovalHook) Set(fn func(appID uint)) { h.fn.Store(&fn) }
+
+func (h *RemovalHook) fire(appID uint) {
+	if h == nil {
+		return
+	}
+	if fn := h.fn.Load(); fn != nil {
+		(*fn)(appID)
+	}
+}
+
+// SetRemovedHook is told when an app's active container is removed outside Miabi.
+func (s *Subscriber) SetRemovedHook(h *RemovalHook) *Subscriber {
+	s.removed = h
+	return s
 }
 
 func NewSubscriber(d docker.Client, apps *repositories.ApplicationRepository, releases *repositories.ReleaseRepository, databases *repositories.DatabaseRepository, rec Recorder) *Subscriber {
@@ -111,6 +135,9 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	})
 
 	s.reconcileStatus(ev, app)
+	if ev.Action == "destroy" {
+		s.removed.fire(appID)
+	}
 }
 
 // Doesn't write instance status: the database service owns it and writing here would race its upgrade state machine.
