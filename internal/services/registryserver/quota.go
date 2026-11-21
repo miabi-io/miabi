@@ -139,8 +139,12 @@ func (s *Service) quotaExceeded(workspaceID uint) bool {
 	if quotaMB <= 0 {
 		return false // unlimited
 	}
-	idx, stale := s.cachedIndex(workspaceID)
-	return idx != nil && !stale && idx.total() >= int64(quotaMB)*1024*1024
+	idx, _ := s.cachedIndex(workspaceID)
+	// A pending push doesn't make the last count useless, or steady pushing would never be refused.
+	if idx == nil || s.usage.nowFn().Sub(idx.at) >= usageTTL {
+		return false
+	}
+	return idx.total() >= int64(quotaMB)*1024*1024
 }
 
 // cachedIndex reports the index and whether it is stale, starting a background refresh when it is.
@@ -152,13 +156,22 @@ func (s *Service) cachedIndex(workspaceID uint) (*usageIndex, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	idx := c.index[workspaceID]
-	now := c.nowFn()
-	stale := idx == nil || now.Sub(idx.at) >= usageTTL ||
-		(c.dirty[workspaceID].After(idx.at) && now.Sub(idx.at) >= usageDebounce)
-	if stale {
+	if idx == nil {
+		s.startRefreshLocked(workspaceID)
+		return nil, true
+	}
+	stale, walk := indexState(idx.at, c.dirty[workspaceID], c.nowFn())
+	if walk {
 		s.startRefreshLocked(workspaceID)
 	}
 	return idx, stale
+}
+
+// indexState reports any change since the index as stale; the debounce only spaces out the walks.
+func indexState(builtAt, changedAt, now time.Time) (stale, walk bool) {
+	expired := now.Sub(builtAt) >= usageTTL
+	changed := changedAt.After(builtAt)
+	return expired || changed, expired || (changed && now.Sub(builtAt) >= usageDebounce)
 }
 
 func (s *Service) peekIndex(workspaceID uint) *usageIndex {

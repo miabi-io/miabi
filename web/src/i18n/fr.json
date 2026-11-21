@@ -2784,7 +2784,8 @@
     },
     "registry": {
       "tagsDeleted": "{n} tag supprimé, environ {size} libéré au prochain nettoyage | {n} tags supprimés, environ {size} libérés au prochain nettoyage",
-      "tagsNotDeleted": "Non supprimés : {tags}"
+      "tagsNotDeleted": "Non supprimés : {tags}",
+      "repositoryDeleted": "{repo} supprimé, environ {size} libérés au prochain nettoyage"
     },
     "releases": {
       "approved": "Approbation enregistrée",
@@ -3451,7 +3452,23 @@
     "usageUpdated": "Mis à jour {when}",
     "usageRefreshing": "Actualisation…",
     "usageReclaimHint": "L’espace des tags supprimés est récupéré au prochain nettoyage nocturne.",
-    "repoSizeTitle": "Supprimer ce dépôt libérerait environ {size}"
+    "repoSizeTitle": "Supprimer ce dépôt libérerait environ {size}",
+    "selectByRule": "Sélectionner par règle…",
+    "ruleHint": "Sélectionne des images, pas des tags : les tags d’une même image sont sélectionnés ensemble. Rien n’est supprimé avant que vous confirmiez l’aperçu.",
+    "ruleKeepNewest": "Garder les {n} images les plus récentes",
+    "ruleKeepNewestLabel": "Nombre d’images récentes à garder",
+    "ruleOlderThan": "Seulement les images de plus de {n} jours",
+    "ruleOlderThanLabel": "Âge en jours",
+    "ruleNever": "Les images utilisées et celles sans date de build connue ne sont jamais sélectionnées.",
+    "ruleApply": "Sélectionner",
+    "ruleSelected": "Aucun tag ne correspond à la règle. | {n} tag sélectionné. | {n} tags sélectionnés.",
+    "ruleInUse": "{n} tag utilisé a été écarté. | {n} tags utilisés ont été écartés.",
+    "ruleUnknownAge": "{n} tag sans date de build connue a été écarté. | {n} tags sans date de build connue ont été écartés.",
+    "ruleTruncated": "{n} correspondent ; supprimez ceux-ci, puis relancez la règle pour le reste.",
+    "deleteRepository": "Supprimer le dépôt",
+    "deleteRepositoryHint": "Supprime tous ses tags. Refusé tant qu’une de ses images est utilisée.",
+    "deleteRepositoryConfirm": "Tous les tags de {repo} seront supprimés. Saisissez le nom du dépôt pour confirmer.",
+    "typeRepositoryName": "Nom du dépôt"
   },
   "releases": {
     "active": "active",

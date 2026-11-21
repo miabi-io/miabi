@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -203,26 +204,9 @@ func (c *Client) ManifestInfo(ctx context.Context, repo, ref string) (digest str
 
 // Recurses into index children so a multi-arch image counts each shared layer once.
 func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, map[string]int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(ref), nil)
+	m, digest, err := c.fetchManifest(ctx, repo, ref)
 	if err != nil {
 		return "", nil, err
-	}
-	req.Header.Set("Accept", manifestAccept)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusNotFound {
-		return "", nil, ErrNotFound
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("registry: manifest %s/%s: %s", repo, ref, resp.Status)
-	}
-	digest := resp.Header.Get("Docker-Content-Digest")
-	var m manifest
-	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		return "", nil, fmt.Errorf("registry: decode manifest %s/%s: %w", repo, ref, err)
 	}
 	sizes := make(map[string]int64)
 	if m.Config.Digest != "" {
@@ -242,6 +226,58 @@ func (c *Client) manifestBlobs(ctx context.Context, repo, ref string) (string, m
 		}
 	}
 	return digest, sizes, nil
+}
+
+func (c *Client) fetchManifest(ctx context.Context, repo, ref string) (*manifest, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/"+escapePath(repo)+"/manifests/"+url.PathEscape(ref), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Accept", manifestAccept)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, "", ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("registry: manifest %s/%s: %s", repo, ref, resp.Status)
+	}
+	var m manifest
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, "", fmt.Errorf("registry: decode manifest %s/%s: %w", repo, ref, err)
+	}
+	return &m, resp.Header.Get("Docker-Content-Digest"), nil
+}
+
+var errNoCreated = errors.New("registry: the image records no creation time")
+
+// ImageCreated is the image config's created time; a multi-arch index answers for its first image.
+func (c *Client) ImageCreated(ctx context.Context, repo, ref string) (time.Time, error) {
+	m, _, err := c.fetchManifest(ctx, repo, ref)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if m.Config.Digest == "" && len(m.Manifests) > 0 {
+		if m, _, err = c.fetchManifest(ctx, repo, m.Manifests[0].Digest); err != nil {
+			return time.Time{}, err
+		}
+	}
+	if m.Config.Digest == "" {
+		return time.Time{}, errNoCreated
+	}
+	var cfg struct {
+		Created time.Time `json:"created"`
+	}
+	if _, err := c.getJSON(ctx, "/v2/"+escapePath(repo)+"/blobs/"+url.PathEscape(m.Config.Digest), &cfg); err != nil {
+		return time.Time{}, err
+	}
+	if cfg.Created.IsZero() {
+		return time.Time{}, errNoCreated
+	}
+	return cfg.Created, nil
 }
 
 // The registry has no delete-by-tag (needs REGISTRY_STORAGE_DELETE_ENABLED); deleting untags every tag on it.

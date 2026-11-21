@@ -149,41 +149,34 @@ func TestQuotaReadsTheIndex(t *testing.T) {
 	if !svc.quotaExceeded(7) {
 		t.Fatal("2 MiB against a 1 MiB quota must refuse a push")
 	}
-	svc.usage.index[7].at = now.Add(-usageTTL)
+	svc.markDirty(7)
 	svc.usage.refresh[7] = true
+	if !svc.quotaExceeded(7) {
+		t.Fatal("a push in progress must not switch the quota off")
+	}
+	svc.usage.index[7].at = now.Add(-usageTTL)
 	if svc.quotaExceeded(7) {
-		t.Fatal("a stale index fails open, so a push never waits on a walk")
+		t.Fatal("an expired index fails open, so a push never waits on a walk")
 	}
 }
 
-func TestIndexStalenessAndDebounce(t *testing.T) {
-	svc := usageSvc(t)
-	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
-	svc.usage.nowFn = func() time.Time { return now }
-	if _, err := svc.rebuildIndex(context.Background(), 7); err != nil {
-		t.Fatal(err)
+func TestIndexState(t *testing.T) {
+	built := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name                string
+		changed, now        time.Time
+		wantStale, wantWalk bool
+	}{
+		{"fresh", time.Time{}, built.Add(time.Minute), false, false},
+		{"pushed inside the debounce", built.Add(time.Second), built.Add(2 * time.Second), true, false},
+		{"pushed, debounce over", built.Add(time.Second), built.Add(usageDebounce), true, true},
+		{"expired", time.Time{}, built.Add(usageTTL), true, true},
 	}
-	svc.usage.mu.Lock()
-	svc.usage.refresh[7] = true // hold off the background refresh so the test reads the flags only
-	svc.usage.mu.Unlock()
-
-	if _, stale := svc.cachedIndex(7); stale {
-		t.Fatal("a fresh index read as stale")
-	}
-	svc.markDirty(7)
-	now = now.Add(time.Second)
-	svc.markDirty(7)
-	if _, stale := svc.cachedIndex(7); stale {
-		t.Fatal("a push inside the debounce must not trigger another walk")
-	}
-	now = now.Add(usageDebounce)
-	if _, stale := svc.cachedIndex(7); !stale {
-		t.Fatal("after the debounce a pushed-to namespace is stale")
-	}
-	svc.usage.dirty = map[uint]time.Time{}
-	now = now.Add(usageTTL)
-	if _, stale := svc.cachedIndex(7); !stale {
-		t.Fatal("past the TTL the index is stale")
+	for _, c := range cases {
+		stale, walk := indexState(built, c.changed, c.now)
+		if stale != c.wantStale || walk != c.wantWalk {
+			t.Errorf("%s: stale %v walk %v, want %v %v", c.name, stale, walk, c.wantStale, c.wantWalk)
+		}
 	}
 }
 

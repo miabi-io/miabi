@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
@@ -238,6 +239,59 @@ func (h *RegistryServerHandler) DeleteTags(c *okapi.Context, req *DeleteTagsRequ
 	}
 	if !res.DryRun {
 		h.recordDelete(c, wsID, repo, req.Body.Tags, res.Removed)
+	}
+	return ok(c, res)
+}
+
+type SelectTagsRequest struct {
+	Body struct {
+		Repository string `json:"repository" required:"true"`
+		// KeepNewest keeps this many of the newest images; their tags are never picked.
+		KeepNewest int `json:"keep_newest" min:"0"`
+		// OlderThanDays picks images created more than this many days ago.
+		OlderThanDays int `json:"older_than_days" min:"0"`
+	} `json:"body"`
+}
+
+// SelectTags only picks; deleting is a separate, previewed request.
+func (h *RegistryServerHandler) SelectTags(c *okapi.Context, req *SelectTagsRequest) error {
+	sel, err := h.svc.SelectTags(c.Request().Context(), middlewares.WorkspaceID(c), strings.TrimSpace(req.Body.Repository),
+		registryserver.SelectRule{KeepNewest: req.Body.KeepNewest, OlderThanDays: req.Body.OlderThanDays}, time.Now())
+	switch {
+	case err == nil:
+		return ok(c, sel)
+	case errors.Is(err, registryserver.ErrNoRule), errors.Is(err, registryserver.ErrBadRule),
+		errors.Is(err, registryserver.ErrInvalidRepository):
+		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, registryserver.ErrNotFound):
+		return c.AbortNotFound("repository not found")
+	default:
+		return c.AbortInternalServerError("failed to select tags", err)
+	}
+}
+
+// DeleteRepository is all or nothing: one image in use keeps every tag.
+func (h *RegistryServerHandler) DeleteRepository(c *okapi.Context) error {
+	name, okName := repoParam(c)
+	if !okName {
+		return c.AbortBadRequest("a repository name is required")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	res, err := h.svc.DeleteRepository(c.Request().Context(), wsID, name)
+	if err != nil {
+		var inUse *registryserver.InUseError
+		if errors.As(err, &inUse) {
+			return c.AbortWithError(http.StatusConflict, err)
+		}
+		return h.deleteErr(c, err)
+	}
+	if h.audit != nil {
+		actor := middlewares.UserID(c)
+		h.audit.Record(audit.Entry{
+			ActorID: &actor, WorkspaceID: &wsID, Action: "registry.repository_delete",
+			TargetType: "registry_repository", TargetID: name, IP: c.RealIP(),
+			Metadata: map[string]any{"removed": res.Removed, "freed_bytes": res.FreedBytes},
+		})
 	}
 	return ok(c, res)
 }

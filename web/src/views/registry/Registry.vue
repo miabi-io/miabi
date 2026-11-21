@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { registryApi, type RegistryInfo, type RegistryRepository, type RegistryUsage } from '@/api/registry'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -62,14 +62,19 @@ const usedText = computed(() => (usage.value?.total_bytes ? formatBytes(usage.va
 const usageBarClass = computed(() => (usagePercent.value >= 95 ? 'bar-danger' : usagePercent.value >= 80 ? 'bar-warning' : ''))
 
 // The first read walks the registry, so it never blocks the repository list.
-async function loadUsage() {
+let usageRetry: ReturnType<typeof setTimeout> | undefined
+async function loadUsage(attempt = 0) {
+  clearTimeout(usageRetry)
   if (!wsId.value || !info.value?.enabled) return
   try {
     usage.value = (await registryApi.usage(wsId.value)).data.data
+    // A push or delete is being recounted; look again shortly rather than show the old number as current.
+    if (usage.value.stale && attempt < 10) usageRetry = setTimeout(() => loadUsage(attempt + 1), 3000)
   } catch {
     usage.value = null
   }
 }
+onBeforeUnmount(() => clearTimeout(usageRetry))
 
 async function loadInfo() {
   if (!wsId.value) return
