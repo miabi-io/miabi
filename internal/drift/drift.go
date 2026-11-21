@@ -34,6 +34,8 @@ const (
 	ClassUntracked = "untracked" // no miabi.* label — a hand-run resource
 	// ClassReplaced is a hand-recreated volume: same name and row, none of the data.
 	ClassReplaced = "replaced"
+	// ClassStopped is a container stopped outside Miabi: still there, exited, under a policy that would have restarted a crash.
+	ClassStopped = "stopped"
 )
 
 // Recommended actions per item.
@@ -45,6 +47,8 @@ const (
 	ActionRestore = "restore"
 	// ActionNone is drift Miabi reports but may not touch, such as the stack-owned platform gateway.
 	ActionNone = "none"
+	// ActionStart starts the same container again; nothing about it changes but its state.
+	ActionStart = "start"
 )
 
 // Owner kinds: the DB record class a managed resource belongs to.

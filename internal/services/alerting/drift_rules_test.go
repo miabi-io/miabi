@@ -77,3 +77,12 @@ func TestDatabaseDriftRaisesAStorageAlert(t *testing.T) {
 		t.Fatalf("database recovery = %+v; want it to resolve datavolume:database:5", got)
 	}
 }
+
+func TestStoppedContainerRaisesItsOwnAlert(t *testing.T) {
+	ev := driftEvent(models.EventDriftDetected, "container")
+	ev.Metadata["class"] = "stopped"
+	got := evaluate(ev, "api")
+	if len(got) != 1 || got[0].ruleKey != "workload_stopped" || got[0].dedupKey != "drift:app:7" {
+		t.Fatalf("got %+v; a stop is not a missing workload", got)
+	}
+}

@@ -21,6 +21,7 @@ package controlmanager
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -32,6 +33,8 @@ const (
 	// loopWindow and loopRestores open the breaker on something that keeps removing an app outside Miabi.
 	loopWindow   = 15 * time.Minute
 	loopRestores = 3
+	// A container that exits again this soon after a start was not really brought back.
+	reExitWindow = 30 * time.Second
 )
 
 // Leader reports whether this process leads the control plane. Satisfied by the cron manager.
@@ -80,4 +83,25 @@ func (a *attempt) loopedLocked(now time.Time) bool {
 	}
 	a.eventRestores = append(kept, now)
 	return len(a.eventRestores) >= loopRestores
+}
+
+// startAgain starts the same container, then counts the attempt as failed if it does not stay up.
+func (s *Service) startAgain(ctx context.Context, d actionable) error {
+	dc, err := s.nodes.For(d.it.nodeID)
+	if err != nil {
+		return err
+	}
+	if err := dc.StartContainer(ctx, d.it.containerID); err != nil {
+		return err
+	}
+	s.after(reExitWindow, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), sweepTimeout)
+		defer cancel()
+		c, err := dc.InspectContainer(ctx, d.it.containerID)
+		if err == nil && c.State == "running" {
+			return
+		}
+		s.failed(d, fmt.Errorf("the container exited again within %s of being started", reExitWindow))
+	})
+	return nil
 }

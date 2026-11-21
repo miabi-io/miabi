@@ -61,6 +61,7 @@ const KIND_LABELS: Record<string, string> = {
 
 const ACTION_LABELS: Record<string, string> = {
   redeploy: 'Redeploy in place',
+  start: 'Start it again',
   restore: 'Restore from a backup',
   none: 'Nothing Miabi may do',
   remove: 'Remove',
@@ -68,7 +69,8 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 function kindLabel(f: ControlManagerFinding): string {
-  return KIND_LABELS[f.kind] ?? f.kind
+  const kind = KIND_LABELS[f.kind] ?? f.kind
+  return f.class === 'stopped' ? `${kind}, stopped outside Miabi` : kind
 }
 
 // Where the finding's subject lives, so a row is a way in rather than an id to copy.

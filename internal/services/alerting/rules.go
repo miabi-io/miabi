@@ -192,6 +192,13 @@ func evaluateApp(e *models.AppEvent, appName string) []intent {
 			i.body = orDefault(e.Message, "The volume holding this app's data is gone. Restore it from a backup: Miabi will not recreate the volume, and redeploying would start the app on an empty one.")
 			return []intent{i}
 		}
+		if e.Metadata["class"] == "stopped" {
+			i.ruleKey, i.dedupKey = "workload_stopped", driftKey
+			i.severity = models.AlertWarning
+			i.title = fmt.Sprintf("Stopped outside Miabi — %s", appName)
+			i.body = orDefault(e.Message, "The app's container was stopped outside Miabi, so it is serving nothing.")
+			return []intent{i}
+		}
 		i.ruleKey, i.dedupKey = "workload_missing", driftKey
 		i.severity = models.AlertWarning
 		i.title = fmt.Sprintf("Workload missing — %s", appName)

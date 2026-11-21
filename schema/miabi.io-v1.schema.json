@@ -83,6 +83,10 @@
           },
           "type": "array"
         },
+        "reconcile": {
+          "$ref": "#/$defs/ReconcileSpec",
+          "description": "Reconcile is what the control manager does when the workload changes outside Miabi; omitted keeps the console's choice."
+        },
         "registry": {
           "description": "Registry empty means an anonymous pull; an undeclared name resolves against existing workspace credentials.",
           "type": "string"
@@ -874,6 +878,26 @@
             "$ref": "#"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ReconcileSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "description": "Policy inherit follows the platform's control manager mode; off, observe and enforce override it.",
+          "enum": [
+            "inherit",
+            "off",
+            "observe",
+            "enforce"
+          ],
+          "type": "string"
+        },
+        "restartExternalStops": {
+          "description": "RestartExternalStops lets enforce start the container again after a docker stop outside Miabi.",
+          "type": "boolean"
         }
       },
       "type": "object"

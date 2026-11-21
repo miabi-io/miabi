@@ -27,6 +27,7 @@ import (
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/drift"
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 const (
@@ -45,6 +46,8 @@ const (
 	gone
 	// The row survived, the data did not.
 	replaced
+	// The container is there but exited, under a restart policy that would have restarted a crash: a docker stop.
+	stopped
 )
 
 type observation struct {
@@ -129,7 +132,7 @@ func (s *Service) observeNode(ctx context.Context, nodeID uint, items []*item, s
 	for _, it := range items {
 		switch it.kind {
 		case kindContainer:
-			seen[it.key] = observation{kind: kindContainer, state: containerState(containers, it.containerID)}
+			seen[it.key] = observation{kind: kindContainer, state: containerState(containers, it.containerID, restartsCrashes(it))}
 		case kindGateway:
 			seen[it.key] = observation{kind: kindGateway, state: gatewayState(ctx, dc, it.gatewayName)}
 		case kindVolume:
@@ -177,13 +180,28 @@ func gatewayState(ctx context.Context, dc docker.Client, name string) state {
 	}
 }
 
-func containerState(containers []docker.Container, containerID string) state {
+// Under always or unless-stopped Docker brings a crashed container back itself, so one left exited was stopped.
+func containerState(containers []docker.Container, containerID string, autoRestart bool) state {
 	for _, c := range containers {
 		if strings.HasPrefix(c.ID, containerID) {
+			if autoRestart && c.State == "exited" {
+				return stopped
+			}
 			return intact
 		}
 	}
 	return gone
+}
+
+func restartsCrashes(it *item) bool {
+	if it.app == nil {
+		return false
+	}
+	switch it.app.RestartPolicy {
+	case "", models.RestartAlways, models.RestartUnlessStopped:
+		return true
+	}
+	return false
 }
 
 // The replaced rule is shared with the guard that refuses to start a workload whose data is gone.
@@ -203,8 +221,11 @@ func volumeState(live map[string]docker.Volume, name, recorded string) (state, s
 
 // class names the drift a state represents, for the report and the events.
 func (st state) class() string {
-	if st == replaced {
+	switch st {
+	case replaced:
 		return drift.ClassReplaced
+	case stopped:
+		return drift.ClassStopped
 	}
 	return drift.ClassMissing
 }

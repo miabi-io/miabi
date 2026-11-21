@@ -705,7 +705,9 @@
       "waitHealthyHint": "Deploys wait for the container to report healthy before going live.",
       "imageProbeHint": "Uses the image's own HEALTHCHECK, if it declares one. Deploys don't wait for it.",
       "noneProbeHint": "No check at all: the image's own HEALTHCHECK is turned off too. Use it for workers and schedulers that serve no HTTP.",
-      "applyHint": "Applied from a manifest — the next {cmd} overwrites changes made here."
+      "applyHint": "Applied from a manifest — the next {cmd} overwrites changes made here.",
+      "restartExternalStops": "Start it again if it is stopped outside Miabi",
+      "restartExternalStopsHint": "When someone runs docker stop on this app's container, the control manager starts the same container again. Needs Redeploy in place, set here or platform-wide. Crashes stay with the restart policy."
     },
     "shell": "Shell",
     "source": {

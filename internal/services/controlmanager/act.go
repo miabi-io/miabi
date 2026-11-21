@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/metrics"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
@@ -127,6 +128,9 @@ func (s *Service) restore(ctx context.Context, d actionable) (*models.Deployment
 	if d.it.kind == kindGateway {
 		return nil, s.gateways.EnsureGateway(ctx, d.it.nodeID)
 	}
+	if d.f.Class == drift.ClassStopped {
+		return nil, s.startAgain(ctx, d)
+	}
 	return s.redeployer.ReconcileRedeploy(d.it.app, d.reason())
 }
 
@@ -138,6 +142,9 @@ type actionable struct {
 
 // reason is what the action is recorded as having been for.
 func (a actionable) reason() string {
+	if a.f.Class == drift.ClassStopped {
+		return "the app's container was stopped outside Miabi"
+	}
 	switch a.f.Kind {
 	case kindGateway:
 		return "the node's gateway was not running"
@@ -160,6 +167,9 @@ func (a actionable) trigger() string {
 func (a actionable) action() string {
 	if a.f.Kind == kindGateway {
 		return "gateway_ensure"
+	}
+	if a.f.Class == drift.ClassStopped {
+		return "start"
 	}
 	return "redeploy"
 }
@@ -189,6 +199,9 @@ func (s *Service) due(items []item, now time.Time) []actionable {
 		}
 		f := s.findings[it.key]
 		if f == nil || !f.Confirmed {
+			continue
+		}
+		if f.Class == drift.ClassStopped && (it.app == nil || !it.app.RestartExternalStops) {
 			continue
 		}
 		if a := s.attempts[it.key]; a != nil && (a.breakerOpen || now.Before(a.nextAt)) {
@@ -285,9 +298,15 @@ func (s *Service) started(d actionable, dep *models.Deployment) {
 	if dep != nil {
 		meta["deployment_id"] = strconv.FormatUint(uint64(dep.ID), 10)
 	}
-	s.emitFor(d, models.EventReconcileRedeploy, models.SeverityWarning,
-		"Restored by the control manager: "+d.reason(), meta)
-	s.record4audit(d, "reconcile.restore", map[string]any{"reason": d.reason(), "attempt": tries, "trigger": d.trigger()})
+	if d.f.Class == drift.ClassStopped {
+		s.emitFor(d, models.EventReconcileStarted, models.SeverityWarning,
+			"Started again by the control manager: "+d.reason(), meta)
+		s.record4audit(d, "reconcile.start", map[string]any{"reason": d.reason(), "attempt": tries, "trigger": d.trigger()})
+	} else {
+		s.emitFor(d, models.EventReconcileRedeploy, models.SeverityWarning,
+			"Restored by the control manager: "+d.reason(), meta)
+		s.record4audit(d, "reconcile.restore", map[string]any{"reason": d.reason(), "attempt": tries, "trigger": d.trigger()})
+	}
 	if looped {
 		metrics.ControlManagerAction("breaker", "open", d.trigger())
 		s.emitFor(d, models.EventReconcileBreakerOpen, models.SeverityError,

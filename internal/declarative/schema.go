@@ -145,6 +145,8 @@ type ApplicationSpec struct {
 	ReloadPolicy string `yaml:"reloadPolicy,omitempty" json:"reloadPolicy,omitempty"`
 	// MiabiEnv false stops Miabi setting its MIABI_* variables; omitted keeps the current choice.
 	MiabiEnv *bool `yaml:"miabiEnv,omitempty" json:"miabiEnv,omitempty"`
+	// Reconcile is what the control manager does when the workload changes outside Miabi; omitted keeps the console's choice.
+	Reconcile *ReconcileSpec `yaml:"reconcile,omitempty" json:"reconcile,omitempty"`
 	// Deprecated: use security.runAsUser. Still accepted; setting both is an error.
 	DeprecatedRunAsUser string `yaml:"runAsUser,omitempty" json:"runAsUser,omitempty"`
 	// Deprecated: use deployment.strategy. Still accepted; setting both is an error.
@@ -245,6 +247,15 @@ type PortSpec struct {
 	HostPort int  `yaml:"hostPort,omitempty" json:"hostPort,omitempty"`
 	// Primary marks the port behind MIABI_PORT, the internal URL and the bare external host (default: the first port).
 	Primary bool `yaml:"primary,omitempty" json:"primary,omitempty"`
+}
+
+var reconcilePolicies = []string{"inherit", "off", "observe", "enforce"}
+
+type ReconcileSpec struct {
+	// Policy inherit follows the platform's control manager mode; off, observe and enforce override it.
+	Policy string `yaml:"policy,omitempty" json:"policy,omitempty"`
+	// RestartExternalStops lets enforce start the container again after a docker stop outside Miabi.
+	RestartExternalStops *bool `yaml:"restartExternalStops,omitempty" json:"restartExternalStops,omitempty"`
 }
 
 // PrimaryPort is the port marked primary, else the first; false without ports.

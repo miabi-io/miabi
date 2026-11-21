@@ -42,6 +42,7 @@ export interface AppResourceInput {
   image_pull_policy?: ImagePullPolicy
   /** Omitted leaves it unchanged. */
   reconcile_policy?: ReconcilePolicy
+  restart_external_stops?: boolean
   healthcheck_type?: HealthcheckType
   healthcheck_http_path?: string
   healthcheck_port?: number

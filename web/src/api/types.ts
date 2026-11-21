@@ -1495,6 +1495,7 @@ export interface Application {
   image_pull_policy?: ImagePullPolicy
   // How much the control manager may do about this app, overriding the platform mode.
   reconcile_policy?: ReconcilePolicy
+  restart_external_stops?: boolean
   runtime_kind?: RuntimeKind
   replicas?: number
   placement_constraints?: string[]

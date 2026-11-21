@@ -705,7 +705,9 @@
       "waitHealthyHint": "Les déploiements attendent que le conteneur se déclare sain avant la mise en service.",
       "imageProbeHint": "Utilise le HEALTHCHECK de l’image, s’il en déclare un. Les déploiements ne l’attendent pas.",
       "noneProbeHint": "Aucune vérification : le HEALTHCHECK de l’image est aussi désactivé. À utiliser pour les workers et planificateurs qui ne servent pas de HTTP.",
-      "applyHint": "Appliquée depuis un manifeste — le prochain {cmd} écrase les modifications faites ici."
+      "applyHint": "Appliquée depuis un manifeste — le prochain {cmd} écrase les modifications faites ici.",
+      "restartExternalStops": "Le redémarrer s’il est arrêté en dehors de Miabi",
+      "restartExternalStopsHint": "Quand quelqu’un exécute docker stop sur le conteneur de cette application, le gestionnaire de contrôle redémarre ce même conteneur. Nécessite Redéployer sur place, réglé ici ou pour toute la plateforme. Les plantages restent gérés par la politique de redémarrage."
     },
     "shell": "Shell",
     "source": {

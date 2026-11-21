@@ -300,15 +300,19 @@ func TestRemovedContainerIsReportedOnceConfirmed(t *testing.T) {
 	}
 }
 
-// A crash leaves its container behind, which is the restart policy's business and the user's, not drift.
+// Under no or on-failure an exit is the app's own business, not drift.
 func TestExitedContainerIsNotMissing(t *testing.T) {
-	h := newHarness()
-	*h.apps = fakeApps{containerApp(7, 1)}
-	h.releases[7] = "c7"
-	h.nodes.engines[1].containers = []docker.Container{{ID: "c7", State: "exited", ExitCode: 137}}
+	for _, policy := range []models.RestartPolicy{models.RestartNo, models.RestartOnFailure} {
+		h := newHarness()
+		app := containerApp(7, 1)
+		app.RestartPolicy = policy
+		*h.apps = fakeApps{app}
+		h.releases[7] = "c7"
+		h.nodes.engines[1].containers = []docker.Container{{ID: "c7", State: "exited", ExitCode: 137}}
 
-	if st := h.confirm(t); len(st.Findings) != 0 {
-		t.Fatalf("findings = %+v; an exited container was reported missing", st.Findings)
+		if st := h.confirm(t); len(st.Findings) != 0 {
+			t.Fatalf("%s: findings = %+v; an exited container was reported as drift", policy, st.Findings)
+		}
 	}
 }
 
