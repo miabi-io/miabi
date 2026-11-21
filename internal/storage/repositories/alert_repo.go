@@ -108,6 +108,29 @@ func (r *AlertRepository) Resolve(workspaceID uint, dedupKey string, at time.Tim
 	return out, err
 }
 
+// ResolveBySubject closes every active alert about one subject and returns them.
+func (r *AlertRepository) ResolveBySubject(workspaceID uint, subjectRef string, at time.Time) ([]models.Alert, error) {
+	var out []models.Alert
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("workspace_id = ? AND subject_ref = ? AND state IN ?",
+				workspaceID, subjectRef, []models.AlertState{models.AlertFiring, models.AlertAcknowledged}).
+			Find(&out).Error; err != nil {
+			return err
+		}
+		for i := range out {
+			out[i].State = models.AlertResolved
+			out[i].ResolvedAt = &at
+			out[i].LastSeen = at
+			if err := tx.Save(&out[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 func (r *AlertRepository) SetState(workspaceID, id uint, state models.AlertState) (*models.Alert, error) {
 	var a models.Alert
 	if err := r.db.Where("workspace_id = ? AND id = ?", workspaceID, id).First(&a).Error; err != nil {

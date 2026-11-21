@@ -36,6 +36,7 @@ func NotificationTopic(userID uint) string { return fmt.Sprintf("notifications:u
 type AlertStore interface {
 	Fire(a *models.Alert) (*models.Alert, bool, error)
 	Resolve(workspaceID uint, dedupKey string, at time.Time) (*models.Alert, error)
+	ResolveBySubject(workspaceID uint, subjectRef string, at time.Time) ([]models.Alert, error)
 	ListActiveByCategory(category models.AlertCategory) ([]models.Alert, error)
 }
 
@@ -123,6 +124,33 @@ func (e *Engine) OnEvent(ev *models.AppEvent) {
 			e.doFire(ctx, ev.WorkspaceID, in)
 		case resolve:
 			e.doResolve(ctx, ev.WorkspaceID, in.dedupKey)
+		case resolveSubject:
+			e.doCloseSubject(ctx, ev.WorkspaceID, in.subjectRef, in.body)
+		}
+	}
+}
+
+// Nothing recovered, so the inbox says why the alerts closed and does not resurface them.
+func (e *Engine) doCloseSubject(ctx context.Context, workspaceID uint, subjectRef, reason string) {
+	closed, err := e.alerts.ResolveBySubject(workspaceID, subjectRef, e.now().UTC())
+	if err != nil {
+		logger.Warn("alerting: closing a subject's alerts failed", "subject", subjectRef, "error", err)
+		return
+	}
+	for i := range closed {
+		a := &closed[i]
+		_ = e.counter.Reset(ctx, a.DedupKey)
+		tmpl := models.Notification{
+			Kind: "info", Severity: models.AlertInfo,
+			Title: "Closed — " + subjectName(a.Title), Body: reason,
+		}
+		users, err := e.inbox.ApplyAlertUpdate(a.ID, tmpl, false)
+		if err != nil {
+			logger.Warn("alerting: close fan-out failed", "alert", a.ID, "error", err)
+			continue
+		}
+		for _, uid := range users {
+			e.push(uid)
 		}
 	}
 }
