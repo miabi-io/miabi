@@ -192,6 +192,11 @@ func (s *Service) restartSource(ctx context.Context, m *models.LocationMigration
 
 // removeRuntime removes the app's container or service from one side of the move.
 func (s *Service) removeRuntime(ctx context.Context, app *models.Application, clusterID, serverID uint, active bool) {
+	if active {
+		if err := s.Apps.SetStatus(app.ID, models.AppStatusStopped); err != nil {
+			logger.Warn("location migration: recording the app as stopped failed", "app", app.Name, "error", err)
+		}
+	}
 	if app.RuntimeKind == models.RuntimeService {
 		if !s.Clusters.IsSwarm(clusterID) {
 			return
