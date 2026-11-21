@@ -56,6 +56,8 @@ type DeleteResult struct {
 	Tags   []TagOutcome `json:"tags"`
 	// Removed is every tag gone afterwards, siblings included; for a dry run, every tag that would go.
 	Removed []string `json:"removed"`
+	// FreedBytes is what no image left in the workspace still uses; disk shrinks at the next garbage collection.
+	FreedBytes int64 `json:"freed_bytes"`
 }
 
 // DeleteTags deletes each requested tag's image once; a registry deletes by digest, so every tag on it goes too.
@@ -109,6 +111,14 @@ func (s *Service) DeleteTags(ctx context.Context, workspaceID uint, image string
 		}
 		res.Tags = append(res.Tags, o)
 	}
+
+	var deletable []string
+	for _, d := range order {
+		if !protected[d] {
+			deletable = append(deletable, d)
+		}
+	}
+	res.FreedBytes = s.freedBytes(ctx, workspaceID, strings.TrimPrefix(repo, Namespace(workspaceID)+"/"), repo, deletable)
 
 	results := map[string]string{}
 	errs := map[string]string{}
@@ -211,16 +221,6 @@ func (s *Service) resolveDigests(ctx context.Context, repo string, tags []string
 	return digests, failures
 }
 
-// The next push quota check then re-reads usage instead of counting what was just deleted.
-func (s *Service) forgetUsage(workspaceID uint) {
-	if s.usage == nil {
-		return
-	}
-	s.usage.mu.Lock()
-	delete(s.usage.at, workspaceID)
-	s.usage.mu.Unlock()
-}
-
 // protectedIn is the digests in repo a live or pinned release uses, whether it names the digest or only a tag.
 func (s *Service) protectedIn(ctx context.Context, repo string, digestOf map[string]string) (map[string]bool, error) {
 	out := map[string]bool{}
@@ -276,4 +276,32 @@ func splitImageRef(ref string) (path, tag, digest string) {
 		tag = "latest"
 	}
 	return ref, tag, digest
+}
+
+// freedBytes is an estimate from the usage index taken before the delete; images pushed since are read directly.
+func (s *Service) freedBytes(ctx context.Context, workspaceID uint, image, repo string, digests []string) int64 {
+	if len(digests) == 0 {
+		return 0
+	}
+	idx := s.peekIndex(workspaceID)
+	if idx == nil {
+		var err error
+		if idx, err = s.rebuildIndex(ctx, workspaceID); err != nil {
+			return 0
+		}
+	}
+	view := &usageIndex{tags: idx.tags, blobs: make(map[string]map[string]int64, len(idx.blobs)+len(digests))}
+	for d, b := range idx.blobs {
+		view.blobs[d] = b
+	}
+	set := make(map[string]bool, len(digests))
+	for _, d := range digests {
+		set[d] = true
+		if _, ok := view.blobs[d]; !ok {
+			if sizes, err := s.reg.BlobSizes(ctx, repo, d); err == nil {
+				view.blobs[d] = sizes
+			}
+		}
+	}
+	return view.freedBy(image, set)
 }

@@ -1735,6 +1735,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		return registryServerService.RuntimeStatus(ctx, dockerClient)
 	})
 	r.h.adminRegistry.SetRepoCount(registryServerService.RepositoryCount)
+	r.h.adminRegistry.SetWorkspaceNamer(func(id uint) string {
+		if ws, err := workspaceRepo.FindByID(id); err == nil {
+			return ws.Name
+		}
+		return ""
+	})
 	go func() {
 		if err := registryServerService.Ensure(context.Background(), dockerClient); err != nil {
 			logger.Warn("internal registry ensure on boot failed", "error", err)

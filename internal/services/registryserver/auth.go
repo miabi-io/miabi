@@ -122,6 +122,9 @@ func (s *Service) Authorize(in AuthInput) AuthResult {
 	if push && s.quotaExceeded(ws.ID) {
 		return AuthResult{Status: http.StatusForbidden, Reason: "workspace registry storage quota exceeded"}
 	}
+	if push {
+		s.markDirty(ws.ID)
+	}
 	return AuthResult{
 		Status:      http.StatusOK,
 		Workspace:   ws.Name,

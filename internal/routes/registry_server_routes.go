@@ -63,6 +63,15 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Summary:     "Get the registry container's live state and resource usage",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        "/registry/usage",
+			Group:       admin,
+			Middlewares: adminMw,
+			Handler:     r.h.adminRegistry.Usage,
+			Summary:     "Registry storage used by each workspace",
+			Response:    &dto.Response[handlers.AdminRegistryUsage]{},
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        "/registry/gc",
 			Group:       admin,
@@ -114,6 +123,15 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Handler:     r.h.registryServer.DeleteTag,
 			Summary:     "Delete a registry tag, and every tag on the same image",
 			Response:    &dto.Response[handlers.DeleteTagResponse]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/registry/usage",
+			Group:       ws,
+			Middlewares: scoped,
+			Handler:     r.h.registryServer.Usage,
+			Summary:     "Registry storage used by the workspace, per repository",
+			Response:    &dto.Response[registryserver.Usage]{},
 		},
 		{
 			Method:      http.MethodPost,

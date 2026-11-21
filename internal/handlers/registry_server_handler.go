@@ -190,6 +190,14 @@ func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
 	return paginated(c, tags, int64(total), page, size)
 }
 
+func (h *RegistryServerHandler) Usage(c *okapi.Context) error {
+	u, err := h.svc.Usage(c.Request().Context(), middlewares.WorkspaceID(c))
+	if err != nil {
+		return c.AbortInternalServerError("failed to compute registry usage", err)
+	}
+	return ok(c, u)
+}
+
 type DeleteTagResponse struct {
 	Message string `json:"message"`
 	// Removed includes every tag that pointed at the same image, which the registry deletes with it.
