@@ -1486,7 +1486,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminControlManager: handlers.NewAdminControlManagerHandler(controlManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),
-			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo),
+			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo, auditLogger),
 			components: handlers.NewComponentHandler(components.NewService(components.Probes{
 				RegistryEnabled: func() bool {
 					st, err := registryServerService.Get()
@@ -1735,6 +1735,12 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		return registryServerService.RuntimeStatus(ctx, dockerClient)
 	})
 	r.h.adminRegistry.SetRepoCount(registryServerService.RepositoryCount)
+	r.h.adminRegistry.SetWorkspaceNamer(func(id uint) string {
+		if ws, err := workspaceRepo.FindByID(id); err == nil {
+			return ws.Name
+		}
+		return ""
+	})
 	go func() {
 		if err := registryServerService.Ensure(context.Background(), dockerClient); err != nil {
 			logger.Warn("internal registry ensure on boot failed", "error", err)

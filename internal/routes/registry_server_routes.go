@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/registryserver"
 )
 
 func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
@@ -60,6 +61,15 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Middlewares: adminMw,
 			Handler:     r.h.adminRegistry.Runtime,
 			Summary:     "Get the registry container's live state and resource usage",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/registry/usage",
+			Group:       admin,
+			Middlewares: adminMw,
+			Handler:     r.h.adminRegistry.Usage,
+			Summary:     "Registry storage used by each workspace",
+			Response:    &dto.Response[handlers.AdminRegistryUsage]{},
 		},
 		{
 			Method:      http.MethodPost,
@@ -111,8 +121,27 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Group:       ws,
 			Middlewares: []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(models.WorkspaceRoleDeveloper)},
 			Handler:     r.h.registryServer.DeleteTag,
-			Summary:     "Delete a registry tag",
-			Response:    &dto.Response[dto.MessageData]{},
+			Summary:     "Delete a registry tag, and every tag on the same image",
+			Response:    &dto.Response[handlers.DeleteTagResponse]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/{workspace}/registry/usage",
+			Group:       ws,
+			Middlewares: scoped,
+			Handler:     r.h.registryServer.Usage,
+			Summary:     "Registry storage used by the workspace, per repository",
+			Response:    &dto.Response[registryserver.Usage]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/{workspace}/registry/repository/tags/delete",
+			Group:       ws,
+			Middlewares: []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(models.WorkspaceRoleDeveloper)},
+			Handler:     okapi.H(r.h.registryServer.DeleteTags),
+			Summary:     "Delete several registry tags, or preview it with dry_run",
+			Request:     &handlers.DeleteTagsRequest{},
+			Response:    &dto.Response[registryserver.DeleteResult]{},
 		},
 
 		// Unauthenticated, gateway-only; hit on every /v2/* request to allow/deny by docker Basic credentials.

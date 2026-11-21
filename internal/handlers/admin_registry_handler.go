@@ -22,8 +22,11 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
@@ -43,6 +46,7 @@ type AdminRegistryHandler struct {
 	gc        func(context.Context) error
 	runtime   func(context.Context) (*registryserver.Runtime, error)
 	repoCount func(context.Context) (int, error)
+	wsName    func(id uint) string
 }
 
 // SetRuntime wires the live container status/usage reader.
@@ -62,6 +66,52 @@ func (h *AdminRegistryHandler) SetEnsure(fn func(context.Context) error) { h.ens
 
 // SetGC wires the on-demand garbage-collection callback.
 func (h *AdminRegistryHandler) SetGC(fn func(context.Context) error) { h.gc = fn }
+
+func (h *AdminRegistryHandler) SetWorkspaceNamer(fn func(id uint) string) { h.wsName = fn }
+
+type WorkspaceRegistryUsage struct {
+	WorkspaceID  uint   `json:"workspace_id"`
+	Workspace    string `json:"workspace"`
+	TotalBytes   int64  `json:"total_bytes"`
+	Repositories int    `json:"repositories"`
+	// Pending means the workspace's usage is being computed for the first time.
+	Pending    bool       `json:"pending"`
+	ComputedAt *time.Time `json:"computed_at,omitempty"`
+}
+
+type AdminRegistryUsage struct {
+	QuotaBytes int64                    `json:"quota_bytes"`
+	Workspaces []WorkspaceRegistryUsage `json:"workspaces"`
+}
+
+// Usage serves what is cached and starts computing the rest, so the page never waits on walking every namespace.
+func (h *AdminRegistryHandler) Usage(c *okapi.Context) error {
+	ids, err := h.svc.Namespaces(c.Request().Context())
+	if err != nil {
+		return c.AbortInternalServerError("failed to list registry namespaces", err)
+	}
+	out := AdminRegistryUsage{Workspaces: []WorkspaceRegistryUsage{}}
+	if st, err := h.svc.Get(); err == nil && st.PerWorkspaceQuotaMB > 0 {
+		out.QuotaBytes = int64(st.PerWorkspaceQuotaMB) * 1024 * 1024
+	}
+	for _, id := range ids {
+		row := WorkspaceRegistryUsage{WorkspaceID: id, Workspace: fmt.Sprintf("workspace #%d", id)}
+		if h.wsName != nil {
+			if n := h.wsName(id); n != "" {
+				row.Workspace = n
+			}
+		}
+		if u := h.svc.CachedUsage(id); u != nil {
+			row.TotalBytes, row.Repositories, row.ComputedAt = u.TotalBytes, len(u.Repositories), u.ComputedAt
+		} else {
+			row.Pending = true
+			h.svc.WarmUsage(id)
+		}
+		out.Workspaces = append(out.Workspaces, row)
+	}
+	sort.Slice(out.Workspaces, func(i, j int) bool { return out.Workspaces[i].TotalBytes > out.Workspaces[j].TotalBytes })
+	return ok(c, out)
+}
 
 // RunGC triggers a registry garbage collection (read-only during the collect).
 func (h *AdminRegistryHandler) RunGC(c *okapi.Context) error {

@@ -31,8 +31,11 @@ import (
 // Provenance is always empty: the delete path doesn't consult it.
 type stubCatalog struct {
 	digests map[string]bool
+	refs    map[string]bool
 	rows    map[string]models.Image
 }
+
+func (s stubCatalog) ProtectedRefs() (map[string]bool, error) { return s.refs, nil }
 
 func (s stubCatalog) ProtectedDigests() (map[string]bool, error) {
 	if s.digests == nil {
@@ -50,7 +53,7 @@ func TestDeleteTagRefusesImageInUse(t *testing.T) {
 	svc := listSvc(t)
 	svc.SetCatalog(stubCatalog{digests: map[string]bool{"sha256:abc": true}}) // web:1.0
 
-	err := svc.DeleteTag(context.Background(), 7, "web", "1.0")
+	_, err := svc.DeleteTag(context.Background(), 7, "web", "1.0")
 	if !errors.Is(err, ErrTagInUse) {
 		t.Fatalf("DeleteTag = %v, want ErrTagInUse", err)
 	}
@@ -60,7 +63,7 @@ func TestDeleteTagAllowsUnusedImage(t *testing.T) {
 	svc := listSvc(t)
 	svc.SetCatalog(stubCatalog{digests: map[string]bool{"sha256:somethingelse": true}})
 
-	if err := svc.DeleteTag(context.Background(), 7, "web", "1.0"); err != nil {
+	if _, err := svc.DeleteTag(context.Background(), 7, "web", "1.0"); err != nil {
 		t.Fatalf("DeleteTag: %v", err)
 	}
 }
@@ -70,7 +73,7 @@ func TestDeleteTagFailsClosedWhenProtectionUnknown(t *testing.T) {
 	svc := listSvc(t)
 	svc.SetCatalog(stubCatalog{digests: nil})
 
-	if err := svc.DeleteTag(context.Background(), 7, "web", "1.0"); err == nil {
+	if _, err := svc.DeleteTag(context.Background(), 7, "web", "1.0"); err == nil {
 		t.Fatal("want an error when the protected set can't be read")
 	}
 }
