@@ -316,7 +316,7 @@ function onGitRepoSelect() {
 }
 
 function badge(status: string) {
-  return status === 'running' ? 'badge-success' : status === 'failed' ? 'badge-danger' : status === 'deploying' ? 'badge-warning' : 'badge-neutral'
+  return status === 'running' ? 'badge-success' : status === 'failed' ? 'badge-danger' : ['deploying', 'stopping', 'deleting'].includes(status) ? 'badge-warning' : 'badge-neutral'
 }
 
 function formatCreated(ts?: string) {

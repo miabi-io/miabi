@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/drift"
 	"github.com/miabi-io/miabi/internal/models"
@@ -54,6 +55,8 @@ const (
 	nodeGrace = time.Minute
 	// So a container caught between remove and run by Miabi's own deploy is never taken for deleted.
 	confirmAfter = 2
+	// Longer than any stop or delete takes, so only one a crash interrupted is settled.
+	settleAfter = 5 * time.Minute
 )
 
 // NodeDocker resolves node engines. Satisfied by *nodes.Clients.
@@ -147,6 +150,9 @@ type Service struct {
 	configs   ConfigStore
 	auditor   Auditor
 
+	staleTransitional func(before time.Time) ([]models.Application, error)
+	settle            func(ctx context.Context, app *models.Application) error
+
 	mu              sync.Mutex
 	findings        map[string]*Finding // by item key
 	blocked         map[uint]string     // app id -> why it must not be redeployed
@@ -200,8 +206,32 @@ func (s *Service) Tick() error {
 	return s.Sweep(ctx)
 }
 
+// SetTransitional lets the sweep finish stops and deletes a crash left half done.
+func (s *Service) SetTransitional(list func(before time.Time) ([]models.Application, error), settle func(ctx context.Context, app *models.Application) error) {
+	s.staleTransitional, s.settle = list, settle
+}
+
+// Runs whatever the mode: finishing Miabi's own stop or delete is bookkeeping, not enforcement.
+func (s *Service) settleTransitional(ctx context.Context) {
+	if s.staleTransitional == nil || s.settle == nil {
+		return
+	}
+	apps, err := s.staleTransitional(s.now().Add(-settleAfter))
+	if err != nil {
+		logger.Warn("control manager: listing interrupted stops and deletes failed", "error", err)
+		return
+	}
+	for i := range apps {
+		if err := s.settle(ctx, &apps[i]); err != nil {
+			logger.Warn("control manager: settling an interrupted operation failed",
+				"app", apps[i].Name, "app_id", apps[i].ID, "status", apps[i].Status, "error", err)
+		}
+	}
+}
+
 // Sweep observes every expected workload once and updates the findings.
 func (s *Service) Sweep(ctx context.Context) error {
+	s.settleTransitional(ctx)
 	if s.Mode() == ModeOff {
 		s.reset()
 		return nil

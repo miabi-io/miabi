@@ -73,6 +73,8 @@ var (
 	ErrReleasePinned      = errors.New("cannot delete a pinned release")
 	ErrStackNotFound      = errors.New("stack not found in workspace")
 	ErrAppRunning         = errors.New("stop the application before deleting it")
+	ErrAppDeleting        = errors.New("the application is being deleted")
+	ErrAppStopping        = errors.New("the application is stopping; try again once it has stopped")
 	ErrNodeMismatch       = errors.New("the volume is on a different node than this application")
 	// ErrNodeConstraintConflict refuses a node pin beside a raw constraint that also picks the node.
 	ErrNodeConstraintConflict = errors.New("placement.node and a node.id or node.hostname constraint both choose the node; keep one")
@@ -819,6 +821,15 @@ type LiveStatus struct {
 
 // LiveStatus falls back to the stored status when there is no running container.
 func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveStatus {
+	ls := s.liveStatus(ctx, app)
+	// The container's state lags a stop or delete in progress; the operation is what the user should see.
+	if app.Status == models.AppStatusStopping || app.Status == models.AppStatusDeleting {
+		ls.Status = string(app.Status)
+	}
+	return ls
+}
+
+func (s *Service) liveStatus(ctx context.Context, app *models.Application) LiveStatus {
 	ls := LiveStatus{Status: string(app.Status), StoredStatus: app.Status}
 	if app.RuntimeKind == models.RuntimeService {
 		return s.serviceLiveStatus(ctx, app, ls)
@@ -841,7 +852,7 @@ func (s *Service) LiveStatus(ctx context.Context, app *models.Application) LiveS
 	ls.ExitCode = c.ExitCode
 	ls.StartedAt = c.StartedAt
 	ls.Networks = c.Networks
-	ls.Status = deriveLiveStatus(c.State, c.Health, ls.Restarting, app.Status == models.AppStatusStopped)
+	ls.Status = deriveLiveStatus(c.State, c.Health, ls.Restarting, app.Status.StopIntended())
 
 	if ls.Running && c.StartedAt != "" {
 		if t, perr := time.Parse(time.RFC3339Nano, c.StartedAt); perr == nil {
@@ -873,7 +884,7 @@ func (s *Service) serviceLiveStatus(ctx context.Context, app *models.Application
 	ls.Running = st.RunningTasks > 0
 	// Desired replicas are the truth: 0 means stopped, otherwise Swarm is converging, so never "exited".
 	switch {
-	case app.Status == models.AppStatusStopped || st.Replicas == 0:
+	case app.Status.StopIntended() || st.Replicas == 0:
 		ls.Status = "stopped"
 	case st.RunningTasks >= st.Replicas:
 		ls.Status = "running"
@@ -1795,6 +1806,9 @@ func (s *Service) runtimeContainerID(ctx context.Context, app *models.Applicatio
 
 // Start redeploys instead when config changed while stopped, returning that deployment.
 func (s *Service) Start(ctx context.Context, app *models.Application) (*models.Deployment, error) {
+	if err := busy(app.Status); err != nil {
+		return nil, err
+	}
 	if err := s.guardData(ctx, app); err != nil {
 		return nil, err
 	}
@@ -1836,35 +1850,55 @@ func (s *Service) Start(ctx context.Context, app *models.Application) (*models.D
 
 // For a service app Stop scales to zero; the desired count stays recorded so Start restores it.
 func (s *Service) Stop(ctx context.Context, app *models.Application) error {
+	switch app.Status {
+	case models.AppStatusDeleting:
+		return ErrAppDeleting
+	case models.AppStatusStopping:
+		return nil
+	}
 	// Persist intent first: a die event from a non-graceful exit (137) would otherwise read as a crash.
 	prev := app.Status
+	_ = s.apps.SetStatus(app.ID, models.AppStatusStopping)
+	if err := s.stopRuntime(ctx, app); err != nil {
+		_ = s.apps.SetStatus(app.ID, prev)
+		return err
+	}
 	_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
+	app.Status = models.AppStatusStopped
+	return nil
+}
+
+func (s *Service) stopRuntime(ctx context.Context, app *models.Application) error {
 	if app.RuntimeKind == models.RuntimeService {
 		mgr, err := s.swarmManager(ctx, app)
 		if err != nil {
-			_ = s.apps.SetStatus(app.ID, prev)
 			return err
 		}
-		if err := mgr.ServiceScale(ctx, node.AppAlias(app), 0); err != nil {
-			_ = s.apps.SetStatus(app.ID, prev)
-			return err
-		}
-		return nil
+		return mgr.ServiceScale(ctx, node.AppAlias(app), 0)
 	}
 	cid, err := s.activeContainerID(app.ID)
 	if err != nil {
-		_ = s.apps.SetStatus(app.ID, prev)
 		return err
 	}
-	if err := s.eng(app).StopContainer(ctx, cid, 10); err != nil {
-		_ = s.apps.SetStatus(app.ID, prev)
-		return err
+	return s.eng(app).StopContainer(ctx, cid, 10)
+}
+
+// busy refuses a lifecycle action while a stop or delete Miabi started is still in progress.
+func busy(status models.AppStatus) error {
+	switch status {
+	case models.AppStatusDeleting:
+		return ErrAppDeleting
+	case models.AppStatusStopping:
+		return ErrAppStopping
 	}
 	return nil
 }
 
 // Restart redeploys instead when config changed while stopped, returning that deployment.
 func (s *Service) Restart(ctx context.Context, app *models.Application) (*models.Deployment, error) {
+	if err := busy(app.Status); err != nil {
+		return nil, err
+	}
 	if err := s.guardData(ctx, app); err != nil {
 		return nil, err
 	}
@@ -1969,18 +2003,21 @@ func (s *Service) removeService(ctx context.Context, app *models.Application) {
 }
 
 // Refuses while running to avoid yanking a live workload.
+// A delete already under way resumes even if its container still runs: the user asked for it before the interruption.
 func (s *Service) Delete(ctx context.Context, app *models.Application) error {
-	if s.LiveStatus(ctx, app).Running {
+	if app.Status != models.AppStatusDeleting && s.LiveStatus(ctx, app).Running {
 		return ErrAppRunning
 	}
+	// Recorded first so die and destroy events read as Miabi's own removal rather than a crash or an outside one.
+	if err := s.apps.SetStatus(app.ID, models.AppStatusDeleting); err != nil {
+		return err
+	}
+	app.Status = models.AppStatusDeleting
 	// Record before the row is gone; Record publishes synchronously so the live stream still sees it.
 	s.emit(app, models.EventAppDeleted, "Application deleted")
 	if app.RuntimeKind == models.RuntimeService {
-		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 		s.removeService(ctx, app)
 	} else if rel, err := s.releases.FindActive(app.ID); err == nil && rel.ContainerID != "" {
-		// Recorded first so die and destroy events read as a deliberate stop rather than a crash.
-		_ = s.apps.SetStatus(app.ID, models.AppStatusStopped)
 		_ = s.eng(app).StopContainer(ctx, rel.ContainerID, 10)
 		_ = s.eng(app).RemoveContainer(ctx, rel.ContainerID, true)
 	}
@@ -2460,7 +2497,7 @@ func (s *Service) AutoRedeploy(app *models.Application) (*models.Deployment, err
 	if app.CurrentReleaseID == nil {
 		return nil, nil
 	}
-	if app.Status == models.AppStatusStopped {
+	if app.Status.StopIntended() {
 		return nil, s.apps.SetRedeployRequired(app.ID, true)
 	}
 	return s.Redeploy(app)
@@ -2756,6 +2793,9 @@ func (s *Service) finalizeCanaryDeployment(deploymentID uint, line string) {
 func (s *Service) enqueue(appID, serverID uint, image, trigger string, registryID *uint, strategy models.DeployStrategy, noCache bool, triggeredBy *uint) (*models.Deployment, error) {
 	// Every deploy path starts a container mounting the volumes, so a lost volume must stop them here.
 	if app, err := s.apps.FindByID(appID); err == nil {
+		if err := busy(app.Status); err != nil {
+			return nil, err
+		}
 		if derr := s.guardData(context.Background(), app); derr != nil {
 			return nil, derr
 		}
@@ -2865,7 +2905,7 @@ func (s *Service) MarkNodeRemoved(serverID uint) {
 	}
 	for i := range apps {
 		app := apps[i]
-		if app.Status == models.AppStatusStopped {
+		if app.Status.StopIntended() {
 			continue
 		}
 		if err := s.apps.SetStatus(app.ID, models.AppStatusStopped); err != nil {

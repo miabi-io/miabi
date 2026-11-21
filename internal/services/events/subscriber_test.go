@@ -116,3 +116,16 @@ func TestClassify(t *testing.T) {
 		})
 	}
 }
+
+func TestActiveContainerRemovedIgnoresMiabisOwnOperations(t *testing.T) {
+	for _, st := range []models.AppStatus{models.AppStatusDeploying, models.AppStatusStopped, models.AppStatusStopping, models.AppStatusDeleting} {
+		if !st.Transitional() && !st.StopIntended() {
+			t.Errorf("%s: a destroy event would be taken for a removal outside Miabi", st)
+		}
+	}
+	for _, st := range []models.AppStatus{models.AppStatusRunning, models.AppStatusFailed} {
+		if st.Transitional() || st.StopIntended() {
+			t.Errorf("%s: a removal outside Miabi would be ignored", st)
+		}
+	}
+}

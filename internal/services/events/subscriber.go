@@ -96,7 +96,7 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	if ev.Action == "destroy" && !s.activeContainerRemoved(ev, app) {
 		return
 	}
-	typ, sev, msg, ok := classify(ev, app.Status == models.AppStatusStopped)
+	typ, sev, msg, ok := classify(ev, app.Status.StopIntended())
 	if !ok {
 		return
 	}
@@ -183,7 +183,7 @@ func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Applicat
 
 // Deploys and stops remove containers routinely; other removals of the active container are what make it missing.
 func (s *Subscriber) activeContainerRemoved(ev docker.EngineEvent, app *models.Application) bool {
-	if s.releases == nil || app.Status == models.AppStatusDeploying || app.Status == models.AppStatusStopped {
+	if s.releases == nil || app.Status.Transitional() || app.Status.StopIntended() {
 		return false
 	}
 	rel, err := s.releases.FindActive(app.ID)

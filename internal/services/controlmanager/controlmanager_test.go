@@ -589,3 +589,23 @@ func TestHostVolumesAreNotWatched(t *testing.T) {
 		t.Fatalf("findings = %+v; a host bind was reported as a missing volume", st.Findings)
 	}
 }
+
+func TestSweepSettlesInterruptedOperations(t *testing.T) {
+	h := newHarness()
+	var cutoff time.Time
+	var settled []uint
+	h.svc.SetTransitional(func(before time.Time) ([]models.Application, error) {
+		cutoff = before
+		return []models.Application{{ID: 7, Status: models.AppStatusDeleting}}, nil
+	}, func(_ context.Context, app *models.Application) error {
+		settled = append(settled, app.ID)
+		return nil
+	})
+	h.svc.Sweep(context.Background())
+	if len(settled) != 1 || settled[0] != 7 {
+		t.Fatalf("settled = %v, want [7]", settled)
+	}
+	if want := h.now.Add(-settleAfter); !cutoff.Equal(want) {
+		t.Errorf("cutoff = %v, want %v", cutoff, want)
+	}
+}

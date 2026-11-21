@@ -1298,7 +1298,7 @@ export interface WorkspacePortPolicy {
   reason?: string
 }
 
-export type AppStatus = 'created' | 'deploying' | 'running' | 'stopped' | 'failed'
+export type AppStatus = 'created' | 'deploying' | 'running' | 'stopping' | 'stopped' | 'deleting' | 'failed'
 
 // `status` is finer-grained than AppStatus.
 export interface LiveStatus {

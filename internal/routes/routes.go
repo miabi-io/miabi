@@ -633,6 +633,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
 	// Redeploys via the ordinary path so the app never lands on a cordoned node or runs missing data or configs.
 	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
+	controlManager.SetTransitional(appRepo.ListStaleTransitional, appService.SettleTransitional)
 	// Gateways are watched too
 	controlManager.SetGateways(nodeService, nodeGateway.Ensurer(nodeService, nodeClients))
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
