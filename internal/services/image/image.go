@@ -241,6 +241,15 @@ func (s *Service) ProtectedDigests() (map[string]bool, error) {
 	return p.digests, nil
 }
 
+// ProtectedRefs are what releases deployed by tag record; they carry no digest to compare.
+func (s *Service) ProtectedRefs() (map[string]bool, error) {
+	p, err := s.protectedSet()
+	if err != nil {
+		return nil, err
+	}
+	return p.refs, nil
+}
+
 // Hand-pushed images have no catalog row and are simply absent.
 func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error) {
 	rows, err := s.images.ListByDigests(workspaceID, digests)

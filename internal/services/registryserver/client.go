@@ -119,6 +119,9 @@ func (c *Client) ManifestDigest(ctx context.Context, repo, ref string) (string, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return "", ErrNotFound
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("registry: manifest %s/%s: %s", repo, ref, resp.Status)
 	}

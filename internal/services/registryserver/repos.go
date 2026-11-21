@@ -22,7 +22,6 @@ package registryserver
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 )
@@ -118,27 +117,20 @@ func splitRun(s string, digits bool) (run, rest string) {
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // DeleteTag deletes by manifest digest (no delete-by-tag); tags held by live releases get ErrTagInUse.
-func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag string) error {
-	repo, err := repoPath(workspaceID, image)
+// DeleteTag returns every tag it removed: the registry deletes the image, so tags sharing it go too.
+func (s *Service) DeleteTag(ctx context.Context, workspaceID uint, image, tag string) ([]string, error) {
+	res, err := s.DeleteTags(ctx, workspaceID, image, []string{tag}, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := validateTag(tag); err != nil {
-		return err
+	switch o := res.Tags[0]; o.Result {
+	case TagDeleted:
+		return res.Removed, nil
+	case TagInUse:
+		return nil, ErrTagInUse
+	case TagNotFound:
+		return nil, ErrNotFound
+	default:
+		return nil, errors.New(o.Error)
 	}
-	digest, err := s.reg.ManifestDigest(ctx, repo, tag)
-	if err != nil {
-		return err
-	}
-	if s.catalog != nil {
-		protected, perr := s.catalog.ProtectedDigests()
-		if perr != nil {
-			// Can't prove the image is free, so refuse rather than risk deleting a live one.
-			return fmt.Errorf("check whether the image is in use: %w", perr)
-		}
-		if protected[digest] {
-			return ErrTagInUse
-		}
-	}
-	return s.reg.DeleteManifest(ctx, repo, digest)
 }

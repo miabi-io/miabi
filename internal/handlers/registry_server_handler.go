@@ -29,6 +29,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/registryserver"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -36,10 +37,11 @@ import (
 type RegistryServerHandler struct {
 	svc        *registryserver.Service
 	workspaces *repositories.WorkspaceRepository
+	audit      *audit.Logger
 }
 
-func NewRegistryServerHandler(svc *registryserver.Service, workspaces *repositories.WorkspaceRepository) *RegistryServerHandler {
-	return &RegistryServerHandler{svc: svc, workspaces: workspaces}
+func NewRegistryServerHandler(svc *registryserver.Service, workspaces *repositories.WorkspaceRepository, auditLog *audit.Logger) *RegistryServerHandler {
+	return &RegistryServerHandler{svc: svc, workspaces: workspaces, audit: auditLog}
 }
 
 // 2xx allows, 401 challenges, 403 denies; unauthenticated by design since only the gateway can reach it.
@@ -188,25 +190,74 @@ func (h *RegistryServerHandler) RepositoryTags(c *okapi.Context) error {
 	return paginated(c, tags, int64(total), page, size)
 }
 
+type DeleteTagResponse struct {
+	Message string `json:"message"`
+	// Removed includes every tag that pointed at the same image, which the registry deletes with it.
+	Removed []string `json:"removed"`
+}
+
 func (h *RegistryServerHandler) DeleteTag(c *okapi.Context) error {
 	image := c.Param("repo")
 	tag := c.Param("tag")
 	if image == "" || tag == "" {
 		return c.AbortBadRequest("repository and tag are required")
 	}
-	err := h.svc.DeleteTag(c.Request().Context(), middlewares.WorkspaceID(c), image, tag)
+	wsID := middlewares.WorkspaceID(c)
+	removed, err := h.svc.DeleteTag(c.Request().Context(), wsID, image, tag)
+	if err != nil {
+		return h.deleteErr(c, err)
+	}
+	h.recordDelete(c, wsID, image, []string{tag}, removed)
+	return ok(c, DeleteTagResponse{Message: "tag deleted", Removed: removed})
+}
+
+type DeleteTagsRequest struct {
+	Body struct {
+		Repository string   `json:"repository" required:"true"`
+		Tags       []string `json:"tags" required:"true"`
+		// DryRun reports what would go, siblings included, without deleting anything.
+		DryRun bool `json:"dry_run"`
+	} `json:"body"`
+}
+
+// A partial success is still a 200: each tag carries its own outcome.
+func (h *RegistryServerHandler) DeleteTags(c *okapi.Context, req *DeleteTagsRequest) error {
+	wsID := middlewares.WorkspaceID(c)
+	repo := strings.TrimSpace(req.Body.Repository)
+	res, err := h.svc.DeleteTags(c.Request().Context(), wsID, repo, req.Body.Tags, req.Body.DryRun)
+	if err != nil {
+		return h.deleteErr(c, err)
+	}
+	if !res.DryRun {
+		h.recordDelete(c, wsID, repo, req.Body.Tags, res.Removed)
+	}
+	return ok(c, res)
+}
+
+func (h *RegistryServerHandler) deleteErr(c *okapi.Context, err error) error {
 	switch {
-	case err == nil:
-		return message(c, "tag deleted")
 	case errors.Is(err, registryserver.ErrDeleteDisabled), errors.Is(err, registryserver.ErrTagInUse):
 		return c.AbortWithError(http.StatusConflict, err)
-	case errors.Is(err, registryserver.ErrInvalidRepository), errors.Is(err, registryserver.ErrInvalidTag):
+	case errors.Is(err, registryserver.ErrInvalidRepository), errors.Is(err, registryserver.ErrInvalidTag),
+		errors.Is(err, registryserver.ErrNoTags), errors.Is(err, registryserver.ErrTooManyTags):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, registryserver.ErrNotFound):
 		return c.AbortNotFound("tag not found")
 	default:
-		return c.AbortInternalServerError("failed to delete tag", err)
+		return c.AbortInternalServerError("failed to delete tags", err)
 	}
+}
+
+func (h *RegistryServerHandler) recordDelete(c *okapi.Context, wsID uint, repo string, requested, removed []string) {
+	if h.audit == nil || len(removed) == 0 {
+		return
+	}
+	actor := middlewares.UserID(c)
+	h.audit.Record(audit.Entry{
+		ActorID: &actor, WorkspaceID: &wsID, Action: "registry.tags_delete",
+		TargetType: "registry_repository", TargetID: repo, IP: c.RealIP(),
+		Metadata: map[string]any{"requested": requested, "removed": removed},
+	})
 }
 
 func firstNonEmpty(vs ...string) string {

@@ -104,7 +104,7 @@ func TestListRepositoriesFiltersNamespace(t *testing.T) {
 }
 
 func TestDeleteTagResolvesDigest(t *testing.T) {
-	if err := listSvc(t).DeleteTag(context.Background(), 7, "web", "1.0"); err != nil {
+	if _, err := listSvc(t).DeleteTag(context.Background(), 7, "web", "1.0"); err != nil {
 		t.Fatalf("DeleteTag: %v", err)
 	}
 }

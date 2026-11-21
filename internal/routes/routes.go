@@ -1486,7 +1486,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminControlManager: handlers.NewAdminControlManagerHandler(controlManager),
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),
-			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo),
+			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo, auditLogger),
 			components: handlers.NewComponentHandler(components.NewService(components.Probes{
 				RegistryEnabled: func() bool {
 					st, err := registryServerService.Get()

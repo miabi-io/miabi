@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/handlers"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/registryserver"
 )
 
 func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
@@ -111,8 +112,18 @@ func (r *Router) registryServerRoutes() []okapi.RouteDefinition {
 			Group:       ws,
 			Middlewares: []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(models.WorkspaceRoleDeveloper)},
 			Handler:     r.h.registryServer.DeleteTag,
-			Summary:     "Delete a registry tag",
-			Response:    &dto.Response[dto.MessageData]{},
+			Summary:     "Delete a registry tag, and every tag on the same image",
+			Response:    &dto.Response[handlers.DeleteTagResponse]{},
+		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/{workspace}/registry/repository/tags/delete",
+			Group:       ws,
+			Middlewares: []okapi.Middleware{r.authenticate, r.scope, middlewares.RequireRole(models.WorkspaceRoleDeveloper)},
+			Handler:     okapi.H(r.h.registryServer.DeleteTags),
+			Summary:     "Delete several registry tags, or preview it with dry_run",
+			Request:     &handlers.DeleteTagsRequest{},
+			Response:    &dto.Response[registryserver.DeleteResult]{},
 		},
 
 		// Unauthenticated, gateway-only; hit on every /v2/* request to allow/deny by docker Basic credentials.

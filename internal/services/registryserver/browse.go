@@ -226,7 +226,11 @@ func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string,
 		return out, nil
 	}
 	// Best-effort: deletion is guarded server-side, so a missing in-use mark can't lose data.
-	protected, _ := s.catalog.ProtectedDigests()
+	digestOf := make(map[string]string, len(out))
+	for _, t := range out {
+		digestOf[t.Name] = t.Digest
+	}
+	protected, _ := s.protectedIn(ctx, repo, digestOf)
 	rows, _ := s.catalog.ByDigests(workspaceID, digests)
 	for i := range out {
 		d := out[i].Digest
@@ -250,5 +254,7 @@ func (s *Service) enrichTags(ctx context.Context, workspaceID uint, repo string,
 // Catalog is nil-safe; without it tags list unannotated and deletion loses its in-use guard.
 type Catalog interface {
 	ProtectedDigests() (map[string]bool, error)
+	// ProtectedRefs are the image references releases run by tag, which name no digest.
+	ProtectedRefs() (map[string]bool, error)
 	ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error)
 }
