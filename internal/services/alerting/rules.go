@@ -34,6 +34,8 @@ const (
 	countFire
 	// resolve closes the active alert for DedupKey, if any (auto-resolve).
 	resolve
+	// resolveSubject closes every active alert about SubjectRef, for a subject that no longer exists.
+	resolveSubject
 )
 
 // intent is one rule outcome for a signal. Pure data — the engine executes it.
@@ -181,6 +183,8 @@ func evaluateApp(e *models.AppEvent, appName string) []intent {
 	breakerKey := fmt.Sprintf("reconcile:app:%d", e.ApplicationID)
 
 	switch e.Type {
+	case models.EventAppDeleted:
+		return []intent{{kind: resolveSubject, subjectRef: base.subjectRef, body: "The application was deleted."}}
 	case models.EventDriftDetected:
 		i := base
 		i.kind = fire

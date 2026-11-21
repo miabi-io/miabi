@@ -20,6 +20,7 @@
 package alerting
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -153,4 +154,53 @@ func TestReFireNotSpam(t *testing.T) {
 	if len(ns) == 0 || len(ns) > 2 {
 		t.Fatalf("want 1-2 notifications, got %d", len(ns))
 	}
+}
+
+func TestDeletingAnAppClosesItsAlerts(t *testing.T) {
+	eng, alerts, inbox, _ := newEngineDB(t)
+	for range 5 {
+		eng.OnEvent(die(1, 42))
+	}
+	eng.OnEvent(&models.AppEvent{WorkspaceID: 1, ApplicationID: 42, Type: models.EventDriftDetected, Metadata: map[string]string{"kind": "container"}})
+	for range 5 {
+		eng.OnEvent(die(1, 43))
+	}
+	if act, _ := alerts.ListByWorkspace(1, true, 0); len(act) != 3 {
+		t.Fatalf("want 3 active alerts before the delete, got %d", len(act))
+	}
+	var ids []uint
+	for _, n := range mustList(t, inbox) {
+		ids = append(ids, n.ID)
+	}
+	if err := inbox.MarkRead(7, ids); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.OnEvent(&models.AppEvent{WorkspaceID: 1, ApplicationID: 42, Type: models.EventAppDeleted, Message: "Application deleted"})
+
+	act, _ := alerts.ListByWorkspace(1, true, 0)
+	if len(act) != 1 || act[0].SubjectRef != "app:43" {
+		t.Fatalf("active = %+v; only the other app's alert may stay open", act)
+	}
+	closed := 0
+	for _, n := range mustList(t, inbox) {
+		if strings.HasPrefix(n.Title, "Closed — ") {
+			closed++
+			if n.ReadAt == nil {
+				t.Errorf("%q was resurfaced; closing after a delete the user made is not news", n.Title)
+			}
+		}
+	}
+	if closed != 2 {
+		t.Fatalf("closed notifications = %d, want 2", closed)
+	}
+}
+
+func mustList(t *testing.T, inbox *repositories.NotificationInboxRepository) []models.Notification {
+	t.Helper()
+	ns, err := inbox.ListByUser(7, 0, false, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ns
 }
