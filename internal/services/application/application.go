@@ -1271,35 +1271,14 @@ func (s *Service) AppsReferencingApp(workspaceID uint, name string) ([]models.Ap
 	return out, nil
 }
 
-// AddressChanged also marks the app itself, whose MIABI_PUBLIC_URL reads the same address.
-func (s *Service) AddressChanged(app *models.Application) {
-	self := false
-	if !app.MiabiEnvDisabled {
-		marked, err := s.MarkRedeployRequired(app)
-		if err != nil {
-			logger.Warn("marking an app for redeploy failed", "app", app.Name, "error", err)
-		}
-		if marked {
-			self = true
-			s.emit(app, models.EventEnvUpdated, "The public address of "+app.Name+" changed: redeploy to update MIABI_PUBLIC_URL")
-		}
-	}
-	s.markAddressConsumers(app, self)
-}
-
-// MarkAddressConsumers flags deployed apps whose env reads app's public address; they pick it up on their next deploy.
-func (s *Service) MarkAddressConsumers(app *models.Application) { s.markAddressConsumers(app, false) }
-
-func (s *Service) markAddressConsumers(app *models.Application, skipSelf bool) {
+// MarkAddressConsumers flags deployed apps whose env reads app's public address; MIABI_PUBLIC_URL alone refreshes on the next deploy.
+func (s *Service) MarkAddressConsumers(app *models.Application) {
 	consumers, err := s.AppsReferencingApp(app.WorkspaceID, app.Name)
 	if err != nil {
 		logger.Warn("finding apps that reference an address failed", "app", app.Name, "error", err)
 		return
 	}
 	for i := range consumers {
-		if skipSelf && consumers[i].ID == app.ID {
-			continue
-		}
 		marked, err := s.MarkRedeployRequired(&consumers[i])
 		if err != nil {
 			logger.Warn("marking an app for redeploy failed", "app", consumers[i].Name, "error", err)

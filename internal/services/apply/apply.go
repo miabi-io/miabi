@@ -3513,19 +3513,6 @@ func staleConsumers(consumers []models.Application, deploySeq map[uint]int, chan
 	return out
 }
 
-// An app with managed env reads its own address through MIABI_PUBLIC_URL.
-func withSelf(consumers []models.Application, target *models.Application) []models.Application {
-	if target.MiabiEnvDisabled {
-		return consumers
-	}
-	for i := range consumers {
-		if consumers[i].ID == target.ID {
-			return consumers
-		}
-	}
-	return append(consumers, *target)
-}
-
 // Consumers outside this run are only marked by the route service; ones this run deployed too early get the new address now.
 func (s *Service) redeployStaleAddresses(workspaceID uint, run *runState, seen map[uint]bool) []Failure {
 	var out []Failure
@@ -3539,7 +3526,6 @@ func (s *Service) redeployStaleAddresses(workspaceID uint, run *runState, seen m
 			out = append(out, Failure{Kind: string(declarative.KindApplication), Name: target.Name, Action: "redeploy", Error: err.Error()})
 			continue
 		}
-		consumers = withSelf(consumers, target)
 		for _, c := range staleConsumers(consumers, run.deploySeq, changedAt, seen) {
 			if _, err := s.apps.Deploy(c, nil, "", ""); err != nil {
 				out = append(out, Failure{
