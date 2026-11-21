@@ -906,6 +906,8 @@ export interface ControlManagerFinding extends DriftItem {
   attempts?: number
   next_attempt_at?: string
   breaker_open?: boolean
+  // What confirmed it: the one-minute sweep, or a container event followed by a check of that app.
+  trigger?: 'sweep' | 'event'
 }
 
 // The volume holding its data is gone, so only a restore brings it back.

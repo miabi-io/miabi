@@ -107,7 +107,7 @@ func (s *Service) act(ctx context.Context, items []item) {
 			continue
 		}
 		if total >= budgetPlatform || perNode[d.it.nodeID] >= budgetPerNode {
-			metrics.ControlManagerAction(d.action(), "deferred")
+			metrics.ControlManagerAction(d.action(), "deferred", d.trigger())
 			continue
 		}
 		dep, err := s.restore(ctx, d)
@@ -144,6 +144,14 @@ func (a actionable) reason() string {
 	default:
 		return "the app's container no longer existed on its node"
 	}
+}
+
+// trigger names what confirmed the finding, so the event path's share of restores can be measured.
+func (a actionable) trigger() string {
+	if a.f.Trigger == "" {
+		return TriggerSweep
+	}
+	return a.f.Trigger
 }
 
 // action names what enforcement does about this kind, for the metric and the audit trail.
@@ -265,14 +273,14 @@ func (s *Service) started(d actionable, dep *models.Deployment) {
 	tries := a.tries
 	s.mu.Unlock()
 
-	metrics.ControlManagerAction(d.action(), "started")
-	meta := map[string]string{"actor": actorName, "kind": d.f.Kind, "attempt": strconv.Itoa(tries)}
+	metrics.ControlManagerAction(d.action(), "started", d.trigger())
+	meta := map[string]string{"actor": actorName, "kind": d.f.Kind, "attempt": strconv.Itoa(tries), "trigger": d.trigger()}
 	if dep != nil {
 		meta["deployment_id"] = strconv.FormatUint(uint64(dep.ID), 10)
 	}
 	s.emitFor(d, models.EventReconcileRedeploy, models.SeverityWarning,
 		"Restored by the control manager: "+d.reason(), meta)
-	s.record4audit(d, "reconcile.restore", map[string]any{"reason": d.reason(), "attempt": tries})
+	s.record4audit(d, "reconcile.restore", map[string]any{"reason": d.reason(), "attempt": tries, "trigger": d.trigger()})
 }
 
 func (s *Service) failed(d actionable, err error) {
@@ -290,11 +298,11 @@ func (s *Service) failed(d actionable, err error) {
 	failures := a.failures
 	s.mu.Unlock()
 
-	metrics.ControlManagerAction(d.action(), "failed")
+	metrics.ControlManagerAction(d.action(), "failed", d.trigger())
 	if !opened {
 		return
 	}
-	metrics.ControlManagerAction("breaker", "open")
+	metrics.ControlManagerAction("breaker", "open", d.trigger())
 	meta := map[string]string{"actor": actorName, "kind": d.f.Kind, "failures": strconv.Itoa(failures), "error": err.Error()}
 	s.emitFor(d, models.EventReconcileBreakerOpen, models.SeverityError,
 		fmt.Sprintf("The control manager gave up after %d failed attempts: %v", failures, err), meta)
@@ -311,7 +319,7 @@ func (s *Service) reportBlocked(d actionable, reason string) {
 	if repeat {
 		return
 	}
-	metrics.ControlManagerAction(d.action(), "blocked")
+	metrics.ControlManagerAction(d.action(), "blocked", d.trigger())
 	s.emitFor(d, models.EventReconcileBlocked, models.SeverityWarning,
 		"Not restored by the control manager: "+reason, map[string]string{"actor": actorName, "kind": d.f.Kind})
 }

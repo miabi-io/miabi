@@ -120,13 +120,13 @@ var (
 	})
 	controlManagerActions = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "miabi_control_manager_actions_total",
-		Help: "Actions the control manager took on drift, by action and outcome.",
-	}, []string{"action", "result"})
+		Help: "Actions the control manager took on drift, by action, outcome and what found the drift (sweep or event).",
+	}, []string{"action", "result", "trigger"})
 )
 
 // Shows whether the control manager is helping or thrashing.
-func ControlManagerAction(action, result string) {
-	controlManagerActions.WithLabelValues(action, result).Inc()
+func ControlManagerAction(action, result, trigger string) {
+	controlManagerActions.WithLabelValues(action, result, trigger).Inc()
 }
 
 // ObserveControlManagerSweep records how long a control manager sweep took.

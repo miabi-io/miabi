@@ -55,6 +55,9 @@ const (
 	nodeGrace = time.Minute
 	// So a container caught between remove and run by Miabi's own deploy is never taken for deleted.
 	confirmAfter = 2
+
+	TriggerSweep = "sweep"
+	TriggerEvent = "event"
 	// Longer than any stop or delete takes, so only one a crash interrupted is settled.
 	settleAfter = 5 * time.Minute
 )
@@ -153,6 +156,8 @@ type Service struct {
 	staleTransitional func(before time.Time) ([]models.Application, error)
 	settle            func(ctx context.Context, app *models.Application) error
 
+	// runMu serialises sweeps and targeted checks, so two passes never act on the same finding.
+	runMu           sync.Mutex
 	mu              sync.Mutex
 	findings        map[string]*Finding // by item key
 	blocked         map[uint]string     // app id -> why it must not be redeployed
@@ -231,6 +236,8 @@ func (s *Service) settleTransitional(ctx context.Context) {
 
 // Sweep observes every expected workload once and updates the findings.
 func (s *Service) Sweep(ctx context.Context) error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
 	s.settleTransitional(ctx)
 	if s.Mode() == ModeOff {
 		s.reset()
@@ -242,10 +249,54 @@ func (s *Service) Sweep(ctx context.Context) error {
 		return err
 	}
 	seen, skipped := s.observe(ctx, items)
-	s.record(items, seen, skipped, start)
+	s.record(items, seen, skipped, start, pass{trigger: TriggerSweep})
 	// Never act on a finding not seen twice or one this sweep marked blocked.
 	s.act(ctx, items)
 	return nil
+}
+
+// Check runs the sweep's decision for one app now, after its container was removed outside Miabi.
+func (s *Service) Check(ctx context.Context, appID uint) error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.Mode() == ModeOff {
+		return nil
+	}
+	start := s.now()
+	all, err := s.plan(ctx)
+	if err != nil {
+		return err
+	}
+	items := scopeTo(all, appID)
+	seen, skipped := s.observe(ctx, items)
+	s.record(items, seen, skipped, start, pass{trigger: TriggerEvent, scoped: true, apps: []uint{appID}})
+	s.act(ctx, items)
+	return nil
+}
+
+// The same plan the sweep builds, cut down to the app and the volumes it mounts, so the two can never judge it differently.
+func scopeTo(items []item, appID uint) []item {
+	var app *item
+	for i := range items {
+		if items[i].key == appKey(appID) {
+			app = &items[i]
+			break
+		}
+	}
+	if app == nil {
+		return nil
+	}
+	needs := make(map[string]bool, len(app.needs))
+	for _, k := range app.needs {
+		needs[k] = true
+	}
+	out := []item{*app}
+	for i := range items {
+		if needs[items[i].key] {
+			out = append(out, items[i])
+		}
+	}
+	return out
 }
 
 // subject is a timeline an event about an item goes to.
