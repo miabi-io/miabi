@@ -208,6 +208,61 @@ async function askDelete(names: string[]) {
   }
 }
 
+// --- Select by rule ---
+
+const ruleOpen = ref(false)
+const ruleBusy = ref(false)
+const rule = ref({ keepOn: true, keepNewest: 10, ageOn: false, olderThanDays: 30 })
+const ruleValid = computed(
+  () => (rule.value.keepOn && rule.value.keepNewest > 0) || (rule.value.ageOn && rule.value.olderThanDays > 0),
+)
+
+// It only pre-checks the boxes; the delete that follows is previewed like any other.
+async function applyRule() {
+  if (!wsId.value || !ruleValid.value) return
+  ruleBusy.value = true
+  try {
+    const sel = (await registryApi.selectTags(wsId.value, repo.value, {
+      keep_newest: rule.value.keepOn ? rule.value.keepNewest : undefined,
+      older_than_days: rule.value.ageOn ? rule.value.olderThanDays : undefined,
+    })).data.data
+    selected.value = new Set(sel.tags)
+    ruleOpen.value = false
+    const notes: string[] = []
+    if (sel.in_use.length) notes.push(t('registry.ruleInUse', { n: sel.in_use.length }, sel.in_use.length))
+    if (sel.unknown_age.length) notes.push(t('registry.ruleUnknownAge', { n: sel.unknown_age.length }, sel.unknown_age.length))
+    if (sel.truncated) notes.push(t('registry.ruleTruncated', { n: sel.matched }))
+    const head = t('registry.ruleSelected', { n: sel.tags.length }, sel.tags.length)
+    notify.success(notes.length ? `${head} ${notes.join(' ')}` : head)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    ruleBusy.value = false
+  }
+}
+
+// --- Delete repository ---
+
+const canDeleteRepo = computed(() => ws.isWorkspaceAdmin && info.value?.delete_enabled === true)
+const repoDeleteOpen = ref(false)
+const repoDeleteTyped = ref('')
+const repoDeleting = ref(false)
+
+async function deleteRepository() {
+  if (!wsId.value || repoDeleteTyped.value !== repo.value) return
+  repoDeleting.value = true
+  try {
+    const res = (await registryApi.deleteRepository(wsId.value, repo.value)).data.data
+    notify.success(t('notify.registry.repositoryDeleted', { repo: repo.value, size: formatBytes(res.freed_bytes) }))
+    repoDeleteOpen.value = false
+    router.push({ name: 'registry' })
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    repoDeleting.value = false
+  }
+}
+
 async function confirmDelete() {
   if (!wsId.value || willDelete.value.length === 0) return
   deleting.value = true
@@ -337,6 +392,17 @@ async function confirmDelete() {
             <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('registry.noTagsDot') }}</p>
           </div>
         </div>
+
+        <div v-if="canDeleteRepo" class="card danger-card mt-4">
+          <div class="card-body danger-row">
+            <div>
+              <h3 class="danger-title">{{ $t('registry.deleteRepository') }}</h3>
+              <p class="text-muted text-sm">{{ $t('registry.deleteRepositoryHint') }}</p>
+            </div>
+            <button class="btn btn-danger btn-sm" @click="repoDeleteTyped = ''; repoDeleteOpen = true">
+              <span class="mdi mdi-trash-can-outline"></span>{{ $t('registry.deleteRepository') }}</button>
+          </div>
+        </div>
       </template>
 
       <!-- Tags -->
@@ -352,6 +418,8 @@ async function confirmDelete() {
               </p>
             </div>
             <div class="repos-actions">
+              <button v-if="canDelete" class="btn btn-secondary btn-sm" @click="ruleOpen = true">
+                <span class="mdi mdi-filter-variant"></span>{{ $t('registry.selectByRule') }}</button>
               <div class="search">
                 <span class="mdi mdi-magnify"></span>
                 <input v-model="search" class="form-input" type="search" :placeholder="$t('registry.filterTags')" :aria-label="$t('registry.filterTags')" @input="onSearch" />
@@ -458,6 +526,48 @@ async function confirmDelete() {
     </template>
 
     <ConfirmDialog
+      :open="ruleOpen"
+      :title="$t('registry.selectByRule')"
+      :message="$t('registry.ruleHint')"
+      :confirm-label="$t('registry.ruleApply')"
+      variant="primary"
+      :busy="ruleBusy"
+      :confirm-disabled="!ruleValid"
+      @confirm="applyRule"
+      @cancel="ruleOpen = false"
+    >
+      <div class="rule-form">
+        <label class="checkbox-label">
+          <input v-model="rule.keepOn" type="checkbox" />
+          <i18n-t keypath="registry.ruleKeepNewest" tag="span">
+            <template #n><input v-model.number="rule.keepNewest" type="number" min="1" class="form-input rule-num" :disabled="!rule.keepOn" :aria-label="$t('registry.ruleKeepNewestLabel')" /></template>
+          </i18n-t>
+        </label>
+        <label class="checkbox-label">
+          <input v-model="rule.ageOn" type="checkbox" />
+          <i18n-t keypath="registry.ruleOlderThan" tag="span">
+            <template #n><input v-model.number="rule.olderThanDays" type="number" min="1" class="form-input rule-num" :disabled="!rule.ageOn" :aria-label="$t('registry.ruleOlderThanLabel')" /></template>
+          </i18n-t>
+        </label>
+        <p class="text-muted text-sm">{{ $t('registry.ruleNever') }}</p>
+      </div>
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      :open="repoDeleteOpen"
+      :title="$t('registry.deleteRepository')"
+      :message="$t('registry.deleteRepositoryConfirm', { repo })"
+      :confirm-label="$t('action.delete')"
+      variant="danger"
+      :busy="repoDeleting"
+      :confirm-disabled="repoDeleteTyped !== repo"
+      @confirm="deleteRepository"
+      @cancel="repoDeleteOpen = false"
+    >
+      <input v-model="repoDeleteTyped" class="form-input mono" :placeholder="repo" :aria-label="$t('registry.typeRepositoryName')" style="margin-top: 12px" />
+    </ConfirmDialog>
+
+    <ConfirmDialog
       :open="!!preview"
       :title="$t('confirm.title.deleteTags', { n: willDelete.length }, willDelete.length)"
       :message="$t('confirm.message.registry.deleteTags', { n: willDelete.length, repo, tags: willDelete.map((o) => o.tag).join(', ') }, willDelete.length)"
@@ -535,6 +645,14 @@ tr.busy { opacity: 0.5; }
 .preview-block > .mdi { font-size: 18px; color: var(--text-muted); }
 .preview-warn > .mdi { color: var(--warning-600); }
 .preview-freed { margin: 12px 0 0; }
+.rule-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.rule-form .checkbox-label { display: flex; align-items: center; gap: 8px; }
+.rule-form p { margin: 0; }
+.rule-num { width: 72px; display: inline-block; margin: 0 4px; padding: 4px 8px; }
+.danger-card { border-color: var(--danger-200); }
+.danger-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.danger-title { margin: 0 0 4px; font-size: 14px; }
+.danger-row p { margin: 0; }
 .empty { display: flex; align-items: center; gap: 16px; }
 .empty-icon { font-size: 36px; color: var(--text-muted); flex-shrink: 0; }
 .empty-title { font-weight: 600; color: var(--text-primary); margin: 0 0 2px; }

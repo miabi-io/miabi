@@ -144,6 +144,18 @@ export interface TagDeleteResponse {
   freed_bytes: number
 }
 
+export interface TagSelection {
+  /** Every tag on the picked images, oldest image first. */
+  tags: string[]
+  images: number
+  matched: number
+  /** More matched than one request may delete; run it again afterwards. */
+  truncated: boolean
+  in_use: string[]
+  /** On images with no creation time, which no rule picks. */
+  unknown_age: string[]
+}
+
 export interface RegistryRepoUsage {
   name: string
   bytes: number
@@ -206,6 +218,16 @@ export const registryApi = {
   deleteTags: (workspaceId: number, repo: string, tags: string[], dryRun: boolean) =>
     api.post<ApiResponse<TagDeleteResponse>>(`/workspaces/${workspaceId}/registry/repository/tags/delete`, {
       repository: repo, tags, dry_run: dryRun,
+    }),
+  /** Picks tags by rule; deletes nothing. */
+  selectTags: (workspaceId: number, repo: string, rule: { keep_newest?: number; older_than_days?: number }) =>
+    api.post<ApiResponse<TagSelection>>(`/workspaces/${workspaceId}/registry/repository/tags/select`, {
+      repository: repo, ...rule,
+    }),
+  /** All or nothing: a 409 names the tags in use. */
+  deleteRepository: (workspaceId: number, repo: string) =>
+    api.delete<ApiResponse<TagDeleteResponse>>(`/workspaces/${workspaceId}/registry/repository`, {
+      params: { name: repo },
     }),
   usage: (workspaceId: number) =>
     api.get<ApiResponse<RegistryUsage>>(`/workspaces/${workspaceId}/registry/usage`),

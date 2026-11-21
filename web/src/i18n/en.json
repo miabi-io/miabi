@@ -2784,7 +2784,8 @@
     },
     "registry": {
       "tagsDeleted": "Deleted {n} tag, freeing about {size} at the next cleanup | Deleted {n} tags, freeing about {size} at the next cleanup",
-      "tagsNotDeleted": "Not deleted: {tags}"
+      "tagsNotDeleted": "Not deleted: {tags}",
+      "repositoryDeleted": "Deleted {repo}, freeing about {size} at the next cleanup"
     },
     "releases": {
       "approved": "Approval recorded",
@@ -3451,7 +3452,23 @@
     "usageUpdated": "Updated {when}",
     "usageRefreshing": "Refreshing…",
     "usageReclaimHint": "Space from deleted tags is reclaimed at the next nightly cleanup.",
-    "repoSizeTitle": "Deleting this repository would free about {size}"
+    "repoSizeTitle": "Deleting this repository would free about {size}",
+    "selectByRule": "Select by rule…",
+    "ruleHint": "Picks images, not tags: tags on the same image are picked together. Nothing is deleted until you confirm the preview.",
+    "ruleKeepNewest": "Keep the newest {n} images",
+    "ruleKeepNewestLabel": "Number of newest images to keep",
+    "ruleOlderThan": "Only images older than {n} days",
+    "ruleOlderThanLabel": "Age in days",
+    "ruleNever": "Images in use and images with no known build time are never picked.",
+    "ruleApply": "Select",
+    "ruleSelected": "Nothing matched the rule. | Selected {n} tag. | Selected {n} tags.",
+    "ruleInUse": "{n} tag in use was left out. | {n} tags in use were left out.",
+    "ruleUnknownAge": "{n} tag with no known build time was left out. | {n} tags with no known build time were left out.",
+    "ruleTruncated": "{n} matched; delete these, then run the rule again for the rest.",
+    "deleteRepository": "Delete repository",
+    "deleteRepositoryHint": "Deletes every tag in it. Refused while any of its images is in use.",
+    "deleteRepositoryConfirm": "Every tag in {repo} will be deleted. Type the repository name to confirm.",
+    "typeRepositoryName": "Repository name"
   },
   "releases": {
     "active": "active",
