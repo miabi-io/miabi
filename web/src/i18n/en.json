@@ -604,7 +604,10 @@
       "schemeHint": "Application protocol the container speaks on this port",
       "suggestHint": "Host ports are shared per node — “Suggest” picks one that’s currently free.",
       "policyBlocked": "Host ports are disabled by platform policy",
-      "autoApproveHint": "Requests in {ranges} are approved automatically."
+      "autoApproveHint": "Requests in {ranges} are approved automatically.",
+      "primary": "Primary",
+      "makePrimary": "Make primary",
+      "primaryHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access. Changing it applies on the next deploy."
     },
     "processes": "Processes",
     "promote": "Promote",
@@ -854,7 +857,9 @@
       "tag": "Tag",
       "usesSaved": "Uses the saved repository's URL and credentials.",
       "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app.",
-      "memoryRequired": "This workspace's plan requires a memory limit on every app. CPU is shared, so a CPU limit is optional."
+      "memoryRequired": "This workspace's plan requires a memory limit on every app. CPU is shared, so a CPU limit is optional.",
+      "primaryPort": "Primary",
+      "primaryPortHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access."
     },
     "nodeHintContainer": "The app runs on this node. Pin it before its first deploy; a deployed container can't move nodes yet.",
     "nodeHintService": "Swarm runs every task on this node, and redeploys pick up a changed pin.",
@@ -2610,7 +2615,8 @@
       "stopRequested": "Application stop requested",
       "varAdded": "Variable added",
       "varUpdated": "Variable updated",
-      "volumeAttached": "Volume attached"
+      "volumeAttached": "Volume attached",
+      "primaryPortSet": "Primary port set to {port}"
     },
     "branding": {
       "imagesMayBeAtMost": "Images may be at most {formatSize}."

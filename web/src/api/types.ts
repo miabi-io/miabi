@@ -1155,6 +1155,8 @@ export interface AppPort {
   protocol: 'tcp' | 'udp'
   scheme?: 'http' | 'https' // L7 protocol the container speaks (Gateway backend URL)
   name?: string
+  // Request-only: the server records the primary as Application.port.
+  primary?: boolean
 }
 
 // NodePortUsage is one host port published on a node, with its owning container.

@@ -75,7 +75,7 @@ func (s *Service) createRoutes(ctx context.Context, workspaceID uint, m *manifes
 		}
 		port := rs.Port
 		if port == 0 {
-			port = spec.Ports[0].Container
+			port = spec.PrimaryPort()
 		}
 		rt, err := s.createRoute(ctx, workspaceID, app, displayName, rs.App, host, port, m)
 		if err != nil {

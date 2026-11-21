@@ -483,7 +483,14 @@ func (r *Resource) validateApplication() error {
 		return fmt.Errorf("application %q: digest must be a sha256: reference", r.Metadata.Name)
 	}
 	portNames := map[string]int{}
+	primary := 0
 	for _, p := range a.Ports {
+		if p.Primary && p.Container != primary {
+			if primary != 0 {
+				return fmt.Errorf("application %q: only one port may be primary (%d and %d)", r.Metadata.Name, primary, p.Container)
+			}
+			primary = p.Container
+		}
 		if p.Container <= 0 || p.Container > 65535 {
 			return fmt.Errorf("application %q: invalid container port %d", r.Metadata.Name, p.Container)
 		}

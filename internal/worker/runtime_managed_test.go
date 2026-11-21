@@ -38,7 +38,7 @@ func envMapOf(env []string) map[string]string {
 
 func TestBuildEnvManagedLayer(t *testing.T) {
 	app := &models.Application{
-		ID: 7, WorkspaceID: 3, Name: "api", Port: 8080, NanoCPUs: 1_500_000_000, MemoryBytes: 512 << 20,
+		ID: 7, WorkspaceID: 3, Name: "api", Port: 8080, Ports: []models.AppPort{{ContainerPort: 8080}}, NanoCPUs: 1_500_000_000, MemoryBytes: 512 << 20,
 		EnvVars: []models.AppEnvVar{{Key: "MIABI_PORT", Value: "9000"}, {Key: "OWN", Value: "x"}},
 	}
 	run := managedRun{kind: "app", deploymentID: 42, release: 12, image: "ghcr.io/acme/api:v1.4.2", imageTag: "v1.4.2", commit: "abc123"}

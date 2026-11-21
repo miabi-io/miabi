@@ -1314,6 +1314,16 @@ async function addContainerPort() {
   await saveSettings()
   showAddPort.value = false
 }
+async function makePrimaryPort(p: AppPort) {
+  if (!wid.value || !app.value) return
+  try {
+    await appApi.update(wid.value, appId.value, { port: p.container_port })
+    notify.success(t('notify.appDetail.primaryPortSet', { port: p.container_port }) + changeNote())
+    await loadApp()
+  } catch (e) {
+    notify.apiError(e)
+  }
+}
 async function removeContainerPort(p: AppPort) {
   if (!app.value) return
   if (!(await askConfirm({ title: t('confirm.title.appDetail.removeContainerPort', { container_port: p.container_port, protocol: p.protocol }), message: t('confirm.message.appDetail.anyHostBindingFor'), confirmLabel: t('action.remove'), variant: 'danger' }))) return
@@ -2991,17 +3001,19 @@ async function detachDatabase(d: AppDatabase) {
             <thead><tr><th>{{ $t('appDetail.port') }}</th><th>{{ $t('appDetail.protocol') }}</th><th>{{ $t('appDetail.scheme') }}</th><th>{{ $t('apps.form.name') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="p in app.ports" :key="p.id">
-                <td class="cell-title">{{ p.container_port }}</td>
+                <td class="cell-title">{{ p.container_port }}<span v-if="app.ports.length > 1 && p.container_port === app.port" class="badge badge-info port-primary-badge">{{ $t('appDetail.ports.primary') }}</span></td>
                 <td class="cell-sub">{{ p.protocol }}</td>
                 <td class="cell-sub">{{ p.protocol === 'udp' ? '—' : p.scheme || 'http' }}</td>
                 <td class="cell-sub">{{ p.name || '—' }}</td>
                 <td class="text-right table-actions">
+                  <button v-if="ws.canEdit && app.ports.length > 1 && p.container_port !== app.port" class="btn btn-sm btn-ghost" @click="makePrimaryPort(p)">{{ $t('appDetail.ports.makePrimary') }}</button>
                   <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :disabled="bindBlocked" :title="bindBlockedReason" @click="openBindReq(p)">{{ $t('appDetail.requestHostBinding') }}</button>
                   <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('apps.form.removePort')" :aria-label="$t('apps.form.removePort')" @click="removeContainerPort(p)"><span class="mdi mdi-delete-outline"></span></button>
                 </td>
               </tr>
             </tbody>
           </table>
+          <p v-if="app.ports.length > 1" class="card-body form-hint">{{ $t('appDetail.ports.primaryHint') }}</p>
         </div>
       </div>
 
@@ -4461,6 +4473,7 @@ async function detachDatabase(d: AppDatabase) {
 </template>
 
 <style scoped>
+.port-primary-badge { margin-left: 8px; }
 .image-tag {
   margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
   padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary, rgba(127, 127, 127, 0.12));

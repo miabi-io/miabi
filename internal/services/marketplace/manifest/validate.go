@@ -193,9 +193,15 @@ func (m *Manifest) validateApplications(volNames, cfgNames map[string]bool) erro
 		default:
 			return fmt.Errorf("application %q: restartPolicy must be no, always, unless-stopped or on-failure", a.Name)
 		}
+		primaryPorts := 0
 		for _, p := range a.Ports {
 			if p.Container <= 0 || p.Container > 65535 {
 				return fmt.Errorf("application %q: invalid container port %d", a.Name, p.Container)
+			}
+			if p.Primary {
+				if primaryPorts++; primaryPorts > 1 {
+					return fmt.Errorf("application %q: only one port may be primary", a.Name)
+				}
 			}
 			if p.Scheme != "http" && p.Scheme != "https" {
 				return fmt.Errorf("application %q: port %d scheme must be http or https", a.Name, p.Container)
