@@ -1174,9 +1174,6 @@
       "gitRepositories": {
         "deleteGitRepositoryName": "Delete git repository \"{name}\"? Apps building from it will fail to clone."
       },
-      "imageDetail": {
-        "deleteRepoNameThis": "Delete {repo}:{name}? This removes the manifest from the registry and cannot be undone."
-      },
       "jobs": {
         "deleteCronjobScheduledRuns": "Delete cronjob \"{name}\"? Scheduled runs will stop.",
         "deleteJobRunThis": "Delete job run #{id}? This cannot be undone."
@@ -1242,7 +1239,8 @@
         "deleteRegistryNameApps": "Delete registry \"{name}\"? Apps using it will fail to pull private images."
       },
       "registry": {
-        "runGarbageCollectionThe": "Run garbage collection? The registry switches to read-only (pulls keep working, pushes pause) while it reclaims space."
+        "runGarbageCollectionThe": "Run garbage collection? The registry switches to read-only (pulls keep working, pushes pause) while it reclaims space.",
+        "deleteTags": "Delete {tags} from {repo}? | Delete {n} tags from {repo}: {tags}?"
       },
       "routeDetail": {
         "deleteRouteNameIts": "Delete route \"{name}\"? Its hosts will stop routing to the app."
@@ -1399,7 +1397,8 @@
       "testDnsProvider": "Test DNS provider",
       "expandVolume": "Expand volume",
       "deleteServiceAccount": "Delete service account",
-      "rotateWorkspaceKeys": "Rotate workspace keys"
+      "rotateWorkspaceKeys": "Rotate workspace keys",
+      "deleteTags": "Delete tag | Delete {n} tags"
     }
   },
   "count": {
@@ -2784,7 +2783,8 @@
       "updated": "Registry updated"
     },
     "registry": {
-      "tagDeleted": "Deleted {repo}:{tag}"
+      "tagsDeleted": "Deleted {n} tag, freeing about {size} at the next cleanup | Deleted {n} tags, freeing about {size} at the next cleanup",
+      "tagsNotDeleted": "Not deleted: {tags}"
     },
     "releases": {
       "approved": "Approval recorded",
@@ -3427,7 +3427,31 @@
     "step3": "3. Push",
     "tag": "Tag",
     "tags": "Tags",
-    "yourNamespace": "Your namespace"
+    "yourNamespace": "Your namespace",
+    "selectAllOnPage": "Select all on this page",
+    "selectTag": "Select {tag}",
+    "selectedCount": "{n} tag selected | {n} tags selected",
+    "deleteSelected": "Delete selected",
+    "clearSelection": "Clear",
+    "sameImageAs": "Same image as {tags}",
+    "deletePreviewSiblings": "These tags point at the same images, so the registry deletes them too:",
+    "deletePreviewSkipped": "Left alone:",
+    "deletePreviewFreed": "Frees about {size} at the next nightly cleanup.",
+    "nothingToDelete": "Nothing to delete: {tags}",
+    "outcome": {
+      "would_delete": "will be deleted",
+      "deleted": "deleted",
+      "in_use": "in use",
+      "not_found": "not found",
+      "failed": "failed"
+    },
+    "usage": "Storage used",
+    "usageOfQuota": "{used} of {quota}",
+    "usageNoQuota": "{used} · no quota",
+    "usageUpdated": "Updated {when}",
+    "usageRefreshing": "Refreshing…",
+    "usageReclaimHint": "Space from deleted tags is reclaimed at the next nightly cleanup.",
+    "repoSizeTitle": "Deleting this repository would free about {size}"
   },
   "releases": {
     "active": "active",

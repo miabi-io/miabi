@@ -7,6 +7,7 @@ import {
   type RegistryInfo,
   type RegistryRepositoryOverview,
   type RegistryTag,
+  type TagDeleteResponse,
 } from '@/api/registry'
 import { appApi } from '@/api/apps'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -16,6 +17,7 @@ import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import { relativeTime } from '@/utils/time'
+import { formatBytes } from '@/utils/bytes'
 import type { Application } from '@/api/types'
 
 const route = useRoute()
@@ -132,18 +134,6 @@ function shortDigest(d?: string) {
   return d.startsWith('sha256:') ? d.slice(7, 19) : d.slice(0, 12)
 }
 
-function formatBytes(n?: number) {
-  if (!n) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let v = n
-  let u = 0
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024
-    u++
-  }
-  return `${v < 10 && u > 0 ? v.toFixed(1) : Math.round(v)} ${units[u]}`
-}
-
 async function copy(text: string) {
   if (await copyText(text)) notify.success(t('notify.common.copiedToClipboard'))
   else notify.error(t('notify.common.copyFailedSelectAndCopy'))
@@ -151,23 +141,94 @@ async function copy(text: string) {
 
 // --- Deletion ---
 
-const confirmTarget = ref<RegistryTag | null>(null)
-const deleting = ref<string | null>(null)
+const selected = ref<Set<string>>(new Set())
+const selectable = (tag: RegistryTag) => canDelete.value && !tag.in_use
+const pageSelectable = computed(() => tags.value.filter(selectable))
+const allOnPageSelected = computed(
+  () => pageSelectable.value.length > 0 && pageSelectable.value.every((tag) => selected.value.has(tag.name)),
+)
+function toggle(name: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(name)
+  else next.delete(name)
+  selected.value = next
+}
+function toggleAll(on: boolean) {
+  const next = new Set(selected.value)
+  for (const tag of pageSelectable.value) {
+    if (on) next.add(tag.name)
+    else next.delete(tag.name)
+  }
+  selected.value = next
+}
+watch(repo, () => { selected.value = new Set() })
+
+// The registry deletes images, not tags, so tags sharing one are shown together before anyone deletes.
+const tagsByDigest = computed(() => {
+  const by = new Map<string, string[]>()
+  for (const tag of tags.value) {
+    if (!tag.digest) continue
+    by.set(tag.digest, [...(by.get(tag.digest) ?? []), tag.name])
+  }
+  return by
+})
+function sameImageAs(tag: RegistryTag): string[] {
+  return tag.digest ? (tagsByDigest.value.get(tag.digest) ?? []).filter((n) => n !== tag.name) : []
+}
+
+const preview = ref<TagDeleteResponse | null>(null)
+const previewing = ref(false)
+const deleting = ref(false)
+const willDelete = computed(() => preview.value?.tags.filter((o) => o.result === 'would_delete') ?? [])
+const leftAlone = computed(() => preview.value?.tags.filter((o) => o.result !== 'would_delete') ?? [])
+const extraTags = computed(() => {
+  const named = new Set(willDelete.value.map((o) => o.tag))
+  return [...new Set(willDelete.value.flatMap((o) => o.siblings ?? []))].filter((n) => !named.has(n))
+})
+
+function outcomeLabel(result: string) {
+  return t(`registry.outcome.${result}`)
+}
+
+// Every delete is previewed first, so a tag that goes with another is named before it is gone.
+async function askDelete(names: string[]) {
+  if (!wsId.value || names.length === 0) return
+  previewing.value = true
+  try {
+    const res = (await registryApi.deleteTags(wsId.value, repo.value, names, true)).data.data
+    if (!res.tags.some((o) => o.result === 'would_delete')) {
+      notify.error(t('registry.nothingToDelete', { tags: res.tags.map((o) => `${o.tag} (${outcomeLabel(o.result)})`).join(', ') }))
+      return
+    }
+    preview.value = res
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    previewing.value = false
+  }
+}
 
 async function confirmDelete() {
-  if (!confirmTarget.value || !wsId.value) return
-  const tag = confirmTarget.value.name
-  deleting.value = tag
+  if (!wsId.value || willDelete.value.length === 0) return
+  deleting.value = true
   try {
-    await registryApi.deleteTag(wsId.value, repo.value, tag)
-    notify.success(t('notify.registry.tagDeleted', { repo: repo.value, tag }))
-    confirmTarget.value = null
+    const res = (await registryApi.deleteTags(wsId.value, repo.value, willDelete.value.map((o) => o.tag), false)).data.data
+    if (res.removed.length) {
+      notify.success(t('notify.registry.tagsDeleted', { n: res.removed.length, size: formatBytes(res.freed_bytes) }, res.removed.length))
+    }
+    const missed = res.tags.filter((o) => o.result !== 'deleted')
+    if (missed.length) {
+      notify.error(t('notify.registry.tagsNotDeleted', { tags: missed.map((o) => `${o.tag} (${outcomeLabel(o.result)})`).join(', ') }))
+    }
+    const gone = new Set(res.removed)
+    selected.value = new Set([...selected.value].filter((n) => !gone.has(n)))
+    preview.value = null
     // The newest tag may have changed; refresh quietly without blanking the page.
     await Promise.all([loadOverview(), goToPage(pageable.value.current_page)])
   } catch (e) {
     notify.apiError(e)
   } finally {
-    deleting.value = null
+    deleting.value = false
   }
 }
 </script>
@@ -312,10 +373,27 @@ async function confirmDelete() {
             </div>
           </div>
 
-          <div v-else class="table-wrapper">
+          <div v-if="selected.size > 0" class="selection-bar">
+            <span>{{ $t('registry.selectedCount', { n: selected.size }, selected.size) }}</span>
+            <button class="btn btn-danger btn-sm" :disabled="previewing" @click="askDelete([...selected])">
+              <span class="mdi" :class="previewing ? 'mdi-loading mdi-spin' : 'mdi-trash-can-outline'"></span>{{ $t('registry.deleteSelected') }}</button>
+            <button class="btn btn-ghost btn-sm" @click="selected = new Set()">{{ $t('registry.clearSelection') }}</button>
+          </div>
+
+          <div v-if="tags.length > 0" class="table-wrapper">
             <table>
               <thead>
                 <tr>
+                  <th v-if="canDelete" class="check-col">
+                    <input
+                      type="checkbox"
+                      :checked="allOnPageSelected"
+                      :disabled="pageSelectable.length === 0"
+                      :aria-label="$t('registry.selectAllOnPage')"
+                      :title="$t('registry.selectAllOnPage')"
+                      @change="toggleAll(($event.target as HTMLInputElement).checked)"
+                    />
+                  </th>
                   <th>{{ $t('registry.tag') }}</th>
                   <th>{{ $t('registry.size') }}</th>
                   <th>{{ $t('registry.digest') }}</th>
@@ -324,12 +402,25 @@ async function confirmDelete() {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="t in tags" :key="t.name" :class="{ busy: deleting === t.name }">
+                <tr v-for="t in tags" :key="t.name" :class="{ busy: deleting && selected.has(t.name) }">
+                  <td v-if="canDelete" class="check-col">
+                    <input
+                      type="checkbox"
+                      :checked="selected.has(t.name)"
+                      :disabled="!selectable(t)"
+                      :aria-label="$t('registry.selectTag', { tag: t.name })"
+                      :title="t.in_use ? $t('registry.inUseHint') : ''"
+                      @change="toggle(t.name, ($event.target as HTMLInputElement).checked)"
+                    />
+                  </td>
                   <td>
                     <div class="tag-cell">
                       <code class="mono">{{ t.name }}</code>
                       <span v-if="t.in_use" class="badge badge-success" :title="$t('registry.inUseHint')">{{ $t('registry.inUse') }}</span>
                     </div>
+                    <span v-if="sameImageAs(t).length" class="cell-sub">
+                      <span class="mdi mdi-link-variant"></span> {{ $t('registry.sameImageAs', { tags: sameImageAs(t).join(', ') }) }}
+                    </span>
                     <span v-if="appName(t.application_id)" class="cell-sub">
                       built for {{ appName(t.application_id) }}
                       <template v-if="t.commit"> · {{ t.commit.slice(0, 8) }}</template>
@@ -348,10 +439,10 @@ async function confirmDelete() {
                     <button
                       v-if="canDelete"
                       class="btn-icon btn-icon-danger"
-                      :disabled="t.in_use || deleting === t.name"
-                      :title="t.in_use ? 'In use by a live deployment or pinned release — cannot be deleted' : 'Delete tag'"
+                      :disabled="t.in_use || previewing || deleting"
+                      :title="t.in_use ? $t('registry.inUseHint') : $t('confirm.title.deleteTag')"
                       :aria-label="$t('confirm.title.deleteTag')"
-                      @click="confirmTarget = t"
+                      @click="askDelete([t.name])"
                     >
                       <span class="mdi mdi-trash-can-outline"></span>
                     </button>
@@ -367,15 +458,33 @@ async function confirmDelete() {
     </template>
 
     <ConfirmDialog
-      :open="!!confirmTarget"
-      :title="$t('confirm.title.deleteTag')"
-      :message="confirmTarget ? $t('confirm.message.imageDetail.deleteRepoNameThis', { repo: repo, name: confirmTarget.name }) : ''"
+      :open="!!preview"
+      :title="$t('confirm.title.deleteTags', { n: willDelete.length }, willDelete.length)"
+      :message="$t('confirm.message.registry.deleteTags', { n: willDelete.length, repo, tags: willDelete.map((o) => o.tag).join(', ') }, willDelete.length)"
       :confirm-label="$t('action.delete')"
       variant="danger"
-      :busy="deleting !== null"
+      :busy="deleting"
       @confirm="confirmDelete"
-      @cancel="confirmTarget = null"
-    />
+      @cancel="preview = null"
+    >
+      <div v-if="extraTags.length" class="preview-block preview-warn">
+        <span class="mdi mdi-alert-outline"></span>
+        <div>
+          <p>{{ $t('registry.deletePreviewSiblings') }}</p>
+          <div class="tag-grid"><code v-for="n in extraTags" :key="n" class="tag">{{ n }}</code></div>
+        </div>
+      </div>
+      <div v-if="leftAlone.length" class="preview-block">
+        <span class="mdi mdi-information-outline"></span>
+        <div>
+          <p>{{ $t('registry.deletePreviewSkipped') }}</p>
+          <p class="text-muted text-sm">{{ leftAlone.map((o) => `${o.tag} (${outcomeLabel(o.result)})`).join(', ') }}</p>
+        </div>
+      </div>
+      <p v-if="preview && preview.freed_bytes > 0" class="text-muted text-sm preview-freed">
+        {{ $t('registry.deletePreviewFreed', { size: formatBytes(preview.freed_bytes) }) }}
+      </p>
+    </ConfirmDialog>
   </div>
 </template>
 
@@ -415,6 +524,17 @@ async function confirmDelete() {
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary-500); cursor: pointer; }
 .link-btn:hover { text-decoration: underline; }
 tr.busy { opacity: 0.5; }
+.check-col { width: 32px; }
+.selection-bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  background: var(--bg-tertiary); border-bottom: 1px solid var(--border-primary); font-size: 13px;
+}
+.selection-bar > span { margin-right: auto; }
+.preview-block { display: flex; gap: 8px; margin-top: 12px; font-size: 13px; }
+.preview-block p { margin: 0 0 6px; }
+.preview-block > .mdi { font-size: 18px; color: var(--text-muted); }
+.preview-warn > .mdi { color: var(--warning-600); }
+.preview-freed { margin: 12px 0 0; }
 .empty { display: flex; align-items: center; gap: 16px; }
 .empty-icon { font-size: 36px; color: var(--text-muted); flex-shrink: 0; }
 .empty-title { font-weight: 600; color: var(--text-primary); margin: 0 0 2px; }

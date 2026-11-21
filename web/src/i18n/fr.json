@@ -1174,9 +1174,6 @@
       "gitRepositories": {
         "deleteGitRepositoryName": "Supprimer le dépôt Git \"{name}\" ? Les applications qui se construisent depuis ce dépôt échoueront au clonage."
       },
-      "imageDetail": {
-        "deleteRepoNameThis": "Supprimer {repo}:{name} ? Le manifeste est retiré du registre et cette action est irréversible."
-      },
       "jobs": {
         "deleteCronjobScheduledRuns": "Supprimer la tâche planifiée « {name} » ? Les exécutions programmées s’arrêteront.",
         "deleteJobRunThis": "Supprimer l’exécution n° {id} ? Cette action est irréversible."
@@ -1242,7 +1239,8 @@
         "deleteRegistryNameApps": "Supprimer le registre \"{name}\" ? Les applications qui l’utilisent ne pourront plus récupérer d’images privées."
       },
       "registry": {
-        "runGarbageCollectionThe": "Lancer le nettoyage ? Le registre passe en lecture seule (les pulls continuent, les pushes sont suspendus) pendant qu’il récupère de l’espace."
+        "runGarbageCollectionThe": "Lancer le nettoyage ? Le registre passe en lecture seule (les pulls continuent, les pushes sont suspendus) pendant qu’il récupère de l’espace.",
+        "deleteTags": "Supprimer {tags} de {repo} ? | Supprimer {n} tags de {repo} : {tags} ?"
       },
       "routeDetail": {
         "deleteRouteNameIts": "Supprimer la route \"{name}\" ? Ses hôtes cesseront de router vers l’application."
@@ -1399,7 +1397,8 @@
       "testDnsProvider": "Tester le fournisseur DNS",
       "expandVolume": "Étendre le volume",
       "deleteServiceAccount": "Supprimer le compte de service",
-      "rotateWorkspaceKeys": "Faire tourner les clés de l’espace de travail"
+      "rotateWorkspaceKeys": "Faire tourner les clés de l’espace de travail",
+      "deleteTags": "Supprimer le tag | Supprimer {n} tags"
     }
   },
   "count": {
@@ -2784,7 +2783,8 @@
       "updated": "Registre mis à jour"
     },
     "registry": {
-      "tagDeleted": "{repo}:{tag} supprimé"
+      "tagsDeleted": "{n} tag supprimé, environ {size} libéré au prochain nettoyage | {n} tags supprimés, environ {size} libérés au prochain nettoyage",
+      "tagsNotDeleted": "Non supprimés : {tags}"
     },
     "releases": {
       "approved": "Approbation enregistrée",
@@ -3427,7 +3427,31 @@
     "step3": "3. Pousser",
     "tag": "Tag",
     "tags": "Tags",
-    "yourNamespace": "Votre espace de noms"
+    "yourNamespace": "Votre espace de noms",
+    "selectAllOnPage": "Tout sélectionner sur cette page",
+    "selectTag": "Sélectionner {tag}",
+    "selectedCount": "{n} tag sélectionné | {n} tags sélectionnés",
+    "deleteSelected": "Supprimer la sélection",
+    "clearSelection": "Effacer",
+    "sameImageAs": "Même image que {tags}",
+    "deletePreviewSiblings": "Ces tags pointent vers les mêmes images, le registre les supprime donc aussi :",
+    "deletePreviewSkipped": "Laissés en place :",
+    "deletePreviewFreed": "Libère environ {size} au prochain nettoyage nocturne.",
+    "nothingToDelete": "Rien à supprimer : {tags}",
+    "outcome": {
+      "would_delete": "sera supprimé",
+      "deleted": "supprimé",
+      "in_use": "utilisé",
+      "not_found": "introuvable",
+      "failed": "échec"
+    },
+    "usage": "Stockage utilisé",
+    "usageOfQuota": "{used} sur {quota}",
+    "usageNoQuota": "{used} · sans quota",
+    "usageUpdated": "Mis à jour {when}",
+    "usageRefreshing": "Actualisation…",
+    "usageReclaimHint": "L’espace des tags supprimés est récupéré au prochain nettoyage nocturne.",
+    "repoSizeTitle": "Supprimer ce dépôt libérerait environ {size}"
   },
   "releases": {
     "active": "active",

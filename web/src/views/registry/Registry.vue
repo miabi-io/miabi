@@ -2,12 +2,14 @@
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { registryApi, type RegistryInfo, type RegistryRepository } from '@/api/registry'
+import { registryApi, type RegistryInfo, type RegistryRepository, type RegistryUsage } from '@/api/registry'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import { copyText } from '@/utils/clipboard'
+import { formatBytes } from '@/utils/bytes'
+import { relativeTime } from '@/utils/time'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -51,6 +53,24 @@ function preview(r: RegistryRepository): string[] {
   return r.tags ?? []
 }
 
+const usage = ref<RegistryUsage | null>(null)
+const usageByRepo = computed(() => new Map((usage.value?.repositories ?? []).map((r) => [r.name, r])))
+const usagePercent = computed(() =>
+  usage.value && usage.value.quota_bytes > 0 ? Math.min(100, (usage.value.total_bytes / usage.value.quota_bytes) * 100) : 0,
+)
+const usedText = computed(() => (usage.value?.total_bytes ? formatBytes(usage.value.total_bytes) : '0 B'))
+const usageBarClass = computed(() => (usagePercent.value >= 95 ? 'bar-danger' : usagePercent.value >= 80 ? 'bar-warning' : ''))
+
+// The first read walks the registry, so it never blocks the repository list.
+async function loadUsage() {
+  if (!wsId.value || !info.value?.enabled) return
+  try {
+    usage.value = (await registryApi.usage(wsId.value)).data.data
+  } catch {
+    usage.value = null
+  }
+}
+
 async function loadInfo() {
   if (!wsId.value) return
   try {
@@ -73,6 +93,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
     return
   }
   reposLoading.value = true
+  loadUsage()
   try {
     const res = await registryApi.repositories(wsId.value, page, pageable.value.size, search.value.trim())
     repos.value = res.data.data ?? []
@@ -93,6 +114,7 @@ watch(wsId, async () => {
   loading.value = true
   search.value = '' // a filter from the previous workspace means nothing here
   info.value = null
+  usage.value = null
   await loadInfo()
   loading.value = false
   await goToPage(0)
@@ -128,6 +150,26 @@ watch(wsId, async () => {
 
       <!-- Repositories -->
       <template v-if="activeTab === 'repositories'">
+        <div v-if="usage" class="card mb-4">
+          <div class="card-body usage">
+            <div class="usage-head">
+              <span class="usage-label">{{ $t('registry.usage') }}</span>
+              <span class="usage-value">
+                {{ usage.quota_bytes > 0
+                  ? $t('registry.usageOfQuota', { used: usedText, quota: formatBytes(usage.quota_bytes) })
+                  : $t('registry.usageNoQuota', { used: usedText }) }}
+              </span>
+              <span class="text-muted text-sm usage-when">
+                {{ usage.stale ? $t('registry.usageRefreshing') : usage.computed_at ? $t('registry.usageUpdated', { when: relativeTime(usage.computed_at) }) : '' }}
+              </span>
+            </div>
+            <div v-if="usage.quota_bytes > 0" class="usage-bar" role="progressbar" :aria-valuenow="Math.round(usagePercent)" aria-valuemin="0" aria-valuemax="100">
+              <div class="usage-fill" :class="usageBarClass" :style="{ width: `${usagePercent}%` }"></div>
+            </div>
+            <p class="text-muted text-sm usage-hint">{{ $t('registry.usageReclaimHint') }}</p>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header repos-header">
             <div>
@@ -175,6 +217,11 @@ watch(wsId, async () => {
                 <span class="mdi mdi-cube-outline repo-icon"></span>
                 <button class="repo-name mono link" @click="openRepo(r.name)">{{ info.image_prefix }}/{{ r.name }}</button>
                 <span class="badge badge-neutral">{{ r.tag_count }} {{ r.tag_count === 1 ? 'tag' : 'tags' }}</span>
+                <span
+                  v-if="usageByRepo.get(r.name)?.bytes"
+                  class="badge badge-neutral"
+                  :title="$t('registry.repoSizeTitle', { size: formatBytes(usageByRepo.get(r.name)!.exclusive_bytes) })"
+                ><span class="mdi mdi-harddisk"></span> {{ formatBytes(usageByRepo.get(r.name)!.bytes) }}</span>
               </div>
               <div v-if="preview(r).length" class="tag-grid">
                 <code v-for="t in preview(r)" :key="t" class="tag">{{ t }}</code>
@@ -285,6 +332,16 @@ watch(wsId, async () => {
 .repo { padding: 14px 16px; border-top: 1px solid var(--border-primary); }
 .repo:first-child { border-top: 0; }
 .repo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.usage { display: flex; flex-direction: column; gap: 8px; }
+.usage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.usage-label { font-size: 12px; color: var(--text-muted); }
+.usage-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.usage-when { margin-left: auto; }
+.usage-bar { height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden; }
+.usage-fill { height: 100%; background: var(--primary-500); transition: width 0.3s; }
+.usage-fill.bar-warning { background: var(--warning-500); }
+.usage-fill.bar-danger { background: var(--danger-500); }
+.usage-hint { margin: 0; }
 .repo-icon { color: var(--primary-500); font-size: 18px; }
 .repo-name { font-size: 14px; color: var(--text-primary); }
 .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
