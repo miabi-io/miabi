@@ -832,6 +832,10 @@
           "description": "Name lets a Route target the port by name instead of its number.",
           "type": "string"
         },
+        "primary": {
+          "description": "Primary marks the port behind MIABI_PORT, the internal URL and the bare external host (default: the first port).",
+          "type": "boolean"
+        },
         "protocol": {
           "description": "tcp|udp (default tcp)",
           "enum": [

@@ -310,3 +310,34 @@ applications:
 		t.Fatal("an unknown restartPolicy was accepted")
 	}
 }
+
+func TestPrimaryPort(t *testing.T) {
+	tmpl := func(ports string) string {
+		return `
+apiVersion: miabi.io/v1
+kind: Template
+metadata: {name: a, displayName: A, version: "1.0.0"}
+applications:
+  - name: minio
+    image: minio/minio
+    ports: ` + ports + `
+`
+	}
+	m, err := Parse([]byte(tmpl("[{container: 9000, scheme: http}, {container: 9001, scheme: http, primary: true}]")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Applications[0].PrimaryPort(); got != 9001 {
+		t.Fatalf("primary = %d, want 9001", got)
+	}
+	m, err = Parse([]byte(tmpl("[{container: 9000, scheme: http}, {container: 9001, scheme: http}]")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Applications[0].PrimaryPort(); got != 9000 {
+		t.Fatalf("default primary = %d, want the first port", got)
+	}
+	if _, err := Parse([]byte(tmpl("[{container: 9000, scheme: http, primary: true}, {container: 9001, scheme: http, primary: true}]"))); err == nil {
+		t.Fatal("two primary ports were accepted")
+	}
+}

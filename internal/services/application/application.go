@@ -100,6 +100,8 @@ var (
 	ErrVolumeUnverifiable = errors.New("a mounted volume could not be read, so it cannot be confirmed as shared storage; replication is refused until it resolves")
 	ErrTooManyReplicas    = fmt.Errorf("replica count exceeds the maximum of %d", MaxReplicas)
 	ErrPortRange          = errors.New("container port must be between 1 and 65535")
+	ErrPrimaryPorts       = errors.New("only one port may be primary")
+	ErrPrimaryUndeclared  = errors.New("the primary port must be one of the app's declared ports")
 )
 
 // MaxReplicas caps a service app's replica count.
@@ -579,11 +581,13 @@ type PortSpec struct {
 	Protocol      string
 	Scheme        string
 	Name          string
+	Primary       bool
 }
 
-// SetPorts keeps the primary Port field in sync with the first declared port.
+// SetPorts records app.Port as the port marked primary, else the current one if still declared, else the first.
 func (s *Service) SetPorts(app *models.Application, specs []PortSpec) error {
 	ports := make([]models.AppPort, 0, len(specs))
+	marked := 0
 	for _, sp := range specs {
 		if sp.ContainerPort <= 0 {
 			continue
@@ -600,19 +604,60 @@ func (s *Service) SetPorts(app *models.Application, specs []PortSpec) error {
 			scheme = "https"
 		}
 		ports = append(ports, models.AppPort{ContainerPort: sp.ContainerPort, Protocol: proto, Scheme: scheme, Name: sp.Name})
+		if sp.Primary && sp.ContainerPort != marked {
+			if marked != 0 {
+				return ErrPrimaryPorts
+			}
+			marked = sp.ContainerPort
+		}
 	}
 	if err := s.ports.ReplaceForApp(app.ID, ports); err != nil {
 		return err
 	}
-	primary := 0
-	if len(ports) > 0 {
-		primary = ports[0].ContainerPort
-	}
+	primary := PrimaryPort(ports, marked, app.Port)
 	if primary != app.Port {
 		app.Port = primary
 		return s.apps.Update(app)
 	}
 	return nil
+}
+
+// PrimaryPort picks marked, else current when still declared, else the first port; 0 without ports.
+func PrimaryPort(ports []models.AppPort, marked, current int) int {
+	first := 0
+	for _, p := range ports {
+		if first == 0 {
+			first = p.ContainerPort
+		}
+		if marked == 0 && p.ContainerPort == current {
+			return current
+		}
+	}
+	if marked != 0 {
+		return marked
+	}
+	return first
+}
+
+// SetPrimaryPort switches the primary among the declared ports without touching them.
+func (s *Service) SetPrimaryPort(app *models.Application, port int) error {
+	ports, err := s.ports.ListByApp(app.ID)
+	if err != nil {
+		return err
+	}
+	if port == 0 && len(ports) == 0 {
+		return nil
+	}
+	for _, p := range ports {
+		if p.ContainerPort == port {
+			if app.Port == port {
+				return nil
+			}
+			app.Port = port
+			return s.apps.Update(app)
+		}
+	}
+	return ErrPrimaryUndeclared
 }
 
 // ReconcilePorts replaces the app's ports; a spec with no name keeps the name its live port has.

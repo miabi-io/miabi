@@ -329,7 +329,7 @@ var optionalWhenUnset = map[string]bool{
 	"deployment.update.parallelism": true, "deployment.update.delaySeconds": true,
 	"healthcheck.type": true, "healthcheck.path": true, "healthcheck.port": true, "healthcheck.command": true,
 	"healthcheck.intervalSeconds": true, "healthcheck.timeoutSeconds": true, "healthcheck.retries": true,
-	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "mounts": true, "miabiEnv": true,
+	"healthcheck.startPeriodSeconds": true, "stack": true, "ports": true, "primaryPort": true, "mounts": true, "miabiEnv": true,
 }
 
 // Config mounts are always read-only and their content is compared by configFP, so only where they land counts.
@@ -637,6 +637,9 @@ func specFields(r Resource) map[string]string {
 		// Only compared when stated, so a manifest without ports keeps the ones set in the console.
 		if len(a.Ports) > 0 {
 			f["ports"] = portList(a.Ports)
+			if p, ok := a.PrimaryPort(); ok {
+				f["primaryPort"] = strconv.Itoa(p.Container)
+			}
 		}
 		if len(a.Mounts) > 0 {
 			f["mounts"] = mountList(a.Mounts)

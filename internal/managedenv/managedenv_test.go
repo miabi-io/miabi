@@ -147,3 +147,36 @@ func TestSourceForApp(t *testing.T) {
 		t.Fatalf("nil source = %+v", got)
 	}
 }
+
+func TestPortVarsNeedADeclaredPort(t *testing.T) {
+	has := func(vars []Var, name string) bool {
+		for _, v := range vars {
+			if v.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	cases := []struct {
+		name string
+		app  *models.Application
+		want bool
+	}{
+		{"no ports", &models.Application{Name: "worker"}, false},
+		{"stale primary", &models.Application{Name: "worker", Port: 8080}, false},
+		{"undeclared primary", &models.Application{Name: "web", Port: 9000, Ports: []models.AppPort{{ContainerPort: 8080}}}, false},
+		{"declared primary", &models.Application{Name: "web", Port: 8080, Ports: []models.AppPort{{ContainerPort: 8080}, {ContainerPort: 9000}}}, true},
+	}
+	for _, c := range cases {
+		vars := Build((*Source)(nil).ForApp(c.app))
+		if has(vars, Port) != c.want || has(vars, InternalURL) != c.want {
+			t.Errorf("%s: MIABI_PORT %v, MIABI_INTERNAL_URL %v, want %v", c.name, has(vars, Port), has(vars, InternalURL), c.want)
+		}
+	}
+	vars := Build((*Source)(nil).ForApp(cases[3].app))
+	for _, v := range vars {
+		if v.Name == InternalURL && v.Value != "http://web:8080" {
+			t.Errorf("internal url = %q", v.Value)
+		}
+	}
+}

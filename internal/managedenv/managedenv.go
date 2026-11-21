@@ -162,8 +162,8 @@ func Build(in Input) []Var {
 	set(ImageDigest, in.Digest)
 	if in.Port > 0 {
 		set(Port, strconv.Itoa(in.Port))
+		set(InternalURL, internalURL(in.AppName, in.Port))
 	}
-	set(InternalURL, internalURL(in.AppName, in.Port))
 	set(PublicURL, in.PublicURL)
 	set(PublicHost, in.PublicHost)
 	set(Location, in.Location)
@@ -203,10 +203,17 @@ func internalURL(name string, port int) string {
 	if name == "" {
 		return ""
 	}
-	if port <= 0 {
-		return "http://" + name
-	}
 	return "http://" + name + ":" + strconv.Itoa(port)
+}
+
+// A port is only worth advertising if the app declares it, so a stale Application.Port is ignored.
+func declaredPort(app *models.Application) int {
+	for _, p := range app.Ports {
+		if p.ContainerPort == app.Port {
+			return app.Port
+		}
+	}
+	return 0
 }
 
 func cpuLimit(nano int64) string {
@@ -248,7 +255,7 @@ func (s *Source) ForApp(app *models.Application) Input {
 		AppID:       app.ID,
 		WorkspaceID: app.WorkspaceID,
 		Kind:        KindApp,
-		Port:        app.Port,
+		Port:        declaredPort(app),
 		Service:     app.RuntimeKind == models.RuntimeService,
 		NanoCPUs:    app.NanoCPUs,
 		MemoryBytes: app.MemoryBytes,

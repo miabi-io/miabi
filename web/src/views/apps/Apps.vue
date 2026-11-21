@@ -147,6 +147,14 @@ function addPort() {
 function removePort(i: number) {
   form.value.ports.splice(i, 1)
 }
+// Unmarked, the server takes the first port, so the radio shows that default.
+function isPrimaryPort(i: number) {
+  const marked = form.value.ports.findIndex((p) => p.primary)
+  return marked === -1 ? i === 0 : marked === i
+}
+function setPrimaryPort(i: number) {
+  form.value.ports.forEach((p, j) => { p.primary = j === i })
+}
 const form = ref<AppForm>(emptyForm())
 
 const canInspect = computed(
@@ -575,8 +583,12 @@ function formatCreated(ts?: string) {
                   <option value="https">https</option>
                 </select>
                 <input v-model="p.name" class="form-input" :aria-label="$t('apps.form.portName')" :placeholder="$t('apps.form.portNamePlaceholder')" style="flex: 1" />
+                <label v-if="form.ports.length > 1" class="checkbox-label port-primary">
+                  <input type="radio" name="primary-port" :checked="isPrimaryPort(i)" @change="setPrimaryPort(i)" />{{ $t('apps.form.primaryPort') }}
+                </label>
                 <button type="button" class="btn-icon btn-icon-danger" :aria-label="$t('apps.form.removePort')" @click="removePort(i)"><span class="mdi mdi-close"></span></button>
               </div>
+              <p v-if="form.ports.length > 1" class="form-hint">{{ $t('apps.form.primaryPortHint') }}</p>
               <button type="button" class="btn btn-ghost btn-sm" @click="addPort"><span class="mdi mdi-plus"></span> {{ $t('apps.form.addPort') }}</button>
             </div>
             <div v-if="networks.length" class="form-group">
@@ -617,6 +629,7 @@ function formatCreated(ts?: string) {
 .text-muted { color: var(--text-muted); }
 .form-row { display: flex; gap: 12px; margin-bottom: 20px; }
 .port-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.port-primary { margin: 0; white-space: nowrap; }
 .form-hint code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; font-size: 12px; color: var(--text-secondary); }
 .text-danger { color: var(--danger, #dc2626); }
 .inspect-error { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

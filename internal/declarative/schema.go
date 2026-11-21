@@ -243,6 +243,23 @@ type PortSpec struct {
 	// HostPort 0 auto-allocates from the pool.
 	Publish  bool `yaml:"publish,omitempty" json:"publish,omitempty"`
 	HostPort int  `yaml:"hostPort,omitempty" json:"hostPort,omitempty"`
+	// Primary marks the port behind MIABI_PORT, the internal URL and the bare external host (default: the first port).
+	Primary bool `yaml:"primary,omitempty" json:"primary,omitempty"`
+}
+
+// PrimaryPort is the port marked primary, else the first; false without ports.
+func (a *ApplicationSpec) PrimaryPort() (PortSpec, bool) {
+	for _, p := range a.Ports {
+		if p.Primary && p.Container > 0 {
+			return p, true
+		}
+	}
+	for _, p := range a.Ports {
+		if p.Container > 0 {
+			return p, true
+		}
+	}
+	return PortSpec{}, false
 }
 
 // MountSpec attaches a managed Volume into the container filesystem.

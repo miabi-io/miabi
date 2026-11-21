@@ -634,11 +634,9 @@ func (s *Service) createApp(workspaceID uint, m *manifest.Manifest, spec manifes
 		in.Metadata = models.SetBuiltin(in.Metadata, models.MetaDigest, digest)
 	}
 	for _, p := range spec.Ports {
-		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Protocol: "tcp", Scheme: p.Scheme})
+		in.Ports = append(in.Ports, application.PortSpec{ContainerPort: p.Container, Protocol: "tcp", Scheme: p.Scheme, Primary: p.Primary})
 	}
-	if len(spec.Ports) > 0 {
-		in.Port = spec.Ports[0].Container
-	}
+	in.Port = spec.PrimaryPort()
 	if spec.Resources != nil {
 		in.MemoryBytes, _ = spec.Resources.MemoryBytes()
 		in.NanoCPUs, _ = spec.Resources.NanoCPUs()

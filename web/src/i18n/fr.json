@@ -604,7 +604,10 @@
       "schemeHint": "Protocole applicatif parlé par le conteneur sur ce port",
       "suggestHint": "Les ports hôte sont partagés par nœud — « Suggérer » en choisit un actuellement libre.",
       "policyBlocked": "Les ports hôte sont désactivés par la politique de la plateforme",
-      "autoApproveHint": "Les demandes dans {ranges} sont approuvées automatiquement."
+      "autoApproveHint": "Les demandes dans {ranges} sont approuvées automatiquement.",
+      "primary": "Principal",
+      "makePrimary": "Définir comme principal",
+      "primaryHint": "Le port principal définit MIABI_PORT et MIABI_INTERNAL_URL, et sert par défaut aux routes et à l’accès externe. Un changement s’applique au prochain déploiement."
     },
     "processes": "Processus",
     "promote": "Promouvoir",
@@ -854,7 +857,9 @@
       "tag": "Tag",
       "usesSaved": "Utilise l’URL et les identifiants du dépôt enregistré.",
       "resourcesRequired": "Le plan de cet espace de travail exige une limite CPU et une limite mémoire sur chaque application.",
-      "memoryRequired": "Le plan de cet espace de travail exige une limite mémoire sur chaque application. Le CPU est partagé : une limite CPU est facultative."
+      "memoryRequired": "Le plan de cet espace de travail exige une limite mémoire sur chaque application. Le CPU est partagé : une limite CPU est facultative.",
+      "primaryPort": "Principal",
+      "primaryPortHint": "Le port principal définit MIABI_PORT et MIABI_INTERNAL_URL, et sert par défaut aux routes et à l’accès externe."
     },
     "nodeHintContainer": "L’application tourne sur ce nœud. Épinglez-la avant son premier déploiement ; un conteneur déployé ne peut pas encore changer de nœud.",
     "nodeHintService": "Swarm exécute chaque tâche sur ce nœud, et un redéploiement applique un épinglage modifié.",
@@ -2610,7 +2615,8 @@
       "stopRequested": "Arrêt de l’application demandé",
       "varAdded": "Variable ajoutée",
       "varUpdated": "Variable mise à jour",
-      "volumeAttached": "Volume attaché"
+      "volumeAttached": "Volume attaché",
+      "primaryPortSet": "Port principal défini sur {port}"
     },
     "branding": {
       "imagesMayBeAtMost": "Les images ne doivent pas dépasser {formatSize}."

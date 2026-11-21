@@ -91,6 +91,7 @@ type PortSpecBody struct {
 	Protocol      string `json:"protocol" enum:"tcp,udp"`
 	Scheme        string `json:"scheme" enum:"http,https"`
 	Name          string `json:"name"`
+	Primary       bool   `json:"primary,omitempty"`
 }
 
 type CreateAppRequest struct {
@@ -278,9 +279,6 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 		// Merge user labels, protecting built-in "miabi.io/" keys.
 		app.Metadata = models.MergeUserMetadata(app.Metadata, b.Metadata)
 	}
-	if b.sent("port") {
-		app.Port = b.Port
-	}
 	if b.sent("memory_bytes") {
 		app.MemoryBytes = b.MemoryBytes
 	}
@@ -410,10 +408,29 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 	}
 }
 
+// The legacy port field still picks the primary when no port in the list is marked.
+func portSpecsWithPrimary(b *UpdateAppBody) []application.PortSpec {
+	specs := toPortSpecs(b.Ports)
+	if !b.sent("port") || b.Port == 0 {
+		return specs
+	}
+	for _, sp := range specs {
+		if sp.Primary {
+			return specs
+		}
+	}
+	for i := range specs {
+		if specs[i].ContainerPort == b.Port {
+			specs[i].Primary = true
+		}
+	}
+	return specs
+}
+
 func toPortSpecs(in []PortSpecBody) []application.PortSpec {
 	out := make([]application.PortSpec, 0, len(in))
 	for _, p := range in {
-		out = append(out, application.PortSpec{ContainerPort: p.ContainerPort, Protocol: p.Protocol, Scheme: p.Scheme, Name: p.Name})
+		out = append(out, application.PortSpec{ContainerPort: p.ContainerPort, Protocol: p.Protocol, Scheme: p.Scheme, Name: p.Name, Primary: p.Primary})
 	}
 	return out
 }
@@ -627,8 +644,12 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 		}
 	}
 	if b.sent("ports") {
-		if err := h.svc.SetPorts(app, toPortSpecs(b.Ports)); err != nil {
-			return c.AbortInternalServerError("failed to update ports", err)
+		if err := h.svc.SetPorts(app, portSpecsWithPrimary(b)); err != nil {
+			return h.mapErr(c, err)
+		}
+	} else if b.sent("port") {
+		if err := h.svc.SetPrimaryPort(app, b.Port); err != nil {
+			return h.mapErr(c, err)
 		}
 	}
 	h.record(c, app.WorkspaceID, "app.update", app.ID)
@@ -1581,7 +1602,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),
 		errors.Is(err, application.ErrTooManyReplicas), errors.Is(err, models.ErrDevicesOnService),
 		errors.Is(err, application.ErrHostBindService),
-		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
+		errors.Is(err, application.ErrPortRange), errors.Is(err, application.ErrPrimaryPorts),
+		errors.Is(err, application.ErrPrimaryUndeclared), errors.Is(err, models.ErrRunAsUserInvalid),
 		errors.Is(err, models.ErrRunAsUserRoot), errors.Is(err, models.ErrCapabilityNotLinux),
 		errors.Is(err, models.ErrCapabilityConflict):
 		return c.AbortBadRequest(err.Error())

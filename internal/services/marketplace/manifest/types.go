@@ -150,9 +150,23 @@ type AppSpec struct {
 }
 
 // Port is a container port the application listens on.
+// PrimaryPort is the port marked primary, else the first; 0 without ports.
+func (a *AppSpec) PrimaryPort() int {
+	for _, p := range a.Ports {
+		if p.Primary {
+			return p.Container
+		}
+	}
+	if len(a.Ports) > 0 {
+		return a.Ports[0].Container
+	}
+	return 0
+}
+
 type Port struct {
 	Container int    `yaml:"container" json:"container"`
 	Scheme    string `yaml:"scheme,omitempty" json:"scheme,omitempty"` // http | https
+	Primary   bool   `yaml:"primary,omitempty" json:"primary,omitempty"`
 }
 
 // Host binds are deliberately not permitted in templates.

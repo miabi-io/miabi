@@ -1558,7 +1558,7 @@ func overlayDesiredApps(live map[string]declarative.AppView, desired *declarativ
 		}
 		name := res.Metadata.Name
 		view := declarative.AppView{Host: name, Scheme: "http", Alias: out[name].Alias}
-		if p, ok := primaryPort(res.Application.Ports); ok {
+		if p, ok := res.Application.PrimaryPort(); ok {
 			view.Port = portString(p.Container)
 			if p.Scheme != "" {
 				view.Scheme = p.Scheme
@@ -1570,16 +1570,6 @@ func overlayDesiredApps(live map[string]declarative.AppView, desired *declarativ
 		out[name] = view
 	}
 	return out
-}
-
-// Same rule the app service uses when it records Application.Port.
-func primaryPort(ports []declarative.PortSpec) (declarative.PortSpec, bool) {
-	for _, p := range ports {
-		if p.Container > 0 {
-			return p, true
-		}
-	}
-	return declarative.PortSpec{}, false
 }
 
 func portString(p int) string {
@@ -2194,6 +2184,7 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 			Scheme:         p.Scheme,
 			ExternalAccess: ext[p.ContainerPort],
 			Publish:        pub[p.ContainerPort],
+			Primary:        len(app.Ports) > 1 && p.ContainerPort == app.Port,
 		})
 	}
 	if app.MemoryBytes > 0 || app.NanoCPUs > 0 || app.GPUCount > 0 {
@@ -3334,16 +3325,19 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		in.GPUCapabilities = spec.Resources.GPUCapabilities
 	}
 	in.Ports = portSpecsOf(spec)
-	if len(spec.Ports) > 0 {
-		in.Port = spec.Ports[0].Container
+	if p, ok := spec.PrimaryPort(); ok {
+		in.Port = p.Container
 	}
 	return in
 }
 
+// The effective primary is always marked, so the manifest wins over one picked in the console.
 func portSpecsOf(spec *declarative.ApplicationSpec) []application.PortSpec {
+	primary, _ := spec.PrimaryPort()
 	out := make([]application.PortSpec, 0, len(spec.Ports))
 	for _, p := range spec.Ports {
-		out = append(out, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol, Name: p.Name})
+		out = append(out, application.PortSpec{ContainerPort: p.Container, Scheme: p.Scheme, Protocol: p.Protocol, Name: p.Name,
+			Primary: p.Container == primary.Container})
 	}
 	return out
 }

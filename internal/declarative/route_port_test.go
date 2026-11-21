@@ -168,7 +168,39 @@ func TestPortsCompareOnlyWhenStated(t *testing.T) {
 	if d.BuildPlan(appPorts(""), live, d.PlanOptions{}).HasChanges() {
 		t.Error("a manifest without ports planned to change them")
 	}
-	if d.BuildPlan(appPorts("  ports: [{ container: 9090 }, { container: 8080 }]"), live, d.PlanOptions{}).HasChanges() {
-		t.Error("reordering ports planned a change")
+	if d.BuildPlan(appPorts("  ports: [{ container: 9090 }, { container: 8080, primary: true }]"), live, d.PlanOptions{}).HasChanges() {
+		t.Error("reordering ports around the same primary planned a change")
+	}
+	if !d.BuildPlan(appPorts("  ports: [{ container: 9090 }, { container: 8080 }]"), live, d.PlanOptions{}).HasChanges() {
+		t.Error("an unmarked reorder moves the primary to the first port and must plan")
+	}
+}
+
+func TestPrimaryPortChangePlans(t *testing.T) {
+	live := appPorts("  ports: [{ container: 8080 }, { container: 9090 }]")
+	if !d.BuildPlan(appPorts("  ports: [{ container: 8080 }, { container: 9090, primary: true }]"), live, d.PlanOptions{}).HasChanges() {
+		t.Error("moving the primary port planned nothing")
+	}
+}
+
+func TestPrimaryPort(t *testing.T) {
+	doc := func(ports string) string {
+		return "apiVersion: miabi.io/v1\nkind: Application\nmetadata: { name: web }\nspec:\n  image: nginx\n" + ports + "\n"
+	}
+	if _, err := d.Parse([]byte(doc("  ports: [{ container: 8080, primary: true }, { container: 9090, primary: true }]"))); err == nil {
+		t.Error("two primary ports were accepted")
+	}
+	if _, err := d.Parse([]byte(doc("  ports: [{ container: 53, primary: true }, { container: 53, protocol: udp, primary: true }]"))); err != nil {
+		t.Errorf("one port number over tcp and udp: %v", err)
+	}
+	app := func(ports string) *d.ApplicationSpec { return appPorts(ports).All()[0].Application }
+	if p, _ := app("  ports: [{ container: 8080 }, { container: 9090, primary: true }]").PrimaryPort(); p.Container != 9090 {
+		t.Errorf("marked primary = %d", p.Container)
+	}
+	if p, _ := app("  ports: [{ container: 8080 }, { container: 9090 }]").PrimaryPort(); p.Container != 8080 {
+		t.Errorf("default primary = %d", p.Container)
+	}
+	if _, ok := app("").PrimaryPort(); ok {
+		t.Error("an app without ports has a primary")
 	}
 }
