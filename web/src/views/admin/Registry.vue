@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   registryApi,
+  type AdminRegistryUsage,
   type RegistryLocks,
   type RegistryRuntime,
   type RegistrySettingsPayload,
@@ -11,15 +12,17 @@ import { adminApi } from '@/api/admin'
 import type { StorageClass } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { relativeTime } from '@/utils/time'
 
 const notify = useNotificationStore()
 
-type Tab = 'overview' | 'configuration' | 'storage' | 'maintenance'
+type Tab = 'overview' | 'configuration' | 'storage' | 'usage' | 'maintenance'
 const tab = ref<Tab>('overview')
 const tabs: Array<{ id: Tab; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'mdi-view-dashboard-outline' },
   { id: 'configuration', label: 'Configuration', icon: 'mdi-cog-outline' },
   { id: 'storage', label: 'Storage', icon: 'mdi-database-outline' },
+  { id: 'usage', label: 'Usage', icon: 'mdi-chart-donut' },
   { id: 'maintenance', label: 'Maintenance', icon: 'mdi-broom' },
 ]
 
@@ -113,6 +116,31 @@ function syncPolling() {
 function selectTab(id: Tab) {
   tab.value = id
   syncPolling()
+  if (id === 'usage') void loadUsage()
+}
+
+const usage = ref<AdminRegistryUsage | null>(null)
+const usageLoading = ref(false)
+let usageRetry: ReturnType<typeof setTimeout> | undefined
+// Workspaces counted for the first time come back pending, so look again shortly while any are.
+async function loadUsage() {
+  clearTimeout(usageRetry)
+  usageLoading.value = true
+  try {
+    usage.value = (await registryApi.adminUsage()).data.data
+    if (tab.value === 'usage' && usage.value.workspaces.some((w) => w.pending)) {
+      usageRetry = setTimeout(loadUsage, 3000)
+    }
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    usageLoading.value = false
+  }
+}
+const usageTotal = computed(() => (usage.value?.workspaces ?? []).reduce((sum, w) => sum + w.total_bytes, 0))
+function quotaShare(bytes: number): string {
+  const q = usage.value?.quota_bytes ?? 0
+  return q > 0 ? `${Math.round((bytes / q) * 100)}%` : '—'
 }
 
 const statusLabel = computed(() => {
@@ -236,7 +264,7 @@ onMounted(async () => {
   await Promise.all([load(), loadStorageClasses()])
   syncPolling()
 })
-onBeforeUnmount(() => { if (poll) clearInterval(poll) })
+onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry) })
 </script>
 
 <template>
@@ -468,6 +496,40 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
         </div>
       </div>
 
+      <div v-else-if="tab === 'usage'" class="card">
+        <div class="card-header usage-header">
+          <div>
+            <h2>Usage by workspace</h2>
+            <p class="section-note" style="margin: 2px 0 0">
+              {{ fmtBytes(usageTotal) }} referenced in total<template v-if="usage?.quota_bytes">, against a
+              {{ fmtBytes(usage.quota_bytes) }} quota per workspace</template>. Layers shared between workspaces count
+              once per workspace, so the disk holds less than the sum.
+            </p>
+          </div>
+          <button class="btn btn-secondary btn-sm" :disabled="usageLoading" @click="loadUsage">
+            <span class="mdi mdi-refresh" :class="{ 'mdi-spin': usageLoading }"></span> Refresh
+          </button>
+        </div>
+        <div v-if="!usage" class="card-body"><span class="spinner"></span></div>
+        <div v-else-if="usage.workspaces.length === 0" class="card-body text-muted">No workspace has pushed an image yet.</div>
+        <div v-else class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>Workspace</th><th>Used</th><th>Of quota</th><th>Repositories</th><th>Counted</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="w in usage.workspaces" :key="w.workspace_id">
+                <td><router-link :to="`/admin/workspaces/${w.workspace_id}`">{{ w.workspace }}</router-link></td>
+                <td>{{ w.pending ? 'Counting…' : w.total_bytes ? fmtBytes(w.total_bytes) : '0 B' }}</td>
+                <td>{{ w.pending ? '—' : quotaShare(w.total_bytes) }}</td>
+                <td>{{ w.pending ? '—' : w.repositories }}</td>
+                <td class="text-muted">{{ w.computed_at ? relativeTime(w.computed_at) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ── Maintenance ──────────────────────────────────────────────────── -->
       <div v-else class="card" style="max-width: 720px">
         <div class="card-body">
@@ -521,6 +583,7 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 <style scoped>
 .subtitle { margin: 4px 0 0; }
 .tabs { margin-bottom: 16px; }
+.usage-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 .toggle-row { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-primary); }
 .toggle-row input { width: auto; margin: 0; }

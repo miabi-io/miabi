@@ -125,6 +125,56 @@ export interface RegistryRepositoryOverview {
   latest_tag?: RegistryTag
 }
 
+export type TagDeleteResult = 'deleted' | 'would_delete' | 'in_use' | 'not_found' | 'failed'
+
+export interface TagDeleteOutcome {
+  tag: string
+  result: TagDeleteResult
+  /** Tags on the same image, which the registry removes with this one. */
+  siblings?: string[]
+  error?: string
+}
+
+export interface TagDeleteResponse {
+  dry_run: boolean
+  tags: TagDeleteOutcome[]
+  /** Every tag gone afterwards (or that would go), siblings included. */
+  removed: string[]
+  /** Freed once garbage collection runs; layers other images still use are not counted. */
+  freed_bytes: number
+}
+
+export interface RegistryRepoUsage {
+  name: string
+  bytes: number
+  /** Referenced by no other repository in the workspace: what deleting this one frees. */
+  exclusive_bytes: number
+  tags: number
+}
+
+export interface RegistryUsage {
+  total_bytes: number
+  /** 0 = no quota. */
+  quota_bytes: number
+  repositories: RegistryRepoUsage[]
+  computed_at?: string
+  /** A refresh is running; the numbers are from computed_at. */
+  stale: boolean
+}
+
+export interface AdminRegistryUsage {
+  quota_bytes: number
+  workspaces: {
+    workspace_id: number
+    workspace: string
+    total_bytes: number
+    repositories: number
+    /** Being computed for the first time. */
+    pending: boolean
+    computed_at?: string
+  }[]
+}
+
 export const registryApi = {
   // Admin
   getSettings: () => api.get<ApiResponse<RegistrySettings>>('/admin/registry/settings'),
@@ -132,6 +182,7 @@ export const registryApi = {
     api.put<ApiResponse<RegistrySettings>>('/admin/registry/settings', payload),
   runtime: () => api.get<ApiResponse<RegistryRuntime>>('/admin/registry/runtime'),
   runGc: () => api.post<ApiResponse<{ message: string }>>('/admin/registry/gc'),
+  adminUsage: () => api.get<ApiResponse<AdminRegistryUsage>>('/admin/registry/usage'),
 
   // Workspace
   info: (workspaceId: number) =>
@@ -151,8 +202,11 @@ export const registryApi = {
     api.get<PageableResponse<RegistryTag>>(`/workspaces/${workspaceId}/registry/repository/tags`, {
       params: { name: repo, page, size, q: q || undefined },
     }),
-  deleteTag: (workspaceId: number, repo: string, tag: string) =>
-    api.delete<ApiResponse<{ message: string }>>(
-      `/workspaces/${workspaceId}/registry/repositories/${encodeURIComponent(repo)}/tags/${encodeURIComponent(tag)}`,
-    ),
+  /** One call for one tag or many; dry_run previews what goes, siblings included. */
+  deleteTags: (workspaceId: number, repo: string, tags: string[], dryRun: boolean) =>
+    api.post<ApiResponse<TagDeleteResponse>>(`/workspaces/${workspaceId}/registry/repository/tags/delete`, {
+      repository: repo, tags, dry_run: dryRun,
+    }),
+  usage: (workspaceId: number) =>
+    api.get<ApiResponse<RegistryUsage>>(`/workspaces/${workspaceId}/registry/usage`),
 }
