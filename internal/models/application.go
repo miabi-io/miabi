@@ -585,6 +585,8 @@ type Deployment struct {
 	FinishedAt    *time.Time       `json:"finished_at"`
 	CreatedAt     time.Time        `json:"created_at"`
 	Current       bool             `json:"current" gorm:"-"`
+	// ReleaseVersion is the MIABI_RELEASE the container was given, so the release row carries the same number.
+	ReleaseVersion int `json:"-" gorm:"-"`
 }
 
 type DeploymentWithActor struct {

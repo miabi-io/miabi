@@ -39,16 +39,17 @@ type ManagedEnvPreview struct {
 	Variables []ManagedVar `json:"variables"`
 }
 
-// ManagedEnvPreview shows what the next deploy would set; deployment, digest and commit are only known then.
+// ManagedEnvPreview shows what the next deploy would set, with the running release; deployment, digest and commit are only known then.
 func (s *Service) ManagedEnvPreview(app *models.Application) ManagedEnvPreview {
 	out := ManagedEnvPreview{Enabled: !app.MiabiEnvDisabled, Names: managedenv.Names, Variables: []ManagedVar{}}
 	if app.MiabiEnvDisabled {
 		return out
 	}
 	in := s.managedEnv.ForApp(app)
+	// The running release, matching the Releases tab; the next deploy's number isn't known until it succeeds.
 	if s.releases != nil {
-		if v, err := s.releases.NextVersion(app.ID); err == nil {
-			in.Release = v
+		if rel, err := s.releases.FindActive(app.ID); err == nil {
+			in.Release = rel.Version
 		}
 	}
 	if app.SourceType != models.AppSourceGit {

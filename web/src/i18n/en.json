@@ -788,7 +788,7 @@
       "replacedByStack": "replaced by the stack's variable",
       "replaces": "Replaces a Miabi variable",
       "replacesHint": "Miabi sets a variable of this name; yours replaces it.",
-      "nextDeploy": "Values the next deploy sets. The deployment ID, image digest and commit are known only at that deploy.",
+      "nextDeploy": "Values the next deploy sets, except MIABI_RELEASE, which shows the running release and moves to the next number at each deploy. The deployment ID, image digest and commit are known only at that deploy.",
       "enabled": "MIABI_* variables will be set at the next deploy",
       "disabled": "MIABI_* variables will be dropped at the next deploy"
     }

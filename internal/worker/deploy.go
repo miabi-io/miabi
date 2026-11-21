@@ -989,7 +989,7 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 // A previous release is retired only when the app just switched from the container runtime.
 func (h *DeployHandler) releaseService(app *models.Application, dep *models.Deployment, image, serviceID string) {
 	prev, _ := h.releases.FindActive(app.ID)
-	version, _ := h.releases.NextVersion(app.ID)
+	version := h.releaseVersion(app.ID, dep)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, RuntimeKind: models.RuntimeService,
 		Image: image, ContainerID: serviceID, Active: true,
@@ -1061,7 +1061,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 		_ = h.releases.Delete(*cur.CanaryReleaseID)
 	}
 
-	version, _ := h.releases.NextVersion(app.ID)
+	version := h.releaseVersion(app.ID, dep)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: false, RuntimeKind: models.RuntimeContainer,
@@ -1530,6 +1530,15 @@ func (h *DeployHandler) releaseImageTag(appID uint, dep *models.Deployment, imag
 	return dep.ImageTag
 }
 
+// A superseded canary's release is deleted after the container got its number, so the freed version must not be reused.
+func (h *DeployHandler) releaseVersion(appID uint, dep *models.Deployment) int {
+	next, _ := h.releases.NextVersion(appID)
+	if dep.ReleaseVersion > next {
+		return dep.ReleaseVersion
+	}
+	return next
+}
+
 // The release row is written after the container starts; the per-app deploy lock keeps the predicted version exact.
 func (h *DeployHandler) deployRun(ctx context.Context, app *models.Application, dep *models.Deployment, image string) managedRun {
 	run := managedRun{
@@ -1541,7 +1550,7 @@ func (h *DeployHandler) deployRun(ctx context.Context, app *models.Application, 
 	}
 	if h.releases != nil {
 		if v, err := h.releases.NextVersion(app.ID); err == nil {
-			run.release = v
+			run.release, dep.ReleaseVersion = v, v
 		}
 	}
 	run.digest = refDigest(image)
@@ -1884,7 +1893,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	prev, _ := h.releases.FindActive(app.ID)
 	canary := h.detachCanary(app)
 
-	version, _ := h.releases.NextVersion(app.ID)
+	version := h.releaseVersion(app.ID, dep)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
 		Image: image, ContainerID: containerID, Active: true, RuntimeKind: models.RuntimeContainer,
