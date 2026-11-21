@@ -290,6 +290,7 @@ function restoreHint(f: ControlManagerFinding): string {
                   </td>
                   <td class="cell-sub" :title="f.first_seen_at">
                     {{ relativeTime(f.first_seen_at, now) }}
+                    <div v-if="f.trigger === 'event'" class="cell-sub">caught by a container event</div>
                     <div v-if="f.breaker_open" class="cell-sub text-danger">gave up — needs a look</div>
                     <div v-else-if="f.next_attempt_at" class="cell-sub">
                       retry {{ relativeTime(f.next_attempt_at, now) }}

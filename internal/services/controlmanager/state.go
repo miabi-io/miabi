@@ -59,6 +59,8 @@ type Finding struct {
 	Blocked bool `json:"blocked,omitempty"`
 	// BlockedReason says which volume, for a report that stands on its own.
 	BlockedReason string `json:"blocked_reason,omitempty"`
+	// Trigger is what confirmed it: the sweep, or an engine event followed by a targeted check.
+	Trigger string `json:"trigger,omitempty"`
 
 	misses   int
 	subjects []subject
@@ -141,7 +143,16 @@ type notice struct {
 }
 
 // An unknown observation neither advances nor clears a finding.
-func (s *Service) record(items []item, seen map[string]observation, skipped []Skip, start time.Time) {
+// pass is one look at some items: the whole sweep, or a targeted check of one app.
+type pass struct {
+	trigger string
+	// scoped leaves every finding outside items alone, since a targeted check saw only its own.
+	scoped bool
+	// apps are the targeted check's apps, whose findings and blocks it may settle.
+	apps []uint
+}
+
+func (s *Service) record(items []item, seen map[string]observation, skipped []Skip, start time.Time, p pass) {
 	now := s.now()
 	var notices []notice
 
@@ -166,41 +177,64 @@ func (s *Service) record(items []item, seen map[string]observation, skipped []Sk
 				s.findings[it.key] = f
 			}
 			f.misses++
+			// The removal event and this look after the grace are two independent sightings of the same absence.
+			if p.trigger == TriggerEvent && it.kind == kindContainer && o.state == gone && f.misses < confirmAfter {
+				f.misses = confirmAfter
+			}
 			f.LastSeenAt = now
 			if !f.Confirmed && f.misses >= confirmAfter {
 				f.Confirmed = true
+				f.Trigger = p.trigger
 				notices = append(notices, notice{finding: *f})
 			}
 		}
 	}
-	// An item no longer expected was deleted, stopped or is being redeployed, which settles its finding.
-	for key := range s.findings {
-		if !expected[key] {
-			delete(s.findings, key)
+	if p.scoped {
+		// The app is no longer one to watch: deleted, stopped or redeploying since the hint.
+		for _, id := range p.apps {
+			if key := appKey(id); !expected[key] {
+				delete(s.findings, key)
+			}
 		}
-	}
-	// So an app that keeps disappearing doesn't reset its backoff by looking healthy for one sweep.
-	for key, a := range s.attempts {
-		if _, still := s.findings[key]; !still && now.Sub(a.lastActedAt) > forgetAfter {
-			delete(s.attempts, key)
+		blocked := s.blockLocked(items)
+		for _, id := range p.apps {
+			if reason, ok := blocked[id]; ok {
+				s.blocked[id] = reason
+			} else {
+				delete(s.blocked, id)
+			}
 		}
+	} else {
+		// An item no longer expected was deleted, stopped or is being redeployed, which settles its finding.
+		for key := range s.findings {
+			if !expected[key] {
+				delete(s.findings, key)
+			}
+		}
+		// So an app that keeps disappearing doesn't reset its backoff by looking healthy for one sweep.
+		for key, a := range s.attempts {
+			if _, still := s.findings[key]; !still && now.Sub(a.lastActedAt) > forgetAfter {
+				delete(s.attempts, key)
+			}
+		}
+		s.blocked = s.blockLocked(items)
+		s.skipped = skipped
+		s.lastSweep = &start
+		s.sweepTook = now.Sub(start)
 	}
-	s.blocked = s.blockLocked(items)
-	s.skipped = skipped
-	s.lastSweep = &start
-	took := now.Sub(start)
-	s.sweepTook = took
 	counts := s.countsLocked()
-	s.mu.Unlock()
-
-	for _, sk := range skipped {
+	for _, sk := range s.skipped {
 		if sk.Scope == "cluster" {
 			counts.UnobservedClusters++
 		} else {
 			counts.UnobservedNodes++
 		}
 	}
-	metrics.ObserveControlManagerSweep(took)
+	s.mu.Unlock()
+
+	if !p.scoped {
+		metrics.ObserveControlManagerSweep(now.Sub(start))
+	}
 	metrics.SetControlManagerDrift(counts)
 	for _, n := range notices {
 		s.announce(n)
