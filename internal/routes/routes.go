@@ -273,7 +273,7 @@ type routerHandlers struct {
 }
 
 // Returns the port-forward service so the caller can release live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store, removals *events.RemovalHook, alertingEvents *events.Service) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store, removals *events.RemovalHook, sharedEvents *events.Service) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	userRepo := repositories.NewUserRepository(db)
@@ -520,7 +520,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 		groupSyncer.Reconcile(groupsync.Input{User: user, Manager: p.Name, Groups: groups, Rules: rules, Prefix: p.GroupPrefix})
 	})
-	eventsService := events.NewService(appEventRepo, bus)
+	// The server's own carries the notifier and alert sink; a local one would record events nothing else hears.
+	eventsService := sharedEvents
+	if eventsService == nil {
+		eventsService = events.NewService(appEventRepo, bus)
+	}
 	nodeClients := nodeManager.Clients()
 	// GPUs are discovered by a probe over the Docker API, so no agent change is needed.
 	gpuService := gpu.NewService(repositories.NewGPUDeviceRepository(db), serverRepo, appRepo, nodeClients, gpu.Config{
@@ -629,12 +633,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
 	// Runs on the cron manager so only the leader sweeps; Miabi never restores a backup unattended.
-	// The server's events service carries the alert sink and notifier; drift and breaker events exist to raise alerts.
-	cmEvents := eventsService
-	if alertingEvents != nil {
-		cmEvents = alertingEvents
-	}
-	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, cmEvents, settingsProvider)
+	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, eventsService, settingsProvider)
 	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
 	// Redeploys via the ordinary path so the app never lands on a cordoned node or runs missing data or configs.
 	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
