@@ -26,7 +26,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 )
 
-// Warn exists for upgraded installs whose default read-scope keys may have been writing for months.
+// Warn and off exist only as an operator's explicit choice, to migrate keys that rely on scopes they lack.
 type ScopeMode string
 
 const (
@@ -52,16 +52,9 @@ func ParseScopeMode(s string) ScopeMode {
 	}
 }
 
-// Upgraded keys predate enforcement and may rely on scopes they never had.
-const LegacyScopeModeSetting = "api_key_scope_enforcement_legacy"
-
-// ResolveScopeMode prefers the operator's setting, then the legacy mode recorded at upgrade, else enforce.
-func ResolveScopeMode(configured, legacy string) (ScopeMode, string) {
+func ResolveScopeMode(configured string) (ScopeMode, string) {
 	if strings.TrimSpace(configured) != "" {
 		return ParseScopeMode(configured), "configured"
-	}
-	if strings.TrimSpace(legacy) != "" {
-		return ParseScopeMode(legacy), "kept from before scopes were enforced"
 	}
 	return ScopeModeEnforce, "default"
 }

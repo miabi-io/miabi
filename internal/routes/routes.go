@@ -297,11 +297,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	portBindingRepo := repositories.NewPortBindingRepository(db)
 	appEventRepo := repositories.NewAppEventRepository(db)
 	settingRepo := repositories.NewSettingRepository(db)
-	legacyScope := ""
-	if st, err := settingRepo.Get(middlewares.LegacyScopeModeSetting); err == nil && st != nil {
-		legacyScope = st.Value
-	}
-	scopeMode, scopeWhy := middlewares.ResolveScopeMode(cfg.APIKeyScopeEnforcement, legacyScope)
+	scopeMode, scopeWhy := middlewares.ResolveScopeMode(cfg.APIKeyScopeEnforcement)
 	if scopeMode != middlewares.ScopeModeEnforce {
 		logger.Warn("API key scopes are not enforced: keys can do more than their scopes allow. Review api_key.scope_violation audit entries, then set MIABI_API_KEY_SCOPE_ENFORCEMENT=enforce",
 			"mode", scopeMode, "why", scopeWhy)
