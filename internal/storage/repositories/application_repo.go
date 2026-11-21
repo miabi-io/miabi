@@ -147,7 +147,17 @@ func (r *ApplicationRepository) ListRunning() ([]models.Application, error) {
 func (r *ApplicationRepository) ListReconcilable() ([]models.Application, error) {
 	var apps []models.Application
 	err := r.db.Where("current_release_id IS NOT NULL AND status NOT IN ?",
-		[]models.AppStatus{models.AppStatusCreated, models.AppStatusDeploying, models.AppStatusStopped}).
+		[]models.AppStatus{models.AppStatusCreated, models.AppStatusDeploying, models.AppStatusStopped,
+			models.AppStatusStopping, models.AppStatusDeleting}).
+		Find(&apps).Error
+	return apps, err
+}
+
+// ListStaleTransitional returns apps left stopping or deleting since before, which a crash interrupted.
+func (r *ApplicationRepository) ListStaleTransitional(before time.Time) ([]models.Application, error) {
+	var apps []models.Application
+	err := r.db.Where("status IN ? AND updated_at < ?",
+		[]models.AppStatus{models.AppStatusStopping, models.AppStatusDeleting}, before).
 		Find(&apps).Error
 	return apps, err
 }

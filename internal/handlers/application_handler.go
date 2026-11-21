@@ -1064,7 +1064,7 @@ func (h *ApplicationHandler) lifecycle(c *okapi.Context, action string) error {
 	if errors.Is(err, application.ErrNotDeployable) {
 		return c.AbortWithError(409, errors.New("application has no running container; deploy it first"))
 	}
-	if errors.Is(err, datavolume.ErrLost) {
+	if errors.Is(err, datavolume.ErrLost) || errors.Is(err, application.ErrAppDeleting) || errors.Is(err, application.ErrAppStopping) {
 		return c.AbortWithError(409, err)
 	}
 	if err != nil {
@@ -1607,6 +1607,8 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 		errors.Is(err, models.ErrRunAsUserRoot), errors.Is(err, models.ErrCapabilityNotLinux),
 		errors.Is(err, models.ErrCapabilityConflict):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, application.ErrAppDeleting), errors.Is(err, application.ErrAppStopping):
+		return c.AbortWithError(http.StatusConflict, err)
 	case errors.Is(err, application.ErrStackNotFound):
 		return c.AbortNotFound(err.Error())
 	case errors.Is(err, application.ErrNodeMismatch), errors.Is(err, application.ErrVolumeNotFound),

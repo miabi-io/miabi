@@ -82,8 +82,11 @@ func TestRemoveRuntimeRecordsIntentFirst(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s was not called", call)
 		}
-		if got != models.AppStatusStopped {
-			t.Errorf("status during %s = %q, want stopped: the event would read as a removal outside Miabi", call, got)
+		if got != models.AppStatusStopping {
+			t.Errorf("status during %s = %q, want stopping: the event would read as a removal outside Miabi", call, got)
 		}
+	}
+	if got := engine.status(); got != models.AppStatusStopped {
+		t.Errorf("status after = %q, want stopped", got)
 	}
 }

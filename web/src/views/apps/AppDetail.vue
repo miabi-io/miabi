@@ -1925,6 +1925,8 @@ function badge(s: string) {
 }
 
 const displayStatus = computed(() => liveStatus.value?.status || app.value?.status || 'created')
+// A stop or delete Miabi started is still running; the server refuses other lifecycle actions until it ends.
+const appBusy = computed(() => app.value?.status === 'stopping' || app.value?.status === 'deleting')
 
 const statusDetail = computed(() => {
   const ls = liveStatus.value
@@ -2301,11 +2303,11 @@ async function detachDatabase(d: AppDatabase) {
         >
           <span class="mdi mdi-format-list-bulleted"></span>{{ $t('appDetail.processes') }}</button>
         <template v-if="ws.canEdit">
-          <button v-if="app.status === 'running'" class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.stop')" @click="lifecycle('stop')">
+          <button v-if="app.status === 'running'" class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== '' || appBusy" :title="$t('appDetail.stop')" @click="lifecycle('stop')">
             <span class="mdi mdi-stop"></span>{{ $t('appDetail.stop') }}</button>
-          <button v-else class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.start')" @click="lifecycle('start')">
+          <button v-else class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== '' || appBusy" :title="$t('appDetail.start')" @click="lifecycle('start')">
             <span class="mdi mdi-play"></span>{{ $t('appDetail.start') }}</button>
-          <button class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== ''" :title="$t('appDetail.restartAction')" @click="lifecycle('restart')">
+          <button class="btn btn-secondary btn-sm" :disabled="lifecycleBusy !== '' || appBusy" :title="$t('appDetail.restartAction')" @click="lifecycle('restart')">
             <span class="mdi" :class="lifecycleBusy === 'restart' ? 'mdi-loading mdi-spin' : 'mdi-restart'"></span>{{ $t('appDetail.restartAction') }}</button>
           <button
             v-if="ws.isWorkspaceAdmin && shellExecAllowed"
@@ -2316,7 +2318,7 @@ async function detachDatabase(d: AppDatabase) {
           >
             <span class="mdi mdi-console-line"></span>{{ $t('appDetail.shell') }}</button>
         </template>
-        <button v-if="ws.canEdit" class="btn btn-primary" @click="openDeploy">
+        <button v-if="ws.canEdit" class="btn btn-primary" :disabled="appBusy" @click="openDeploy">
           <span class="mdi mdi-rocket-launch-outline"></span> {{ deployVerb }}
         </button>
       </div>

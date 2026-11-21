@@ -21,6 +21,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/docker"
@@ -32,12 +33,20 @@ import (
 // recordingEngine captures the app's stored status when each Docker call runs.
 type recordingEngine struct {
 	docker.Client
+	state  string
 	status func() models.AppStatus
 	calls  map[string]models.AppStatus
 }
 
 func (e *recordingEngine) InspectContainer(context.Context, string) (docker.Container, error) {
-	return docker.Container{State: "exited"}, nil
+	if e.state == "" {
+		return docker.Container{State: "exited"}, nil
+	}
+	return docker.Container{State: e.state}, nil
+}
+
+func (e *recordingEngine) StatsOnce(context.Context, string) (docker.StatsSample, error) {
+	return docker.StatsSample{}, errors.New("no stats")
 }
 
 func (e *recordingEngine) StopContainer(context.Context, string, int) error {
@@ -93,13 +102,16 @@ func findApp(t *testing.T, s *Service) *models.Application {
 // A destroy or die event that arrives while the app still reads running is taken for a removal outside Miabi.
 func TestIntentIsRecordedBeforeDockerCalls(t *testing.T) {
 	t.Run("stop", func(t *testing.T) {
-		s, _, engine := intentService(t)
+		s, db, engine := intentService(t)
 		app := findApp(t, s)
 		if err := s.Stop(context.Background(), app); err != nil {
 			t.Fatal(err)
 		}
-		if got := engine.calls["stop"]; got != models.AppStatusStopped {
-			t.Errorf("status during stop = %q, want stopped", got)
+		if got := engine.calls["stop"]; got != models.AppStatusStopping {
+			t.Errorf("status during stop = %q, want stopping", got)
+		}
+		if got := storedStatus(db); got != models.AppStatusStopped {
+			t.Errorf("status after stop = %q, want stopped", got)
 		}
 	})
 	t.Run("delete", func(t *testing.T) {
@@ -109,9 +121,93 @@ func TestIntentIsRecordedBeforeDockerCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, call := range []string{"stop", "remove"} {
-			if got := engine.calls[call]; got != models.AppStatusStopped {
-				t.Errorf("status during %s = %q, want stopped", call, got)
+			if got := engine.calls[call]; got != models.AppStatusDeleting {
+				t.Errorf("status during %s = %q, want deleting", call, got)
 			}
+		}
+	})
+}
+
+func storedStatus(db *gorm.DB) models.AppStatus {
+	var st string
+	db.Raw(`SELECT status FROM applications WHERE id = 1`).Scan(&st)
+	return models.AppStatus(st)
+}
+
+func TestLifecycleRefusedWhileBusy(t *testing.T) {
+	cases := []struct {
+		status models.AppStatus
+		want   error
+	}{
+		{models.AppStatusDeleting, ErrAppDeleting},
+		{models.AppStatusStopping, ErrAppStopping},
+	}
+	for _, c := range cases {
+		t.Run(string(c.status), func(t *testing.T) {
+			s, _, engine := intentService(t)
+			app := findApp(t, s)
+			app.Status = c.status
+			if _, err := s.Start(context.Background(), app); !errors.Is(err, c.want) {
+				t.Errorf("start = %v, want %v", err, c.want)
+			}
+			if _, err := s.Restart(context.Background(), app); !errors.Is(err, c.want) {
+				t.Errorf("restart = %v, want %v", err, c.want)
+			}
+			if len(engine.calls) != 0 {
+				t.Errorf("Docker was called: %v", engine.calls)
+			}
+		})
+	}
+	t.Run("stop", func(t *testing.T) {
+		s, _, _ := intentService(t)
+		app := findApp(t, s)
+		app.Status = models.AppStatusDeleting
+		if err := s.Stop(context.Background(), app); !errors.Is(err, ErrAppDeleting) {
+			t.Errorf("stop while deleting = %v", err)
+		}
+		app.Status = models.AppStatusStopping
+		if err := s.Stop(context.Background(), app); err != nil {
+			t.Errorf("stop while stopping = %v, want a no-op", err)
+		}
+	})
+}
+
+func TestSettleTransitional(t *testing.T) {
+	t.Run("stopping with the container exited", func(t *testing.T) {
+		s, db, _ := intentService(t)
+		db.Exec(`UPDATE applications SET status = 'stopping' WHERE id = 1`)
+		if err := s.SettleTransitional(context.Background(), findApp(t, s)); err != nil {
+			t.Fatal(err)
+		}
+		if got := storedStatus(db); got != models.AppStatusStopped {
+			t.Errorf("status = %q, want stopped", got)
+		}
+	})
+	t.Run("stopping with the container still running", func(t *testing.T) {
+		s, db, engine := intentService(t)
+		engine.state = "running"
+		db.Exec(`UPDATE applications SET status = 'stopping' WHERE id = 1`)
+		if err := s.SettleTransitional(context.Background(), findApp(t, s)); err != nil {
+			t.Fatal(err)
+		}
+		if got := storedStatus(db); got != models.AppStatusRunning {
+			t.Errorf("status = %q, want running: the stop never happened", got)
+		}
+	})
+	t.Run("deleting resumes even if the container still runs", func(t *testing.T) {
+		s, db, engine := intentService(t)
+		engine.state = "running"
+		db.Exec(`UPDATE applications SET status = 'deleting' WHERE id = 1`)
+		if err := s.SettleTransitional(context.Background(), findApp(t, s)); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := engine.calls["remove"]; !ok {
+			t.Error("the container was not removed")
+		}
+		var n int64
+		db.Raw(`SELECT COUNT(*) FROM applications WHERE id = 1 AND deleted_at IS NULL`).Scan(&n)
+		if n != 0 {
+			t.Error("the app row survived the resumed delete")
 		}
 	})
 }

@@ -32,7 +32,9 @@ export function relTime(ts: string): string {
 }
 
 export function statusBadge(status: string): string {
-  return status === 'running' ? 'badge-success' : status === 'failed' ? 'badge-danger' : 'badge-neutral'
+  if (status === 'running') return 'badge-success'
+  if (status === 'failed') return 'badge-danger'
+  return ['deploying', 'stopping', 'deleting'].includes(status) ? 'badge-warning' : 'badge-neutral'
 }
 
 export function healthBadge(health: string): string {

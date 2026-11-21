@@ -153,8 +153,13 @@ func (p *planner) checkApp() {
 	if app.CurrentReleaseID == nil {
 		p.block("not_deployed", app.Name, "%s has never been deployed. Deploy it first; there is nothing running to move", app.Name)
 	}
-	if app.Status == models.AppStatusDeploying {
+	switch app.Status {
+	case models.AppStatusDeploying:
 		p.block("deploying", app.Name, "a deployment of %s is in progress; wait for it to finish", app.Name)
+	case models.AppStatusStopping:
+		p.block("stopping", app.Name, "%s is stopping; wait for it to finish", app.Name)
+	case models.AppStatusDeleting:
+		p.block("deleting", app.Name, "%s is being deleted", app.Name)
 	}
 	if app.CanaryReleaseID != nil {
 		p.block("canary", app.Name, "%s has a canary rollout in progress; promote or abort it first", app.Name)

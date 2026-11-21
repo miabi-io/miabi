@@ -298,7 +298,20 @@ const (
 	AppStatusRunning   AppStatus = "running"
 	AppStatusStopped   AppStatus = "stopped"
 	AppStatusFailed    AppStatus = "failed"
+	// Stopping and deleting are written before Miabi touches Docker, so the events that follow read as its own.
+	AppStatusStopping AppStatus = "stopping"
+	AppStatusDeleting AppStatus = "deleting"
 )
+
+// StopIntended reports whether Miabi stopped, or is stopping or deleting, the app on purpose.
+func (s AppStatus) StopIntended() bool {
+	return s == AppStatusStopped || s == AppStatusStopping || s == AppStatusDeleting
+}
+
+// Transitional reports whether a Miabi operation on the app is in progress.
+func (s AppStatus) Transitional() bool {
+	return s == AppStatusDeploying || s == AppStatusStopping || s == AppStatusDeleting
+}
 
 // Application is a deployable workload owned by a workspace.
 type Application struct {

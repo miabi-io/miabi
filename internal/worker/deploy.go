@@ -309,6 +309,10 @@ func (h *DeployHandler) ProcessTask(ctx context.Context, task *asynq.Task) error
 	if err != nil {
 		return h.fail(dep, fmt.Errorf("application %d not found: %w", dep.ApplicationID, err))
 	}
+	// Queued before the delete started; running it would recreate what the delete is removing.
+	if app.Status == models.AppStatusDeleting {
+		return h.fail(dep, errors.New("the application is being deleted"))
+	}
 
 	if h.clusterSlots != nil {
 		release, ok := h.clusterSlots.acquire(app.ClusterID)
@@ -1982,7 +1986,9 @@ func (h *DeployHandler) fail(dep *models.Deployment, cause error) error {
 
 	app, _ := h.apps.FindByID(dep.ApplicationID)
 	hasCurrentRelease := app != nil && app.CurrentReleaseID != nil
-	_ = h.apps.SetStatus(dep.ApplicationID, failedAppStatus(hasCurrentRelease, dep.Strategy))
+	if app == nil || app.Status != models.AppStatusDeleting {
+		_ = h.apps.SetStatus(dep.ApplicationID, failedAppStatus(hasCurrentRelease, dep.Strategy))
+	}
 	if app != nil && dep.Strategy != models.DeployRecreate {
 		h.revertRuntimeSwitch(app, dep)
 	}
