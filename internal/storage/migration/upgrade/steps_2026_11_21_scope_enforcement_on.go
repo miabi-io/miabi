@@ -21,31 +21,24 @@ package upgrade
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/miabi-io/miabi/internal/middlewares"
-	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
-// Scopes were never enforced before, so existing keys may rely on access they were never granted.
-func scopeEnforcementLegacyStep(ctx context.Context, db *gorm.DB) error {
-	var keys int64
-	if err := db.WithContext(ctx).Table("api_keys").Where("revoked = ? AND ephemeral = ?", false, false).Count(&keys).Error; err != nil {
-		return fmt.Errorf("count api keys: %w", err)
-	}
-	if keys == 0 {
+// Written by 1.10.11 to keep upgraded installs in warn mode; MIABI_API_KEY_SCOPE_ENFORCEMENT is now the only opt-out.
+const legacyScopeModeSetting = "api_key_scope_enforcement_legacy"
+
+func scopeEnforcementOnStep(ctx context.Context, db *gorm.DB) error {
+	if !db.Migrator().HasTable("settings") {
 		return nil
 	}
-	return db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
-		Create(&models.Setting{Key: middlewares.LegacyScopeModeSetting, Value: "warn", Type: models.SettingTypeString}).Error
+	return db.WithContext(ctx).Exec(`DELETE FROM settings WHERE key = ?`, legacyScopeModeSetting).Error
 }
 
 func init() {
 	steps = append(steps, Step{
-		Name:    "api_key_scope_enforcement_legacy",
-		Version: "1.10.11",
-		Run:     scopeEnforcementLegacyStep,
+		Name:    "api_key_scope_enforcement_on",
+		Version: "1.10.31",
+		Run:     scopeEnforcementOnStep,
 	})
 }

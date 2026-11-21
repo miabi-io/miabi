@@ -178,7 +178,7 @@ type Config struct {
 	// InternalNetwork is empty on a Docker Compose install, leaving ProxyNetwork as the only fabric.
 	InternalNetwork string
 
-	// APIKeyScopeEnforcement empty means enforce, except on upgrades with keys in use (see middlewares.ResolveScopeMode).
+	// APIKeyScopeEnforcement empty means enforce; warn and off are an operator's explicit, temporary choice.
 	APIKeyScopeEnforcement string
 
 	// ControlURL is where remote nodes reach the control plane; falls back to ApiBaseURL when unset.
