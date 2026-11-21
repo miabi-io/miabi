@@ -56,26 +56,26 @@ func redeployRequired(t *testing.T, db *gorm.DB, id uint) bool {
 	return flag
 }
 
-func TestAddressChangedMarksTheAppItself(t *testing.T) {
+func TestAddressChangeMarksOnlyReferencingApps(t *testing.T) {
 	s, db := managedEnvService(t)
-	db.Exec(`INSERT INTO applications (id, workspace_id, name, current_release_id, miabi_env_disabled) VALUES
-		(1, 1, 'web', 10, false), (2, 1, 'off', 11, true), (3, 1, 'fresh', NULL, false)`)
+	db.Exec(`INSERT INTO applications (id, workspace_id, name, current_release_id) VALUES
+		(1, 1, 'web', 10), (2, 1, 'client', 11), (3, 1, 'other', 12)`)
+	db.Exec(`INSERT INTO app_env_vars (id, application_id, key, value, is_secret) VALUES
+		(1, 2, 'API', '${{ applications.web.public_url }}', false)`)
 
-	for _, id := range []uint{1, 2, 3} {
-		app, err := s.apps.FindByID(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s.AddressChanged(app)
+	app, err := s.apps.FindByID(1)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !redeployRequired(t, db, 1) {
-		t.Error("a deployed app with managed env must be marked")
+	s.MarkAddressConsumers(app)
+	if redeployRequired(t, db, 1) {
+		t.Error("attaching a route must not require redeploying the app itself")
 	}
-	if redeployRequired(t, db, 2) {
-		t.Error("an app that opted out must not be marked")
+	if !redeployRequired(t, db, 2) {
+		t.Error("an app that reads the address must be marked")
 	}
 	if redeployRequired(t, db, 3) {
-		t.Error("a never-deployed app has nothing to redeploy")
+		t.Error("an unrelated app must not be marked")
 	}
 }
 
