@@ -273,7 +273,7 @@ type routerHandlers struct {
 }
 
 // Returns the port-forward service so the caller can release live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store, removals *events.RemovalHook, alertingEvents *events.Service) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	userRepo := repositories.NewUserRepository(db)
@@ -629,11 +629,20 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	backupSettingsRepo := repositories.NewWorkspaceBackupSettingsRepository(db)
 	volumeBackupRepo := repositories.NewVolumeBackupRepository(db)
 	// Runs on the cron manager so only the leader sweeps; Miabi never restores a backup unattended.
-	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, eventsService, settingsProvider)
+	// The server's events service carries the alert sink and notifier; drift and breaker events exist to raise alerts.
+	cmEvents := eventsService
+	if alertingEvents != nil {
+		cmEvents = alertingEvents
+	}
+	controlManager := controlmanager.New(nodeClients, clusterService, appRepo, releaseRepo, deploymentRepo, volumeRepo, dbRepo, cmEvents, settingsProvider)
 	controlManager.SetBackups(volumeBackupRepo, backupSetRepo)
 	// Redeploys via the ordinary path so the app never lands on a cordoned node or runs missing data or configs.
 	controlManager.SetEnforcement(appService, nodeService, repositories.NewConfigRepository(db), auditLogger)
 	controlManager.SetTransitional(appRepo.ListStaleTransitional, appService.SettleTransitional)
+	controlManager.SetLeader(cronManager)
+	if removals != nil {
+		removals.Set(controlManager.Notify)
+	}
 	// Gateways are watched too
 	controlManager.SetGateways(nodeService, nodeGateway.Ensurer(nodeService, nodeClients))
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {

@@ -488,12 +488,14 @@ func runServer(cli *okapicli.CLI) {
 			)
 			pipelineHandler.SetLogStore(logStore)
 			pipelineHandler.SetSecrets(secretService)
+			// Filled by InitRoutes with the control manager, which exists only after the subscribers start.
+			removals := &events.RemovalHook{}
 			eventCtx, cancelEvents := context.WithCancel(context.Background())
 			res.cancelEvents = cancelEvents
-			go events.NewSubscriber(dockerClient, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).Run(eventCtx)
+			go events.NewSubscriber(dockerClient, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).SetRemovedHook(removals).Run(eventCtx)
 			nodeManager.SetSubscriber(func(ctx context.Context, nodeID uint, dc docker.Client) {
 				logger.Info("starting node event subscriber", "node", nodeID)
-				events.NewSubscriber(dc, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).Run(ctx)
+				events.NewSubscriber(dc, appEventRepo, repositories.NewReleaseRepository(res.db), dbRepo, eventsSvc).SetRemovedHook(removals).Run(ctx)
 			})
 
 			// Direct-access nodes have no inbound tunnel, so their clients are built up front and polled.
@@ -556,7 +558,7 @@ func runServer(cli *okapicli.CLI) {
 
 			var wsBundleSvc *wsbackup.Service
 			var migrationSvc *locationmigration.Service
-			res.forward, runnerDispatcher, _, wsBundleSvc, migrationSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore)
+			res.forward, runnerDispatcher, _, wsBundleSvc, migrationSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore, removals, eventsSvc)
 
 			// This process holds the runner tunnels, so it dispatches builds; must be wired before the worker starts.
 			pipelineHandler.SetRunnerDispatch(runnerDispatcher, repositories.NewWorkspaceRepository(res.db), cfg.Registry.Host, registryDistributor, cfg.RunnerWaitTimeout)

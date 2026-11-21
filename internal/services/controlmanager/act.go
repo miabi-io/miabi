@@ -81,6 +81,8 @@ type attempt struct {
 	nextAt      time.Time
 	// So a reason the operator must fix isn't repeated every minute.
 	saidBlocked string
+	// eventRestores are recent restores an engine event triggered, for the loop guard.
+	eventRestores []time.Time
 }
 
 func backoff(tries int) time.Duration {
@@ -271,6 +273,11 @@ func (s *Service) started(d actionable, dep *models.Deployment) {
 		s.inflightDeploys[dep.ID] = d.it.nodeID
 	}
 	tries := a.tries
+	looped := d.trigger() == TriggerEvent && a.loopedLocked(now) && !a.breakerOpen
+	if looped {
+		a.breakerOpen = true
+	}
+	restores := len(a.eventRestores)
 	s.mu.Unlock()
 
 	metrics.ControlManagerAction(d.action(), "started", d.trigger())
@@ -281,6 +288,13 @@ func (s *Service) started(d actionable, dep *models.Deployment) {
 	s.emitFor(d, models.EventReconcileRedeploy, models.SeverityWarning,
 		"Restored by the control manager: "+d.reason(), meta)
 	s.record4audit(d, "reconcile.restore", map[string]any{"reason": d.reason(), "attempt": tries, "trigger": d.trigger()})
+	if looped {
+		metrics.ControlManagerAction("breaker", "open", d.trigger())
+		s.emitFor(d, models.EventReconcileBreakerOpen, models.SeverityError,
+			fmt.Sprintf("%s keeps being removed outside Miabi (%d times in %s). Automatic restore is paused: find what removes it, then redeploy it.",
+				d.f.Name, restores, loopWindow), map[string]string{"actor": actorName, "kind": d.f.Kind, "restores": strconv.Itoa(restores), "trigger": TriggerEvent})
+		s.record4audit(d, "reconcile.breaker_open", map[string]any{"reason": "removed outside Miabi repeatedly", "restores": restores})
+	}
 }
 
 func (s *Service) failed(d actionable, err error) {

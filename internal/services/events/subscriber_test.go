@@ -129,3 +129,17 @@ func TestActiveContainerRemovedIgnoresMiabisOwnOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestRemovalHook(t *testing.T) {
+	var nilHook *RemovalHook
+	nilHook.fire(1)
+
+	h := &RemovalHook{}
+	h.fire(1)
+	var got []uint
+	h.Set(func(id uint) { got = append(got, id) })
+	h.fire(7)
+	if len(got) != 1 || got[0] != 7 {
+		t.Fatalf("got %v, want [7]", got)
+	}
+}

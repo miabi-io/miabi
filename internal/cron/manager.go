@@ -151,6 +151,9 @@ type Leader interface {
 // SetLeader runs tasks only while l leads; local tasks always run, and without a leader every task runs.
 func (m *Manager) SetLeader(l Leader) { m.leader = l }
 
+// Leading reports whether this process runs leader-only tasks: true without a leader, as every task runs then.
+func (m *Manager) Leading() bool { return m.leader == nil || m.leader.Leading() }
+
 // Snapshot returns the current status of every registered task.
 func (m *Manager) Snapshot() []JobStatus {
 	m.mu.Lock()

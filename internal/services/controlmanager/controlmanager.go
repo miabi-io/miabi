@@ -153,6 +153,10 @@ type Service struct {
 	configs   ConfigStore
 	auditor   Auditor
 
+	leader  Leader
+	pending map[uint]bool // apps with a check already scheduled, so a burst of events schedules one
+	after   func(d time.Duration, f func())
+
 	staleTransitional func(before time.Time) ([]models.Application, error)
 	settle            func(ctx context.Context, app *models.Application) error
 
@@ -179,6 +183,8 @@ func New(nodes NodeDocker, clusters ClusterManager, apps AppStore, releases Rele
 		blocked:         map[uint]string{},
 		attempts:        map[string]*attempt{},
 		inflightDeploys: map[uint]uint{},
+		pending:         map[uint]bool{},
+		after:           func(d time.Duration, f func()) { time.AfterFunc(d, f) },
 	}
 }
 
