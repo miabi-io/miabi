@@ -482,6 +482,9 @@ func (r *Resource) validateApplication() error {
 	if a.Digest != "" && !strings.HasPrefix(a.Digest, "sha256:") {
 		return fmt.Errorf("application %q: digest must be a sha256: reference", r.Metadata.Name)
 	}
+	if rc := a.Reconcile; rc != nil && rc.Policy != "" && !slices.Contains(reconcilePolicies, rc.Policy) {
+		return fmt.Errorf("application %q: reconcile.policy must be one of %s", r.Metadata.Name, strings.Join(reconcilePolicies, ", "))
+	}
 	portNames := map[string]int{}
 	primary := 0
 	for _, p := range a.Ports {

@@ -446,6 +446,8 @@ type Application struct {
 	DeployStrategy DeployStrategy `json:"deploy_strategy" gorm:"not null;default:rolling"`
 
 	ReconcilePolicy ReconcilePolicy `json:"reconcile_policy" gorm:"not null;default:inherit"`
+	// RestartExternalStops lets an enforcing control manager start the container again after a docker stop outside Miabi.
+	RestartExternalStops bool `json:"restart_external_stops" gorm:"not null;default:false"`
 
 	CanaryInitialWeight       int `json:"canary_initial_weight" gorm:"not null;default:10"`
 	CanaryStepWeight          int `json:"canary_step_weight" gorm:"not null;default:20"`

@@ -210,6 +210,7 @@ type UpdateAppBody struct {
 	ContainerLabels               map[string]string        `json:"container_labels"`
 	DeployStrategy                string                   `json:"deploy_strategy" enum:"recreate,rolling,canary"`
 	ReconcilePolicy               string                   `json:"reconcile_policy" enum:"inherit,off,observe,enforce"`
+	RestartExternalStops          *bool                    `json:"restart_external_stops"`
 	CanaryInitialWeight           int                      `json:"canary_initial_weight"`
 	CanaryStepWeight              int                      `json:"canary_step_weight"`
 	CanaryStepIntervalSeconds     int                      `json:"canary_step_interval_seconds"`
@@ -369,6 +370,9 @@ func (b *UpdateAppBody) applyTo(app *models.Application) {
 	}
 	if p := models.ReconcilePolicy(b.ReconcilePolicy); p != "" && models.ValidReconcilePolicy(p) {
 		app.ReconcilePolicy = p
+	}
+	if b.RestartExternalStops != nil {
+		app.RestartExternalStops = *b.RestartExternalStops
 	}
 	if b.DeployStrategy != "" {
 		app.DeployStrategy = models.DeployStrategy(b.DeployStrategy)

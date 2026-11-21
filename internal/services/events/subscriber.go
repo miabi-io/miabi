@@ -117,7 +117,7 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	if err != nil {
 		return // app deleted; ignore
 	}
-	if ev.Action == "destroy" && !s.activeContainerRemoved(ev, app) {
+	if ev.Action == "destroy" && !s.outsideMiabi(ev, app) {
 		return
 	}
 	typ, sev, msg, ok := classify(ev, app.Status.StopIntended())
@@ -135,7 +135,11 @@ func (s *Subscriber) handleApp(ev docker.EngineEvent, appID uint) {
 	})
 
 	s.reconcileStatus(ev, app)
-	if ev.Action == "destroy" {
+	switch {
+	case ev.Action == "destroy":
+		s.removed.fire(appID)
+	// Only an opted-in app is started again, so any other stop stays a report the sweep raises.
+	case ev.Action == "die" && app.RestartExternalStops && s.outsideMiabi(ev, app):
 		s.removed.fire(appID)
 	}
 }
@@ -208,8 +212,8 @@ func (s *Subscriber) reconcileStatus(ev docker.EngineEvent, app *models.Applicat
 	}
 }
 
-// Deploys and stops remove containers routinely; other removals of the active container are what make it missing.
-func (s *Subscriber) activeContainerRemoved(ev docker.EngineEvent, app *models.Application) bool {
+// Deploys and stops remove and stop containers routinely; an event on the active container otherwise came from outside Miabi.
+func (s *Subscriber) outsideMiabi(ev docker.EngineEvent, app *models.Application) bool {
 	if s.releases == nil || app.Status.Transitional() || app.Status.StopIntended() {
 		return false
 	}

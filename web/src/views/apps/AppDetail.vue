@@ -490,6 +490,7 @@ interface SettingsForm {
   // Resources (0 = unlimited)
   cpu_cores: number; memory_mb: number; gpu_count: number; gpu_kind: string; gpu_capabilities: string[]; run_as_user: string; add_capabilities: string[]; devices: string[]; restart_policy: RestartPolicy; image_pull_policy: ImagePullPolicy
   reconcile_policy: ReconcilePolicy
+  restart_external_stops: boolean
   read_only_root_filesystem: boolean; no_new_privileges: boolean; drop_capabilities: string
   // Healthcheck
   hc_type: HealthcheckType; hc_path: string; hc_port: number | null; hc_command: string
@@ -501,6 +502,7 @@ function emptySettingsForm(): SettingsForm {
     deploy_strategy: 'rolling', canary_initial_weight: 10, canary_step_weight: 20, canary_step_interval_seconds: 60,
     cpu_cores: 0, memory_mb: 0, gpu_count: 0, gpu_kind: '', gpu_capabilities: [], run_as_user: '', add_capabilities: [], devices: [], restart_policy: 'unless-stopped', image_pull_policy: 'always',
     reconcile_policy: 'inherit',
+    restart_external_stops: false,
     read_only_root_filesystem: false, no_new_privileges: false, drop_capabilities: '',
     hc_type: 'image', hc_path: '/', hc_port: null, hc_command: '', hc_interval: 30, hc_timeout: 5, hc_retries: 3, hc_start_period: 0,
   }
@@ -1017,6 +1019,7 @@ function syncSettingsForm() {
     restart_policy: app.value.restart_policy || 'unless-stopped',
     image_pull_policy: app.value.image_pull_policy || 'always',
     reconcile_policy: app.value.reconcile_policy || 'inherit',
+    restart_external_stops: !!app.value.restart_external_stops,
     hc_type: app.value.healthcheck_type || 'image',
     hc_path: app.value.healthcheck_http_path || '/',
     hc_port: app.value.healthcheck_port || null,
@@ -1274,6 +1277,7 @@ async function saveSettings() {
       restart_policy: settingsForm.value.restart_policy,
       image_pull_policy: settingsForm.value.image_pull_policy,
       reconcile_policy: settingsForm.value.reconcile_policy,
+      restart_external_stops: settingsForm.value.restart_external_stops,
       healthcheck_type: settingsForm.value.hc_type,
       healthcheck_http_path: settingsForm.value.hc_path,
       healthcheck_port: settingsForm.value.hc_port || 0,
@@ -3898,6 +3902,11 @@ async function detachDatabase(d: AppDatabase) {
               <template #report><strong>{{ $t('appDetail.settings.reconcileReport') }}</strong></template>
               <template #redeploy><strong>{{ $t('appDetail.settings.reconcileRedeploy') }}</strong></template>
             </i18n-t>
+            <label class="checkbox-label mt-2">
+              <input v-model="settingsForm.restart_external_stops" type="checkbox" :disabled="!ws.canEdit" />
+              {{ $t('appDetail.settings.restartExternalStops') }}
+            </label>
+            <p class="form-hint">{{ $t('appDetail.settings.restartExternalStopsHint') }}</p>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError || !!dropCapabilitiesError" @click="saveSettings">
             {{ savingSettings ? 'Saving…' : 'Save resources' }}

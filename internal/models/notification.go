@@ -34,6 +34,7 @@ var NotifiableEvents = []AppEventType{
 	EventDriftDetected,
 	EventDriftResolved,
 	EventReconcileRedeploy,
+	EventReconcileStarted,
 	EventReconcileBreakerOpen,
 	EventDatabaseProvisioned,
 	EventDatabaseProvisionFailed,

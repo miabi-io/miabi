@@ -121,7 +121,7 @@ export interface ReclaimCategoryStat {
 
 // Shared by node housekeeping and the platform-wide reconciliation report, which adds replaced volumes and gateways.
 export interface DriftItem {
-  class: 'orphan' | 'missing' | 'untracked' | 'replaced'
+  class: 'orphan' | 'missing' | 'untracked' | 'replaced' | 'stopped'
   kind: 'container' | 'volume' | 'service' | 'config' | 'gateway'
   ref: string
   name: string

@@ -1657,6 +1657,9 @@ func trimDefaults(a *declarative.ApplicationSpec, defaultLocation string) {
 	if a.MiabiEnv != nil && *a.MiabiEnv {
 		a.MiabiEnv = nil
 	}
+	if rc := a.Reconcile; rc != nil && rc.Policy == string(models.ReconcileInherit) && (rc.RestartExternalStops == nil || !*rc.RestartExternalStops) {
+		a.Reconcile = nil
+	}
 	if p := a.Placement; p != nil {
 		// A node name is specific to this install.
 		p.Node = ""
@@ -2152,6 +2155,9 @@ func appResource(app *models.Application, ext, pub map[int]bool, volNameByID, re
 	// Always stated, or a manifest's miabiEnv: true would diff against an absent live value forever.
 	miabiEnv := !app.MiabiEnvDisabled
 	spec.MiabiEnv = &miabiEnv
+	// Always stated, for the same reason as miabiEnv; trimDefaults drops it from an export when it says nothing.
+	restartStops := app.RestartExternalStops
+	spec.Reconcile = &declarative.ReconcileSpec{Policy: string(validPolicy(app.ReconcilePolicy)), RestartExternalStops: &restartStops}
 	if app.RuntimeKind == models.RuntimeService && len(app.PlacementConstraints) > 0 {
 		spec.Placement = &declarative.ApplicationPlacementSpec{Constraints: app.PlacementConstraints}
 	}
@@ -3082,6 +3088,14 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if spec.MiabiEnv != nil {
 			app.MiabiEnvDisabled = !*spec.MiabiEnv
 		}
+		if rc := spec.Reconcile; rc != nil {
+			if rc.Policy != "" {
+				app.ReconcilePolicy = models.ReconcilePolicy(rc.Policy)
+			}
+			if rc.RestartExternalStops != nil {
+				app.RestartExternalStops = *rc.RestartExternalStops
+			}
+		}
 		// A manifest silent on strategy must not reset the console setting to rolling.
 		if s := spec.Strategy(); s != "" {
 			app.DeployStrategy = models.DeployStrategy(s)
@@ -3304,6 +3318,8 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 		ReadOnlyRootFilesystem: spec.ReadOnlyRootFilesystem(),
 		NoNewPrivileges:        spec.NoNewPrivileges(),
 		MiabiEnvDisabled:       spec.MiabiEnv != nil && !*spec.MiabiEnv,
+		ReconcilePolicy:        reconcilePolicyOf(spec),
+		RestartExternalStops:   spec.Reconcile != nil && spec.Reconcile.RestartExternalStops != nil && *spec.Reconcile.RestartExternalStops,
 
 		RuntimeKind:          models.RuntimeKind(spec.Runtime()),
 		Replicas:             spec.Replicas(),
@@ -3817,4 +3833,18 @@ func deploymentSpecOf(app *models.Application) *declarative.DeploymentSpec {
 		}
 	}
 	return d
+}
+
+func reconcilePolicyOf(spec *declarative.ApplicationSpec) models.ReconcilePolicy {
+	if spec.Reconcile == nil {
+		return ""
+	}
+	return models.ReconcilePolicy(spec.Reconcile.Policy)
+}
+
+func validPolicy(p models.ReconcilePolicy) models.ReconcilePolicy {
+	if p == "" {
+		return models.ReconcileInherit
+	}
+	return p
 }

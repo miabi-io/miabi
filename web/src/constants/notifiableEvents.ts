@@ -24,6 +24,7 @@ export const NOTIFIABLE_EVENT_GROUPS: NotifiableEventGroup[] = [
       { value: 'drift.detected', label: 'Workload missing' },
       { value: 'drift.resolved', label: 'Workload back' },
       { value: 'reconcile.redeploy', label: 'Redeployed automatically' },
+      { value: 'reconcile.started', label: 'Started again automatically' },
       { value: 'reconcile.breaker_open', label: 'Automatic redeploy gave up' },
     ],
   },

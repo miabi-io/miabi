@@ -72,6 +72,7 @@ const (
 // Declining to act matters too: an app left alone because its data is gone has to say so.
 const (
 	EventReconcileRedeploy    AppEventType = "reconcile.redeploy"
+	EventReconcileStarted     AppEventType = "reconcile.started"
 	EventReconcileBlocked     AppEventType = "reconcile.blocked"
 	EventReconcileBreakerOpen AppEventType = "reconcile.breaker_open"
 )

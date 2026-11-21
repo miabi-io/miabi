@@ -278,6 +278,8 @@ func enumFor(typeName, field string) []string {
 		return []string{"tcp", "udp"}
 	case "PortSpec.Scheme":
 		return []string{"http", "https"}
+	case "ReconcileSpec.Policy":
+		return reconcilePolicies
 	}
 	return nil
 }

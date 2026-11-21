@@ -148,6 +148,8 @@ type CreateInput struct {
 	ReadOnlyRootFilesystem bool
 	NoNewPrivileges        bool
 	MiabiEnvDisabled       bool
+	ReconcilePolicy        models.ReconcilePolicy
+	RestartExternalStops   bool
 	DropCapabilities       []string
 	// Empty leaves the model default (rolling).
 	DeployStrategy models.DeployStrategy
@@ -1097,6 +1099,8 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 		ReadOnlyRootFilesystem: in.ReadOnlyRootFilesystem,
 		NoNewPrivileges:        in.NoNewPrivileges,
 		MiabiEnvDisabled:       in.MiabiEnvDisabled,
+		ReconcilePolicy:        validReconcilePolicyOrInherit(in.ReconcilePolicy),
+		RestartExternalStops:   in.RestartExternalStops,
 		DeployStrategy:         validStrategyOrDefault(in.DeployStrategy),
 		RestartPolicy:          normalizeRestartPolicy(in.RestartPolicy),
 		ImagePullPolicy:        normalizeImagePullPolicy(in.ImagePullPolicy),
@@ -1881,6 +1885,13 @@ func (s *Service) stopRuntime(ctx context.Context, app *models.Application) erro
 		return err
 	}
 	return s.eng(app).StopContainer(ctx, cid, 10)
+}
+
+func validReconcilePolicyOrInherit(p models.ReconcilePolicy) models.ReconcilePolicy {
+	if p == "" || !models.ValidReconcilePolicy(p) {
+		return models.ReconcileInherit
+	}
+	return p
 }
 
 // busy refuses a lifecycle action while a stop or delete Miabi started is still in progress.

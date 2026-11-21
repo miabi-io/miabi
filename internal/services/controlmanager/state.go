@@ -171,14 +171,14 @@ func (s *Service) record(items []item, seen map[string]observation, skipped []Sk
 					notices = append(notices, notice{finding: *f, back: true})
 				}
 			}
-		case gone, replaced:
+		case gone, replaced, stopped:
 			if f == nil || f.Class != o.state.class() {
 				f = newFinding(it, o.state, now)
 				s.findings[it.key] = f
 			}
 			f.misses++
 			// The removal event and this look after the grace are two independent sightings of the same absence.
-			if p.trigger == TriggerEvent && it.kind == kindContainer && o.state == gone && f.misses < confirmAfter {
+			if p.trigger == TriggerEvent && it.kind == kindContainer && (o.state == gone || o.state == stopped) && f.misses < confirmAfter {
 				f.misses = confirmAfter
 			}
 			f.LastSeenAt = now
@@ -310,6 +310,13 @@ func newFinding(it *item, st state, now time.Time) *Finding {
 		FirstSeenAt: now, LastSeenAt: now,
 		subjects: it.subjects,
 	}
+	if st == stopped {
+		// Someone may have stopped it on purpose, so it is only started again where the app opted in.
+		f.Action = drift.ActionNone
+		if it.app != nil && it.app.RestartExternalStops {
+			f.Action = drift.ActionStart
+		}
+	}
 	if it.kind == kindGateway && it.imported {
 		// An imported gateway is somebody else's container, so Miabi only reports it.
 		f.Action = drift.ActionNone
@@ -341,6 +348,12 @@ var resolvedMessages = map[string]string{
 
 // Volume events land on the timeline of whatever mounts it, so the message names the volume.
 func message(f Finding, back bool) string {
+	if f.Class == drift.ClassStopped {
+		if back {
+			return "The active release's container is running again"
+		}
+		return "The active release's container was stopped outside Miabi"
+	}
 	if f.Kind != kindVolume {
 		if back {
 			return resolvedMessages[f.Kind]
