@@ -21,6 +21,7 @@
 package analytics
 
 import (
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,6 +50,28 @@ type Event struct {
 	Country      string `json:"country"`
 	UA           string `json:"ua"`
 	RefererHost  string `json:"referer_host"`
+	// Backend is the endpoint a multi-backend route picked; empty for one backend or a gateway that does not report it.
+	Backend string `json:"backend,omitempty"`
+}
+
+const (
+	VariantStable = "stable"
+	VariantCanary = "canary"
+)
+
+// VariantOf reads the release off the backend's host: Miabi names a canary's upstream with CanaryAliasSuffix.
+func VariantOf(backend string) string {
+	if backend == "" {
+		return ""
+	}
+	host := backend
+	if u, err := url.Parse(backend); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	if strings.HasSuffix(host, models.CanaryAliasSuffix) {
+		return VariantCanary
+	}
+	return VariantStable
 }
 
 // Values above the last bound land in a trailing overflow bucket at index len(bounds).
@@ -255,8 +278,8 @@ func minuteOf(tsMillis int64) time.Time {
 	return time.UnixMilli(tsMillis).UTC().Truncate(time.Minute)
 }
 
-func key(ws, app uint, route string, bucket time.Time) string {
-	return strconv.FormatUint(uint64(ws), 10) + "|" + strconv.FormatUint(uint64(app), 10) + "|" + route + "|" + strconv.FormatInt(bucket.Unix(), 10)
+func key(ws, app uint, route, variant string, bucket time.Time) string {
+	return strconv.FormatUint(uint64(ws), 10) + "|" + strconv.FormatUint(uint64(app), 10) + "|" + route + "|" + variant + "|" + strconv.FormatInt(bucket.Unix(), 10)
 }
 
 // An unresolved app is 0.
@@ -265,7 +288,8 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	if e.Ts == 0 {
 		bucket = time.Now().UTC().Truncate(time.Minute)
 	}
-	k := key(ws, app, e.Route, bucket)
+	variant := VariantOf(e.Backend)
+	k := key(ws, app, e.Route, variant, bucket)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -273,7 +297,7 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 	if b == nil {
 		b = &bucketAgg{
 			r: &models.AnalyticsRollup{
-				WorkspaceID: ws, ApplicationID: app, RouteName: e.Route, Bucket: bucket,
+				WorkspaceID: ws, ApplicationID: app, RouteName: e.Route, Variant: variant, Bucket: bucket,
 				DurationHist: make([]int64, histLen()), UpstreamHist: make([]int64, histLen()),
 				TopPaths: map[string]int64{}, TopReferrers: map[string]int64{},
 				TopCountries: map[string]int64{}, TopUAFamilies: map[string]int64{},

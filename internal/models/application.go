@@ -109,6 +109,9 @@ func ValidCanaryMode(m CanaryMode) bool {
 	}
 }
 
+// CanaryAliasSuffix turns an app's upstream alias into its canary's; analytics reads it back off the backend a request went to.
+const CanaryAliasSuffix = "-canary"
+
 // Canary match sources: where the gateway reads the value a rule compares.
 const (
 	CanaryMatchSourceHeader = "header"

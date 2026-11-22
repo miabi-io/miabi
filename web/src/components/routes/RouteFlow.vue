@@ -7,7 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { relativeTime } from '@/utils/time'
 import { relativeBox, wirePath } from '@/utils/flowWires'
 import { parseHeaders, tracePath } from '@/utils/routeTrace'
-import { earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from '@/utils/routeStats'
+import { canaryWorse, earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from '@/utils/routeStats'
 
 const props = defineProps<{ wsId: number; routeId: number }>()
 const emit = defineEmits<{ openSettings: [] }>()
@@ -76,7 +76,15 @@ const banners = computed<Banner[]>(() => {
   if (f.route.serving && !parked.value && noReplica.value) {
     out.push({ kind: 'danger', text: t('routes.flow.state.noReplica'), to: appLink.value, action: t('routes.flow.openApp') })
   }
-  if (canary.value?.release) {
+  const worse = liveStats.value ? canaryWorse(liveStats.value) : null
+  if (canary.value?.release && worse) {
+    out.push({
+      kind: 'danger',
+      text: t('routes.flow.state.canaryWorse', { version: canary.value.release.version, canary: formatPercent(worse.canaryRate), stable: formatPercent(worse.stableRate) }),
+      to: { path: appLink.value, query: { tab: 'deployments' } },
+      action: t('routes.flow.canaryControls'),
+    })
+  } else if (canary.value?.release) {
     out.push({
       kind: 'info',
       text: canaryRules.value.length
@@ -211,8 +219,11 @@ const plannedWires = computed<[NodeKey, NodeKey, WireKind, string?][]>(() => {
     out.push(['gateway', target, live])
   }
   if (canary.value && stable.value) {
-    out.push(['split', 'stable', live, `${stable.value.weight}%`])
-    out.push(['split', 'canary', downstreamOff.value ? 'off' : 'canary', canary.value.weight > 0 ? `${canary.value.weight}%` : t('routes.flow.rulesOnly')])
+    // Measured shares once the gateway names backends; the configured weights until then.
+    const v = liveStats.value?.variants
+    const pct = (share?: number) => `${Math.round((share ?? 0) * 100)}%`
+    out.push(['split', 'stable', live, v ? pct(v.stable?.share) : `${stable.value.weight}%`])
+    out.push(['split', 'canary', downstreamOff.value ? 'off' : 'canary', v ? pct(v.canary?.share) : canary.value.weight > 0 ? `${canary.value.weight}%` : t('routes.flow.rulesOnly')])
   }
   return out
 })
@@ -588,7 +599,10 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <i class="s" :style="{ width: `${stable?.weight ?? 0}%` }"></i><i class="c" :style="{ width: `${canary.weight}%` }"></i>
               </div>
               <div class="split-legend"><span>{{ $t('routes.flow.role.stable') }} {{ stable?.weight ?? 0 }}%</span><span>{{ $t('routes.flow.role.canary') }} {{ canary.weight }}%</span></div>
-              <div v-if="liveStats" class="live-stat">{{ $t('routes.flow.live.splitNote') }}</div>
+              <div v-if="liveStats && liveStats.variants" class="live-stat">
+                {{ $t('routes.flow.live.actualSplit', { stable: Math.round((liveStats.variants.stable?.share ?? 0) * 100), canary: Math.round((liveStats.variants.canary?.share ?? 0) * 100) }) }}
+              </div>
+              <div v-else-if="liveStats" class="live-stat">{{ $t('routes.flow.live.splitNote') }}</div>
             </div>
           </div>
 
@@ -629,7 +643,10 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                   <span>{{ healthText(b.health) }}</span>
                 </div>
                 <span class="target mono">{{ b.endpoint }}</span>
-                <div v-if="liveStats && liveStats.requests && flow.backends.length === 1" class="live-stat">
+                <div v-if="liveStats && liveStats.variants?.[b.role]" class="live-stat" :class="{ 'is-bad': b.role === 'canary' && canaryWorse(liveStats) }">
+                  {{ $t('routes.flow.live.releaseLine', { requests: liveStats.variants[b.role]!.requests.toLocaleString(), p95: formatMs(liveStats.variants[b.role]!.p95_ms), errors: formatPercent(liveStats.variants[b.role]!.error_rate) }) }}
+                </div>
+                <div v-else-if="liveStats && liveStats.requests && flow.backends.length === 1" class="live-stat">
                   {{ $t('routes.flow.live.backendLine', { p95: formatMs(liveStats.p95_ms), errors: formatPercent(errorShare(liveStats)) }) }}
                 </div>
               </div>
@@ -722,6 +739,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 .spark { width: 150px; height: 28px; }
 .spark-bar { fill: color-mix(in srgb, var(--primary-500) 45%, transparent); }
 .spark-err { fill: var(--danger-500); }
+.live-stat.is-bad { color: var(--danger-600); font-weight: 600; }
 .live-stat { font-size: 12px; color: var(--text-secondary); padding-top: 6px; border-top: 1px dashed var(--border-primary); font-variant-numeric: tabular-nums; }
 .flow-scroll { overflow-x: auto; border: 1px solid var(--border-primary); border-radius: 12px; background: radial-gradient(circle, var(--border-primary) 1px, transparent 1.2px) 0 0 / 18px 18px, var(--bg-secondary); }
 .flow-canvas { position: relative; min-width: 960px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 84px; align-items: center; padding: 28px 24px; }

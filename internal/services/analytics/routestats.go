@@ -40,6 +40,21 @@ type RouteStats struct {
 	// AvgGatewayMs is a mean of (total − upstream) time: the two histograms cannot be subtracted into a percentile.
 	AvgGatewayMs float64      `json:"avg_gateway_ms"`
 	Series       []RoutePoint `json:"series"`
+	// Variants splits the window by release; present only when the gateway named the backend for some requests.
+	Variants map[string]*VariantStats `json:"variants,omitempty"`
+}
+
+type VariantStats struct {
+	Requests int64 `json:"requests"`
+	// Share is of the requests that named a backend, so traffic from before the gateway reported it doesn't skew it.
+	Share     float64 `json:"share"`
+	S4xx      int64   `json:"s4xx"`
+	S5xx      int64   `json:"s5xx"`
+	ErrorRate float64 `json:"error_rate"`
+	P95Ms     float64 `json:"p95_ms"`
+	AvgMs     float64 `json:"avg_ms"`
+	hist      []int64
+	durSum    int64
 }
 
 type RoutePoint struct {
@@ -79,6 +94,35 @@ func BuildRouteStats(rows []models.AnalyticsRollup, since, until time.Time) Rout
 		}
 		p.Requests += r.Requests
 		p.Errors += r.Status5xx
+		if r.Variant != "" {
+			if out.Variants == nil {
+				out.Variants = map[string]*VariantStats{}
+			}
+			v := out.Variants[r.Variant]
+			if v == nil {
+				v = &VariantStats{hist: make([]int64, histLen())}
+				out.Variants[r.Variant] = v
+			}
+			v.Requests += r.Requests
+			v.S4xx += r.Status4xx
+			v.S5xx += r.Status5xx
+			v.hist = addHist(v.hist, r.DurationHist)
+			v.durSum += r.DurationSum
+		}
+	}
+	var named int64
+	for _, v := range out.Variants {
+		named += v.Requests
+	}
+	for _, v := range out.Variants {
+		if named > 0 {
+			v.Share = float64(v.Requests) / float64(named)
+		}
+		if v.Requests > 0 {
+			v.ErrorRate = float64(v.S5xx) / float64(v.Requests)
+			v.AvgMs = float64(v.durSum) / float64(v.Requests)
+		}
+		v.P95Ms = Percentile(v.hist, 0.95)
 	}
 	for t := since.UTC().Truncate(time.Minute); t.Before(until); t = t.Add(time.Minute) {
 		if p := perMinute[t.Unix()]; p != nil {

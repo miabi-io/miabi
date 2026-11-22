@@ -45,8 +45,8 @@ func (r *AnalyticsRepository) Upsert(rollups []*models.AnalyticsRollup) error {
 		for _, in := range rollups {
 			var existing models.AnalyticsRollup
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-				Where("workspace_id = ? AND application_id = ? AND route_name = ? AND bucket = ?",
-					in.WorkspaceID, in.ApplicationID, in.RouteName, in.Bucket).
+				Where("workspace_id = ? AND application_id = ? AND route_name = ? AND variant = ? AND bucket = ?",
+					in.WorkspaceID, in.ApplicationID, in.RouteName, in.Variant, in.Bucket).
 				First(&existing).Error
 			switch {
 			case err == gorm.ErrRecordNotFound:
@@ -102,7 +102,7 @@ func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since,
 }
 
 var routeColumns = []string{
-	"id", "bucket", "requests", "status2xx", "status3xx", "status4xx", "status5xx",
+	"id", "bucket", "variant", "requests", "status2xx", "status3xx", "status4xx", "status5xx",
 	"duration_hist", "duration_sum", "upstream_sum", "visitors_hll", "status_codes",
 }
 

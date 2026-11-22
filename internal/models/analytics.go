@@ -23,11 +23,13 @@ import "time"
 
 // Holds no PII.
 type AnalyticsRollup struct {
-	ID            uint      `gorm:"primaryKey" json:"-"`
-	WorkspaceID   uint      `gorm:"uniqueIndex:idx_arollup,priority:1;not null" json:"workspace_id"`
-	ApplicationID uint      `gorm:"uniqueIndex:idx_arollup,priority:2;index" json:"application_id"`
-	RouteName     string    `gorm:"uniqueIndex:idx_arollup,priority:3;size:200" json:"route_name"`
-	Bucket        time.Time `gorm:"uniqueIndex:idx_arollup,priority:4;index" json:"bucket"` // minute-truncated UTC
+	ID            uint   `gorm:"primaryKey" json:"-"`
+	WorkspaceID   uint   `gorm:"uniqueIndex:idx_arollup,priority:1;not null" json:"workspace_id"`
+	ApplicationID uint   `gorm:"uniqueIndex:idx_arollup,priority:2;index" json:"application_id"`
+	RouteName     string `gorm:"uniqueIndex:idx_arollup,priority:3;size:200" json:"route_name"`
+	// Variant is stable or canary when the gateway named the backend, "" otherwise (one backend, or an older gateway).
+	Variant string    `gorm:"uniqueIndex:idx_arollup,priority:4;size:16;not null;default:''" json:"variant,omitempty"`
+	Bucket  time.Time `gorm:"uniqueIndex:idx_arollup,priority:5;index" json:"bucket"` // minute-truncated UTC
 
 	Requests  int64 `json:"requests"`
 	BytesIn   int64 `json:"bytes_in"`

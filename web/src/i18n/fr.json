@@ -3770,7 +3770,8 @@
         "maintenance": "En maintenance : la passerelle répond {code} elle-même et l’application n’est pas atteinte. L’application continue de tourner.",
         "noReplica": "Aucune réplique ne tourne : la passerelle répond 502 jusqu’au retour de l’application.",
         "canary": "La version canary v{version} reçoit {weight} % du trafic.",
-        "canaryRules": "La version canary v{version} reçoit les requêtes qui correspondent à ses règles, et {weight} % du reste."
+        "canaryRules": "La version canary v{version} reçoit les requêtes qui correspondent à ses règles, et {weight} % du reste.",
+        "canaryWorse": "La version canary v{version} répond 5xx à {canary} des requêtes, contre {stable} pour la stable."
       },
       "op": {
         "equals": "=",
@@ -3890,9 +3891,11 @@
         "quiet": "Aucun trafic ces 15 dernières minutes.",
         "gatewayTime": "{ms} en moyenne dans la passerelle",
         "earlyAnswers": "Réponses anticipées :",
-        "splitNote": "Chiffres en direct pour les deux versions ensemble ; le détail par version demande le support de la passerelle.",
+        "splitNote": "Chiffres en direct pour les deux versions ensemble tant que la passerelle n’indique pas quelle version a répondu.",
         "backendLine": "p95 {p95} · 5xx {errors}",
-        "maintCount": "{n} × {code} ces 15 dernières min"
+        "maintCount": "{n} × {code} ces 15 dernières min",
+        "actualSplit": "Mesuré : {stable} % stable, {canary} % canary",
+        "releaseLine": "{requests} req · p95 {p95} · 5xx {errors}"
       }
     }
   },

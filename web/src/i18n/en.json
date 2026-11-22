@@ -3770,7 +3770,8 @@
         "maintenance": "In maintenance: the gateway answers {code} itself and the app isn't reached. The app keeps running.",
         "noReplica": "No replica is running: the gateway answers 502 until the app is back.",
         "canary": "Canary release v{version} takes {weight}% of traffic.",
-        "canaryRules": "Canary release v{version} takes requests matching its rules, and {weight}% of the rest."
+        "canaryRules": "Canary release v{version} takes requests matching its rules, and {weight}% of the rest.",
+        "canaryWorse": "Canary v{version} answers 5xx on {canary} of requests, against {stable} for stable."
       },
       "op": {
         "equals": "=",
@@ -3890,9 +3891,11 @@
         "quiet": "No traffic in the last 15 minutes.",
         "gatewayTime": "{ms} on average in the gateway",
         "earlyAnswers": "Answered early:",
-        "splitNote": "Live numbers are for both releases together; per-release numbers need gateway support.",
+        "splitNote": "Live numbers are for both releases together until the gateway reports which release answered.",
         "backendLine": "p95 {p95} · 5xx {errors}",
-        "maintCount": "{n} × {code} in the last 15 min"
+        "maintCount": "{n} × {code} in the last 15 min",
+        "actualSplit": "Measured: {stable}% stable, {canary}% canary",
+        "releaseLine": "{requests} req · p95 {p95} · 5xx {errors}"
       }
     }
   },
