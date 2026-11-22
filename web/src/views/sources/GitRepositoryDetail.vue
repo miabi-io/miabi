@@ -49,7 +49,7 @@ async function test() {
     repo.value = (await gitRepositoryApi.test(wid, repo.value.id)).data.data
     notify.success(t('notify.gitRepositories.connectionOk', { name: repo.value.name }))
   } catch (e) {
-    notify.apiError(e, 'Connection failed')
+    notify.apiError(e, t('gitRepos.conn.failed'))
     repo.value = (await gitRepositoryApi.get(wid, repoId.value).catch(() => null))?.data.data ?? repo.value
   } finally {
     testing.value = false

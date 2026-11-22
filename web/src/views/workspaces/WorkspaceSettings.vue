@@ -453,7 +453,7 @@ async function confirmDelete() {
     if (job.status !== 'running') onDeletionDone(job)
     else startDeletionStream(job.id)
   } catch (e) {
-    notify.apiError(e, 'Could not start workspace deletion')
+    notify.apiError(e, t('notify.wsSettings.deleteStartFailed'))
   }
 }
 
@@ -481,7 +481,7 @@ async function onDeletionDone(job: DeletionJob) {
     await ws.fetchWorkspaces()
     router.push('/workspaces')
   } else {
-    notify.error(job.error || 'Workspace deletion failed')
+    notify.error(job.error || t('notify.wsSettings.deleteFailed'))
   }
 }
 
@@ -588,7 +588,7 @@ watch(activeTab, (t) => loadTab(t))
           </div>
           <div class="ws-title-text">
             <h1>
-              {{ form.displayName || form.name || 'Workspace' }}
+              {{ form.displayName || form.name || $t('apiKeys.workspace') }}
               <span v-if="wsTrait" class="badge" :class="wsTrait.badgeClass" :title="wsTrait.title">
                 <span class="mdi" :class="wsTrait.icon"></span>{{ wsTrait.label }}</span>
             </h1>
@@ -637,7 +637,7 @@ watch(activeTab, (t) => loadTab(t))
               :disabled="savingName || !nameDirty"
               @click="saveName"
             >
-              {{ savingName ? 'Saving…' : 'Change name' }}
+              {{ savingName ? $t('action.saving') : $t('wsSettings.changeName') }}
             </button>
           </div>
           <p class="text-muted text-sm" style="margin-top: 4px">
@@ -665,7 +665,7 @@ watch(activeTab, (t) => loadTab(t))
               <option v-for="l in locations" :key="l.id" :value="l.name">{{ locationLabel(l) }}</option>
             </select>
             <button v-if="isAdmin" class="btn btn-secondary" :disabled="savingLocation" @click="saveDefaultLocation">
-              {{ savingLocation ? 'Saving…' : 'Set default' }}
+              {{ savingLocation ? $t('action.saving') : $t('wsSettings.setDefault') }}
             </button>
           </div>
           <p class="text-muted text-sm" style="margin-top: 4px">{{ $t('wsSettings.defaultLocationHint') }}</p>
@@ -677,7 +677,7 @@ watch(activeTab, (t) => loadTab(t))
 
         </div>
         <button v-if="isAdmin" class="btn btn-primary" :disabled="savingMeta" @click="saveMeta">
-          {{ savingMeta ? 'Saving…' : 'Save changes' }}
+          {{ savingMeta ? $t('action.saving') : $t('profile.saveChanges') }}
         </button>
         <p v-else class="text-muted text-sm">{{ $t('wsSettings.needAdminSettings') }}</p>
       </div>
@@ -727,7 +727,7 @@ watch(activeTab, (t) => loadTab(t))
                 <td>
                   <select v-if="isAdmin" class="form-select" style="max-width: 170px" :aria-label="$t('wsSettings.memberRole')" :value="m.custom_role_id ? 'custom:' + m.custom_role_id : m.role" @change="changeRole(m.user_id, ($event.target as HTMLSelectElement).value)">
                     <option v-for="r in (m.user.kind === 'service' ? roles.filter((x) => x !== 'owner') : roles)" :key="r" :value="r">{{ r }}</option>
-                    <optgroup v-if="customRoleList.length" label="Custom roles">
+                    <optgroup v-if="customRoleList.length" :label="$t('wsSettings.customRoles')">
                       <option v-for="cr in customRoleList" :key="cr.id" :value="'custom:' + cr.id">{{ cr.name }}</option>
                     </optgroup>
                   </select>
@@ -804,7 +804,7 @@ watch(activeTab, (t) => loadTab(t))
           <h2>{{ $t('wsSettings.liveUsage') }}</h2>
           <span class="badge" :class="liveConnected ? 'badge-success' : 'badge-neutral'">
             <span class="mdi" :class="liveConnected ? 'mdi-access-point' : 'mdi-access-point-off'"></span>
-            {{ liveConnected ? 'Live' : 'Connecting…' }}
+            {{ liveConnected ? $t('dashboard.resources.live') : $t('dashboard.resources.connecting') }}
           </span>
         </div>
         <div class="card-body">
@@ -813,13 +813,13 @@ watch(activeTab, (t) => loadTab(t))
             <div class="live-stat">
               <span class="live-value">{{ (live?.cpu_cores ?? 0).toFixed(2) }}</span>
               <span class="live-label">{{ $t('databases.form.cpu') }}</span>
-              <span class="live-sub" v-if="usage && usage.cpu_cores.limit >= 0">limit {{ usage.cpu_cores.limit }}</span>
+              <span class="live-sub" v-if="usage && usage.cpu_cores.limit >= 0">{{ $t('wsSettings.limitValue', { value: usage.cpu_cores.limit }) }}</span>
               <Sparkline :values="cpuSeries" :width="180" :height="34" stroke="var(--primary-500)" class="live-spark" />
             </div>
             <div class="live-stat">
               <span class="live-value">{{ fmtBytes(live?.memory_bytes ?? 0) }}</span>
               <span class="live-label">{{ $t('wsSettings.memory') }}</span>
-              <span class="live-sub" v-if="usage && usage.memory_mb.limit >= 0">limit {{ usage.memory_mb.limit }} MB</span>
+              <span class="live-sub" v-if="usage && usage.memory_mb.limit >= 0">{{ $t('wsSettings.limitValue', { value: `${usage.memory_mb.limit} MB` }) }}</span>
               <Sparkline :values="memSeries" :width="180" :height="34" stroke="var(--info-500, #0ea5e9)" class="live-spark" />
             </div>
             <div class="live-stat">
@@ -838,7 +838,7 @@ watch(activeTab, (t) => loadTab(t))
         <div class="card-header">
           <h2>{{ $t('wsSettings.usage') }}</h2>
           <span v-if="usage" class="badge" :class="usage.enforced ? 'badge-success' : 'badge-neutral'">
-            {{ usage.enforced ? 'Enforced' : 'Not enforced' }}
+            {{ usage.enforced ? $t('wsSettings.enforced') : $t('wsSettings.notEnforced') }}
           </span>
         </div>
         <div v-if="usageLoading && !usage" class="card-body"><span class="spinner"></span></div>
@@ -1083,7 +1083,7 @@ watch(activeTab, (t) => loadTab(t))
               {{ savingBackup ? $t('action.saving') : $t('wsSettings.saveSettings') }}
             </button>
             <button class="btn btn-secondary" :disabled="testingBackup || !backup.s3_enabled" @click="testBackup">
-              {{ testingBackup ? 'Testing…' : 'Test connection' }}
+              {{ testingBackup ? $t('wsSettings.testing') : $t('ldap.testConnection') }}
             </button>
           </div>
 
@@ -1192,7 +1192,7 @@ watch(activeTab, (t) => loadTab(t))
     <!-- Progress step -->
     <AppModal v-else-if="deleteModalOpen && deletionJob" @close="closeDeleteModal">
       <div class="modal-header">
-        <h3>{{ deletionJob.status === 'failed' ? 'Deletion failed' : `Deleting ${form.name}` }}</h3>
+        <h3>{{ deletionJob.status === 'failed' ? $t('wsSettings.deletionFailed') : $t('wsSettings.deleting', { name: form.name }) }}</h3>
         <button v-if="deletionJob.status !== 'running'" class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeDeleteModal">
           <span class="mdi mdi-close"></span>
         </button>
@@ -1209,7 +1209,7 @@ watch(activeTab, (t) => loadTab(t))
         </p>
         <div v-else-if="deletionJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
           <span class="mdi mdi-alert-outline"></span>
-          <div>{{ deletionJob.error || 'The workspace could not be fully deleted.' }}</div>
+          <div>{{ deletionJob.error || $t('wsSettings.notFullyDeleted') }}</div>
         </div>
       </div>
       <div v-if="deletionJob.status === 'failed'" class="modal-footer">

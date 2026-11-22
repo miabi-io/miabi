@@ -1,23 +1,22 @@
-// TODO: the relative strings are still English; move them into the i18n catalogue.
-
 import { fmtDate } from './datetime'
+import { t } from '@/i18n'
 
 // Pass a ticking `now` to update live; older than a month falls back to a locale date.
 export function relativeTime(iso?: string | null, now: number = Date.now()): string {
   if (!iso) return '—'
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return '—'
-  const diff = Math.round((now - t) / 1000) // seconds in the past (positive)
+  const at = new Date(iso).getTime()
+  if (Number.isNaN(at)) return '—'
+  const diff = Math.round((now - at) / 1000) // seconds in the past (positive)
   const abs = Math.abs(diff)
   const past = diff >= 0
-  if (abs < 45) return past ? 'just now' : 'soon'
-  if (abs < 90) return past ? '1 min ago' : 'in 1 min'
+  if (abs < 45) return past ? t('time.justNow') : t('time.soon')
+  if (abs < 90) return t(past ? 'time.minAgo' : 'time.inMin', { n: 1 })
   const mins = Math.round(abs / 60)
-  if (mins < 60) return past ? `${mins} min ago` : `in ${mins} min`
+  if (mins < 60) return t(past ? 'time.minAgo' : 'time.inMin', { n: mins })
   const hrs = Math.round(abs / 3600)
-  if (hrs < 24) return past ? `${hrs}h ago` : `in ${hrs}h`
+  if (hrs < 24) return t(past ? 'time.hoursAgo' : 'time.inHours', { n: hrs })
   const days = Math.round(abs / 86400)
-  if (days < 30) return past ? `${days}d ago` : `in ${days}d`
+  if (days < 30) return t(past ? 'time.daysAgo' : 'time.inDays', { n: days })
   return fmtDate(iso)
 }
 

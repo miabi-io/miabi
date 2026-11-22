@@ -46,10 +46,10 @@ function fmtDateTime(s?: string | null): string {
 function ago(s?: string | null): string {
   if (!s) return ''
   const d = Date.now() - new Date(s).getTime()
-  if (d < 60_000) return 'just now'
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`
-  return `${Math.floor(d / 86_400_000)}d ago`
+  if (d < 60_000) return t('db.ago.justNow')
+  if (d < 3_600_000) return t('db.ago.minutes', { n: Math.floor(d / 60_000) })
+  if (d < 86_400_000) return t('db.ago.hours', { n: Math.floor(d / 3_600_000) })
+  return t('db.ago.days', { n: Math.floor(d / 86_400_000) })
 }
 const platform = computed(() => {
   const r = runner.value
@@ -59,10 +59,10 @@ const platform = computed(() => {
 const statusBadge = computed(() => {
   const r = runner.value
   if (!r) return { text: '—', cls: 'badge-neutral' }
-  if (!r.enabled) return { text: 'disabled', cls: 'badge-danger' }
-  if (r.cordoned) return { text: 'cordoned', cls: 'badge-warning' }
-  if (r.connected || r.status === 'online') return { text: 'online', cls: 'badge-success badge-dot' }
-  return { text: 'offline', cls: 'badge-neutral' }
+  if (!r.enabled) return { text: t('db.disabled'), cls: 'badge-danger' }
+  if (r.cordoned) return { text: t('runners.state.cordoned'), cls: 'badge-warning' }
+  if (r.connected || r.status === 'online') return { text: t('runners.state.online'), cls: 'badge-success badge-dot' }
+  return { text: t('runners.state.offline'), cls: 'badge-neutral' }
 })
 
 // --- actions ---
@@ -76,7 +76,7 @@ async function toggleCordon() {
       ? (await adminRunnerApi.cordon(r.id, !r.cordoned)).data.data
       : (await runnerApi.cordon(currentWorkspaceId.value ?? 0, r.id, !r.cordoned)).data.data
     runner.value = updated
-    notify.success(r.cordoned ? 'Runner resumed' : 'Runner cordoned')
+    notify.success(r.cordoned ? t('notify.runners.resumed') : t('notify.runners.cordoned'))
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -119,12 +119,12 @@ async function remove() {
               {{ runner.display_name || runner.name }}
               <span class="badge" :class="statusBadge.cls">{{ statusBadge.text }}</span>
             </h1>
-            <span class="subline">{{ runner.name }} · {{ runner.scope === 'shared' ? 'platform-shared' : 'workspace' }} runner</span>
+            <span class="subline">{{ runner.name }} · {{ runner.scope === 'shared' ? $t('runners.scopeShared') : $t('runners.scopeWorkspace') }}</span>
           </div>
         </div>
         <div v-if="canEdit" class="header-actions">
           <button class="btn btn-secondary btn-sm" :disabled="busy" @click="toggleCordon">
-            {{ runner.cordoned ? 'Resume' : 'Cordon' }}
+            {{ runner.cordoned ? $t('routes.flow.rollout.resume') : $t('runners.cordon') }}
           </button>
           <button class="btn btn-danger btn-sm" @click="confirmingDelete = true">{{ $t('action.delete') }}</button>
         </div>
@@ -143,8 +143,8 @@ async function remove() {
             <div><dt>{{ $t('runners.platform') }}</dt><dd>{{ platform }}</dd></div>
             <div><dt>{{ $t('runners.version') }}</dt><dd>{{ runner.version || '—' }} <span v-if="runner.latest_version" class="badge badge-info">{{ $t('runners.updateAvailable', { version: runner.latest_version }) }}</span></dd></div>
             <div><dt>{{ $t('runners.features') }}</dt><dd>{{ runner.features?.length ? runner.features.join(', ') : '—' }}</dd></div>
-            <div><dt>{{ $t('runners.concurrency') }}</dt><dd>{{ runner.concurrency }} job(s)</dd></div>
-            <div><dt>{{ $t('jobs.enabled') }}</dt><dd>{{ runner.enabled ? 'Yes' : 'No' }}</dd></div>
+            <div><dt>{{ $t('runners.concurrency') }}</dt><dd>{{ $t('runners.jobCount', runner.concurrency) }}</dd></div>
+            <div><dt>{{ $t('jobs.enabled') }}</dt><dd>{{ runner.enabled ? $t('runners.yes') : $t('appDetail.restart.no') }}</dd></div>
             <div class="detail-wide">
               <dt>{{ $t('runners.labels') }}</dt>
               <dd>

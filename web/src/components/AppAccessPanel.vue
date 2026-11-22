@@ -29,7 +29,7 @@ const grantableMembers = computed(() =>
 
 function memberName(userId: number): string {
   const m = members.value.find((x) => x.user_id === userId)
-  return m ? m.user.name : `user #${userId}`
+  return m ? m.user.name : t('appAccess.userFallback', { id: userId })
 }
 
 async function load() {
@@ -133,7 +133,7 @@ async function confirmRevoke() {
               </label>
             </div>
             <button class="btn btn-primary btn-sm" :disabled="granting || !form.userId || form.permissions.size === 0" @click="grant">
-              {{ granting ? 'Granting…' : 'Grant' }}
+              {{ granting ? $t('appAccess.granting') : $t('appAccess.grant') }}
             </button>
           </div>
         </div>

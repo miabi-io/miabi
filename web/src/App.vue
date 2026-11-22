@@ -11,7 +11,7 @@ const notify = useNotificationStore()
   <div>
     <router-view />
     <AdminUnlockDialog />
-    <div class="toast-container" role="region" aria-label="Notifications" aria-live="polite">
+    <div class="toast-container" role="region" :aria-label="$t('bell.notifications')" aria-live="polite">
       <div
         v-for="n in notify.notifications"
         :key="n.id"

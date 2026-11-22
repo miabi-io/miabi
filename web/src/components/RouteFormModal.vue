@@ -142,11 +142,11 @@ function switchMode(mode: 'simple' | 'advanced') {
   } else {
     try {
       const cfg = parseYaml(advancedConfig.value)
-      if (hasAdvancedKeys(cfg)) yamlError.value = 'Advanced-only fields will be dropped in Simple mode.'
+      if (hasAdvancedKeys(cfg)) yamlError.value = t('routes.form.advancedDropped')
       yamlToSimple(advancedConfig.value)
       parseHostsToRows() // reflect YAML hosts into the builder
     } catch {
-      yamlError.value = 'Could not parse the YAML into the simple form.'
+      yamlError.value = t('routes.form.yamlToSimpleFailed')
       return
     }
   }
@@ -321,7 +321,7 @@ async function save() {
       yamlToSimple(advancedConfig.value) // keep structured columns in sync
       advanced = advancedConfig.value
     } catch {
-      yamlError.value = 'Invalid YAML — fix it before saving.'
+      yamlError.value = t('routes.form.invalidYaml')
       return
     }
   }
@@ -362,7 +362,7 @@ async function save() {
   <Teleport to="body">
     <AppModal v-if="open" auto-focus :escapable="!confirmDiscard" @close="requestClose">
       <div class="modal-header">
-        <h3 id="route-form-title">{{ editing ? 'Edit route' : 'New route' }}</h3>
+        <h3 id="route-form-title">{{ editing ? $t('routes.editRoute') : $t('routes.new') }}</h3>
         <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
       </div>
     <form @submit.prevent="save">
@@ -370,7 +370,7 @@ async function save() {
         <div class="form-row">
           <div class="form-group" style="flex: 1">
             <label class="form-label">{{ $t('apps.form.name') }}</label>
-            <input v-model="form.name" class="form-input" placeholder="e.g. web" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" required autofocus />
+            <input v-model="form.name" class="form-input" :placeholder="$t('routes.form.namePlaceholder')" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" required autofocus />
             <p class="form-hint">{{ $t('routes.nameHint') }}</p>
           </div>
           <div class="form-group" style="flex: 1">
@@ -406,7 +406,7 @@ async function save() {
                 <input v-model="row.sub" class="form-input host-sub" :placeholder="$t('routes.subdomainPlaceholder')" :aria-label="$t('routes.subdomain')" />
                 <span class="host-dot">.</span>
                 <select v-model="row.domain" class="form-select host-domain" :aria-label="$t('routes.domain')">
-                  <option v-for="d in domains" :key="d.id" :value="d.name">{{ d.name }}{{ d.verified ? '' : ' — unverified' }}</option>
+                  <option v-for="d in domains" :key="d.id" :value="d.name">{{ d.name }}{{ d.verified ? '' : ` — ${$t('routes.form.unverified')}` }}</option>
                 </select>
                 <button type="button" class="btn-icon btn-icon-danger" :title="$t('routes.removeHost')" :aria-label="$t('routes.removeHost')" @click="removeHostRow(i)"><span class="mdi mdi-close"></span></button>
               </div>
@@ -450,13 +450,13 @@ async function save() {
             <label class="form-label">{{ $t('routes.rewrite') }}<span class="text-muted">{{ $t('routes.optional') }}</span>
               <span
                 class="mdi mdi-information-outline info-icon"
-                :title="'Rewrites the request path before forwarding it to the app.\n\nExample:\n  path:    /api/v1\n  rewrite: /\n\nA request to /api/v1/users is forwarded as /users.'"
+                :title="$t('routes.form.rewriteHelp')"
               ></span>
             </label>
             <input v-model="form.rewrite" class="form-input" placeholder="/new-prefix/" />
           </div>
           <div class="form-group">
-            <label class="form-label">{{ $t('routes.middlewares') }}<span class="text-muted">({{ form.middlewares.length }} selected)</span></label>
+            <label class="form-label">{{ $t('routes.middlewares') }}<span class="text-muted">{{ $t('routes.form.selectedCount', form.middlewares.length) }}</span></label>
             <div v-if="middlewares.length === 0" class="text-muted text-sm">{{ $t('routes.noMiddlewaresDefinedYet') }}</div>
             <div v-else class="middleware-select">
               <label v-for="m in middlewares" :key="m.id" class="middleware-option" :class="{ active: form.middlewares.includes(m.name) }">
@@ -506,7 +506,7 @@ async function save() {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
-        <button type="submit" class="btn btn-primary" :disabled="saving || hostErrors.length > 0" :title="hostErrors.length ? $t('routes.hostIssue.fixFirst') : undefined">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+        <button type="submit" class="btn btn-primary" :disabled="saving || hostErrors.length > 0" :title="hostErrors.length ? $t('routes.hostIssue.fixFirst') : undefined">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('action.create')) }}</button>
       </div>
     </form>
     </AppModal>

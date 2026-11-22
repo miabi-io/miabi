@@ -49,7 +49,7 @@ function update(i: number, patch: Partial<JobEnvVar>) {
       />
       <input
         :value="v.value" class="form-input job-env-value" :type="v.is_secret ? 'password' : 'text'" :aria-label="t('jobs.env.value')"
-        :placeholder="v.is_secret && v.value === MASK ? t('jobs.env.keepSecret') : 'value'" :disabled="props.disabled"
+        :placeholder="v.is_secret && v.value === MASK ? t('jobs.env.keepSecret') : t('jobs.env.valuePlaceholder')" :disabled="props.disabled"
         @focus="v.is_secret && v.value === MASK && ($event.target as HTMLInputElement).select()"
         @input="update(i, { value: ($event.target as HTMLInputElement).value })"
       />

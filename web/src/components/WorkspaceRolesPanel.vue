@@ -148,7 +148,7 @@ async function confirmDelete() {
           <tr v-for="r in roles" :key="r.id">
             <td class="cell-title">{{ r.name }}</td>
             <td><span class="badge badge-neutral">{{ r.base_role }}</span></td>
-            <td class="text-muted">{{ r.permissions.length }} permission{{ r.permissions.length === 1 ? '' : 's' }}</td>
+            <td class="text-muted">{{ $t('roles.permissionCount', r.permissions.length) }}</td>
             <td class="text-right actions">
               <button class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil"></span></button>
               <button class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete"></span></button>
@@ -163,7 +163,7 @@ async function confirmDelete() {
     <Teleport to="body">
       <AppModal v-if="showModal" max-width="640px" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit role' : 'New role' }}</h3>
+          <h3>{{ editing ? $t('roles.editRole') : $t('roles.newRole') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
@@ -190,7 +190,7 @@ async function confirmDelete() {
                   :key="p.id"
                   class="perm"
                   :class="{ disabled: !myPermissions.has(p.id) }"
-                  :title="!myPermissions.has(p.id) ? 'You cannot grant a permission you do not hold' : ''"
+                  :title="!myPermissions.has(p.id) ? $t('roles.cannotGrant') : ''"
                 >
                   <input
                     type="checkbox"
@@ -206,7 +206,7 @@ async function confirmDelete() {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim() || form.permissions.size === 0">
-              {{ saving ? 'Saving…' : editing ? 'Save' : 'Create role' }}
+              {{ saving ? $t('action.saving') : editing ? $t('action.save') : $t('roles.createRole') }}
             </button>
           </div>
         </form>

@@ -27,7 +27,7 @@ function untracked(total: number, items: Category[]): number {
     <div class="card">
       <div class="a-card-header">
         <h3>{{ $t('analytics.requestsByCountry') }}</h3>
-        <span class="a-muted">{{ fmtNum(report.totals.requests) }} requests · {{ report.web.top_countries.length }} countries</span>
+        <span class="a-muted">{{ $t('analytics.requestsCount', { count: fmtNum(report.totals.requests) }) }} · {{ $t('analytics.countryCount', report.web.top_countries.length) }}</span>
       </div>
       <div class="card-body">
         <WorldMap
@@ -53,7 +53,7 @@ function untracked(total: number, items: Category[]): number {
       <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" scroll share searchable linked
         :total="report.totals.requests" :active="selected"
         @hover="hovered = $event" @select="toggle"
-        empty-hint="Needs a GeoIP database at /etc/miabi/geoip/country.mmdb — see the map above." />
+        :empty-hint="$t('analytics.needsGeoipAt', { path: '/etc/miabi/geoip/country.mmdb' })" />
       <Breakdown :title="$t('analytics.httpMethods')" :items="report.web.top_methods" />
 
       <div class="card">

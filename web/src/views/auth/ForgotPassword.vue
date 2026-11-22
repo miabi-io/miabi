@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 import type { Brand } from '@/api/types'
 import { useThemeStore } from '@/stores/theme'
 import { useBrandStore } from '@/stores/brand'
 
 const router = useRouter()
+const { t } = useI18n()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
 
@@ -47,7 +49,7 @@ async function submit() {
     // The API always returns 200 so it never reveals whether the address exists.
     sent.value = true
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Could not send the reset email. Please try again.')
+    error.value = apiErrorMessage(e, t('forgotPassword.sendFailed'))
   } finally {
     loading.value = false
   }
@@ -89,7 +91,7 @@ async function submit() {
       </div>
       <button class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Sending…' : 'Send reset link' }}
+        {{ loading ? $t('forgotPassword.sending') : $t('forgotPassword.submit') }}
       </button>
     </form>
 

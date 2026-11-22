@@ -126,7 +126,7 @@ async function openUpgrade(i: TemplateInstallView) {
     upgradePlan.value = (await marketplaceApi.upgradePlan(ws.currentWorkspaceId, i.id)).data.data
     for (const inp of upgradePlan.value.new_inputs ?? []) upgradeInputs.value[inp.key] = ''
   } catch (e) {
-    upgradePlanErr.value = apiErrorMessage(e, 'Could not compute the upgrade plan')
+    upgradePlanErr.value = apiErrorMessage(e, t('marketplace.err.upgradePlan'))
   }
 }
 
@@ -207,8 +207,12 @@ function review() {
 
 // sizeOf describes the size a template gives a database, or '' when it names none.
 function sizeOf(db: ManifestDatabase): string {
-  const parts = [db.resources?.memory && `${db.resources.memory} of memory`, db.resources?.cpu && `${db.resources.cpu} CPU`]
-  return parts.filter((p) => p && !p.startsWith('0 ')).join(' and ')
+  const set = (v?: string | number) => !!v && !`${v} `.startsWith('0 ')
+  const memory = set(db.resources?.memory) ? db.resources?.memory : ''
+  const cpu = set(db.resources?.cpu) ? db.resources?.cpu : ''
+  if (memory && cpu) return t('marketplace.size.both', { memory, cpu })
+  if (memory) return t('marketplace.size.memory', { memory })
+  return cpu ? t('marketplace.size.cpu', { cpu }) : ''
 }
 
 // pickedInstance returns the instance a placement token points at, if any.
@@ -221,26 +225,26 @@ function pickedInstance(db: ManifestDatabase): DatabaseInstance | undefined {
 // Must match the backend's reuse-or-create rule.
 function placementLabel(db: ManifestDatabase): string {
   const v = form.value.placement[db.name]
-  if (v === 'dedicated') return 'New dedicated instance'
+  if (v === 'dedicated') return t('marketplace.newDedicatedInstance')
   const inst = pickedInstance(db)
-  if (inst) return `Use existing: ${inst.name}`
-  if (sizeOf(db)) return `Automatic — new instance with ${sizeOf(db)}`
+  if (inst) return t('marketplace.placement.useExisting', { name: inst.name })
+  if (sizeOf(db)) return t('marketplace.placement.autoNewSized', { size: sizeOf(db) })
   const existing = instancesFor(db.engine)
-  return existing.length ? `Automatic — reuse ${existing[0].name}` : 'Automatic — new instance'
+  return existing.length ? t('marketplace.placement.autoReuse', { name: existing[0].name }) : t('marketplace.placement.autoNew')
 }
 
 function placementHint(db: ManifestDatabase): string {
-  const size = sizeOf(db) ? ` The template gives it ${sizeOf(db)}.` : ''
-  if (dedicatedOnly(db)) return `${DEDICATED_ONLY[db.engine]} is always provisioned as a dedicated instance.` + size
+  const size = sizeOf(db) ? ' ' + t('marketplace.placement.templateSize', { size: sizeOf(db) }) : ''
+  if (dedicatedOnly(db)) return t('marketplace.placement.alwaysDedicated', { engine: DEDICATED_ONLY[db.engine] }) + size
   const v = form.value.placement[db.name]
-  if (v === 'dedicated') return 'A new dedicated instance will be provisioned.' + size
+  if (v === 'dedicated') return t('marketplace.placement.hintDedicated') + size
   const inst = pickedInstance(db)
-  if (inst) return `A new database will be created in “${inst.name}”, which keeps its own size.`
-  if (size) return `Automatic will provision a new dedicated ${db.engine} instance, since a sized database gets its own.` + size
+  if (inst) return t('marketplace.placement.hintExisting', { name: inst.name })
+  if (size) return t('marketplace.placement.hintAutoSized', { engine: db.engine }) + size
   const existing = instancesFor(db.engine)
   return existing.length
-    ? `♻ Automatic will reuse “${existing[0].name}” — no new container.`
-    : `Automatic will provision a new dedicated ${db.engine} instance.`
+    ? '♻ ' + t('marketplace.placement.hintAutoReuse', { name: existing[0].name })
+    : t('marketplace.placement.hintAutoNew', { engine: db.engine })
 }
 
 // Shows resolved names (see @/utils/installNames), which depend on the Name field.
@@ -251,6 +255,7 @@ const installLabel = computed(() => (form.value.name || entry.value?.display_nam
 interface Provision {
   icon: string
   kind: string
+  group: 'app' | 'database' | 'volume' | 'config'
   name: string // as it will appear in the workspace
   sub?: string // short qualifier for the sidebar
   detail?: string // fuller wording for the confirmation dialog
@@ -259,10 +264,10 @@ interface Provision {
 // shortPlacement is placementLabel in a few words, for the sidebar row.
 function shortPlacement(db: ManifestDatabase): string {
   const inst = pickedInstance(db)
-  if (inst) return `in ${inst.name}`
-  if (form.value.placement[db.name] === 'dedicated' || sizeOf(db)) return 'new dedicated instance'
+  if (inst) return t('marketplace.placement.shortIn', { name: inst.name })
+  if (form.value.placement[db.name] === 'dedicated' || sizeOf(db)) return t('marketplace.placement.shortDedicated')
   const existing = instancesFor(db.engine)
-  return existing.length ? `reuses ${existing[0].name}` : 'new instance'
+  return existing.length ? t('marketplace.placement.shortReuses', { name: existing[0].name }) : t('marketplace.placement.shortNew')
 }
 
 const provisions = computed<Provision[]>(() => {
@@ -275,7 +280,8 @@ const provisions = computed<Provision[]>(() => {
   for (const a of apps) {
     out.push({
       icon: 'mdi-cube-outline',
-      kind: 'app',
+      kind: t('marketplace.kind.app'),
+      group: 'app',
       name: displayFor(label, a.name, apps.length),
       sub: `${a.image}${a.tag ? ':' + a.tag : ''}`,
     })
@@ -285,7 +291,8 @@ const provisions = computed<Provision[]>(() => {
   for (const d of dbs) {
     out.push({
       icon: 'mdi-database-outline',
-      kind: `${d.engine} database`,
+      kind: t('marketplace.kind.database', { engine: d.engine }),
+      group: 'database',
       name: displayFor(label, d.name, dbs.length),
       sub: shortPlacement(d),
 
@@ -296,7 +303,8 @@ const provisions = computed<Provision[]>(() => {
   for (const v of m.volumes ?? []) {
     out.push({
       icon: 'mdi-harddisk',
-      kind: 'volume',
+      kind: t('marketplace.kind.volume'),
+      group: 'volume',
       name: `${label} ${v.name}`,
       sub: resourceName(label, v.name),
     })
@@ -306,23 +314,25 @@ const provisions = computed<Provision[]>(() => {
     const files = Object.keys(c.files ?? {}).length
     out.push({
       icon: 'mdi-file-document-outline',
-      kind: 'config',
+      kind: t('marketplace.kind.config'),
+      group: 'config',
       name: resourceName(label, c.name),
-      sub: `${files} file${files === 1 ? '' : 's'}`,
+      sub: t('marketplace.fileCount', files),
     })
   }
   return out
 })
 
 const reviewGroups = computed<Record<string, Provision[]>>(() => {
-  const plural: Record<string, string> = {
-    app: 'Applications',
-    volume: 'Volumes',
-    config: 'Configs',
+  const plural: Record<Provision['group'], string> = {
+    app: t('marketplace.applications'),
+    database: t('nav.data.databases'),
+    volume: t('volumes.volumes'),
+    config: t('nav.sources.configs'),
   }
   const out: Record<string, Provision[]> = {}
   for (const p of provisions.value) {
-    const key = plural[p.kind] ?? (p.kind.endsWith('database') ? 'Databases' : p.kind)
+    const key = plural[p.group]
     ;(out[key] ??= []).push(p)
   }
   return out
@@ -519,7 +529,7 @@ onUnmounted(stopJobStream)
         <button class="btn-icon btn-icon-muted" :title="$t('marketplace.backToMarketplace')" :aria-label="$t('marketplace.backToMarketplace')" @click="router.push({ name: 'marketplace' })">
           <span class="mdi mdi-arrow-left"></span>
         </button>
-        <h1>{{ entry ? entry.display_name : 'Install template' }}</h1>
+        <h1>{{ entry ? entry.display_name : $t('marketplace.installTemplate') }}</h1>
       </div>
       <div v-if="entry && isCustom && ws.canEdit" class="header-actions">
         <button class="btn btn-ghost" @click="submitToMarketplace">
@@ -553,7 +563,7 @@ onUnmounted(stopJobStream)
             </span>
             <div>
               <span class="badge" :class="entry.source === 'custom' ? 'badge-warning' : 'badge-success'">
-                {{ entry.source === 'custom' ? 'Custom' : 'Official' }}
+                {{ entry.source === 'custom' ? $t('marketplace.source.custom') : $t('marketplace.source.official') }}
               </span>
               <span class="badge badge-neutral" style="margin-left: 6px">{{ entry.category }}</span>
             </div>
@@ -615,7 +625,7 @@ onUnmounted(stopJobStream)
             </li>
           </ul>
           <div v-if="upgradableInstall" class="apps-upgrade">
-            <span class="badge badge-primary">v{{ upgradableInstall.latest_version }} available</span>
+            <span class="badge badge-primary">{{ $t('marketplace.versionAvailable', { version: upgradableInstall.latest_version }) }}</span>
             <button v-if="ws.canEdit" class="btn btn-sm btn-primary" @click="openUpgrade(upgradableInstall)">
               <span class="mdi mdi-arrow-up-bold-circle-outline"></span>{{ $t('marketplace.upgrade') }}</button>
           </div>
@@ -644,7 +654,7 @@ onUnmounted(stopJobStream)
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" :placeholder="entry.display_name" :aria-label="$t('apps.form.name')" />
-              <p class="field-help">Display name for the installed {{ entry.applications > 1 ? 'apps' : 'app' }}.</p>
+              <p class="field-help">{{ $t('marketplace.displayNameHint', entry.applications > 1 ? 2 : 1) }}</p>
             </div>
 
             <LocationPicker v-model="form.location" :allow-pin="false" />
@@ -673,12 +683,12 @@ onUnmounted(stopJobStream)
             </div>
 
             <div v-for="db in manifest?.databases ?? []" :key="db.name" class="form-group">
-              <label class="form-label">{{ db.engine }} database ({{ db.name }})</label>
-              <select v-model="form.placement[db.name]" class="form-select" :disabled="dedicatedOnly(db)" :aria-label="`${db.engine} database (${db.name})`">
+              <label class="form-label">{{ $t('marketplace.databaseField', { engine: db.engine, name: db.name }) }}</label>
+              <select v-model="form.placement[db.name]" class="form-select" :disabled="dedicatedOnly(db)" :aria-label="$t('marketplace.databaseField', { engine: db.engine, name: db.name })">
                 <option v-if="!dedicatedOnly(db)" value="auto">{{ $t('marketplace.automaticReuseOrCreate') }}</option>
                 <option value="dedicated">{{ $t('marketplace.newDedicatedInstance') }}</option>
                 <option v-for="inst in instancesFor(db.engine)" :key="inst.id" :value="String(inst.id)">
-                  Use existing: {{ inst.name }}
+                  {{ $t('marketplace.placement.useExisting', { name: inst.name }) }}
                 </option>
               </select>
               <p class="field-help">{{ placementHint(db) }}</p>
@@ -698,7 +708,7 @@ onUnmounted(stopJobStream)
       <!-- Review (before install) -->
       <AppModal v-if="(confirmOpen && entry) && (!installJob)" @close="confirmOpen = false">
         <div class="modal-header">
-          <h3>Install {{ form.name || entry.display_name }}?</h3>
+          <h3>{{ $t('marketplace.installTitle', { name: form.name || entry.display_name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="confirmOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -722,14 +732,14 @@ onUnmounted(stopJobStream)
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="confirmOpen = false" :disabled="installing">{{ $t('marketplace.back') }}</button>
           <button type="button" class="btn btn-primary" :disabled="installing" @click="install">
-            {{ installing ? 'Installing…' : 'Confirm & install' }}
+            {{ installing ? $t('marketplace.installing') : $t('marketplace.confirmInstall') }}
           </button>
         </div>
       </AppModal>
       <!-- Live progress (during install) -->
       <AppModal v-else-if="(confirmOpen && entry) && installJob" @close="confirmOpen = false">
         <div class="modal-header">
-          <h3>{{ installJob.status === 'failed' ? 'Install failed' : installJob.status === 'succeeded' ? `Installed ${form.name || entry.display_name}` : `Installing ${form.name || entry.display_name}` }}</h3>
+          <h3>{{ installJob.status === 'failed' ? $t('notify.templateInstall.installFailed') : installJob.status === 'succeeded' ? $t('notify.templateInstall.installed', { name: form.name || entry.display_name }) : $t('marketplace.installingName', { name: form.name || entry.display_name }) }}</h3>
           <button v-if="installJob.status !== 'running'" class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')"
             @click="installJob.status === 'succeeded' ? openInstalled(installJob) : closeProgress()">
             <span class="mdi mdi-close"></span>
@@ -747,7 +757,7 @@ onUnmounted(stopJobStream)
           </p>
           <div v-else-if="installJob.status === 'failed'" class="danger-note" style="margin-top: 14px">
             <span class="mdi mdi-alert-outline"></span>
-            <div>{{ installJob.error || 'The install could not be completed.' }}</div>
+            <div>{{ installJob.error || $t('marketplace.installNotCompleted') }}</div>
           </div>
           <div v-if="installJob.warnings?.length" class="warning-note">
             <span class="mdi mdi-alert-outline"></span>
@@ -760,7 +770,7 @@ onUnmounted(stopJobStream)
           <button type="button" class="btn btn-secondary" @click="closeProgress">{{ $t('marketplace.backToForm') }}</button>
         </div>
         <div v-else-if="installJob.status === 'succeeded' && installJob.warnings?.length" class="modal-footer">
-          <button type="button" class="btn btn-primary" @click="openInstalled(installJob)">Continue</button>
+          <button type="button" class="btn btn-primary" @click="openInstalled(installJob)">{{ $t('action.continue') }}</button>
         </div>
       </AppModal>
     </Teleport>
@@ -781,7 +791,7 @@ onUnmounted(stopJobStream)
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="editOpen = false" :disabled="saving">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || editLoading || !editYaml.trim()">
-              {{ saving ? 'Saving…' : 'Save changes' }}
+              {{ saving ? $t('action.saving') : $t('marketplace.saveChanges') }}
             </button>
           </div>
         </form>
@@ -792,7 +802,7 @@ onUnmounted(stopJobStream)
     <Teleport to="body">
       <AppModal v-if="deleteOpen && entry" dialog-class="modal-sm" @close="deleteOpen = false">
         <div class="modal-header">
-          <h3>Delete {{ entry.display_name }}?</h3>
+          <h3>{{ $t('marketplace.deleteTitle', { name: entry.display_name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="deleteOpen = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -804,7 +814,7 @@ onUnmounted(stopJobStream)
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="deleteOpen = false" :disabled="deleting">{{ $t('action.cancel') }}</button>
           <button type="button" class="btn btn-danger" :disabled="deleting" @click="confirmDelete">
-            {{ deleting ? 'Deleting…' : 'Delete template' }}
+            {{ deleting ? $t('appDetail.danger.deleting') : $t('marketplace.deleteTemplate') }}
           </button>
         </div>
       </AppModal>
@@ -814,7 +824,7 @@ onUnmounted(stopJobStream)
     <Teleport to="body">
       <AppModal v-if="upgradeTarget" @close="upgradeTarget = null">
         <div class="modal-header">
-          <h3>Upgrade {{ upgradeTarget.template_display_name }}</h3>
+          <h3>{{ $t('marketplace.upgradeTitle', { name: upgradeTarget.template_display_name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="upgradeTarget = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -849,7 +859,7 @@ onUnmounted(stopJobStream)
               <ul class="upg-list">
                 <li v-if="a.image_changed">{{ $t('marketplace.image') }}<code>{{ a.old_image }}</code> → <code>{{ a.new_image }}</code></li>
                 <li v-for="e in a.env" :key="e.key">{{ $t('marketplace.env') }}<code>{{ e.key }}</code>
-                  <span class="badge" :class="{ 'badge-success': e.kind === 'added', 'badge-warning': e.kind === 'changed', 'badge-neutral': e.kind === 'removed' }">{{ e.kind }}</span>
+                  <span class="badge" :class="{ 'badge-success': e.kind === 'added', 'badge-warning': e.kind === 'changed', 'badge-neutral': e.kind === 'removed' }">{{ e.kind === 'removed' ? $t('marketplace.teardown.removed') : $t(`marketplace.envChange.${e.kind}`) }}</span>
                   <span v-if="e.secret" class="text-muted">{{ $t('marketplace.secret') }}</span>
                 </li>
                 <li v-for="m in a.new_mounts" :key="m">{{ $t('marketplace.newMount') }}<code>{{ m }}</code></li>
@@ -882,7 +892,7 @@ onUnmounted(stopJobStream)
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" :disabled="upgrading" @click="upgradeTarget = null">{{ $t('action.cancel') }}</button>
           <button type="button" class="btn btn-primary" :disabled="!upgradePlan || upgrading || upgradeMissingInput" @click="confirmUpgrade">
-            {{ upgrading ? 'Upgrading…' : `Upgrade to v${upgradePlan?.to_version ?? ''}` }}
+            {{ upgrading ? $t('marketplace.upgrading') : $t('marketplace.upgradeToVersion', { version: upgradePlan?.to_version ?? '' }) }}
           </button>
         </div>
       </AppModal>

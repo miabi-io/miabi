@@ -49,7 +49,14 @@
     },
     "catalog": "{n} templates · synced {when}",
     "catalogNotSynced": "Catalog not synced yet",
-    "changes": "Changes"
+    "changes": "Changes",
+    "editionBadge": {
+      "enterprise": "Enterprise Edition",
+      "community": "Community Edition"
+    },
+    "restricted": "Restricted",
+    "copyVersion": "Copy version",
+    "legal": "© {year} Jonas Kaninda · AGPL-3.0 licensed"
   },
   "action": {
     "apply": "Apply",
@@ -93,7 +100,9 @@
     "test": "Test",
     "upgrade": "Upgrade",
     "working": "Working…",
-    "rotateKeys": "Rotate keys"
+    "rotateKeys": "Rotate keys",
+    "open": "Open",
+    "dismiss": "Dismiss"
   },
   "adminLayout": {
     "dismissUntilTheNextRelease": "Dismiss until the next release",
@@ -230,7 +239,51 @@
     "upstreamBackend": "Upstream (backend)",
     "viewMap": "View map →",
     "whereTimeGoes": "Where time goes",
-    "whereToGetOne": "Where to get one →"
+    "whereToGetOne": "Where to get one →",
+    "uniqueVisitors": "Unique visitors",
+    "dataServed": "Data served",
+    "bytesIn": "{bytes} in",
+    "bytesOut": "{bytes} out",
+    "clientErrorsRate": "Client errors (4xx): {pct}",
+    "requestsCount": "{count} requests",
+    "per": {
+      "minute": "per minute",
+      "hour": "per hour",
+      "day": "per day"
+    },
+    "avgValue": "Avg {value}",
+    "countryNeedsGeoip": "Country data needs the GeoIP database on the gateway.",
+    "avgLatency": "Avg latency",
+    "webAnalyticsFor": "Web Analytics for {name}",
+    "visitorsMethod": "cookieless · daily-salted",
+    "pageViews": "Page views",
+    "viewsPerVisitor": "Views / visitor",
+    "humanTraffic": "Human traffic",
+    "botRequests": "{count} bot requests",
+    "automatedPct": "{pct}% automated",
+    "noUserAgents": "No requests carried a User-Agent header in this range.",
+    "countryCount": "no countries | {n} country | {n} countries",
+    "needsGeoipAt": "Needs a GeoIP database at {path} — see the map above.",
+    "deltaHint": "Change vs the previous period of the same length",
+    "range": {
+      "last30m": "Last 30 min",
+      "last1h": "Last hour",
+      "last24h": "Last 24 hours",
+      "last7d": "Last 7 days",
+      "last30d": "Last 30 days"
+    },
+    "loadFailed": "Failed to load analytics",
+    "localTime": "local time",
+    "liveVisitors": "no visitors active in {window} | {n} visitor active in {window} | {n} visitors active in {window}",
+    "lastMinutes": "the last minute | the last {n} minutes",
+    "localTimezone": "All times shown in your local timezone ({tz})",
+    "appId": "App #{id}",
+    "retentionLimited": "Retention is limited to {days} days on this plan — upgrade to Enterprise for longer history",
+    "noData": "No data.",
+    "unknown": "Unknown",
+    "latencySummary": "p95 latency {per} over {n} buckets",
+    "requestsSummary": "Requests {per} — {n} buckets, peak {peak}",
+    "statusSummary": "Status codes: {list} of {total} requests"
   },
   "apiKeys": {
     "accountWide": "Account-wide (all my workspaces)",
@@ -283,7 +336,13 @@
     "scopesFixed": "Scopes are fixed at creation. To change them, create a new key.",
     "workspace": "Workspace",
     "workspaceAccess": "Workspace access",
-    "workspaceScopedHint": "This key is scoped to the workspace above — supply this workspace ID when targeting resources via the API, CLI, or Terraform."
+    "workspaceScopedHint": "This key is scoped to the workspace above — supply this workspace ID when targeting resources via the API, CLI, or Terraform.",
+    "status": {
+      "revoked": "revoked",
+      "expired": "expired",
+      "active": "active"
+    },
+    "workspaceId": "Workspace #{id}"
   },
   "appAccess": {
     "appAccess": "App access",
@@ -295,7 +354,10 @@
     "permissions": "Permissions",
     "revoke": "Revoke",
     "selectMember": "Select member…",
-    "upgrade": "Upgrade"
+    "upgrade": "Upgrade",
+    "userFallback": "user #{id}",
+    "granting": "Granting…",
+    "grant": "Grant"
   },
   "appDetail": {
     "aSingleFile": "A single file",
@@ -327,7 +389,11 @@
     "canary": {
       "pauseHint": "Hold traffic at the current split",
       "resumeHint": "Hand the rollout back to the ramp",
-      "autoPausedHint": "· paused automatically {for}: canary errors"
+      "autoPausedHint": "· paused automatically {for}: canary errors",
+      "pausedFor": "· paused {for}",
+      "shiftingAuto": "· shifting automatically, promotes at 100%",
+      "heldManually": "· held manually",
+      "heldManuallyRules": "· held manually, {n} match rule | · held manually, {n} match rules"
     },
     "canaryInProgress": "Canary rollout in progress — click to manage",
     "canaryRollout": "Canary rollout",
@@ -340,7 +406,11 @@
     "configs": {
       "allFilesTab": "All files",
       "mountHint": "Mounted read-only. Changes to the config apply on the app's next deploy.",
-      "subtitle": "Read-only files mounted from workspace configs."
+      "subtitle": "Read-only files mounted from workspace configs.",
+      "dirInContainer": "Directory in the container",
+      "fileInContainer": "File path in the container",
+      "mounting": "Mounting…",
+      "mountConfig": "Mount config"
     },
     "configuration": "Configuration",
     "connection": "Connection",
@@ -376,7 +446,9 @@
       "injectField": "Inject {field}",
       "deprecated": "deprecated, use url",
       "envClash": "Already injected by another linked database: {vars}. Set a prefix or rename them.",
-      "wholeInstanceHint": "{engine} has no per-app databases: the app connects to the instance, which other apps can link too."
+      "wholeInstanceHint": "{engine} has no per-app databases: the app connects to the instance, which other apps can link too.",
+      "instancesHidden": "{n} instance is hidden — this app cannot reach it: it runs on another node, outside cluster networking. | {n} instances are hidden — this app cannot reach them: they run on another node, outside cluster networking.",
+      "linking": "Linking…"
     },
     "default": "default",
     "defaultAlwaysAttached": "(default, always attached)",
@@ -395,7 +467,10 @@
       "pipelineTitle": "Deploys run the “{name}” pipeline.",
       "sync": "sync",
       "applyTitle": "Applied from a manifest.",
-      "applyHint": "A manual redeploy is kept until the next {cmd} of its manifest."
+      "applyHint": "A manual redeploy is kept until the next {cmd} of its manifest.",
+      "templateTitle": "Managed by the “{name}” template.",
+      "rollingUnavailable": "Rolling isn't available: host port {ports} can only be held by one container at a time.",
+      "starting": "Starting…"
     },
     "deployment": "Deployment",
     "deploymentStrategy": "Deployment strategy",
@@ -453,7 +528,15 @@
       "emptyHint": "Add variables to configure your app, or bulk-import an existing .env file.",
       "filterPlaceholder": "Filter variables…",
       "manageSecrets": "manage secrets",
-      "subtitle": "Injected into the container at runtime. Reference a workspace secret with {ref} — {link}. An app's public address is {appRef}, filled in at each deploy."
+      "subtitle": "Injected into the container at runtime. Reference a workspace secret with {ref} — {link}. An app's public address is {appRef}, filled in at each deploy.",
+      "variableCount": "{n} variable | {n} variables",
+      "secretCount": "{n} secret | {n} secret",
+      "noMatch": "No variables match “{search}”.",
+      "importPlaceholder": "DATABASE_URL=postgres://...\n# comments and blank lines are ignored\nLOG_LEVEL=info",
+      "importHint": "Existing keys are overwritten.",
+      "importHintRedeploy": "Existing keys are overwritten. The app redeploys after import.",
+      "importing": "Importing…",
+      "import": "Import"
     },
     "envVarPrefix": "Env var prefix",
     "envVars": "Env vars",
@@ -528,7 +611,11 @@
       "search": "Search logs…",
       "searchRegex": "Search logs (regex)…",
       "selectDeployment": "Select a deployment or click Deploy to stream logs.",
-      "waiting": "Waiting for output… (the app must have a running container)"
+      "waiting": "Waiting for output… (the app must have a running container)",
+      "notRunning": "not running",
+      "connecting": "connecting…",
+      "trimmed": "Showing the most recent {n} lines — older output was trimmed.",
+      "searchDeployment": "Search deployment logs"
     },
     "manageDatabases": "Manage databases",
     "manageRoutes": "Manage routes",
@@ -539,7 +626,8 @@
       "gitopsSource": "GitOps source",
       "not": "not",
       "secretsHint": "Applying the manifest elsewhere recreates the application as it is configured here. Secret values are {not} included: each is listed by name under {field}, so the vault stays the only place the value lives.",
-      "subtitle": "Describe this application as a {kind} manifest — its source, ports, environment and mounted volumes — to commit alongside your code."
+      "subtitle": "Describe this application as a {kind} manifest — its source, ports, environment and mounted volumes — to commit alongside your code.",
+      "title": "Manifest — {name}"
     },
     "mapping": "Mapping",
     "marketplaceUpgrade": "marketplace upgrade",
@@ -549,7 +637,8 @@
     "metrics": {
       "live": "live",
       "noMetrics": "No live metrics — the app has no running container.",
-      "resourceUsage": "Resource usage"
+      "resourceUsage": "Resource usage",
+      "ofLimit": "of {limit}"
     },
     "mode": "Mode",
     "mount": "Mount",
@@ -609,7 +698,11 @@
       "autoApproveHint": "Requests in {ranges} are approved automatically.",
       "primary": "Primary",
       "makePrimary": "Make primary",
-      "primaryHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access. Changing it applies on the next deploy."
+      "primaryHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access. Changing it applies on the next deploy.",
+      "adding": "Adding…",
+      "suggest": "Suggest",
+      "requesting": "Requesting…",
+      "request": "Request"
     },
     "processes": "Processes",
     "promote": "Promote",
@@ -709,7 +802,25 @@
       "noneProbeHint": "No check at all: the image's own HEALTHCHECK is turned off too. Use it for workers and schedulers that serve no HTTP.",
       "applyHint": "Applied from a manifest — the next {cmd} overwrites changes made here.",
       "restartExternalStops": "Start it again if it is stopped outside Miabi",
-      "restartExternalStopsHint": "When someone runs docker stop on this app's container, the control manager starts the same container again. Needs Redeploy in place, set here or platform-wide. Crashes stay with the restart policy."
+      "restartExternalStopsHint": "When someone runs docker stop on this app's container, the control manager starts the same container again. Needs Redeploy in place, set here or platform-wide. Crashes stay with the restart policy.",
+      "dropCapabilitiesError": "List capability names such as NET_RAW, or ALL.",
+      "runAsUserFormat": "Use \"uid\", \"uid:gid\", \"name\" or \"name:group\".",
+      "runAsUserNonRoot": "This workspace requires a non-root numeric uid (e.g. 1000 or 1000:1000).",
+      "templateManagedSource": "Managed by the “{name}” template — change it through a {link}.",
+      "switchSource": "Switch source",
+      "saveSource": "Save source",
+      "imageRequired": "An image is required.",
+      "repoRequired": "A repository URL or a saved repository is required.",
+      "repoPipeline": "Repository pipeline",
+      "noRepoPipeline": "No repository pipeline",
+      "syncing": "Syncing…",
+      "resync": "Re-sync",
+      "invalidating": "Invalidating…",
+      "invalidate": "Invalidate",
+      "saveSettings": "Save settings",
+      "dropCapsPlaceholder": "NET_RAW, SYS_CHROOT or ALL",
+      "saveResources": "Save resources",
+      "saveHealthcheck": "Save healthcheck"
     },
     "shell": "Shell",
     "source": {
@@ -736,7 +847,11 @@
       "recreateHint": "Stops the old container before starting the new one (brief downtime).",
       "rolling": "Rolling",
       "rollingBlocked": "Unavailable while host port {ports} is published — it can only be held by one container at a time.",
-      "rollingHint": "Starts the new container, waits for health, then retires the old one (no downtime)."
+      "rollingHint": "Starts the new container, waits for health, then retires the old one (no downtime).",
+      "defaultHint": "Applied when you Deploy without choosing a strategy. Config-change redeploys always use rolling.",
+      "defaultHintRecreate": "Applied when you Deploy without choosing a strategy. Config-change redeploys always use rolling, which falls back to recreate here.",
+      "canarySummary": "Start at {initial}%, add {step}% every {interval}s, auto-promote at 100%.",
+      "save": "Save strategy"
     },
     "tab": {
       "access": "Access",
@@ -804,7 +919,62 @@
     "disableRoute": "Disable route",
     "routeFlow": "Request flow",
     "seeTrafficFlow": "See traffic flow",
-    "seeTrafficFlowHint": "Open the route’s request flow: the live split between stable and canary"
+    "seeTrafficFlowHint": "Open the route’s request flow: the live split between stable and canary",
+    "err": {
+      "updateExternalAccess": "Failed to update external access",
+      "generateManifest": "Failed to generate the manifest",
+      "copyLogs": "Failed to copy logs",
+      "invalidateCache": "Could not invalidate the build cache",
+      "requestBinding": "Failed to request binding",
+      "noFreeHostPort": "No free host port available",
+      "deployFailed": "Deploy failed",
+      "cannotDeleteRelease": "Cannot delete (active or pinned?)",
+      "scale": "Failed to scale"
+    },
+    "duration": {
+      "justNow": "just now",
+      "s": "{n}s",
+      "m": "{n}m",
+      "h": "{n}h",
+      "d": "{n}d"
+    },
+    "deployVerb": {
+      "redeploy": "Redeploy",
+      "deploy": "Deploy"
+    },
+    "aMarketplaceTemplate": "a marketplace template",
+    "configFallback": "config {id}",
+    "statusDetail": {
+      "restarted": "restarted {n}×",
+      "exit": "exit {code}",
+      "up": "up {uptime}"
+    },
+    "installedFromTemplate": "Installed from the “{name}” marketplace template",
+    "containerState": "container: {state}",
+    "canaryStrip": "Canary {weight}%",
+    "runningOn": "Running on {nodes}",
+    "saveExternalAccess": "Save external access",
+    "loading": "Loading…",
+    "loadMore": "Load more",
+    "canaryLegend": {
+      "stable": "stable {weight}%",
+      "canary": "canary {weight}%"
+    },
+    "volumeNoMatch": "No volume matches “{search}”",
+    "configFileCount": "({n} file) | ({n} files)",
+    "limits": {
+      "cpuOverCap": "Exceeds platform max of {max} cores.",
+      "cpuMax": "Max {max} cores. 0 = unlimited.",
+      "memOverCap": "Exceeds platform max of {max} MB.",
+      "memMax": "Max {max} MB. 0 = unlimited."
+    },
+    "appliesNextDeploy": "Applies on the next deploy.",
+    "deployTitle": {
+      "deploy": "Deploy {name}",
+      "redeploy": "Redeploy {name}"
+    },
+    "releaseTitle": "Release v{version}",
+    "createdAt": "Created {date}"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -872,13 +1042,31 @@
       "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app.",
       "memoryRequired": "This workspace's plan requires a memory limit on every app. CPU is shared, so a CPU limit is optional.",
       "primaryPort": "Primary",
-      "primaryPortHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access."
+      "primaryPortHint": "The primary port sets MIABI_PORT and MIABI_INTERNAL_URL, and is the default for routes and external access.",
+      "usePipeline": "Use the pipeline from {path}",
+      "runsWhen": "runs {when}",
+      "builtIn": "built-in: {uses}",
+      "noPipelineDockerfile": "No pipeline file — this app will build from its Dockerfile and deploy.",
+      "noPipelineBuildpacks": "No pipeline file — this app will build with Cloud Native Buildpacks and deploy."
     },
     "nodeHintContainer": "The app runs on this node. Pin it before its first deploy; a deployed container can't move nodes yet.",
     "nodeHintService": "Swarm runs every task on this node, and redeploys pick up a changed pin.",
     "nodeReplicasWarn": "All {n} replicas will run on this one node.",
     "searchLabel": "Search applications",
-    "searchPlaceholder": "Search applications by name, image, repo, or node…"
+    "searchPlaceholder": "Search applications by name, image, repo, or node…",
+    "trigger": {
+      "pushTo": "on push to {branches}",
+      "anyPush": "on any push",
+      "schedule": "on schedule ({schedule})",
+      "onDeploy": "when you deploy"
+    },
+    "createFailed": "Failed to create application",
+    "subtitle": "Containerized apps Miabi builds, deploys, and runs for {context}.",
+    "countOf": "{n} of {total}",
+    "noMatch": "No applications match “{search}”.",
+    "serviceHint": "Runs as a Swarm service on the workspace overlay network with {n} replica. | Runs as a Swarm service on the workspace overlay network with {n} replicas.",
+    "creating": "Creating…",
+    "createApplication": "Create application"
   },
   "audit": {
     "action": "Action",
@@ -903,7 +1091,9 @@
     "theAuditLogIsAvailable": "The audit log is available with a Miabi Enterprise license.",
     "to": "To",
     "when": "When",
-    "youNeedOwnerOrAdmin": "You need owner or admin access to view this workspace's audit log."
+    "youNeedOwnerOrAdmin": "You need owner or admin access to view this workspace's audit log.",
+    "activityIn": "Activity in {name}",
+    "loadFailed": "Failed to load audit entry"
   },
   "auth": {
     "displayOptions": "Display options",
@@ -987,7 +1177,22 @@
     "upgrade": "Upgrade",
     "value": "Value",
     "weightHintManual": "the only thing that moves traffic",
-    "weightHintRamp": "where the ramp has reached"
+    "weightHintRamp": "where the ramp has reached",
+    "problem": {
+      "exclusiveNeedsRule": "An exclusive canary needs at least one match rule; without one it takes all traffic.",
+      "zeroNeedsExclusive": "A canary at 0% needs exclusive routing; otherwise its match rules send no traffic.",
+      "ruleNeedsName": "Rules on a header, query or cookie need a name.",
+      "ruleNeedsValue": "Every rule needs a value.",
+      "invalidRegex": "“{value}” is not a valid regular expression."
+    },
+    "backend": {
+      "canary": "Canary",
+      "stable": "Stable",
+      "split": "Split — {chance}% canary"
+    },
+    "noCanaryRunning": "No canary is running. Rules saved now apply to the next rollout, which starts at {weight}%.",
+    "nonExclusiveHint": "Off, a matching request instead joins the weighted pool and reaches the canary {weight}% of the time.",
+    "readValue": "read “{value}”"
   },
   "certificates": {
     "acme": "ACME",
@@ -1022,14 +1227,21 @@
     "subtitle": "Import a TLS certificate once and select it on any route (TLS mode “custom”). ACME certificates are issued automatically by the gateway.",
     "unusedHint": "Not used by any route. The certificate can be safely deleted.",
     "validFrom": "Valid from",
-    "verifiedOnlyHint": "Only verified domains with a connected DNS provider can be issued."
+    "verifiedOnlyHint": "Only verified domains with a connected DNS provider can be issued.",
+    "deleteFailed": "Delete failed (certificate may be in use)",
+    "replace": "Replace",
+    "import": "Import",
+    "starting": "Starting…",
+    "issueCertificate": "Issue certificate"
   },
   "changePassword": {
     "atLeastCharacters": "At least {n} characters",
     "passwordsDonTMatch": "Passwords don't match.",
     "reEnterYourNewPassword": "Re-enter your new password",
     "setANewPassword": "Set a new password",
-    "subtitle": "Your password was set by an administrator. Choose your own to continue."
+    "subtitle": "Your password was set by an administrator. Choose your own to continue.",
+    "sessionExpired": "This password-reset session has expired. Sign in again.",
+    "submit": "Set password & continue"
   },
   "cli": {
     "allReleases": "all releases",
@@ -1051,7 +1263,8 @@
     "sourceIssues": "Source & issues",
     "subtitle": "Install the Miabi CLI and sign in to this panel from your terminal.",
     "verify": "Verify",
-    "verifyHint": "Then try {list} to list your applications, or {help} for everything else."
+    "verifyHint": "Then try {list} to list your applications, or {help} for everything else.",
+    "binaryTab": "Binary"
   },
   "cliAuthorize": {
     "limitedToScopes": "This sign-in will be limited to the scopes the CLI asked for:",
@@ -1063,7 +1276,14 @@
     "sessionSubtitle": "Sign the Miabi CLI in on this machine with your current session.",
     "signedInAs": "Signed in as {who}",
     "useAnotherAccount": "Use another account",
-    "sessionFailed": "Your session could not authorize the CLI. Sign in below."
+    "sessionFailed": "Your session could not authorize the CLI. Sign in below.",
+    "invalidTitle": "Invalid CLI login link",
+    "doneSubtitle": "Return to your terminal — the Miabi CLI is finishing sign-in.",
+    "invalidSubtitle": "This link is missing a valid local callback. Re-run `miabi login`.",
+    "confirmSubtitle": "Re-authenticate to sign the Miabi CLI in on this machine.",
+    "noCallback": "The server did not return a callback URL. Re-run `miabi login`.",
+    "submit": "Authorize CLI",
+    "verifySubmit": "Verify & authorize"
   },
   "configs": {
     "configs": "Configs",
@@ -1089,7 +1309,14 @@
     "size": "Size",
     "subtitle": "Configuration files mounted into applications as read-only files. Content is encrypted at rest.",
     "trySearch": "Try a different search term.",
-    "version": "Version"
+    "version": "Version",
+    "editAdminOnly": "Only admins can open a config for editing",
+    "deleteMounted": "A config cannot be deleted while an application still mounts it",
+    "editConfig": "Edit config",
+    "savingRedeploys": "Saving redeploys {n} app: {apps} | Saving redeploys {n} apps: {apps}",
+    "untitled": "untitled",
+    "fileNamePlaceholder": "prometheus.yml or rules/alerts.yml",
+    "createConfig": "Create config"
   },
   "confirm": {
     "label": {
@@ -1417,13 +1644,15 @@
     "configs": "no configs | {n} config | {n} configs",
     "databases": "no databases | {n} database | {n} databases",
     "volumes": "no volumes | {n} volume | {n} volumes",
-    "secrets": "no secrets | {n} secret | {n} secrets"
+    "secrets": "no secrets | {n} secret | {n} secrets",
+    "events": "no events | {n} event | {n} events"
   },
   "credentialField": {
     "chooseASecretToContinue": "Choose a secret to continue.",
     "enterValue": "Enter value",
     "readFromTheVaultOn": "Read from the vault on every use — rotating the secret rotates this credential.",
-    "useASecret": "Use a secret"
+    "useASecret": "Use a secret",
+    "generateFor": "Generate a value for {label}"
   },
   "dashboard": {
     "acceptInvitation": "Accept an invitation above to join a workspace.",
@@ -1540,7 +1769,18 @@
       "reconnecting": "Reconnecting…"
     },
     "viewAll": "View all",
-    "viewApplications": "View applications"
+    "viewApplications": "View applications",
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening",
+      "morningNamed": "Good morning, {name}",
+      "afternoonNamed": "Good afternoon, {name}",
+      "eveningNamed": "Good evening, {name}"
+    },
+    "overviewOfName": "Overview of {name}",
+    "local": "Local",
+    "stackRunning": "{running}/{total} running"
   },
   "databases": {
     "col": {
@@ -1564,11 +1804,15 @@
       "version": "Version / tag",
       "versionHint": "Image tag for {tag}. Leave blank for the default.",
       "volumeHint": "Declared capacity of the instance's data volume, recorded for quota accounting. Hard enforcement depends on the node's storage backend.",
-      "volumeSize": "Data volume size (MB)"
+      "volumeSize": "Data volume size (MB)",
+      "sizeBoundHint": "The sizes this workspace’s plan offers.",
+      "sizeHint": "A named size, or Custom to set memory and CPU yourself."
     },
     "nodeHint": "A database stays on the node it is created on, with its data volume.",
     "provision": "Provision a database",
-    "provisioning": "Database provisioning…"
+    "provisioning": "Database provisioning…",
+    "subtitle": "Managed database instances Miabi provisions and runs for {context}.",
+    "provisioningShort": "Provisioning…"
   },
   "db": {
     "ageIdentity": "age identity",
@@ -1733,7 +1977,16 @@
       "readOnlyDisabled": "Read-only user removed.",
       "redeployQueued": "Redeploy started",
       "markedDedicated": "Instance marked as dedicated",
-      "openedForSharing": "Instance open for sharing"
+      "openedForSharing": "Instance open for sharing",
+      "forwardAdminOnly": "Only admins can open a forward",
+      "databaseCreatedInjected": "Database created — connection injected into the app",
+      "databaseCreated": "Database created",
+      "revealAdminOnly": "Only admins can reveal credentials",
+      "setVerified": "{ref} verified — {n} artifact intact | {ref} verified — {n} artifacts intact",
+      "backupPinned": "Backup #{number} pinned — retention will skip it",
+      "backupUnpinned": "Backup #{number} unpinned",
+      "downloadFailed": "Download failed",
+      "upgradeFailedToStart": "Upgrade failed to start"
     },
     "typeToConfirm": "Type {name} to confirm",
     "unlimited": "Unlimited",
@@ -1761,7 +2014,77 @@
     "placementDedicatedHint": "Dedicated: automatic placement never puts other databases here, and no databases can be created or attached for another app.",
     "placementSharedHint": "Shared: automatic placement may create databases for other apps and templates on this instance.",
     "markDedicated": "Mark as dedicated",
-    "allowSharing": "Allow sharing"
+    "allowSharing": "Allow sharing",
+    "provisioningEngine": "Provisioning {engine} {version}…",
+    "ofLimit": "of {limit}",
+    "instanceNotRunning": "Instance is {status} — databases can be created once it is running.",
+    "appNumber": "app #{id}",
+    "selectDatabaseForBackups": "Select a database to view its backups.",
+    "createDatabaseFirst": "Create a database first to back it up.",
+    "runBackup": "Run backup",
+    "workspaceSettings": "Workspace settings",
+    "scanning": "Scanning…",
+    "scanBucket": "Scan bucket",
+    "backUpAllDatabases": "Back up all databases",
+    "foundCount": "{n} found",
+    "databaseCount": "{n} database | {n} databases",
+    "connecting": "connecting…",
+    "waitingForLogs": "Waiting for output… (the instance must have a running container)",
+    "currentlyRunning": "Currently {engine} {version}.",
+    "pathDumpRestore": "dump & restore",
+    "pathInPlace": "in-place",
+    "upgradeFailedTitle": "Upgrade to {version} failed.",
+    "upgradeRolledBack": "The instance was rolled back to {version} and is safe to use. You can adjust the target and try again below.",
+    "versionPlaceholder": "e.g. 17",
+    "major": "major",
+    "minor": "minor",
+    "pathDumpRestoreHint": "Dump & restore into a fresh volume — the instance keeps its address and credentials, so apps need no change.",
+    "pathInPlaceHint": "In-place image swap on the same data volume — fast, seconds of downtime.",
+    "stopAppsDuringUpgrade": "Stop the app using this database during the upgrade, then restart it | Stop the {n} apps using this database during the upgrade, then restart them",
+    "selectNetwork": "Select a network…",
+    "allNetworksAttached": "All networks already attached",
+    "applyAndRestart": "Apply and restart",
+    "hiddenApps": "{n} app is hidden — it cannot reach this database: it runs on another node, outside cluster networking. | {n} apps are hidden — they cannot reach this database: they run on another node, outside cluster networking.",
+    "createDatabase": "Create database",
+    "connectionTitle": "Connection · {name}",
+    "restoreBackupN": "Restore backup #{number}",
+    "takenFrom": "Taken from {engine} {version}.",
+    "takenFromNowRuns": "Taken from {engine} {version}; this instance now runs {current}.",
+    "restoring": "Restoring…",
+    "ago": {
+      "seconds": "{n}s ago",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago",
+      "justNow": "just now",
+      "months": "{n}mo ago",
+      "years": "{n}y ago"
+    },
+    "cpuCount": "{n} CPU",
+    "unlimitedCpu": "unlimited CPU",
+    "unlimitedMemory": "unlimited memory",
+    "expiring": "expiring…",
+    "expiresIn": "expires in {n} min",
+    "phase": {
+      "queued": "Queued",
+      "backingUp": "Backing up",
+      "stoppingApps": "Stopping apps",
+      "swapping": "Swapping engine",
+      "dumping": "Dumping",
+      "restoring": "Restoring data",
+      "verifying": "Verifying",
+      "startingApps": "Restarting apps"
+    },
+    "cannotUpgradeToVersion": "Cannot upgrade to that version",
+    "upgradeConfirm": {
+      "summary": "Upgrade {name} from {from} to {to}.",
+      "major": "This is a major upgrade: data is dumped and restored into a fresh volume (the instance keeps its address and credentials).",
+      "inPlace": "In-place upgrade: the engine image is swapped on the same data volume.",
+      "stopApps": "These apps will be stopped during the upgrade and restarted after: {apps}.",
+      "backupFirst": "A full backup is taken first."
+    },
+    "unknownError": "unknown error",
+    "theNewVersion": "the new version"
   },
   "dedicated": {
     "anOrganization": "one organization",
@@ -1787,7 +2110,15 @@
     "test": "Test",
     "testZone": "Test zone",
     "testZoneHint": "A domain on this provider; if set, the credential is verified before saving.",
-    "type": "Type"
+    "type": "Type",
+    "optionalTag": "optional",
+    "namePlaceholder": "e.g. cloudflare-prod",
+    "subtitle": "Connect a DNS host so {context} can automate ownership verification and app records.",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "rotateTitle": "Rotate credentials — {name}",
+    "rotateBody": "Replaces the stored credentials for {type}. Domains stay linked — disconnecting instead would unlink them.",
+    "rotating": "Rotating…"
   },
   "domainDetail": {
     "added": "Added",
@@ -1854,7 +2185,41 @@
     "updated": "Domain updated",
     "verified": "{name} verified",
     "verifiedByAdmin": "Verified by a platform administrator, not by DNS. Routes serve normally and this is never revoked automatically. Publish the record below and it converts to a DNS proof on its own.",
-    "verifyNow": "Verify now"
+    "verifyNow": "Verify now",
+    "state": {
+      "verified": "verified",
+      "verifiedAdmin": "verified · admin override",
+      "verifiedProvider": "verified · DNS provider"
+    },
+    "checked": {
+      "never": "never checked",
+      "justNow": "checked just now",
+      "minutes": "checked {n}m ago",
+      "hours": "checked {n}h ago",
+      "days": "checked {n}d ago"
+    },
+    "recordNotFoundYet": "DNS record not found yet — it can take a few minutes to propagate.",
+    "wildcardCell": "wildcard · *.{name}",
+    "tlsBadge": {
+      "automatic": "automatic",
+      "custom": "custom"
+    },
+    "manual": "Manual",
+    "automatedBadge": "automated",
+    "manualBadge": "manual",
+    "dnsFor": "DNS for {name}",
+    "ownershipVerifiedProvider": "Ownership verified through the connected DNS provider.",
+    "ownershipVerifiedDns": "Ownership verified by DNS.",
+    "recheck": "Re-check",
+    "verify": "Verify",
+    "verifyFailed": "Verification failed — check the TXT record and try again",
+    "alsoCovers": "also covers *.{name}",
+    "apexOnly": "apex / subdomain only",
+    "bannedBanner": "Banned by a platform administrator. Its routes are forced offline and it cannot be verified.",
+    "bannedBannerReason": "Banned by a platform administrator: {reason}. Its routes are forced offline and it cannot be verified.",
+    "connectedMaintained": "Connected — Miabi maintains the records",
+    "yes": "Yes",
+    "no": "No"
   },
   "envVar": {
     "generateLabel": "Generate a value for this variable",
@@ -1863,7 +2228,11 @@
     "refHint": "Reference a workspace secret with {ref}.",
     "secretHint": "Secret — encrypted at rest and masked in the UI",
     "theKeyCanTBe": "The key can't be changed. Delete and re-add to rename.",
-    "value": "Value"
+    "value": "Value",
+    "updateVariable": "Update variable",
+    "addVariable": "Add variable",
+    "update": "Update",
+    "valuePlaceholder": "value or {ref}"
   },
   "environments": {
     "approvalsHint": "Approvals needed before a release can be promoted here.",
@@ -1877,7 +2246,11 @@
     "order": "Order",
     "orderHint": "Lower promotes into higher (dev=0, prod=2).",
     "requiredApprovals": "Required approvals",
-    "subtitle": "Promotion stages (dev → staging → prod) with an approval policy."
+    "subtitle": "Promotion stages (dev → staging → prod) with an approval policy.",
+    "nRequired": "{n} required",
+    "noGate": "no gate",
+    "editEnvironment": "Edit environment",
+    "descriptionPlaceholder": "Customer-facing production stage"
   },
   "error": {
     "status": {
@@ -1906,14 +2279,18 @@
       "info": "Info",
       "warning": "Warning"
     },
-    "when": "When"
+    "when": "When",
+    "activityIn": "Application and database activity in {name}"
   },
   "forgotPassword": {
     "email": "Email",
     "sent": "If an account exists for {email}, a password reset link is on its way. The link expires in one hour.",
     "sentTitle": "Check your email",
     "subtitle": "Enter your account email and we'll send you a reset link.",
-    "title": "Reset your password"
+    "title": "Reset your password",
+    "sendFailed": "Could not send the reset email. Please try again.",
+    "sending": "Sending…",
+    "submit": "Send reset link"
   },
   "generator": {
     "base64url": "base64url",
@@ -1947,10 +2324,35 @@
     "useThisValue": "Use this value",
     "whatIsnTKept": "What isn't kept",
     "words": "Words",
-    "yourOptionsAreRememberedBetween": "Your options are remembered between visits. The values are not: a generator history would be a list of plaintext secrets in browser storage, which is worse than wherever you were about to put them."
+    "yourOptionsAreRememberedBetween": "Your options are remembered between visits. The values are not: a generator history would be a list of plaintext secrets in browser storage, which is worse than wherever you were about to put them.",
+    "passphraseExplained": "A passphrase from the {words}-word EFF list is worth 12.9 bits per word, so six words is about 77 bits — comparable to a 13-character random password, and far easier to read down a phone line.",
+    "wordlistError": "Could not load the wordlist. Check your connection and try again.",
+    "minimumsTrimmed": "Minimums trimmed to fit the length: {digits} digit(s), {symbols} symbol(s).",
+    "noCharset": "No character set selected — using lowercase letters.",
+    "mode": {
+      "passphrase": "Passphrase",
+      "password": "Password",
+      "token": "Token"
+    },
+    "loadingWordlist": "Loading wordlist…",
+    "bits": "{n} bits",
+    "wordlistMeta": "{words}-word EFF list · {bits} bits/word",
+    "passwordCopied": "Password copied",
+    "shareSecurely": "Copy it now and share it with the user through a secure channel — {warning}.",
+    "notShownAgain": "it won’t be shown again"
   },
   "gettingStarted": {
-    "connectDomain": "Connect a domain"
+    "connectDomain": "Connect a domain",
+    "workspaceDesc": "A workspace groups your applications, databases, domains and team.",
+    "appDesc": "Launch from a Docker image, a Git repository, or the marketplace.",
+    "deployApp": "Deploy an app",
+    "domainDesc": "Point a custom domain at your app and get automatic SSL.",
+    "dismissFailed": "Could not dismiss",
+    "allSet": "You're all set!",
+    "title": "Get started with Miabi",
+    "allSetHint": "Your platform is up and running. You can revisit these anytime.",
+    "subtitle": "A few steps to get your first app online.",
+    "finish": "Finish"
   },
   "gitRepos": {
     "addARepository": "Add a repository",
@@ -1987,7 +2389,14 @@
     "unused": "No application, pipeline or GitOps project uses this repository.",
     "kindApp": "Application",
     "kindPipeline": "Pipeline",
-    "kindGitops": "GitOps project"
+    "kindGitops": "GitOps project",
+    "secretSet": "secret set",
+    "noSecret": "no secret",
+    "editRepository": "Edit repository",
+    "namePlaceholder": "e.g. acme/api",
+    "sshPrivateKey": "SSH private key",
+    "accessToken": "Access token",
+    "addRepository": "Add repository"
   },
   "gitops": {
     "action": {
@@ -2089,7 +2498,67 @@
     "nestedHint": "Declared in another GitOps project’s repository: change or remove it there.",
     "appliedHint": "Created from a manifest with miabi apply",
     "nameFixed": "The name can’t be changed after creation.",
-    "declaredByNamed": "declared by {name}"
+    "declaredByNamed": "declared by {name}",
+    "nodeStatus": {
+      "missing": "Missing",
+      "orphaned": "Orphaned"
+    },
+    "healthState": {
+      "deploying": "Deploying",
+      "provisioning": "Provisioning",
+      "skipped": "Skipped",
+      "running": "Running",
+      "stopped": "Stopped",
+      "failed": "Failed",
+      "error": "Error",
+      "upgrading": "Upgrading",
+      "created": "Created",
+      "scheduled": "Scheduled",
+      "suspended": "Suspended",
+      "pending": "Pending",
+      "succeeded": "Succeeded",
+      "canceled": "Canceled"
+    },
+    "edge": {
+      "mount": "mounts",
+      "mountIncoming": "mounts this",
+      "stack": "in stack",
+      "stackIncoming": "in stack this",
+      "route": "routes to",
+      "routeIncoming": "routes to this",
+      "domain": "under domain",
+      "domainIncoming": "under domain this",
+      "database": "connects to",
+      "databaseIncoming": "connects to this",
+      "secret": "reads secret",
+      "secretIncoming": "reads secret this",
+      "appRef": "links to",
+      "appRefIncoming": "links to this",
+      "schedule": "runs on schedule in",
+      "scheduleIncoming": "runs on schedule in this",
+      "run": "runs in",
+      "runIncoming": "runs in this"
+    },
+    "err": {
+      "loadSource": "Could not load git source",
+      "loadTopology": "Could not load project topology",
+      "syncNode": "Could not sync {name}",
+      "deleteNode": "Could not delete {name}",
+      "loadEvents": "Could not load events",
+      "loadPlan": "Could not load the plan",
+      "diff": "Could not compute diff"
+    },
+    "liveOnTitle": "Live status updates are on — click to pause",
+    "livePausedTitle": "Live status updates paused — click to resume",
+    "resourceCount": "{n} resource | {n} resources",
+    "showOnly": "Show only {status}",
+    "url": "URL",
+    "disconnected": "Disconnected",
+    "paused": "Paused",
+    "projectNodeSub": "GitOps project · {n} resource | GitOps project · {n} resources",
+    "lastAppliedCommit": "Last applied commit: {commit}",
+    "editGitSource": "Edit git source",
+    "diffTitle": "Diff — {name}"
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alerts and updates across your workspaces.",
@@ -2098,7 +2567,9 @@
     "markAllRead": "Mark all read",
     "nothingHere": "Nothing here",
     "notifications": "Notifications",
-    "unreadOnly": "Unread only"
+    "unreadOnly": "Unread only",
+    "noUnread": "No unread notifications.",
+    "empty": "You have no notifications yet."
   },
   "jobs": {
     "allow": "Allow",
@@ -2172,8 +2643,16 @@
       "add": "Add variable",
       "hint": "Added on top of the app's variables; a value here replaces the app's. Reference a workspace secret with {ref}.",
       "inherit": "Inherit the app's variables",
-      "inheritHint": "Turn off to run with only these variables and Miabi's MIABI_* set, for example when a third-party image shouldn't see the app's secrets."
-    }
+      "inheritHint": "Turn off to run with only these variables and Miabi's MIABI_* set, for example when a third-party image shouldn't see the app's secrets.",
+      "valuePlaceholder": "value"
+    },
+    "runAsUserNonRoot": "This workspace requires a non-root numeric uid (e.g. 1000).",
+    "editCronjob": "Edit cronjob",
+    "displayNamePlaceholder": "Nightly cleanup",
+    "jobNumber": "Job #{id}",
+    "waitingToStart": "Waiting to start…",
+    "noOutput": "(no output)",
+    "enabledState": "enabled"
   },
   "ldap": {
     "testConnection": "Test connection"
@@ -2185,11 +2664,16 @@
     "node": "Node",
     "nodeIsFixed": "A volume stays on the node it is created on; it cannot be moved later.",
     "nodesOfTheChosenLocation": "Only nodes in the chosen location are listed.",
-    "privateNetworksDonTSpan": "Private networks don't span locations: keep an app with the databases and volumes it uses."
+    "privateNetworksDonTSpan": "Private networks don't span locations: keep an app with the databases and volumes it uses.",
+    "nodeManager": "{name} (manager)",
+    "workspaceDefault": "Workspace default"
   },
   "logViewer": {
     "clear": "Clear",
-    "noOutput": "No output yet."
+    "noOutput": "No output yet.",
+    "searchLogs": "Search logs",
+    "following": "Following",
+    "follow": "Follow"
   },
   "login": {
     "authenticationCode": "Authentication code",
@@ -2243,7 +2727,8 @@
     "workEmail": "Work email",
     "passkeyFailed": "Could not sign in with a passkey.",
     "signInWithPasskey": "Sign in with a passkey",
-    "waitingForPasskey": "Waiting for your passkey…"
+    "waitingForPasskey": "Waiting for your passkey…",
+    "callbackFailed": "Failed to complete sign in."
   },
   "marketplace": {
     "applications": "Applications",
@@ -2323,7 +2808,74 @@
     "breakingUpgrade": "This upgrade includes a breaking release. Read the notes and back up your data before upgrading.",
     "steppedUpgrade": "v{latest} needs this install to step through v{to} first. Upgrade again afterwards to reach v{latest}.",
     "updatedOn": "Updated {date}",
-    "breaking": "Breaking"
+    "breaking": "Breaking",
+    "empty": {
+      "custom": "Import your own template manifest to add a custom template.",
+      "community": "No community templates have synced from the registry.",
+      "default": "No marketplace templates are available."
+    },
+    "subtitle": "One-click app templates you can deploy into {context}.",
+    "templateCount": "{n} template | {n} templates",
+    "versionAvailable": "v{version} available",
+    "uninstallTitle": "Uninstall {name}?",
+    "uninstalling": "Uninstalling…",
+    "teardown": {
+      "title": "Resources removed — {name}",
+      "partial": "{removed} removed, {failed} failed — the failed resources may need manual cleanup.",
+      "removedCount": "{n} resource removed. | {n} resources removed.",
+      "removed": "removed"
+    },
+    "importing": "Importing…",
+    "err": {
+      "upgradePlan": "Could not compute the upgrade plan"
+    },
+    "size": {
+      "both": "{memory} of memory and {cpu} CPU",
+      "memory": "{memory} of memory",
+      "cpu": "{cpu} CPU"
+    },
+    "placement": {
+      "useExisting": "Use existing: {name}",
+      "autoNewSized": "Automatic — new instance with {size}",
+      "autoReuse": "Automatic — reuse {name}",
+      "autoNew": "Automatic — new instance",
+      "templateSize": "The template gives it {size}.",
+      "alwaysDedicated": "{engine} is always provisioned as a dedicated instance.",
+      "hintDedicated": "A new dedicated instance will be provisioned.",
+      "hintExisting": "A new database will be created in “{name}”, which keeps its own size.",
+      "hintAutoSized": "Automatic will provision a new dedicated {engine} instance, since a sized database gets its own.",
+      "hintAutoReuse": "Automatic will reuse “{name}” — no new container.",
+      "hintAutoNew": "Automatic will provision a new dedicated {engine} instance.",
+      "shortIn": "in {name}",
+      "shortDedicated": "new dedicated instance",
+      "shortReuses": "reuses {name}",
+      "shortNew": "new instance"
+    },
+    "kind": {
+      "app": "app",
+      "database": "{engine} database",
+      "volume": "volume",
+      "config": "config"
+    },
+    "fileCount": "{n} file | {n} files",
+    "installTemplate": "Install template",
+    "displayNameHint": "Display name for the installed app. | Display name for the installed apps.",
+    "databaseField": "{engine} database ({name})",
+    "installTitle": "Install {name}?",
+    "installing": "Installing…",
+    "confirmInstall": "Confirm & install",
+    "installingName": "Installing {name}",
+    "installNotCompleted": "The install could not be completed.",
+    "saveChanges": "Save changes",
+    "deleteTitle": "Delete {name}?",
+    "deleteTemplate": "Delete template",
+    "upgradeTitle": "Upgrade {name}",
+    "envChange": {
+      "added": "added",
+      "changed": "changed"
+    },
+    "upgrading": "Upgrading…",
+    "upgradeToVersion": "Upgrade to v{version}"
   },
   "metadata": {
     "builtInPlatformManagedRead": "Built-in — platform-managed (read-only)",
@@ -2343,7 +2895,11 @@
       "key": "Key",
       "to": "To",
       "unchanged": "•••• (unchanged)",
-      "value": "Value"
+      "value": "Value",
+      "add": "Add {noun}",
+      "sameName": "{placeholder} (same name)",
+      "removeTag": "Remove {value}",
+      "tagPlaceholder": "Type a value and press Enter"
     },
     "gomaGatewayMiddlewaresReferencedBy": "Goma Gateway middlewares, referenced by routes.",
     "lowercaseLettersDigitsAndHyphens": "Lowercase letters, digits and hyphens (e.g. basic-auth).",
@@ -2363,7 +2919,14 @@
     "type": "Type",
     "username": "Username",
     "username2": "Username",
-    "yaml": "(YAML)"
+    "yaml": "(YAML)",
+    "ruleInvalidYaml": "Rule must be valid YAML",
+    "editPolicy": "Edit policy",
+    "newPolicy": "New security policy",
+    "advancedType": "{type} (advanced)",
+    "needsGateway": "Needs Goma Gateway {version} or newer. On an older gateway the route using it fails to load.",
+    "gomaMiddleware": "Goma Gateway middleware",
+    "namePlaceholder": "e.g. basic-auth"
   },
   "migration": {
     "title": "Location",
@@ -2542,7 +3105,14 @@
     "newNetwork": "New network",
     "noNetworks": "No networks",
     "readingTheNetwork": "Reading the network…",
-    "thisNetworkIsNotPresent": "This network is not present on the control-plane node, so it has no addressing to show here."
+    "thisNetworkIsNotPresent": "This network is not present on the control-plane node, so it has no addressing to show here.",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "cannotDelete": "Cannot delete (in use or default)",
+    "subtitle": "Managed Docker networks for {context}.",
+    "namePlaceholder": "e.g. backend",
+    "creating": "Creating…",
+    "createNetwork": "Create network"
   },
   "notifications": {
     "addAChannel": "Add a channel",
@@ -2559,7 +3129,15 @@
     "subtitle": "Send Telegram, Slack, or Discord messages when app events fire — deploys, container crashes, and more.",
     "telegramHint": "Connect a Telegram bot to get deploy and container alerts in a chat.",
     "type": "Type",
-    "webhookUrl": "Webhook URL"
+    "webhookUrl": "Webhook URL",
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "editChannel": "Edit channel",
+    "newChannelTitle": "New notification channel",
+    "incomingWebhookHint": "Create an incoming webhook in your {service} workspace and paste its URL.",
+    "addChannel": "Add channel"
   },
   "notify": {
     "apiKeys": {
@@ -2753,7 +3331,8 @@
       "channelAdded": "Channel added",
       "channelDeleted": "Channel deleted",
       "channelUpdated": "Channel updated",
-      "testSent": "{name}: test message sent"
+      "testSent": "{name}: test message sent",
+      "testFailed": "Test message failed"
     },
     "pipelines": {
       "created": "Pipeline created",
@@ -2787,7 +3366,11 @@
     },
     "profile": {
       "sessionRevoked": "Session revoked",
-      "updated": "Profile updated"
+      "updated": "Profile updated",
+      "updateFailed": "Could not update profile",
+      "sessionsLoadFailed": "Could not load sessions",
+      "sessionsRevokeFailed": "Could not revoke sessions",
+      "sessionRevokeFailed": "Could not revoke session"
     },
     "registries": {
       "added": "Registry added",
@@ -2847,7 +3430,8 @@
       "copyFailedSelectAndCopy": "Copy failed — select and copy them manually",
       "passwordChanged": "Password changed",
       "twoFactorDisabled": "Two-factor authentication disabled",
-      "twoFactorEnabled": "Two-factor authentication enabled"
+      "twoFactorEnabled": "Two-factor authentication enabled",
+      "passwordChangeFailed": "Could not change password"
     },
     "stacks": {
       "appAdded": "Application added to stack",
@@ -2888,7 +3472,9 @@
       "deleted": "Webhook deleted",
       "requeued": "Delivery re-queued",
       "testOk": "{name}: test delivery succeeded",
-      "updated": "Webhook updated"
+      "updated": "Webhook updated",
+      "testFailed": "Test delivery failed",
+      "redeliveryFailed": "Redelivery failed"
     },
     "workspaceLayout": {
       "failedToLoadWorkspaces": "Failed to load workspaces"
@@ -2899,7 +3485,9 @@
     "workspaces": {
       "created": "Workspace created",
       "defaultSaved": "Default workspace saved",
-      "joined": "Joined {name}"
+      "joined": "Joined {name}",
+      "acceptFailed": "Failed to accept invitation",
+      "defaultCleared": "Default workspace cleared"
     },
     "wsSettings": {
       "backupSaved": "Backup settings saved",
@@ -2911,7 +3499,9 @@
       "nameUpdated": "Workspace name updated",
       "roleUpdated": "Role updated",
       "tokenCopied": "Link copied",
-      "updated": "Workspace updated"
+      "updated": "Workspace updated",
+      "deleteStartFailed": "Could not start workspace deletion",
+      "deleteFailed": "Workspace deletion failed"
     },
     "serviceAccounts": {
       "created": "Service account created",
@@ -2927,6 +3517,11 @@
       "updated": "Version policy saved",
       "deleted": "Version policy deleted",
       "seriesSwitched": "Now releasing on {series}: next build is {next}"
+    },
+    "toast": {
+      "success": "Success",
+      "error": "Error",
+      "info": "Info"
     }
   },
   "oauth": {
@@ -2956,12 +3551,22 @@
       "route": "Routes",
       "secret": "Secrets",
       "stacks": "Stacks",
-      "volumes": "Volumes"
+      "volumes": "Volumes",
+      "switchWorkspace": "Switch workspace",
+      "recent": "Recent"
     },
     "navigate": "navigate",
     "newTab": "new tab",
     "open": "open",
-    "searchResourcesJumpToA": "Search resources, jump to a page, {'@'} to switch workspace"
+    "searchResourcesJumpToA": "Search resources, jump to a page, {'@'} to switch workspace",
+    "current": "Current",
+    "hint": {
+      "selectWorkspace": "Select a workspace to search its resources",
+      "unavailable": "Search is unavailable right now",
+      "searching": "Searching…",
+      "minChars": "Type at least {n} characters"
+    },
+    "noMatches": "No matches for “{query}”"
   },
   "pipelines": {
     "appHint": "(source, image and deploy target)",
@@ -3077,7 +3682,39 @@
     "workspaceSecret": "workspace secret",
     "builtForPlatforms": "Platforms this image was built for, pushed as one multi-platform image",
     "deploymentNumber": "Deployment #{number}",
-    "deploymentLinkTitle": "Open the deployment this run started"
+    "deploymentLinkTitle": "Open the deployment this run started",
+    "status": {
+      "succeeded": "Succeeded",
+      "canceled": "Canceled",
+      "unknown": "Unknown",
+      "pending": "Pending",
+      "running": "Running",
+      "failed": "Failed"
+    },
+    "buildingWithoutCache": "Building without cache — expect a slower run.",
+    "reRunningSameCommit": "Re-running the same commit.",
+    "reRunFailed": "Could not re-run",
+    "runNumber": "Run #{number}",
+    "exitCode": "exit {code}",
+    "lineCount": "{n} line | {n} lines",
+    "disableWrap": "Disable wrap",
+    "wrapLines": "Wrap lines",
+    "waitingForOutput": "Waiting for output…",
+    "noLogOutput": "No log output.",
+    "openToFollowLogs": "Open it to follow the logs.",
+    "triggerFailed": "Could not trigger run",
+    "anyBranch": "any branch",
+    "oneBranch": "the {branch} branch",
+    "manyBranches": "the {list} and {last} branches",
+    "webhookBlocker": {
+      "disabled": "This pipeline is disabled — pushes are accepted but no run starts until you enable it.",
+      "unreadable": "This pipeline’s spec could not be read, so its triggers are unknown.",
+      "noPush": "This pipeline has no `on.push` trigger. The webhook will be accepted and then ignored — add a push trigger to the spec to make it fire."
+    },
+    "repoTargetTitle": "Clones this repository and pushes an image — no deploy target",
+    "repoTargetBranchTitle": "Clones this repository ({branch}) and pushes an image — no deploy target",
+    "openRunTitle": "Run #{number} · open",
+    "editPipeline": "Edit pipeline"
   },
   "planDetail": {
     "active": "active",
@@ -3286,7 +3923,17 @@
     "size": "Size",
     "subtitle": "Export this workspace — apps, databases, volumes, secrets and routing — to one encrypted bundle in your bucket. Restore it here, or into a new workspace on any Miabi.",
     "taken": "Taken",
-    "when": "When"
+    "when": "When",
+    "runInProgress": "Run in progress…",
+    "artifactsMissing": "{n} artifact missing | {n} artifacts missing",
+    "count": {
+      "routes": "no routes | {n} route | {n} routes",
+      "certificates": "no certificates | {n} certificate | {n} certificates",
+      "pipelines": "no pipelines | {n} pipeline | {n} pipelines",
+      "gitops": "{n} GitOps"
+    },
+    "restoreThisBundle": "Restore this bundle",
+    "ownerOnlyRestore": "Only an owner can restore"
   },
   "preferences": {
     "accent": {
@@ -3332,7 +3979,16 @@
   },
   "processes": {
     "noProcesses": "No processes.",
-    "viaDockerTopHostPs": "via docker top (host ps)"
+    "viaDockerTopHostPs": "via docker top (host ps)",
+    "failedToRead": "Failed to read processes",
+    "title": "Processes — {name}",
+    "resumeLive": "Resume live updates",
+    "pauseLive": "Pause live updates",
+    "resume": "Resume",
+    "pause": "Pause",
+    "paused": "Paused",
+    "live": "Live",
+    "updatedAt": "updated {time}"
   },
   "profile": {
     "activeSessions": "Active Sessions",
@@ -3352,7 +4008,20 @@
     "theseAreTheDevicesAnd": "These are the devices and browsers currently logged in to your account.",
     "updateTheNameShownAcross": "Update the name shown across Miabi. Your email is managed by an administrator.",
     "username": "Username",
-    "yourUniqueHandleLowercaseLetters": "Your unique handle — lowercase letters, digits, and hyphens. Used as a directory identifier."
+    "yourUniqueHandleLowercaseLetters": "Your unique handle — lowercase letters, digits, and hyphens. Used as a directory identifier.",
+    "revokeOthersTitle": "Revoke all other sessions",
+    "revokeSessionTitle": "Revoke session",
+    "unknownDevice": "Unknown device",
+    "browser": "Browser",
+    "browserOnOs": "{browser} on {os}",
+    "mobile": "Mobile",
+    "tablet": "Tablet",
+    "usernamePlaceholder": "your-handle",
+    "saveChanges": "Save changes",
+    "revoking": "Revoking…",
+    "revokeAllOthers": "Revoke All Others",
+    "unknownIp": "unknown IP",
+    "sessionMeta": "{ip} · Created {created} · Expires {expires}"
   },
   "acceptInvite": {
     "loading": "Opening your invitation…",
@@ -3384,7 +4053,11 @@
     "ready": "If {email} can be registered, your account is ready. You can sign in now.",
     "sentVerification": "If {email} can be registered, a verification link is on its way. Verify your address, then sign in.",
     "subtitle": "Sign up to get started.",
-    "title": "Create your {brand} account"
+    "title": "Create your {brand} account",
+    "passwordTooShort": "Password must be at least {n} characters.",
+    "failed": "Could not create your account. Please try again.",
+    "creating": "Creating…",
+    "submit": "Create account"
   },
   "registries": {
     "addARegistry": "Add a registry",
@@ -3396,7 +4069,13 @@
     "server": "Server",
     "serverHint": "(optional, defaults to Docker Hub)",
     "subtitle": "Credentials for pulling private container images.",
-    "username": "Username"
+    "username": "Username",
+    "authFailed": "Authentication failed",
+    "editRegistry": "Edit registry",
+    "namePlaceholder": "e.g. GHCR (prod)",
+    "usernamePlaceholder": "username",
+    "passwordOrToken": "Password / token",
+    "addRegistry": "Add registry"
   },
   "registry": {
     "apiToken": "API token",
@@ -3489,7 +4168,16 @@
     "retentionMore": "Keep more images",
     "retentionOff": "Never clean this workspace",
     "retentionKeepLabel": "Images to keep per repository",
-    "retentionSaved": "Cleanup setting saved"
+    "retentionSaved": "Cleanup setting saved",
+    "repoCount": "{n} repository | {n} repositories",
+    "repoCountMatching": "{n} repository matching | {n} repositories matching",
+    "noImageMatch": "No image matches “{query}”",
+    "tagCount": "{n} tag | {n} tags",
+    "moreCount": "+{n} more",
+    "seeAllTags": "See all {n} tags →",
+    "tagCountMatching": "{n} tag matching | {n} tags matching",
+    "noTagMatch": "No tag matches “{query}”",
+    "builtForApp": "built for {app}"
   },
   "releases": {
     "active": "active",
@@ -3512,7 +4200,10 @@
     "provenance": "Provenance",
     "releases": "Releases",
     "targetEnvironment": "Target environment",
-    "version": "Version"
+    "version": "Version",
+    "promotionFailed": "Promotion failed",
+    "promoteTitle": "Promote {app} v{version}",
+    "needsMore": "— needs {n} more"
   },
   "requestToken": {
     "apiToken": "API token",
@@ -3525,7 +4216,16 @@
     "password": "Password",
     "requestAnotherToken": "Request another token",
     "shownOnce": "shown once",
-    "usernameOrEmail": "Username or email"
+    "usernameOrEmail": "Username or email",
+    "displayTitle": "Your CLI login token",
+    "confirmTitle": "Confirm your identity",
+    "displaySubtitle": "Use this token with the Miabi CLI or the API. It is shown once.",
+    "confirmSubtitle": "Re-authenticate to generate a short-lived API token for the CLI.",
+    "unavailable": "This login token is no longer available. Request a new one.",
+    "generate": "Generate token",
+    "verifyGenerate": "Verify & generate",
+    "expires": "Expires {date}",
+    "scopes": "scopes: {scopes}"
   },
   "resetPassword": {
     "atLeastCharacters": "At least {n} characters",
@@ -3536,7 +4236,12 @@
     "reEnterYourNewPassword": "Re-enter your new password",
     "requestANewLink": "Request a new link",
     "subtitle": "Enter a new password for your account.",
-    "title": "Choose a new password"
+    "title": "Choose a new password",
+    "missingToken": "This reset link is missing its token. Request a new one.",
+    "invalidLink": "This reset link is invalid or has expired.",
+    "doneNotice": "Your password has been reset. Redirecting to sign in…",
+    "updating": "Updating…",
+    "submit": "Update password"
   },
   "roles": {
     "baseRole": "Base role",
@@ -3547,7 +4252,11 @@
     "newRole": "New role",
     "noCustomRolesYetCreate": "No custom roles yet. Create one to grant a tailored permission set.",
     "permissions": "Permissions",
-    "upgrade": "Upgrade"
+    "upgrade": "Upgrade",
+    "permissionCount": "no permissions | {n} permission | {n} permissions",
+    "editRole": "Edit role",
+    "cannotGrant": "You cannot grant a permission you do not hold",
+    "createRole": "Create role"
   },
   "routes": {
     "4xxOr5xx": "4xx or 5xx",
@@ -3917,7 +4626,42 @@
           "abort": "Canary aborted: all traffic back on stable"
         }
       }
-    }
+    },
+    "form": {
+      "advancedDropped": "Advanced-only fields will be dropped in Simple mode.",
+      "yamlToSimpleFailed": "Could not parse the YAML into the simple form.",
+      "invalidYaml": "Invalid YAML — fix it before saving.",
+      "unverified": "unverified",
+      "rewriteHelp": "Rewrites the request path before forwarding it to the app.\n\nExample:\n  path:    /api/v1\n  rewrite: /\n\nA request to /api/v1/users is forwarded as /users.",
+      "selectedCount": "({n} selected) | ({n} selected)",
+      "namePlaceholder": "e.g. web"
+    },
+    "notStarted": "Route not started",
+    "emptyNoApps": "Create an application first, then expose it with a route.",
+    "emptyHint": "Expose an application on a hostname and path.",
+    "badge": {
+      "auto": "auto",
+      "disabled": "disabled"
+    },
+    "appFallback": "app #{id}",
+    "state": {
+      "enabled": "enabled",
+      "disabled": "disabled"
+    },
+    "canaryBadge": "canary {weight}%",
+    "saveOrder": "Save order",
+    "selectMiddleware": "Select a middleware…",
+    "noMoreMiddlewares": "No more middlewares to attach",
+    "inMaintenance": "In maintenance",
+    "servingNormally": "Serving normally",
+    "resumeTraffic": "Resume traffic",
+    "startMaintenance": "Start maintenance",
+    "gatewayDefaultHint": "Leave both blank to use the gateway's default — {status} with a short message.",
+    "messageHint": "{count}/{max} · plain text, or JSON to answer API clients in your own shape",
+    "previewBrowser": "Browser",
+    "saveResponse": "Save response",
+    "savedState": "Saved",
+    "enable": "Enable"
   },
   "runners": {
     "addARunner": "Add a runner",
@@ -3959,13 +4703,25 @@
     "reconnectingHint": "Reconnecting — statuses may lag",
     "waitingToConnect": "Waiting for the runner to connect…",
     "connectedOnline": "Runner connected — it is online.",
-    "updateAvailable": "{version} available"
+    "updateAvailable": "{version} available",
+    "scopeShared": "platform-shared runner",
+    "scopeWorkspace": "workspace runner",
+    "cordon": "Cordon",
+    "jobCount": "{n} job | {n} jobs",
+    "yes": "Yes",
+    "platformReadOnly": "platform runners are read-only",
+    "myRunners": "My runners",
+    "platformRunners": "Platform runners",
+    "mineSubtitle": "Dedicated build machines for {context}. Builds and pipelines run here instead of on your app nodes.",
+    "platformSubtitle": "Shared build machines provided by the platform. Any capable workspace can run builds on these; they are managed by platform admins.",
+    "addSharedRunner": "Add shared runner"
   },
   "saveAsSecret": {
     "optional": "(optional)",
     "saveAsSecret": "Save as secret",
     "secretName": "Secret name",
-    "storedInThisWorkspaceS": "Stored in this workspace's vault; the value is written once and never shown again."
+    "storedInThisWorkspaceS": "Stored in this workspace's vault; the value is written once and never shown again.",
+    "nameInvalid": "Letters, digits, underscore or hyphen only."
   },
   "secretPicker": {
     "chooseAnotherSecret": "Choose another secret",
@@ -3977,7 +4733,10 @@
     },
     "managed": "managed",
     "searchPlaceholder": "Search secrets by name or description…",
-    "searching": "Searching…"
+    "searching": "Searching…",
+    "noMatch": "No secrets match “{query}”.",
+    "noSecretsYet": "No secrets in this workspace yet.",
+    "moreHidden": "{n} more — keep typing to narrow the list."
   },
   "secrets": {
     "clearFilters": "Clear filters",
@@ -4267,8 +5026,23 @@
       "cancelled": "The passkey prompt was closed before it finished.",
       "added": "Passkey “{name}” added",
       "removed": "Passkey removed",
-      "loadFailed": "Could not load your passkeys"
-    }
+      "loadFailed": "Could not load your passkeys",
+      "alreadyOnDevice": "This device already holds a passkey for your account.",
+      "deviceIos": "iPhone or iPad",
+      "defaultName": "Passkey"
+    },
+    "newPasswordTooShort": "New password must be at least {n} characters.",
+    "newPasswordsMismatch": "New passwords do not match.",
+    "changing": "Changing…",
+    "changePassword": "Change password",
+    "preparing": "Preparing…",
+    "enableTwoFactor": "Enable two-factor",
+    "verifyEnable": "Verify & enable",
+    "disableTwoFactor": "Disable two-factor",
+    "disablePrompt": "Enter a code from your authenticator app (or a recovery code) to turn off two-factor authentication.",
+    "regeneratePrompt": "Enter a code from your authenticator app. This invalidates your existing recovery codes.",
+    "authOrRecoveryCode": "Authentication or recovery code",
+    "useAtLeast": "Use at least {n} characters."
   },
   "shell": {
     "close": "Close",
@@ -4298,13 +5072,20 @@
       "body": "Reload to use the new version of the web app.",
       "reload": "Reload",
       "dismiss": "Later"
-    }
+    },
+    "user": "User"
   },
   "shellTerminal": {
     "compact": "Compact",
     "escGoesToTheShell": "Esc goes to the shell · Shift+Tab to leave it",
     "maximize": "Maximize",
-    "restore": "Restore"
+    "restore": "Restore",
+    "title": "Shell — {name}",
+    "status": {
+      "connecting": "connecting",
+      "open": "open",
+      "closed": "closed"
+    }
   },
   "stacks": {
     "activity": "Activity",
@@ -4356,7 +5137,38 @@
     "source": "Source",
     "stack": "Stack",
     "stackName": "Stack name",
-    "stacks": "Stacks"
+    "stacks": "Stacks",
+    "portInUseBy": "{port} (in use by {by})",
+    "portConflicts": "Port conflicts",
+    "importFailed": "Failed to import compose",
+    "subtitle": "Group related applications for {context}.",
+    "filteredOfTotal": "{shown} of {total}",
+    "noMatch": "No stacks match “{query}”.",
+    "importStack": "Import stack",
+    "result": {
+      "start": "{n} app started | {n} apps started",
+      "stop": "{n} app stopped | {n} apps stopped",
+      "restart": "{n} app restarted | {n} apps restarted",
+      "skipped": "{n} skipped (not deployed)",
+      "failed": "{n} failed",
+      "deploysQueued": "{n} deploy queued | {n} deploys queued"
+    },
+    "deploying": "Deploying…",
+    "deployAll": "Deploy all",
+    "stopping": "Stopping…",
+    "restarting": "Restarting…",
+    "rollingBusy": "Rolling…",
+    "outdatedBanner": "{n} application is running configuration older than this stack’s. Redeploy to apply the shared environment. | {n} applications are running configuration older than this stack’s. Redeploy to apply the shared environment.",
+    "redeployN": "Redeploy {n}",
+    "overriddenByTitle": "Overridden by {apps} — these apps define their own {key} and will ignore this value",
+    "overriddenIn": "overridden in {apps}",
+    "envApplyNote": "Applies to every app in the stack on its next deploy.",
+    "envImportHint": "Existing keys are overwritten. Applies to each app on its next deploy.",
+    "alsoDeleteApps": "Also delete its application and its container | Also delete its {n} applications and their containers",
+    "deleteWithAppsHint": "Applications and their containers will be permanently removed.",
+    "detachAppsHint": "Applications are detached and keep running.",
+    "deleteStackAndApps": "Delete stack & apps",
+    "envImportPlaceholder": "SHARED_SECRET=...\n# comments and blank lines are ignored\nREGION=eu"
   },
   "switcher": {
     "adminBadge": "Admin",
@@ -4373,7 +5185,9 @@
     "systemTitle": "The built-in platform workspace. It holds platform-managed resources and cannot be renamed or deleted.",
     "workspaces": "workspaces",
     "createInConsole": "Create in Miabi Console",
-    "import": "Import from another Miabi"
+    "import": "Import from another Miabi",
+    "platform": "Platform",
+    "selectWorkspace": "Select workspace"
   },
   "verifyEmail": {
     "checkingYourLink": "Checking your link.",
@@ -4383,7 +5197,9 @@
     "oneMoment": "One moment…",
     "verificationLinksExpireAndCan": "Verification links expire and can only be used once. Sign in to have a new one sent, or ask your platform administrator to verify the address for you.",
     "working": "Verifying your email",
-    "yourAddressIsConfirmedYou": "Your address is confirmed. You can sign in now."
+    "yourAddressIsConfirmedYou": "Your address is confirmed. You can sign in now.",
+    "missingToken": "That link is missing its verification token.",
+    "invalidLink": "That verification link is invalid or has expired."
   },
   "volumes": {
     "actions": "Actions",
@@ -4521,7 +5337,46 @@
     "expand": "Expand",
     "expanding": "Expanding…",
     "expandHint": "Capacity can only grow. It counts against the workspace storage quota; hard enforcement depends on the node's storage backend.",
-    "noCapacity": "This volume was created without a declared capacity, so it has no limit to expand."
+    "noCapacity": "This volume was created without a declared capacity, so it has no limit to expand.",
+    "subtitle": "Persistent storage you can attach to the applications and databases of {context}.",
+    "declaredSize": "{size} declared",
+    "limitSize": "{size} limit",
+    "percentOfLimit": "{pct}% of limit",
+    "ofTotal": "of {total}",
+    "volumeNoun": "volume | volumes",
+    "noMatch": "No volumes match “{query}”.",
+    "sharedDriver": "shared · {driver}",
+    "namePlaceholder": "e.g. app-data",
+    "driverNfs": "NFS (shared)",
+    "driverCifs": "CIFS / SMB (shared)",
+    "driverHost": "Host path (/mnt/*)",
+    "notInPlan": "not in your plan",
+    "privilegedOnly": "privileged only",
+    "storageHint": "Which of this node’s disks the volume is created on. It cannot be changed later — the data lives there.",
+    "createVolume": "Create volume",
+    "persistentVolume": "Persistent volume",
+    "inUseApps": "in use · {n} app | in use · {n} apps",
+    "unused": "unused",
+    "applicationNoun": "application | applications",
+    "uploading": "Uploading…",
+    "uploadFile": "Upload file",
+    "err": {
+      "deleteVolume": "Failed to delete (volume may be in use)",
+      "listFiles": "Failed to list files",
+      "upload": "Failed to upload file",
+      "download": "Failed to download",
+      "delete": "Failed to delete",
+      "listBackups": "Failed to list backups",
+      "backup": "Failed to back up volume",
+      "restore": "Restore failed",
+      "verify": "Verification failed",
+      "updatePoint": "Failed to update the recovery point",
+      "addSchedule": "Failed to add the schedule",
+      "updateSchedule": "Failed to update the schedule",
+      "deleteSchedule": "Failed to delete the schedule",
+      "deleteBackup": "Failed to delete backup"
+    },
+    "inUse": "in use"
   },
   "webhooks": {
     "addAWebhook": "Add a webhook",
@@ -4548,7 +5403,14 @@
     "subtitle": "POST a signed JSON payload to your endpoints when app events fire.",
     "webhook": "Webhook",
     "webhooks": "Webhooks",
-    "when": "When"
+    "when": "When",
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "createdTitle": "Webhook created",
+    "editWebhook": "Edit webhook",
+    "createWebhook": "Create webhook"
   },
   "workspaceLayout": {
     "acceptAnInvitationToJoin": "Accept an invitation to join a workspace.",
@@ -4558,7 +5420,9 @@
     "orCreateYourOwnWorkspace": "Or create your own workspace",
     "askForAnInvitation": "You don't have a workspace yet. Ask an administrator to invite you to one.",
     "youVeBeenInvited": "You've been invited",
-    "createdInConsole": "Workspaces on this instance are created in Miabi Console."
+    "createdInConsole": "Workspaces on this instance are created in Miabi Console.",
+    "joining": "Joining…",
+    "accept": "Accept"
   },
   "workspaces": {
     "copyWorkspaceId": "Copy workspace ID",
@@ -4567,7 +5431,8 @@
     "newWorkspace": "New workspace",
     "optional": "(optional)",
     "workspaces": "Workspaces",
-    "workspacesGroupYourApplicationsDatabases": "Workspaces group your applications, databases, and team members."
+    "workspacesGroupYourApplicationsDatabases": "Workspaces group your applications, databases, and team members.",
+    "namePlaceholder": "e.g. Production"
   },
   "wsSettings": {
     "backupEncryption": "Backup encryption",
@@ -4706,7 +5571,17 @@
     "yourOrganization": "Your organization",
     "serviceAccount": "Service account",
     "serviceAccountHint": "A non-human account that signs in only with API keys",
-    "appsWithoutLimits": "{n} app has no CPU or memory limit and doesn't count toward the CPU and memory totals. | {n} apps have no CPU or memory limit and don't count toward the CPU and memory totals."
+    "appsWithoutLimits": "{n} app has no CPU or memory limit and doesn't count toward the CPU and memory totals. | {n} apps have no CPU or memory limit and don't count toward the CPU and memory totals.",
+    "changeName": "Change name",
+    "setDefault": "Set default",
+    "customRoles": "Custom roles",
+    "limitValue": "limit {value}",
+    "enforced": "Enforced",
+    "notEnforced": "Not enforced",
+    "testing": "Testing…",
+    "deletionFailed": "Deletion failed",
+    "deleting": "Deleting {name}",
+    "notFullyDeleted": "The workspace could not be fully deleted."
   },
   "adminUnlock": {
     "title": "Unlock the admin console",
@@ -5129,5 +6004,98 @@
     "bringHint": "Copy a workspace from another Miabi into a new workspace on this one, using the migration code its owner started there.",
     "advanced": "Advanced",
     "pickWorkspace": "Workspace to import"
+  },
+  "time": {
+    "justNow": "just now",
+    "soon": "soon",
+    "secondsAgo": "{n}s ago",
+    "minutesAgo": "{n}m ago",
+    "minAgo": "{n} min ago",
+    "inMin": "in {n} min",
+    "hoursAgo": "{n}h ago",
+    "inHours": "in {n}h",
+    "daysAgo": "{n}d ago",
+    "inDays": "in {n}d"
+  },
+  "logSize": {
+    "label": "Log panel size",
+    "small": "Small",
+    "medium": "Medium",
+    "large": "Large (fill screen)"
+  },
+  "pagination": {
+    "summary": "Page {page} of {pages} · {total} total"
+  },
+  "sparkline": {
+    "noData": "no data yet"
+  },
+  "owner": {
+    "noun": {
+      "app": "app",
+      "database": "database",
+      "stack": "stack",
+      "user": "user"
+    },
+    "memberId": "Member #{id}",
+    "aMember": "a member",
+    "title": "Owner: {name}"
+  },
+  "notifiableEvents": {
+    "event": {
+      "deploy_started": "Deployment started",
+      "deploy_succeeded": "Deployment succeeded",
+      "deploy_failed": "Deployment failed",
+      "container_started": "Container started",
+      "container_stopped": "Container stopped",
+      "container_died": "Container exited",
+      "container_oom": "Container out of memory",
+      "container_removed": "Container removed",
+      "drift_detected": "Workload missing",
+      "drift_resolved": "Workload back",
+      "reconcile_redeploy": "Redeployed automatically",
+      "reconcile_started": "Started again automatically",
+      "reconcile_breaker_open": "Automatic redeploy gave up",
+      "database_provisioned": "Database provisioned",
+      "database_provision_failed": "Database provisioning failed",
+      "database_upgraded": "Database upgraded",
+      "database_upgrade_failed": "Database upgrade failed",
+      "backup_succeeded": "Backup completed",
+      "backup_failed": "Backup failed",
+      "restore_succeeded": "Restore completed",
+      "restore_failed": "Restore failed"
+    },
+    "group": {
+      "applications": "Applications",
+      "databases": "Databases & backups"
+    }
+  },
+  "passwordStrength": {
+    "weak": "Weak",
+    "fair": "Fair",
+    "good": "Good",
+    "strong": "Strong"
+  },
+  "pageTitle": {
+    "verifyEmail": "Verify email",
+    "forgotPassword": "Reset password",
+    "resetPassword": "Reset password",
+    "acceptInvitation": "Invitation",
+    "oauthCallback": "Signing in",
+    "requestToken": "CLI login token",
+    "appDetail": "Application",
+    "stackDetail": "Stack",
+    "databaseDetail": "Database",
+    "volumeDetail": "Volume",
+    "templateInstall": "Install template",
+    "gitopsDetail": "GitOps Project",
+    "pipelineRuns": "Pipeline Runs",
+    "pipelineRun": "Pipeline Run",
+    "runnerDetail": "Runner",
+    "domainDetail": "Domain",
+    "routeDetail": "Route",
+    "middlewareDetail": "Middleware",
+    "certificateDetail": "Certificate",
+    "gitRepository": "Git Repository",
+    "registryImage": "Image"
   }
 }

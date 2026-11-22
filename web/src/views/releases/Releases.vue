@@ -109,7 +109,7 @@ async function promote() {
     showModal.value = false
     reload()
   } catch (e) {
-    notify.apiError(e, 'Promotion failed')
+    notify.apiError(e, t('releases.promotionFailed'))
   } finally {
     working.value = false
   }
@@ -179,7 +179,7 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>Promote {{ target?.application_name }} v{{ target?.version }}</h3>
+          <h3>{{ $t('releases.promoteTitle', { app: target?.application_name, version: target?.version }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -194,9 +194,9 @@ function short(s?: string) { return s ? s.replace(/^sha256:/, '').slice(0, 12) :
           <div v-else-if="currentStatus" class="gate" :class="canPromote ? 'gate-ok' : 'gate-block'">
             <span class="mdi" :class="canPromote ? 'mdi-lock-open-check-outline' : 'mdi-lock-outline'"></span>
             <span>
-              <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong>{{ $t('releases.approvals') }}<template v-if="currentStatus.required_approvals === 0">{{ $t('releases.noApprovalRequired') }}</template>
+              <strong>{{ currentStatus.approvals }}/{{ currentStatus.required_approvals }}</strong> {{ $t('releases.approvals') }} <template v-if="currentStatus.required_approvals === 0">{{ $t('releases.noApprovalRequired') }}</template>
               <template v-else-if="canPromote">{{ $t('releases.gateSatisfied') }}</template>
-              <template v-else> — needs {{ currentStatus.required_approvals - currentStatus.approvals }} more</template>
+              <template v-else>{{ $t('releases.needsMore', { n: currentStatus.required_approvals - currentStatus.approvals }) }}</template>
             </span>
           </div>
 

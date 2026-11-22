@@ -1,5 +1,7 @@
 // The server speaks WebAuthn JSON (base64url); navigator.credentials wants ArrayBuffers.
 
+import { t } from '@/i18n'
+
 export function passkeysSupported(): boolean {
   return typeof window !== 'undefined' && !!window.PublicKeyCredential && !!navigator.credentials
 }
@@ -30,8 +32,8 @@ export class PasskeyCancelled extends Error {}
 
 function rethrow(e: unknown): never {
   const name = (e as DOMException)?.name
-  if (name === 'NotAllowedError' || name === 'AbortError') throw new PasskeyCancelled('The passkey prompt was closed.')
-  if (name === 'InvalidStateError') throw new Error('This device already holds a passkey for your account.')
+  if (name === 'NotAllowedError' || name === 'AbortError') throw new PasskeyCancelled(t('security.passkeys.cancelled'))
+  if (name === 'InvalidStateError') throw new Error(t('security.passkeys.alreadyOnDevice'))
   throw e
 }
 

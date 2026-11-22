@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AppModal from '@/components/AppModal.vue'
 import { copyText } from '@/utils/clipboard'
 import { useNotificationStore } from '@/stores/notification'
@@ -9,12 +10,13 @@ defineProps<{ title: string; password: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const notify = useNotificationStore()
+const { t } = useI18n()
 const copied = ref(false)
 
 async function copy(password: string) {
   if (await copyText(password)) {
     copied.value = true
-    notify.success('Password copied')
+    notify.success(t('generator.passwordCopied'))
   }
 }
 </script>
@@ -23,23 +25,23 @@ async function copy(password: string) {
   <AppModal @close="emit('close')">
     <div class="modal-header">
       <h2>{{ title }}</h2>
-      <button class="btn-icon" aria-label="Close" @click="emit('close')"><span class="mdi mdi-close"></span></button>
+      <button class="btn-icon" :aria-label="$t('shell.close')" @click="emit('close')"><span class="mdi mdi-close"></span></button>
     </div>
     <div class="modal-body">
       <p class="text-muted" style="margin-top: 0">
         <slot />
-        Copy it now and share it with the user through a secure channel — <strong>it won't be shown again</strong>.
+        <i18n-t keypath="generator.shareSecurely" tag="span"><template #warning><strong>{{ $t('generator.notShownAgain') }}</strong></template></i18n-t>
       </p>
       <div class="pw-reveal">
         <code class="pw-value">{{ password }}</code>
         <button class="btn btn-secondary btn-sm" @click="copy(password)">
           <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
-          {{ copied ? 'Copied' : 'Copy' }}
+          {{ copied ? $t('notify.common.copied') : $t('generator.copy') }}
         </button>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-primary btn-sm" @click="emit('close')">Done</button>
+      <button class="btn btn-primary btn-sm" @click="emit('close')">{{ $t('apiKeys.done') }}</button>
     </div>
   </AppModal>
 </template>

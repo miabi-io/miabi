@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiError as decodeApiError } from '@/api/client'
+import { t } from '@/i18n'
 
 type NotificationType = 'success' | 'error' | 'info'
 
@@ -20,9 +21,9 @@ interface NotifyOptions {
 
 // Default heading shown above the message for each toast type.
 const DEFAULT_TITLES: Record<NotificationType, string> = {
-  success: 'Success',
-  error: 'Error',
-  info: 'Info',
+  success: 'notify.toast.success',
+  error: 'notify.toast.error',
+  info: 'notify.toast.info',
 }
 
 // normalizeOpts accepts the legacy `title` string or a NotifyOptions object.
@@ -37,7 +38,7 @@ export const useNotificationStore = defineStore('notification', () => {
   function show(message: string, type: NotificationType = 'info', duration = 4000, opts?: string | NotifyOptions) {
     const { title, detail } = normalizeOpts(opts)
     const id = nextId++
-    notifications.value.push({ id, title: title ?? DEFAULT_TITLES[type], message, detail, type })
+    notifications.value.push({ id, title: title ?? t(DEFAULT_TITLES[type]), message, detail, type })
     if (duration > 0) {
       setTimeout(() => dismiss(id), duration)
     }

@@ -67,7 +67,7 @@ function when(ts: string): string {
     <div class="page-header">
       <div>
         <h1>{{ $t('events.events') }}</h1>
-        <p class="subtitle">Application and database activity in {{ ws.contextLabel }}</p>
+        <p class="subtitle">{{ $t('events.activityIn', { name: ws.contextLabel }) }}</p>
       </div>
       <button class="btn btn-ghost btn-sm" :disabled="loading" @click="goToPage(pageable.current_page)">
         <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>{{ $t('volumes.refresh') }}</button>

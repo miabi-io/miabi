@@ -26,7 +26,7 @@ const license = useLicenseStore()
 const open = ref(false)
 const isAdminConsole = computed(() => props.mode === 'admin')
 
-const label = computed(() => (isAdminConsole.value ? 'Platform' : ws.contextLabel))
+const label = computed(() => (isAdminConsole.value ? t('switcher.platform') : ws.contextLabel))
 
 // An icon, not a word, so the workspace name survives; the label is on the tooltip and aria-label.
 const traitOf = (w: { system?: boolean; privileged?: boolean }) => workspaceTrait(w, t)

@@ -38,7 +38,7 @@ async function loadSizes(id: number) {
   }
 }
 function sizeLabel(s: DatabaseSize): string {
-  return `${s.display_name || s.name} · ${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
+  return `${s.display_name || s.name} · ${t('db.cpuCount', { n: +(s.nano_cpus / 1e9).toFixed(2) })} · ${Math.round(s.memory_bytes / 1048576)} MB`
 }
 const form = ref<CreateForm>(emptyForm())
 
@@ -205,7 +205,7 @@ function fmtBytes(n?: number): string {
     <div class="page-header">
       <div>
         <h1>{{ $t('nav.data.databases') }}</h1>
-        <p class="subtitle">Managed database instances Miabi provisions and runs for {{ ws.contextLabel }}.</p>
+        <p class="subtitle">{{ $t('databases.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span> {{ $t('dashboard.quick.newDatabase.label') }}
@@ -289,9 +289,9 @@ function fmtBytes(n?: number): string {
               <label class="form-label">{{ $t('databases.col.size') }}</label>
               <select v-model="form.size" class="form-select">
                 <option v-if="!sizeOffer.bound" value="">{{ $t('databases.form.custom') }}</option>
-                <option v-for="s in sizeOffer.sizes" :key="s.id" :value="s.name">{{ sizeLabel(s) }}{{ s.id === sizeOffer.default_id ? ' (default)' : '' }}</option>
+                <option v-for="s in sizeOffer.sizes" :key="s.id" :value="s.name">{{ sizeLabel(s) }}{{ s.id === sizeOffer.default_id ? ' ' + $t('apps.form.isDefault') : '' }}</option>
               </select>
-              <p class="form-hint">{{ sizeOffer.bound ? 'The sizes this workspace’s plan offers.' : 'A named size, or Custom to set memory and CPU yourself.' }}</p>
+              <p class="form-hint">{{ sizeOffer.bound ? $t('databases.form.sizeBoundHint') : $t('databases.form.sizeHint') }}</p>
             </div>
             <div v-if="!form.size" class="form-group">
               <label class="form-label">{{ $t('dashboard.resources.title') }} <span class="text-muted">{{ $t('apps.form.optional') }}</span></label>
@@ -314,7 +314,7 @@ function fmtBytes(n?: number): string {
               <label class="form-label">{{ $t('databases.form.storage') }}</label>
               <select v-model="form.storage_class" class="form-select">
                 <option value="">
-                  {{ storageClasses.find(c => c.is_default)?.display_name || 'Default' }} (default)
+                  {{ storageClasses.find(c => c.is_default)?.display_name || $t('wsSettings.securityDefault') }} {{ $t('apps.form.isDefault') }}
                 </option>
                 <option v-for="c in storageClasses.filter(c => !c.is_default)" :key="c.name" :value="c.name">
                   {{ c.display_name || c.name }}
@@ -328,7 +328,7 @@ function fmtBytes(n?: number): string {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Provisioning…' : 'Create database' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? $t('databases.provisioningShort') : $t('db.createDatabase') }}</button>
           </div>
         </form>
       </AppModal>

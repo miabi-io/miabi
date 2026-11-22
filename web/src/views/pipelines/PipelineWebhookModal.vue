@@ -64,23 +64,20 @@ const triggers = computed<Triggers>(() => {
 
 const branchLabel = computed(() => {
   const b = triggers.value.branches
-  if (!b.length) return 'any branch'
-  return b.length === 1 ? `the ${b[0]} branch` : `the ${b.slice(0, -1).join(', ')} and ${b[b.length - 1]} branches`
+  if (!b.length) return t('pipelines.anyBranch')
+  return b.length === 1 ? t('pipelines.oneBranch', { branch: b[0] }) : t('pipelines.manyBranches', { list: b.slice(0, -1).join(', '), last: b[b.length - 1] })
 })
 
 /** Blocking reasons a push would not start a run, most important first. */
 const blockers = computed(() => {
   const out: string[] = []
   if (props.pipeline && !props.pipeline.enabled) {
-    out.push('This pipeline is disabled — pushes are accepted but no run starts until you enable it.')
+    out.push(t('pipelines.webhookBlocker.disabled'))
   }
   if (triggers.value.parseFailed) {
-    out.push("This pipeline's spec could not be read, so its triggers are unknown.")
+    out.push(t('pipelines.webhookBlocker.unreadable'))
   } else if (!triggers.value.push) {
-    out.push(
-      'This pipeline has no `on.push` trigger. The webhook will be accepted and then ignored — ' +
-        'add a push trigger to the spec to make it fire.',
-    )
+    out.push(t('pipelines.webhookBlocker.noPush'))
   }
   return out
 })
@@ -133,7 +130,7 @@ async function load() {
   try {
     info.value = (await pipelineApi.webhookInfo(wid, p.id)).data.data
   } catch (e) {
-    notify.apiError(e, 'Could not load the webhook details')
+    notify.apiError(e, t('pipelines.webhookLoadFailed'))
   } finally {
     loading.value = false
   }

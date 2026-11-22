@@ -70,7 +70,7 @@ const required = computed(() => !props.editing)
           :required="required"
           :aria-label="label"
         />
-        <GenerateButton :label="`Generate a value for ${label}`" @generated="literal = $event" />
+        <GenerateButton :label="$t('credentialField.generateFor', { label })" @generated="literal = $event" />
       </div>
     </template>
 

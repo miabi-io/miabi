@@ -38,7 +38,7 @@ function stackBadge(s: Stack): string {
             <td class="cell-sub">{{ fmtDate(s.created_at) }}</td>
             <td class="text-right">
               <span class="badge badge-dot" :class="stackBadge(s)">
-                {{ s.status?.running ?? 0 }}/{{ s.status?.total ?? 0 }} running
+                {{ $t('dashboard.stackRunning', { running: s.status?.running ?? 0, total: s.status?.total ?? 0 }) }}
               </span>
             </td>
           </tr>

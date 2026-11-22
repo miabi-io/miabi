@@ -108,19 +108,19 @@ watch(mode, (m) => {
 const problem = computed<string | null>(() => {
   if (mode.value === 'auto') return null
   if (exclusive.value && rules.value.length === 0) {
-    return 'An exclusive canary needs at least one match rule; without one it takes all traffic.'
+    return t('canary.problem.exclusiveNeedsRule')
   }
   if (!exclusive.value && rules.value.length > 0 && projectedWeight.value <= 0) {
-    return 'A canary at 0% needs exclusive routing; otherwise its match rules send no traffic.'
+    return t('canary.problem.zeroNeedsExclusive')
   }
   for (const r of rules.value) {
-    if (r.source !== 'ip' && !r.name.trim()) return 'Rules on a header, query or cookie need a name.'
-    if (!r.value.trim()) return 'Every rule needs a value.'
+    if (r.source !== 'ip' && !r.name.trim()) return t('canary.problem.ruleNeedsName')
+    if (!r.value.trim()) return t('canary.problem.ruleNeedsValue')
     if (r.operator === 'regex') {
       try {
         new RegExp(r.value)
       } catch {
-        return `“${r.value}” is not a valid regular expression.`
+        return t('canary.problem.invalidRegex', { value: r.value })
       }
     }
   }
@@ -214,9 +214,9 @@ async function runPreview() {
 
 const previewLabel = computed(() => {
   if (!preview.value) return ''
-  if (preview.value.backend === 'canary') return 'Canary'
-  if (preview.value.backend === 'stable') return 'Stable'
-  return `Split — ${preview.value.canary_chance}% canary`
+  if (preview.value.backend === 'canary') return t('canary.backend.canary')
+  if (preview.value.backend === 'stable') return t('canary.backend.stable')
+  return t('canary.backend.split', { chance: preview.value.canary_chance })
 })
 </script>
 
@@ -297,7 +297,7 @@ const previewLabel = computed(() => {
           >{{ $t('canary.apply') }}</button>
         </div>
         <p v-else class="hint">
-          No canary is running. Rules saved now apply to the next rollout, which starts at {{ projectedWeight }}%.
+          {{ $t('canary.noCanaryRunning', { weight: projectedWeight }) }}
         </p>
       </div>
 
@@ -345,8 +345,7 @@ const previewLabel = computed(() => {
             <span>{{ $t('canary.exclusiveLabel') }}</span>
           </label>
           <p class="hint">
-            Off, a matching request instead joins the weighted pool and reaches the canary
-            {{ projectedWeight }}% of the time.
+            {{ $t('canary.nonExclusiveHint', { weight: projectedWeight }) }}
           </p>
         </div>
 
@@ -414,7 +413,7 @@ const previewLabel = computed(() => {
             <li v-for="(r, i) in preview.rules" :key="i" :class="{ hit: r.matched }">
               <span class="mdi" :class="r.matched ? 'mdi-check' : 'mdi-close'"></span>
               <code>{{ r.rule.source }}{{ r.rule.name ? ' ' + r.rule.name : '' }} {{ r.rule.operator }} {{ r.rule.value }}</code>
-              <span class="text-muted">read “{{ r.actual }}”</span>
+              <span class="text-muted">{{ $t('canary.readValue', { value: r.actual }) }}</span>
             </li>
           </ul>
         </div>

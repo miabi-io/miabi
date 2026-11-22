@@ -89,7 +89,7 @@ const active = computed(() => rows.value.find((r) => r.key === hover.value) ?? n
 
 const summary = computed(
   () =>
-    `Status codes: ${rows.value.map((r) => `${r.label} ${r.count}`).join(', ')} of ${total.value} requests`,
+    t('analytics.statusSummary', { list: rows.value.map((r) => `${r.label} ${r.count}`).join(', '), total: total.value }),
 )
 </script>
 

@@ -44,9 +44,9 @@ watch([domainId, currentWorkspaceId], load, { immediate: true })
 // --- Ownership presentation (mirrors the Domains list) ---
 
 function verifiedLabel(d: DomainDetail): string {
-  if (d.verified_via === 'admin') return 'verified · admin override'
-  if (d.verified_via === 'dns_provider') return 'verified · DNS provider'
-  return 'verified'
+  if (d.verified_via === 'admin') return t('domains.state.verifiedAdmin')
+  if (d.verified_via === 'dns_provider') return t('domains.state.verifiedProvider')
+  return t('domains.state.verified')
 }
 
 // proofPresent reports whether the last ownership check found the TXT record.
@@ -55,14 +55,14 @@ function proofPresent(d: DomainDetail): boolean {
 }
 
 function lastChecked(d: DomainDetail): string {
-  if (!d.verification_checked_at) return 'never checked'
+  if (!d.verification_checked_at) return t('domains.checked.never')
   const secs = Math.max(0, Math.round((Date.now() - new Date(d.verification_checked_at).getTime()) / 1000))
-  if (secs < 60) return 'checked just now'
+  if (secs < 60) return t('domains.checked.justNow')
   const mins = Math.round(secs / 60)
-  if (mins < 60) return `checked ${mins}m ago`
+  if (mins < 60) return t('domains.checked.minutes', { n: mins })
   const hours = Math.round(mins / 60)
-  if (hours < 24) return `checked ${hours}h ago`
-  return `checked ${Math.round(hours / 24)}d ago`
+  if (hours < 24) return t('domains.checked.hours', { n: hours })
+  return t('domains.checked.days', { n: Math.round(hours / 24) })
 }
 
 function fmtDate(v?: string | null): string {
@@ -84,7 +84,7 @@ async function verify() {
     notify.success(t('notify.domainDetail.verified', { name: item.value.name }))
     load() // the routes this domain gates may have just gone live
   } catch (e) {
-    notify.apiError(e, 'Verification failed — check the TXT record and try again')
+    notify.apiError(e, t('domains.verifyFailed'))
   } finally {
     verifying.value = false
   }
@@ -158,7 +158,7 @@ async function confirmDelete() {
         </button>
         <div>
           <h1>{{ item.name }}</h1>
-          <span class="cell-sub">{{ item.wildcard ? `also covers *.${item.name}` : 'apex / subdomain only' }}</span>
+          <span class="cell-sub">{{ item.wildcard ? $t('domains.alsoCovers', { name: item.name }) : $t('domains.apexOnly') }}</span>
         </div>
         <span v-if="item.banned" class="badge badge-danger" :title="$t('domains.bannedHint')">
           <span class="mdi mdi-cancel"></span>{{ $t('domainDetail.banned') }}</span>
@@ -173,7 +173,7 @@ async function confirmDelete() {
       <div v-if="ws.canEdit" class="flex items-center gap-2">
         <button v-if="!item.banned" class="btn btn-secondary" :disabled="verifying" @click="verify">
           <span class="mdi" :class="verifying ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span>
-          {{ item.verified ? 'Re-check' : 'Verify' }}
+          {{ item.verified ? $t('domains.recheck') : $t('domains.verify') }}
         </button>
         <button class="btn btn-secondary" @click="openEdit"><span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
         <button class="btn btn-danger" @click="showDelete = true"><span class="mdi mdi-delete-outline"></span>{{ $t('action.delete') }}</button>
@@ -182,7 +182,7 @@ async function confirmDelete() {
 
     <div v-if="item.banned" class="gate gate-bad mb-4">
       <span class="mdi mdi-cancel"></span>
-      <span>Banned by a platform administrator{{ item.ban_reason ? `: ${item.ban_reason}` : '' }}. Its routes are forced offline and it cannot be verified.</span>
+      <span>{{ item.ban_reason ? $t('domains.bannedBannerReason', { reason: item.ban_reason }) : $t('domains.bannedBanner') }}</span>
     </div>
     <div v-else-if="item.verified && item.verified_via === 'admin'" class="gate gate-warn mb-4">
       <span class="mdi mdi-shield-account-outline"></span>
@@ -200,7 +200,7 @@ async function confirmDelete() {
           <span class="detail-key">{{ $t('gitops.lastCheck') }}</span>
           <span>
             <span class="mdi" :class="proofPresent(item) ? 'mdi-check-circle-outline check-ok' : 'mdi-alert-circle-outline check-bad'"></span>
-            {{ proofPresent(item) ? 'TXT record found' : 'TXT record not found' }} · {{ lastChecked(item) }}
+            {{ proofPresent(item) ? $t('domains.txtFound') : $t('domains.txtMissing') }} · {{ lastChecked(item) }}
           </span>
         </div>
         <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.verifiedAt') }}</span><span>{{ fmtDate(item.verified_at) }}</span></div>
@@ -218,7 +218,7 @@ async function confirmDelete() {
             <option value="">{{ $t('domainDetail.manualNoProvider') }}</option>
             <option v-for="p in dnsProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
           </select>
-          <span v-else>{{ item.automated ? 'Connected — Miabi maintains the records' : 'Manual' }}</span>
+          <span v-else>{{ item.automated ? $t('domains.connectedMaintained') : $t('domains.manual') }}</span>
         </div>
       </div>
     </div>
@@ -266,7 +266,7 @@ async function confirmDelete() {
       <div class="card-header"><h2>{{ $t('domainDetail.settings') }}</h2></div>
       <div class="card-body detail-list">
         <div class="detail-row"><span class="detail-key">{{ $t('domains.form.defaultTls') }}</span><span>{{ item.tls_mode === 'acme' ? t('domains.tls.acme') : t('domainDetail.tlsCustom') }}</span></div>
-        <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.wildcard') }}</span><span>{{ item.wildcard ? 'Yes' : 'No' }}</span></div>
+        <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.wildcard') }}</span><span>{{ item.wildcard ? $t('domains.yes') : $t('domains.no') }}</span></div>
         <div class="detail-row"><span class="detail-key">{{ $t('domainDetail.added') }}</span><span>{{ fmtDate(item.created_at) }}</span></div>
         <div class="detail-row"><span class="detail-key">{{ $t('planDetail.updated') }}</span><span>{{ fmtDate(item.updated_at) }}</span></div>
       </div>
@@ -295,7 +295,7 @@ async function confirmDelete() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showEdit = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : $t('action.save') }}</button>
           </div>
         </form>
       </AppModal>

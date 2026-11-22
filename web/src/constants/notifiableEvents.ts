@@ -1,3 +1,5 @@
+import { label } from '@/i18n'
+
 // Mirrors models.NotifiableEvents in order; notifiable_events_test.go fails if they drift.
 export interface NotifiableEvent {
   value: string
@@ -5,12 +7,14 @@ export interface NotifiableEvent {
 }
 
 export interface NotifiableEventGroup {
+  key: string
   label: string
   events: NotifiableEvent[]
 }
 
 export const NOTIFIABLE_EVENT_GROUPS: NotifiableEventGroup[] = [
   {
+    key: 'applications',
     label: 'Applications',
     events: [
       { value: 'deploy.started', label: 'Deployment started' },
@@ -30,6 +34,7 @@ export const NOTIFIABLE_EVENT_GROUPS: NotifiableEventGroup[] = [
   },
   {
     // Labels match notify.eventTitle, so the picker and the message it delivers agree.
+    key: 'databases',
     label: 'Databases & backups',
     events: [
       { value: 'database.provisioned', label: 'Database provisioned' },
@@ -52,5 +57,9 @@ const labels: Record<string, string> = Object.fromEntries(
 )
 
 export function eventLabel(value: string): string {
-  return labels[value] ?? value
+  return label(`notifiableEvents.event.${value.replace(/\./g, '_')}`, labels[value] ?? value)
+}
+
+export function groupLabel(g: NotifiableEventGroup): string {
+  return label(`notifiableEvents.group.${g.key}`, g.label)
 }

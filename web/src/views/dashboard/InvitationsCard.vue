@@ -15,12 +15,12 @@ defineEmits<{ accept: [inv: PendingInvitation] }>()
         <div class="invite-info">
           <span class="invite-name">{{ inv.workspace_name }}</span>
           <span class="invite-sub">
-            {{ $t('dashboard.invitations.invitedAs') }} <strong>{{ inv.role }}</strong>
-            <template v-if="inv.invited_by_name"> by {{ inv.invited_by_name }}</template>
+            <i18n-t keypath="workspaceLayout.invitedAs" tag="span"><template #role><strong>{{ inv.role }}</strong></template></i18n-t>
+            <template v-if="inv.invited_by_name"> {{ $t('workspaceLayout.invitedBy', { name: inv.invited_by_name }) }}</template>
           </span>
         </div>
         <button class="btn btn-primary btn-sm" :disabled="acceptingId === inv.id" @click="$emit('accept', inv)">
-          {{ acceptingId === inv.id ? 'Joining…' : 'Accept' }}
+          {{ acceptingId === inv.id ? $t('workspaceLayout.joining') : $t('workspaceLayout.accept') }}
         </button>
       </li>
     </ul>

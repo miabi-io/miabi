@@ -44,12 +44,12 @@ onMounted(async () => {
 // A starting label the user can change; the browser doesn't say which authenticator it will use.
 function guessName(): string {
   const ua = navigator.userAgent
-  if (/iPhone|iPad/.test(ua)) return 'iPhone or iPad'
+  if (/iPhone|iPad/.test(ua)) return t('security.passkeys.deviceIos')
   if (/Android/.test(ua)) return 'Android'
   if (/Mac/.test(ua)) return 'Mac'
   if (/Windows/.test(ua)) return 'Windows'
   if (/Linux/.test(ua)) return 'Linux'
-  return 'Passkey'
+  return t('security.passkeys.defaultName')
 }
 
 type Modal = null | 'add' | 'rename' | 'remove'

@@ -34,9 +34,9 @@ const sevIcon = computed(() =>
       <div v-if="body" class="ban-text">{{ body }}</div>
     </div>
     <button v-if="hasAction" class="btn btn-secondary btn-sm" @click="$emit('follow')">
-      {{ actionText || 'Open' }}
+      {{ actionText || $t('action.open') }}
     </button>
-    <button v-if="dismissible" class="btn-icon btn-icon-muted" aria-label="Dismiss" @click="$emit('dismiss')">
+    <button v-if="dismissible" class="btn-icon btn-icon-muted" :aria-label="$t('action.dismiss')" @click="$emit('dismiss')">
       <span class="mdi mdi-close"></span>
     </button>
   </div>

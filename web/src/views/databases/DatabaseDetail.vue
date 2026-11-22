@@ -160,12 +160,12 @@ function eventIcon(type: string): string {
 
 function relTime(ts: string): string {
   const s = Math.round((Date.now() - new Date(ts).getTime()) / 1000)
-  if (s < 60) return `${s}s ago`
+  if (s < 60) return t('db.ago.seconds', { n: s })
   const m = Math.round(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return t('db.ago.minutes', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.round(h / 24)}d ago`
+  if (h < 24) return t('db.ago.hours', { n: h })
+  return t('db.ago.days', { n: Math.round(h / 24) })
 }
 
 // --- Container logs (SSE) ---
@@ -221,7 +221,7 @@ function openResize() {
   }).catch(() => { sizeOffer.value = { sizes: [], bound: false } })
 }
 function sizeLabel(s: DatabaseSize): string {
-  return `${s.display_name || s.name} · ${+(s.nano_cpus / 1e9).toFixed(2)} CPU · ${Math.round(s.memory_bytes / 1048576)} MB`
+  return `${s.display_name || s.name} · ${t('db.cpuCount', { n: +(s.nano_cpus / 1e9).toFixed(2) })} · ${Math.round(s.memory_bytes / 1048576)} MB`
 }
 async function saveResize() {
   if (!wid.value || !inst.value) return
@@ -239,8 +239,8 @@ async function saveResize() {
   }
 }
 function fmtLimits(i: DatabaseInstance): string {
-  const cpu = i.nano_cpus ? `${+(i.nano_cpus / 1e9).toFixed(2)} CPU` : 'unlimited CPU'
-  const memory = i.memory_bytes ? fmtSize(i.memory_bytes) : 'unlimited memory'
+  const cpu = i.nano_cpus ? t('db.cpuCount', { n: +(i.nano_cpus / 1e9).toFixed(2) }) : t('db.unlimitedCpu')
+  const memory = i.memory_bytes ? fmtSize(i.memory_bytes) : t('db.unlimitedMemory')
   return i.size_class ? `${i.size_class} · ${cpu} · ${memory}` : `${cpu} · ${memory}`
 }
 
@@ -373,7 +373,7 @@ async function openForward() {
     await databaseApi.openForward(wid.value, instId.value)
     notify.success(t('db.toast.forwardOpenedConnectYourClient'))
     await loadForwards()
-  } catch (e) { notify.apiError(e, 'Only admins can open a forward') }
+  } catch (e) { notify.apiError(e, t('db.toast.forwardAdminOnly')) }
   finally { forwardBusy.value = false }
 }
 async function closeForward(id: string) {
@@ -385,7 +385,7 @@ async function closeForward(id: string) {
 }
 function expiresLabel(iso: string) {
   const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60000)
-  return mins <= 0 ? 'expiring…' : `expires in ${mins} min`
+  return mins <= 0 ? t('db.expiring') : t('db.expiresIn', { n: mins })
 }
 
 // --- Logical databases ---
@@ -398,7 +398,7 @@ async function createDb() {
   creatingDb.value = true
   try {
     const res = (await databaseApi.createDatabase(wid.value, instId.value, dbForm.value.name.trim(), dbForm.value.app)).data.data
-    notify.success(res?.env_injected ? 'Database created — connection injected into the app' : 'Database created')
+    notify.success(res?.env_injected ? t('db.toast.databaseCreatedInjected') : t('db.toast.databaseCreated'))
     showCreateDb.value = false
     load()
   } catch (e) { notify.apiError(e) }
@@ -448,7 +448,7 @@ async function revealDb(d: LogicalDatabase) {
   try {
     const info = (await databaseApi.databaseConnection(wid.value, instId.value, d.id)).data.data
     if (info) connModal.value = { title: d.name, info }
-  } catch (e) { notify.apiError(e, 'Only admins can reveal credentials') }
+  } catch (e) { notify.apiError(e, t('db.toast.revealAdminOnly')) }
 }
 
 // --- Backups (for the selected logical database) ---
@@ -537,7 +537,7 @@ async function verifySet(set: DatabaseBackupSet) {
   try {
     const res = (await backupApi.verifySet(wid.value, instId.value, set.id)).data.data
     notify[res.ok ? 'success' : 'error'](
-      res.ok ? `${set.ref} verified — ${res.checked} artifact(s) intact` : `${set.ref}: ${res.error}`,
+      res.ok ? t('db.toast.setVerified', { ref: set.ref, n: res.checked }, res.checked) : `${set.ref}: ${res.error}`,
     )
     loadSets()
   } catch (e) { notify.apiError(e) }
@@ -685,7 +685,7 @@ async function togglePin(b: Backup) {
   try {
     b.pinned = pinned
     await backupApi.update(wid.value, instId.value, selected.value.id, b.id, { pinned })
-    notify.success(pinned ? `Backup #${b.number} pinned — retention will skip it` : `Backup #${b.number} unpinned`)
+    notify.success(pinned ? t('db.toast.backupPinned', { number: b.number }) : t('db.toast.backupUnpinned', { number: b.number }))
   } catch (e) {
     b.pinned = !pinned
     notify.apiError(e)
@@ -738,7 +738,7 @@ async function downloadBackup(b: Backup) {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-  } catch (e) { notify.apiError(e, 'Download failed') }
+  } catch (e) { notify.apiError(e, t('db.toast.downloadFailed')) }
 }
 function askRemoveBackup(b: Backup) {
   confirm.value = {
@@ -866,7 +866,7 @@ async function revealInstance() {
   try {
     const info = (await databaseApi.credentials(wid.value, instId.value)).data.data
     if (info) connModal.value = { title: t('confirm.title.databaseDetail.admin', { name: inst.value?.name }), info }
-  } catch (e) { notify.apiError(e, 'Only admins can reveal credentials') }
+  } catch (e) { notify.apiError(e, t('db.toast.revealAdminOnly')) }
 }
 async function removeInstance() {
   if (!wid.value) return
@@ -905,18 +905,18 @@ const stopApps = ref(true)
 const upgrading = ref(false)
 
 // --- Upgrade progress stepper -----------------------------------------------
-const PHASE_LABELS: Record<string, string> = {
-  queued: 'Queued',
-  'backing-up': 'Backing up',
-  'stopping-apps': 'Stopping apps',
-  swapping: 'Swapping engine',
-  dumping: 'Dumping',
-  restoring: 'Restoring data',
-  verifying: 'Verifying',
-  'starting-apps': 'Restarting apps',
-  done: 'Done',
+const PHASE_KEYS: Record<string, string> = {
+  queued: 'db.phase.queued',
+  'backing-up': 'db.phase.backingUp',
+  'stopping-apps': 'db.phase.stoppingApps',
+  swapping: 'db.phase.swapping',
+  dumping: 'db.phase.dumping',
+  restoring: 'db.phase.restoring',
+  verifying: 'db.phase.verifying',
+  'starting-apps': 'db.phase.startingApps',
+  done: 'wsMigration.phase.done',
 }
-function phaseLabel(p: string): string { return PHASE_LABELS[p] ?? p }
+function phaseLabel(p: string): string { return PHASE_KEYS[p] ? t(PHASE_KEYS[p]) : p }
 
 // Skipped phases still render as completed once the engine moves past them.
 const upgradeSteps = computed<string[]>(() => {
@@ -951,23 +951,23 @@ async function previewPlan() {
   try {
     upgradePlan.value = (await databaseApi.upgradePlan(wid.value, instId.value, v)).data.data
   } catch (e) {
-    upgradePlanErr.value = apiErrorMessage(e, 'Cannot upgrade to that version')
+    upgradePlanErr.value = apiErrorMessage(e, t('db.cannotUpgradeToVersion'))
   }
 }
 watch(upgradeTarget, previewPlan)
 
 const upgradeAppNames = computed(() =>
-  (upgradePlan.value?.affected_app_ids ?? []).map((id) => apps.value.find((a) => a.id === id)?.name || `app #${id}`),
+  (upgradePlan.value?.affected_app_ids ?? []).map((id) => apps.value.find((a) => a.id === id)?.name || t('db.appNumber', { id })),
 )
 
 function askUpgrade() {
   if (!upgradePlan.value) return
   const p = upgradePlan.value
-  const lines = [`Upgrade ${inst.value?.name} from ${p.from_version} to ${p.to_version}.`]
-  if (p.path === 'dump-restore') lines.push('This is a major upgrade: data is dumped and restored into a fresh volume (the instance keeps its address and credentials).')
-  else lines.push('In-place upgrade: the engine image is swapped on the same data volume.')
-  if (stopApps.value && upgradeAppNames.value.length) lines.push(`These apps will be stopped during the upgrade and restarted after: ${upgradeAppNames.value.join(', ')}.`)
-  lines.push('A full backup is taken first.')
+  const lines = [t('db.upgradeConfirm.summary', { name: inst.value?.name, from: p.from_version, to: p.to_version })]
+  if (p.path === 'dump-restore') lines.push(t('db.upgradeConfirm.major'))
+  else lines.push(t('db.upgradeConfirm.inPlace'))
+  if (stopApps.value && upgradeAppNames.value.length) lines.push(t('db.upgradeConfirm.stopApps', { apps: upgradeAppNames.value.join(', ') }))
+  lines.push(t('db.upgradeConfirm.backupFirst'))
   confirm.value = {
     kind: 'upgrade', title: t('confirm.title.databaseDetail.upgradeDatabaseVersion'), confirmLabel: t('action.upgrade'),
     variant: p.major ? 'danger' : 'primary',
@@ -987,7 +987,7 @@ async function runUpgrade() {
     upgradePlan.value = null
     // The live status stream (already open) drives progress + the final result.
   } catch (e) {
-    notify.apiError(e, 'Upgrade failed to start')
+    notify.apiError(e, t('db.toast.upgradeFailedToStart'))
   } finally {
     upgrading.value = false
   }
@@ -1031,7 +1031,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
   if (s.upgrade?.phase === 'failed') {
     if (!upgradeFailNotified) {
       upgradeFailNotified = true
-      notify.error(t('notify.databaseDetail.upgradeFailed', { error: s.upgrade.error ?? 'unknown error' }))
+      notify.error(t('notify.databaseDetail.upgradeFailed', { error: s.upgrade.error ?? t('db.unknownError') }))
       void load()
     }
     return
@@ -1040,7 +1040,7 @@ function applyStatus(s: { status: DBStatus; upgrade?: UpgradeProgress }) {
   if (prev === s.status) return
 
   if (prev === 'upgrading' && s.status === 'running') {
-    notify.success(t('db.toast.upgradeToCompleted', { to_version: lastUpgrade.value?.to_version ?? 'the new version' }))
+    notify.success(t('db.toast.upgradeToCompleted', { to_version: lastUpgrade.value?.to_version ?? t('db.theNewVersion') }))
     void load()
   } else if (prev === 'provisioning' && s.status === 'running') {
     notify.success(t('db.toast.databaseIsReady'))
@@ -1110,7 +1110,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
     <div v-if="inst.status === 'provisioning'" class="app-banner app-banner--info mb-4">
       <span class="mdi mdi-progress-download app-banner-icon mdi-spin"></span>
       <div class="app-banner-content">
-        <p class="app-banner-text">Provisioning {{ inst.engine }} {{ inst.version }}…</p>
+        <p class="app-banner-text">{{ $t('db.provisioningEngine', { engine: inst.engine, version: inst.version }) }}</p>
         <p v-if="provisionMsg" class="app-banner-sub">{{ provisionMsg }}</p>
       </div>
     </div>
@@ -1150,7 +1150,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       </h2>
       <div v-if="metrics" class="stats-grid mb-4">
         <div class="stat-card">
-          <div class="stat-header"><span class="stat-label">CPU</span><span class="stat-icon stat-icon-primary"><span class="mdi mdi-chip"></span></span></div>
+          <div class="stat-header"><span class="stat-label">{{ $t('wsSettings.row.cpu') }}</span><span class="stat-icon stat-icon-primary"><span class="mdi mdi-chip"></span></span></div>
           <div class="stat-value">{{ metrics.cpu_percent.toFixed(1) }}%</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.cpu_percent)" :style="{ width: Math.min(100, metrics.cpu_percent) + '%' }"></div></div>
         </div>
@@ -1159,7 +1159,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <div class="stat-value">{{ fmtSize(metrics.memory_usage_bytes) }}</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.memory_percent)" :style="{ width: Math.min(100, metrics.memory_percent) + '%' }"></div></div>
           <div class="stat-sub">
-            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtSize(metrics.memory_limit_bytes) }}</template>
+            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> {{ $t('db.ofLimit', { limit: fmtSize(metrics.memory_limit_bytes) }) }}</template>
           </div>
         </div>
         <div class="stat-card">
@@ -1219,7 +1219,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         <div v-if="isDedicated" class="card-body text-muted text-sm" style="border-bottom: 1px solid var(--border-primary)">
           <span class="mdi mdi-lock-outline"></span> {{ $t('db.dedicatedNoNewDatabases') }}
         </div>
-        <div v-if="inst.status !== 'running'" class="card-body text-muted text-sm">Instance is {{ inst.status }} — databases can be created once it is running.</div>
+        <div v-if="inst.status !== 'running'" class="card-body text-muted text-sm">{{ $t('db.instanceNotRunning', { status: inst.status }) }}</div>
         <div v-else-if="databases.length === 0" class="empty-state">
           <span class="mdi mdi-database-outline" style="font-size: 36px; color: var(--text-muted)"></span>
           <p>{{ $t('db.noDatabasesYetCreateOne') }}</p>
@@ -1240,7 +1240,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                   </template>
                 </td>
                 <td class="cell-sub">
-                  <RouterLink v-if="d.application_id" :to="`/apps/${d.application_id}`" @click.stop>{{ appName(d.application_id) || `app #${d.application_id}` }}</RouterLink>
+                  <RouterLink v-if="d.application_id" :to="`/apps/${d.application_id}`" @click.stop>{{ appName(d.application_id) || $t('db.appNumber', { id: d.application_id }) }}</RouterLink>
                   <span v-else>—</span>
                 </td>
                 <td class="cell-sub">{{ fmtBytes(d.size_bytes) }}</td>
@@ -1271,7 +1271,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         </div>
         <div v-if="!selected" class="empty-state">
           <span class="mdi mdi-backup-restore" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>{{ databases.length ? 'Select a database to view its backups.' : 'Create a database first to back it up.' }}</p>
+          <p>{{ databases.length ? $t('db.selectDatabaseForBackups') : $t('db.createDatabaseFirst') }}</p>
         </div>
         <template v-else>
           <div class="card-header" style="border-top: 1px solid var(--border-primary)">
@@ -1287,7 +1287,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                 :disabled="running"
                 @keyup.enter="runBackup"
               />
-              <button v-if="ws.canEdit" class="btn btn-sm btn-primary" :disabled="running" @click="runBackup">{{ running ? 'Backing up…' : 'Run backup' }}</button>
+              <button v-if="ws.canEdit" class="btn btn-sm btn-primary" :disabled="running" @click="runBackup">{{ running ? $t('volumes.rp.backingUp') : $t('db.runBackup') }}</button>
             </div>
           </div>
           <div v-if="backups.length === 0" class="empty-state">
@@ -1341,7 +1341,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                       @click="startNote(b)"
                     >
                       <span class="mdi mdi-note-edit-outline"></span>
-                      <span>{{ b.comment || 'Add a note' }}</span>
+                      <span>{{ b.comment || $t('db.addNote') }}</span>
                     </button>
                     <div v-else-if="b.comment" class="backup-note static">{{ b.comment }}</div>
                   </td>
@@ -1398,12 +1398,12 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                   {{ s.cron }}
                   <span v-if="s.managed_by" class="badge badge-neutral" :title="$t('db.fromManifestHint')">{{ $t('db.fromManifest') }}</span>
                 </td>
-                <td class="text-muted">{{ s.destination === 'workspace' ? 'Workspace settings' : s.destination }}</td>
+                <td class="text-muted">{{ s.destination === 'workspace' ? $t('db.workspaceSettings') : s.destination }}</td>
                 <td class="cell-sub">
                   <template v-if="s.max_backups || s.retention_days">
-                    <span v-if="s.max_backups">keep {{ s.max_backups }}</span>
+                    <span v-if="s.max_backups">{{ $t('volumes.rp.keepSummary', { n: s.max_backups }) }}</span>
                     <span v-if="s.max_backups && s.retention_days"> · </span>
-                    <span v-if="s.retention_days">{{ s.retention_days }}d</span>
+                    <span v-if="s.retention_days">{{ $t('volumes.rp.maxAgeSummary', { n: s.retention_days }) }}</span>
                   </template>
                   <span v-else>—</span>
                 </td>
@@ -1431,7 +1431,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               :title="$t('db.listTheRecoveryPointsIn')"
               @click="scanBucket"
             >
-              {{ scanning ? 'Scanning…' : 'Scan bucket' }}
+              {{ scanning ? $t('db.scanning') : $t('db.scanBucket') }}
             </button>
             <button
               v-if="ws.canEdit"
@@ -1440,7 +1440,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               :title="setsEntitled ? (setsS3Ready ? '' : $t('db.configureS3First')) : $t('db.setsNeedEnterprise')"
               @click="runSet"
             >
-              {{ runningSet ? 'Backing up…' : 'Back up all databases' }}
+              {{ runningSet ? $t('volumes.rp.backingUp') : $t('db.backUpAllDatabases') }}
             </button>
           </div>
         </div>
@@ -1476,10 +1476,10 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                     </div>
                     <div class="cell-sub">
                       <template v-if="s.verify_status === 'ok'">
-                        <span class="mdi mdi-shield-check-outline"></span> verified {{ relativeTime(s.verified_at) }}
+                        <span class="mdi mdi-shield-check-outline"></span> {{ $t('volumes.rp.verifiedAgo', { when: relativeTime(s.verified_at) }) }}
                       </template>
                       <template v-else-if="s.verify_status === 'failed'">
-                        <span class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> failed verification: {{ s.verify_error }}</span>
+                        <span class="text-danger"><span class="mdi mdi-shield-alert-outline"></span> {{ $t('db.backupReadBackFailed') }}: {{ s.verify_error }}</span>
                       </template>
                       <template v-else>{{ $t('db.neverVerified') }}</template>
                     </div>
@@ -1541,7 +1541,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         <div v-if="discovered" class="card-body" style="border-top: 1px solid var(--border-primary)">
           <div class="flex items-center gap-2" style="margin-bottom: 10px">
             <h3 style="margin: 0; font-size: 0.95rem">{{ $t('db.inTheBucket') }}</h3>
-            <span class="text-muted text-sm">{{ discovered.length }} found</span>
+            <span class="text-muted text-sm">{{ $t('db.foundCount', { n: discovered.length }) }}</span>
             <button class="btn-icon btn-icon-muted" :title="$t('db.hide')" :aria-label="$t('db.hideBucketScan')" @click="discovered = null">
               <span class="mdi mdi-close"></span>
             </button>
@@ -1555,7 +1555,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               <span v-if="d.encrypted" class="badge badge-success"><span class="mdi mdi-lock-outline"></span>{{ $t('db.encrypted') }}</span>
               <span class="text-muted text-sm">
                 {{ d.engine }}<template v-if="d.version"> {{ d.version }}</template> ·
-                {{ d.artifacts.length }} database(s)<template v-if="d.size_bytes"> · {{ fmtBytes(d.size_bytes) }}</template>
+                {{ $t('db.databaseCount', d.artifacts.length) }}<template v-if="d.size_bytes"> · {{ fmtBytes(d.size_bytes) }}</template>
               </span>
               <span v-if="d.reason" class="text-warning text-sm">{{ d.reason }}</span>
               <span v-else-if="d.openable" class="text-muted text-sm">{{ $t('db.readyToRestore') }}</span>
@@ -1591,8 +1591,8 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <li v-for="sc in setSchedules" :key="sc.id">
               <code>{{ sc.cron }}</code>
               <span class="text-muted text-sm">
-                keep {{ sc.max_sets || 'all' }}<template v-if="sc.retention_days"> · max {{ sc.retention_days }}d</template>
-                <template v-if="sc.last_run_at"> · last {{ relativeTime(sc.last_run_at) }}</template>
+                {{ $t('volumes.rp.keepSummary', { n: sc.max_sets || $t('volumes.rp.all') }) }}<template v-if="sc.retention_days"> · {{ $t('volumes.rp.maxAgeSummary', { n: sc.retention_days }) }}</template>
+                <template v-if="sc.last_run_at"> · {{ $t('volumes.rp.lastRun', { when: relativeTime(sc.last_run_at) }) }}</template>
               </span>
               <span v-if="!sc.enabled" class="badge badge-neutral">{{ $t('db.disabled') }}</span>
               <span v-if="sc.managed_by" class="badge badge-neutral" :title="$t('db.fromManifestHint')">{{ $t('db.fromManifest') }}</span>
@@ -1631,7 +1631,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           </li>
         </ul>
         <div v-if="eventsHasMore" class="text-center" style="padding: 8px 0 4px">
-          <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">{{ loadingMoreEvents ? 'Loading…' : 'Load more' }}</button>
+          <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">{{ loadingMoreEvents ? $t('dashboard.health.loading') : $t('inbox.loadMore') }}</button>
         </div>
       </template>
     </div>
@@ -1639,10 +1639,10 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
     <div v-else-if="tab === 'logs'" class="card">
       <div class="card-header">
         <h2>{{ $t('db.containerLogs') }}</h2>
-        <span class="badge" :class="logsConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ logsConnected ? 'live' : 'connecting…' }}</span>
+        <span class="badge" :class="logsConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ logsConnected ? $t('dashboard.analytics.live') : $t('db.connecting') }}</span>
       </div>
       <div class="card-body">
-        <pre class="code-block log-view">{{ logs.length ? logs.join('\n') : 'Waiting for output… (the instance must have a running container)' }}</pre>
+        <pre class="code-block log-view">{{ logs.length ? logs.join('\n') : $t('db.waitingForLogs') }}</pre>
       </div>
     </div>
 
@@ -1689,14 +1689,14 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       <div class="card mb-4">
         <div class="card-header">
           <h2>{{ $t('db.engineVersion') }}</h2>
-          <span class="text-muted text-sm">Currently {{ inst.engine }} {{ inst.version }}.</span>
+          <span class="text-muted text-sm">{{ $t('db.currentlyRunning', { engine: inst.engine, version: inst.version }) }}</span>
         </div>
 
         <!-- Live progress while upgrading: a phase stepper driven by the SSE stream -->
         <div v-if="inst.status === 'upgrading' && inst.upgrade" class="card-body">
-          <p class="text-sm" style="margin: 0 0 12px">{{ $t('db.upgrading') }}<strong>{{ inst.upgrade.from_version }}</strong> → <strong>{{ inst.upgrade.to_version }}</strong>
+          <p class="text-sm" style="margin: 0 0 12px">{{ $t('db.upgrading') }} <strong>{{ inst.upgrade.from_version }}</strong> → <strong>{{ inst.upgrade.to_version }}</strong>
             <span class="badge" :class="inst.upgrade.path === 'dump-restore' ? 'badge-warning' : 'badge-info'" style="margin-left: 6px">
-              {{ inst.upgrade.path === 'dump-restore' ? 'dump &amp; restore' : 'in-place' }}
+              {{ inst.upgrade.path === 'dump-restore' ? $t('db.pathDumpRestore') : $t('db.pathInPlace') }}
             </span>
           </p>
           <ol class="upgrade-steps">
@@ -1718,10 +1718,10 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
             <span class="mdi mdi-alert-circle-outline app-banner-icon"></span>
             <div class="app-banner-content">
               <p class="app-banner-text">
-                <strong>Upgrade to {{ inst.upgrade.to_version }} failed.</strong>
+                <strong>{{ $t('db.upgradeFailedTitle', { version: inst.upgrade.to_version }) }}</strong>
                 {{ inst.upgrade.error }}
               </p>
-              <p class="app-banner-sub">The instance was rolled back to {{ inst.upgrade.from_version }} and is safe to use. You can adjust the target and try again below.</p>
+              <p class="app-banner-sub">{{ $t('db.upgradeRolledBack', { version: inst.upgrade.from_version }) }}</p>
             </div>
           </div>
         </div>
@@ -1735,7 +1735,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               class="form-input"
               list="db-versions"
               style="max-width: 160px"
-              placeholder="e.g. 17"
+              :placeholder="$t('db.versionPlaceholder')"
             />
             <datalist id="db-versions">
               <option v-for="v in upgradeOpts?.suggestions ?? []" :key="v" :value="v" />
@@ -1746,14 +1746,12 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           <p v-if="upgradePlanErr" class="form-hint" style="color: var(--danger-600); margin-top: 8px">{{ upgradePlanErr }}</p>
           <div v-else-if="upgradePlan" class="upgrade-plan">
             <p class="text-sm">
-              <span class="badge" :class="upgradePlan.major ? 'badge-warning' : 'badge-info'">{{ upgradePlan.major ? 'major' : 'minor' }}</span>
-              {{ upgradePlan.path === 'dump-restore'
-                ? 'Dump & restore into a fresh volume — the instance keeps its address and credentials, so apps need no change.'
-                : 'In-place image swap on the same data volume — fast, seconds of downtime.' }}
+              <span class="badge" :class="upgradePlan.major ? 'badge-warning' : 'badge-info'">{{ upgradePlan.major ? $t('db.major') : $t('db.minor') }}</span>
+              {{ upgradePlan.path === 'dump-restore' ? $t('db.pathDumpRestoreHint') : $t('db.pathInPlaceHint') }}
             </p>
             <label v-if="upgradeAppNames.length" class="radio-row">
               <input type="checkbox" v-model="stopApps" />
-              Stop the {{ upgradeAppNames.length }} app(s) using this database during the upgrade, then restart them
+              {{ $t('db.stopAppsDuringUpgrade', upgradeAppNames.length) }}
               <span class="text-muted">({{ upgradeAppNames.join(', ') }})</span>
             </label>
             <p class="form-hint">{{ $t('db.aFullBackupIsTaken') }}</p>
@@ -1771,7 +1769,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         <div v-if="ws.canEdit" class="card-body" style="border-bottom: 1px solid var(--border-primary)">
           <form class="flex items-center gap-2" @submit.prevent="attachNetwork">
             <select v-model.number="netToAttach" class="form-select" :aria-label="$t('db.networkToConnect')" style="min-width: 220px" :disabled="netBusy || attachableNets.length === 0">
-              <option :value="null" disabled>{{ attachableNets.length ? 'Select a network…' : 'All networks already attached' }}</option>
+              <option :value="null" disabled>{{ attachableNets.length ? $t('db.selectNetwork') : $t('db.allNetworksAttached') }}</option>
               <option v-for="n in attachableNets" :key="n.id" :value="n.id">{{ n.name }}</option>
             </select>
             <button class="btn btn-primary" :disabled="!netToAttach || netBusy"><span class="mdi mdi-lan-connect"></span>{{ $t('db.connect') }}</button>
@@ -1861,7 +1859,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showResize = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="resizing">{{ resizing ? 'Saving…' : 'Apply and restart' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="resizing">{{ resizing ? $t('action.saving') : $t('db.applyAndRestart') }}</button>
           </div>
         </form>
       </AppModal>
@@ -1885,13 +1883,13 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                 <option :value="null">{{ $t('db.donTAttach') }}</option>
                 <option v-for="a in appsOnNode" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
-              <p class="form-hint">{{ $t('db.injectsDatabaseUrlDbEnv') }}<template v-if="hiddenAppCount > 0"> {{ hiddenAppCount }} app(s) are hidden — they cannot reach this database: they run on another node, outside cluster networking.</template>
+              <p class="form-hint">{{ $t('db.injectsDatabaseUrlDbEnv') }}<template v-if="hiddenAppCount > 0"> {{ $t('db.hiddenApps', hiddenAppCount) }}</template>
               </p>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreateDb = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="creatingDb">{{ creatingDb ? 'Creating…' : 'Create database' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="creatingDb">{{ creatingDb ? $t('serviceAccounts.creating') : $t('db.createDatabase') }}</button>
           </div>
         </form>
       </AppModal>
@@ -1899,20 +1897,20 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       <!-- Connection reveal -->
       <AppModal v-if="connModal" max-width="560px" @close="connModal = null">
         <div class="modal-header">
-          <h3>Connection · {{ connModal.title }}</h3>
+          <h3>{{ $t('db.connectionTitle', { name: connModal.title }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="connModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div v-for="f in [
-            { label: 'Host', value: `${connModal.info.host}:${connModal.info.port}` },
-            { label: 'Database', value: connModal.info.database },
-            { label: 'Username', value: connModal.info.username },
-            { label: 'Password', value: connModal.info.password },
-            { label: 'URI', value: connModal.info.uri },
+            { label: $t('db.host'), value: `${connModal.info.host}:${connModal.info.port}` },
+            { label: $t('databases.col.database'), value: connModal.info.database },
+            { label: $t('volumes.username'), value: connModal.info.username },
+            { label: $t('volumes.password'), value: connModal.info.password },
+            { label: $t('appDetail.uri'), value: connModal.info.uri },
             ...(connModal.info.readonly_username ? [
-              { label: `${$t('db.readOnlyUser')} · Username`, value: connModal.info.readonly_username },
-              { label: `${$t('db.readOnlyUser')} · Password`, value: connModal.info.readonly_password },
-              { label: `${$t('db.readOnlyUser')} · URI`, value: connModal.info.readonly_uri },
+              { label: `${$t('db.readOnlyUser')} · ${$t('volumes.username')}`, value: connModal.info.readonly_username },
+              { label: `${$t('db.readOnlyUser')} · ${$t('volumes.password')}`, value: connModal.info.readonly_password },
+              { label: `${$t('db.readOnlyUser')} · ${$t('appDetail.uri')}`, value: connModal.info.readonly_uri },
             ] : []),
           ]" :key="f.label" class="dns-field">
             <span class="dns-field-label">{{ f.label }}</span>
@@ -1927,7 +1925,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       <!-- Restore dialog -->
       <AppModal v-if="restoreModal" @close="restoreModal = null">
         <div class="modal-header">
-          <h3>{{ restoreModal.backupId != null ? `Restore backup #${restoreModal.number}` : 'Restore from file' }}</h3>
+          <h3>{{ restoreModal.backupId != null ? $t('db.restoreBackupN', { number: restoreModal.number }) : $t('db.restoreFromFile') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="restoreModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="runRestore">
@@ -1936,7 +1934,9 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
               <span class="mdi mdi-note-outline"></span> {{ restoreModal.comment }}
             </p>
             <p v-if="restoreModal.version" class="form-hint" style="margin-bottom: 12px">
-              Taken from {{ inst?.engine }} {{ restoreModal.version }}<template v-if="inst?.version && inst.version !== restoreModal.version">; this instance now runs {{ inst.version }}</template>.
+              {{ inst?.version && inst.version !== restoreModal.version
+                ? $t('db.takenFromNowRuns', { engine: inst?.engine, version: restoreModal.version, current: inst.version })
+                : $t('db.takenFrom', { engine: inst?.engine, version: restoreModal.version }) }}
             </p>
             <p v-if="restoreModal.encrypted && !restoreModal.age" class="form-hint" style="margin-bottom: 12px">
               <span class="mdi mdi-lock-outline"></span>{{ $t('db.encryptedItIsDecryptedWith') }}</p>
@@ -1971,7 +1971,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="restoreModal = null">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn" :class="restoreMethod === 'force' ? 'btn-danger' : 'btn-primary'" :disabled="restoring">{{ restoring ? 'Restoring…' : 'Restore' }}</button>
+            <button type="submit" class="btn" :class="restoreMethod === 'force' ? 'btn-danger' : 'btn-primary'" :disabled="restoring">{{ restoring ? $t('db.restoring') : $t('action.restore') }}</button>
           </div>
         </form>
       </AppModal>
@@ -1981,7 +1981,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
       :open="!!confirm"
       :title="confirm?.title ?? ''"
       :message="confirm?.message ?? ''"
-      :confirm-label="confirm?.confirmLabel ?? 'Confirm'"
+      :confirm-label="confirm?.confirmLabel ?? $t('action.confirm')"
       :variant="confirm?.variant ?? 'primary'"
       :busy="confirmBusy"
       :confirm-disabled="confirmBlocked"

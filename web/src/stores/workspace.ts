@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { workspaceApi, type CreateWorkspaceInput } from '@/api/workspaces'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
 import type { Workspace, WorkspaceRole } from '@/api/types'
 
 const STORAGE_KEY = 'mb_workspace_id'
@@ -20,7 +21,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   const currentRole = computed<WorkspaceRole | null>(() => currentWorkspace.value?.role ?? null)
   const contextLabel = computed(
-    () => currentWorkspace.value?.display_name || currentWorkspace.value?.name || 'Select workspace',
+    () => currentWorkspace.value?.display_name || currentWorkspace.value?.name || t('switcher.selectWorkspace'),
   )
   const isWorkspaceContext = computed(() => currentWorkspace.value !== null)
   const isWorkspaceAdmin = computed(

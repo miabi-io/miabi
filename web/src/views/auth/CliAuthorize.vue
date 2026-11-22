@@ -49,25 +49,25 @@ function isLoopback(uri: string): boolean {
 
 const title = computed(() =>
   step.value === 'done'
-    ? 'Signing you in…'
+    ? t('login.signingYouIn')
     : step.value === 'invalid'
-      ? 'Invalid CLI login link'
+      ? t('cliAuthorize.invalidTitle')
       : step.value === 'session'
         ? t('cliAuthorize.sessionTitle')
       : step.value === 'twofactor'
-        ? 'Two-factor authentication'
-        : 'Authorize CLI login',
+        ? t('security.twoFactorAuthentication')
+        : t('cliAuthorize.sessionTitle'),
 )
 const subtitle = computed(() =>
   step.value === 'done'
-    ? 'Return to your terminal — the Miabi CLI is finishing sign-in.'
+    ? t('cliAuthorize.doneSubtitle')
     : step.value === 'invalid'
-      ? 'This link is missing a valid local callback. Re-run `miabi login`.'
+      ? t('cliAuthorize.invalidSubtitle')
       : step.value === 'session'
         ? t('cliAuthorize.sessionSubtitle')
       : step.value === 'twofactor'
-        ? 'Enter the code from your authenticator app'
-        : 'Re-authenticate to sign the Miabi CLI in on this machine.',
+        ? t('login.subtitle.twoFactor')
+        : t('cliAuthorize.confirmSubtitle'),
 )
 
 onMounted(async () => {
@@ -84,7 +84,7 @@ onMounted(async () => {
 
 function deliver(to: string | undefined) {
   if (!to) {
-    error.value = 'The server did not return a callback URL. Re-run `miabi login`.'
+    error.value = t('cliAuthorize.noCallback')
     return
   }
   step.value = 'done'
@@ -130,7 +130,7 @@ async function submit() {
     }
     deliver(data.redirect_to)
   } catch (e) {
-    error.value = apiErrorMessage(e, step.value === 'twofactor' ? 'Invalid code' : 'Invalid credentials')
+    error.value = apiErrorMessage(e, step.value === 'twofactor' ? t('login.invalidCode') : t('login.invalidCredentials'))
   } finally {
     loading.value = false
   }
@@ -155,7 +155,7 @@ function ssoLogin(slug: string) {
       </p>
       <button type="button" class="btn btn-primary auth-submit" :disabled="loading" @click="authorizeWithSession">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Signing in…' : 'Authorize CLI' }}
+        {{ loading ? $t('login.signingIn') : $t('cliAuthorize.submit') }}
       </button>
       <button type="button" class="btn btn-secondary auth-submit" :disabled="loading" @click="useAnotherAccount">
         {{ $t('cliAuthorize.useAnotherAccount') }}
@@ -177,7 +177,7 @@ function ssoLogin(slug: string) {
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Signing in…' : 'Authorize CLI' }}
+        {{ loading ? $t('login.signingIn') : $t('cliAuthorize.submit') }}
       </button>
 
       <template v-if="providers.length">
@@ -211,7 +211,7 @@ function ssoLogin(slug: string) {
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Verifying…' : 'Verify & authorize' }}
+        {{ loading ? $t('login.verifying') : $t('cliAuthorize.verifySubmit') }}
       </button>
     </form>
 

@@ -125,10 +125,10 @@ const pipelineTriggerLabel = computed(() => {
   if (!r?.has_pipeline) return ''
   const parts: string[] = []
   if (r.triggers_push) {
-    parts.push(r.push_branches?.length ? `on push to ${r.push_branches.join(', ')}` : 'on any push')
+    parts.push(r.push_branches?.length ? t('apps.trigger.pushTo', { branches: r.push_branches.join(', ') }) : t('apps.trigger.anyPush'))
   }
-  if (r.schedule) parts.push(`on schedule (${r.schedule})`)
-  if (!parts.length) parts.push('when you deploy')
+  if (r.schedule) parts.push(t('apps.trigger.schedule', { schedule: r.schedule }))
+  if (!parts.length) parts.push(t('apps.trigger.onDeploy'))
   return parts.join(' · ')
 })
 // The service runtime needs a swarm in the location the app will land in, not merely somewhere.
@@ -303,7 +303,7 @@ async function create() {
     notify.success(t('apps.created'))
     void router.push({ name: 'app-detail', params: { id: created.id } })
   } catch (e) {
-    notify.apiError(e, 'Failed to create application')
+    notify.apiError(e, t('apps.createFailed'))
   } finally {
     creating.value = false
   }
@@ -330,7 +330,7 @@ function formatCreated(ts?: string) {
     <div class="page-header">
       <div>
         <h1>{{ $t('nav.deploy.applications') }}</h1>
-        <p class="subtitle">Containerized apps Miabi builds, deploys, and runs for {{ ws.contextLabel }}.</p>
+        <p class="subtitle">{{ $t('apps.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <!-- The empty state carries its own create and marketplace choices, so the header button would repeat one of them. -->
       <button v-if="ws.canEdit && apps.length > 0" class="btn btn-primary" @click="openCreate">
@@ -357,11 +357,11 @@ function formatCreated(ts?: string) {
             <span class="mdi mdi-magnify"></span>
             <input v-model="search" class="form-input" type="search" :aria-label="$t('apps.searchLabel')" :placeholder="$t('apps.searchPlaceholder')" />
           </div>
-          <span class="text-muted text-sm">{{ filteredApps.length }} of {{ apps.length }}</span>
+          <span class="text-muted text-sm">{{ $t('apps.countOf', { n: filteredApps.length, total: apps.length }) }}</span>
         </div>
         <div v-if="filteredApps.length === 0" class="empty-state" style="padding: 40px">
           <span class="mdi mdi-magnify" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No applications match “{{ search }}”.</p>
+          <p>{{ $t('apps.noMatch', { search }) }}</p>
         </div>
         <div v-else class="table-wrapper">
         <table>
@@ -434,7 +434,7 @@ function formatCreated(ts?: string) {
             <LocationPicker v-model="form.location" v-model:node-name="form.node" :node-hint="$t(isService ? 'apps.nodeHintService' : 'apps.nodeHintContainer')" />
             <p v-if="isService && form.node && form.replicas > 1" class="form-hint form-hint-warn">{{ $t('apps.nodeReplicasWarn', { n: form.replicas }) }}</p>
             <p v-if="isService" class="form-hint">
-              Runs as a Swarm service on the workspace overlay network with {{ Math.max(1, form.replicas) }} replica(s).
+              {{ $t('apps.serviceHint', Math.max(1, form.replicas)) }}
             </p>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.col.source') }}</label>
@@ -528,14 +528,14 @@ function formatCreated(ts?: string) {
                     <label class="inspect-toggle">
                       <input v-model="form.use_pipeline" type="checkbox" />
                       <span>
-                        <strong>Use the pipeline from {{ inspected.pipeline_path }}</strong>
-                        <span class="text-muted"> — runs {{ pipelineTriggerLabel }}</span>
+                        <strong>{{ $t('apps.form.usePipeline', { path: inspected.pipeline_path }) }}</strong>
+                        <span class="text-muted"> — {{ $t('apps.form.runsWhen', { when: pipelineTriggerLabel }) }}</span>
                       </span>
                     </label>
                     <ol class="inspect-steps">
                       <li v-for="s in inspected.steps" :key="s.name">
                         <span class="step-name">{{ s.name }}</span>
-                        <span class="text-muted">{{ s.uses ? `built-in: ${s.uses}` : s.image }}</span>
+                        <span class="text-muted">{{ s.uses ? $t('apps.form.builtIn', { uses: s.uses }) : s.image }}</span>
                         <span v-if="s.continue_on_error" class="badge badge-neutral">{{ $t('apps.form.continueOnError') }}</span>
                       </li>
                     </ol>
@@ -558,9 +558,7 @@ function formatCreated(ts?: string) {
 
                   <p v-else class="form-hint">
                     <span class="mdi mdi-check"></span>
-                    No pipeline file — this app will build
-                    {{ inspected.has_dockerfile ? 'from its Dockerfile' : 'with Cloud Native Buildpacks' }}
-                    and deploy.
+                    {{ inspected.has_dockerfile ? $t('apps.form.noPipelineDockerfile') : $t('apps.form.noPipelineBuildpacks') }}
                   </p>
                 </div>
 
@@ -611,7 +609,7 @@ function formatCreated(ts?: string) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="creating || (form.source_type === 'git' && inspecting)">{{ creating ? 'Creating…' : 'Create application' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating || (form.source_type === 'git' && inspecting)">{{ creating ? $t('apps.creating') : $t('apps.createApplication') }}</button>
           </div>
         </form>
       </AppModal>

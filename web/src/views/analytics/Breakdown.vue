@@ -106,7 +106,7 @@ function label(c: Category): string {
         <span class="brow-count">{{ fmtNum(c.count) }}</span>
         <span v-if="share" class="bd-share">{{ fmtPct(c.count / total) }}</span>
       </div>
-      <p v-if="!shown.length" class="a-muted">{{ emptyHint || 'No data.' }}</p>
+      <p v-if="!shown.length" class="a-muted">{{ emptyHint || $t('analytics.noData') }}</p>
       <p v-else-if="!rows.length" class="a-muted">{{ $t('analytics.noMatches', { q: query.trim() }) }}</p>
     </div>
     <div v-if="other" class="brow bd-other" :class="flat ? '' : 'bd-other-card'">

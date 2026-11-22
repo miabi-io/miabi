@@ -28,7 +28,7 @@ defineProps<{ brandName?: string }>()
           </ul>
         </div>
 
-        <p class="auth-hero-foot">Open-source, self-hosted PaaS</p>
+        <p class="auth-hero-foot">{{ $t('authHero.footer') }}</p>
       </div>
     </aside>
 </template>

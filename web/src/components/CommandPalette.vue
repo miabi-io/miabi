@@ -96,9 +96,9 @@ function navPath(item: NavItem): string {
 const workspaceEntries = computed<Entry[]>(() =>
   ws.workspaces.map((w) => ({
     id: `ws:${w.id}`,
-    group: 'Switch workspace',
+    group: t('palette.group.switchWorkspace'),
     label: w.display_name || w.name,
-    sub: w.id === ws.currentWorkspaceId ? 'Current' : undefined,
+    sub: w.id === ws.currentWorkspaceId ? t('palette.current') : undefined,
     icon: 'mdi-briefcase-outline',
     to: `__workspace:${w.id}`,
   })),
@@ -158,7 +158,7 @@ const resourceEntries = computed<Entry[]>(() =>
 const recents = ref<Entry[]>(loadRecents())
 
 const recentEntries = computed<Entry[]>(() =>
-  trimmed.value ? [] : recents.value.slice(0, 5).map((e) => ({ ...e, group: 'Recent' })),
+  trimmed.value ? [] : recents.value.slice(0, 5).map((e) => ({ ...e, group: t('palette.group.recent') })),
 )
 
 const entries = computed<Entry[]>(() => [
@@ -320,10 +320,10 @@ onBeforeUnmount(() => {
 })
 
 const hint = computed(() => {
-  if (!ws.isWorkspaceContext) return 'Select a workspace to search its resources'
-  if (failed.value) return 'Search is unavailable right now'
-  if (loading.value) return 'Searching…'
-  if (trimmed.value && bareTerm.value.length < MIN_QUERY) return `Type at least ${MIN_QUERY} characters`
+  if (!ws.isWorkspaceContext) return t('palette.hint.selectWorkspace')
+  if (failed.value) return t('palette.hint.unavailable')
+  if (loading.value) return t('palette.hint.searching')
+  if (trimmed.value && bareTerm.value.length < MIN_QUERY) return t('palette.hint.minChars', { n: MIN_QUERY })
   return ''
 })
 </script>
@@ -377,7 +377,7 @@ const hint = computed(() => {
 
             <div v-if="!groups.length && !hint" class="palette-empty">
               <span class="mdi mdi-magnify-close"></span>
-              <span>No matches for “{{ trimmed }}”</span>
+              <span>{{ $t('palette.noMatches', { query: trimmed }) }}</span>
             </div>
           </div>
 

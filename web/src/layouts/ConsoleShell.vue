@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
             <div class="user-menu-trigger" @click="userMenuOpen = !userMenuOpen">
               <div class="user-avatar">{{ user?.name?.charAt(0)?.toUpperCase() || '?' }}</div>
               <div class="user-menu-info">
-                <div class="user-name">{{ user?.name || 'User' }}</div>
+                <div class="user-name">{{ user?.name || $t('shell.user') }}</div>
                 <div class="user-email">{{ user?.email || '' }}</div>
               </div>
               <span class="mdi mdi-chevron-down"></span>
@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
                 <div class="user-dropdown-header">
                   <span class="user-avatar user-avatar-lg">{{ user?.name?.charAt(0)?.toUpperCase() || '?' }}</span>
                   <div class="user-dropdown-info">
-                    <div class="user-dropdown-name">{{ user?.name || 'User' }}</div>
+                    <div class="user-dropdown-name">{{ user?.name || $t('shell.user') }}</div>
                     <div class="user-dropdown-email">{{ user?.email || '' }}</div>
                   </div>
                 </div>

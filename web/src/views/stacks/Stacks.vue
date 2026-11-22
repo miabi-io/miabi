@@ -106,15 +106,15 @@ async function runImport() {
     notify.success(parts.join(', '))
     // Conflicting host ports were filed pending so the stack still imports.
     if (conflicts.length) {
-      const lines = conflicts.map((c) => `${c.host_port}/${c.protocol} (in use by ${c.used_by})`).join(', ')
-      notify.error(t('notify.stacks.theseHostPortsAreAlready', { lines: lines }), 'Port conflicts')
+      const lines = conflicts.map((c) => t('stacks.portInUseBy', { port: `${c.host_port}/${c.protocol}`, by: c.used_by })).join(', ')
+      notify.error(t('notify.stacks.theseHostPortsAreAlready', { lines: lines }), t('stacks.portConflicts'))
     }
     if (res?.warnings?.length) notify.info(res.warnings.join('; '), t('stacks.importWarnings'))
     showImport.value = false
     if (res?.stack) router.push(`/stacks/${res.stack.id}`)
     else load(currentWorkspaceId.value)
   } catch (e) {
-    notify.apiError(e, 'Failed to import compose')
+    notify.apiError(e, t('stacks.importFailed'))
   } finally {
     importing.value = false
   }
@@ -127,7 +127,7 @@ async function runImport() {
     <div class="page-header">
       <div>
         <h1>{{ $t('stacks.stacks') }}</h1>
-        <p class="subtitle">Group related applications for {{ ws.contextLabel }}.</p>
+        <p class="subtitle">{{ $t('stacks.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <div class="flex items-center gap-2">
         <button v-if="ws.canEdit" class="btn btn-secondary" @click="openImport">
@@ -157,12 +157,12 @@ async function runImport() {
               :placeholder="$t('stacks.searchPlaceholder')"
             />
           </div>
-          <span class="text-muted text-sm">{{ filtered.length }} of {{ items.length }}</span>
+          <span class="text-muted text-sm">{{ $t('stacks.filteredOfTotal', { shown: filtered.length, total: items.length }) }}</span>
         </div>
 
         <div v-if="filtered.length === 0" class="empty-state" style="padding: 40px">
           <span class="mdi mdi-magnify" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No stacks match “{{ search }}”.</p>
+          <p>{{ $t('stacks.noMatch', { query: search }) }}</p>
         </div>
 
         <div v-else class="table-wrapper">
@@ -184,7 +184,7 @@ async function runImport() {
               <td class="cell-sub">{{ s.app_count ?? 0 }}</td>
               <td>
                 <span class="badge badge-dot" :class="stackBadge(s)">
-                  {{ s.status?.running ?? 0 }}/{{ s.status?.total ?? 0 }} running
+                  {{ $t('dashboard.stackRunning', { running: s.status?.running ?? 0, total: s.status?.total ?? 0 }) }}
                 </span>
               </td>
             </tr>
@@ -214,7 +214,7 @@ async function runImport() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create stack' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('serviceAccounts.creating') : $t('dashboard.quick.createStack.label') }}</button>
           </div>
         </form>
       </AppModal>
@@ -244,7 +244,7 @@ async function runImport() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showImport = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="importing">{{ importing ? 'Importing…' : 'Import stack' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="importing">{{ importing ? $t('marketplace.importing') : $t('stacks.importStack') }}</button>
           </div>
         </form>
       </AppModal>

@@ -160,7 +160,7 @@ function removeTag(i: number) {
         <input v-model="p.v" class="form-input" :placeholder="f.value_placeholder || ''" :aria-label="f.value_label || $t('middlewares.field.value')" />
         <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removePair(i)"><span class="mdi mdi-close"></span></button>
       </div>
-      <button type="button" class="btn btn-sm btn-secondary" @click="addPair"><span class="mdi mdi-plus"></span> Add {{ addNoun }}</button>
+      <button type="button" class="btn btn-sm btn-secondary" @click="addPair"><span class="mdi mdi-plus"></span> {{ $t('middlewares.field.add', { noun: addNoun }) }}</button>
     </template>
 
     <!-- "source: target" mapping list (forwardAuth response headers/params) -->
@@ -175,12 +175,12 @@ function removeTag(i: number) {
         <input
           v-model="m.to"
           class="form-input"
-          :placeholder="f.value_optional ? `${f.value_placeholder || ''} (same name)` : f.value_placeholder || ''"
+          :placeholder="f.value_optional ? $t('middlewares.field.sameName', { placeholder: f.value_placeholder || '' }) : f.value_placeholder || ''"
           :aria-label="f.value_label || $t('middlewares.field.to')"
         />
         <button type="button" class="btn-icon btn-icon-danger" :title="$t('action.remove')" :aria-label="$t('action.remove')" @click="removeMapping(i)"><span class="mdi mdi-close"></span></button>
       </div>
-      <button type="button" class="btn btn-sm btn-secondary" @click="addMapping"><span class="mdi mdi-plus"></span> Add {{ addNoun }}</button>
+      <button type="button" class="btn btn-sm btn-secondary" @click="addMapping"><span class="mdi mdi-plus"></span> {{ $t('middlewares.field.add', { noun: addNoun }) }}</button>
     </template>
 
     <!-- nested object group (cors, cookie attributes) -->
@@ -197,7 +197,7 @@ function removeTag(i: number) {
         </div>
         <MiddlewareField v-for="sub in f.fields" :key="sub.key" :field="sub" :model="row" :editing="editing" />
       </div>
-      <button type="button" class="btn btn-sm btn-secondary" @click="addRow"><span class="mdi mdi-plus"></span> Add {{ addNoun }}</button>
+      <button type="button" class="btn btn-sm btn-secondary" @click="addRow"><span class="mdi mdi-plus"></span> {{ $t('middlewares.field.add', { noun: addNoun }) }}</button>
     </template>
 
     <!-- users editor (basicAuth) -->
@@ -229,7 +229,7 @@ function removeTag(i: number) {
     <div v-else-if="f.type === 'string[]' || f.type === 'int[]'" class="tags">
       <span v-for="(t, i) in tags()" :key="i" class="tag">
         {{ t }}
-        <button type="button" class="tag-x" :title="`Remove ${t}`" :aria-label="`Remove ${t}`" @click="removeTag(i)">
+        <button type="button" class="tag-x" :title="$t('middlewares.field.removeTag', { value: t })" :aria-label="$t('middlewares.field.removeTag', { value: t })" @click="removeTag(i)">
           <span class="mdi mdi-close"></span>
         </button>
       </span>
@@ -237,7 +237,7 @@ function removeTag(i: number) {
         v-model="draft"
         class="tag-input"
         :type="f.type === 'int[]' ? 'text' : 'text'"
-        :placeholder="tags().length ? '' : f.placeholder || 'Type a value and press Enter'"
+        :placeholder="tags().length ? '' : f.placeholder || $t('middlewares.field.tagPlaceholder')"
         :aria-label="f.label"
         @keydown="onTagKey"
         @paste="onTagPaste"
@@ -254,7 +254,7 @@ function removeTag(i: number) {
         :placeholder="f.secret && editing ? $t('middlewares.field.unchanged') : f.placeholder || ''"
         :aria-label="f.label"
       />
-      <GenerateButton v-if="f.secret" :label="`Generate a value for ${f.label}`"
+      <GenerateButton v-if="f.secret" :label="$t('credentialField.generateFor', { label: f.label })"
         @generated="model[f.key] = $event" />
     </div>
 

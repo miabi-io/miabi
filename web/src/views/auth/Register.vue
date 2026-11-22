@@ -5,11 +5,13 @@ import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 import type { Brand } from '@/api/types'
 import { useThemeStore } from '@/stores/theme'
 import { useBrandStore } from '@/stores/brand'
 
 const router = useRouter()
+const { t } = useI18n()
 const theme = useThemeStore()
 const brandStore = useBrandStore()
 
@@ -49,7 +51,7 @@ onMounted(async () => {
 async function submit() {
   error.value = ''
   if (password.value.length < MIN_PASSWORD) {
-    error.value = `Password must be at least ${MIN_PASSWORD} characters.`
+    error.value = t('register.passwordTooShort', { n: MIN_PASSWORD })
     return
   }
   loading.value = true
@@ -62,7 +64,7 @@ async function submit() {
     verificationRequired.value = data.data?.verification_required ?? false
     done.value = true
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Could not create your account. Please try again.')
+    error.value = apiErrorMessage(e, t('register.failed'))
   } finally {
     loading.value = false
   }
@@ -127,11 +129,11 @@ async function submit() {
           :disabled="loading"
           required
         />
-        <p class="form-hint">At least {{ MIN_PASSWORD }} characters.</p>
+        <p class="form-hint">{{ $t('security.passwordHint', { n: MIN_PASSWORD }) }}</p>
       </div>
       <button class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Creating…' : 'Create account' }}
+        {{ loading ? $t('register.creating') : $t('register.submit') }}
       </button>
     </form>
 

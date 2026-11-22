@@ -9,7 +9,7 @@ const size = defineModel<LogSize>({ required: true })
 </script>
 
 <template>
-  <div class="log-size" role="group" aria-label="Log panel size">
+  <div class="log-size" role="group" :aria-label="$t('logSize.label')">
     <button
       v-for="s in LOG_SIZES"
       :key="s.value"
@@ -17,8 +17,8 @@ const size = defineModel<LogSize>({ required: true })
       class="log-size-opt"
       :class="{ active: size === s.value }"
       :aria-pressed="size === s.value"
-      :aria-label="s.title"
-      :title="s.title"
+      :aria-label="$t(`logSize.${s.value}`)"
+      :title="$t(`logSize.${s.value}`)"
       @click="size = s.value"
     >
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">

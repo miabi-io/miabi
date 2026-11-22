@@ -5,9 +5,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 const token = (route.query.token as string | undefined) ?? ''
 const password = ref('')
@@ -28,7 +30,7 @@ const canSubmit = computed(
 
 onMounted(() => {
   if (!token) {
-    error.value = 'This reset link is missing its token. Request a new one.'
+    error.value = t('resetPassword.missingToken')
     return
   }
   passwordInput.value?.focus()
@@ -48,7 +50,7 @@ async function submit() {
     // Brief confirmation, then send them to sign in with the new password.
     setTimeout(() => router.replace({ name: 'login' }), 2500)
   } catch (e) {
-    error.value = apiErrorMessage(e, 'This reset link is invalid or has expired.')
+    error.value = apiErrorMessage(e, t('resetPassword.invalidLink'))
   } finally {
     loading.value = false
   }
@@ -60,7 +62,7 @@ async function submit() {
     :title="$t(done ? 'resetPassword.doneTitle' : 'resetPassword.title')"
     :subtitle="done ? '' : $t('resetPassword.subtitle')"
     :error="error"
-    :notice="done ? 'Your password has been reset. Redirecting to sign in…' : ''"
+    :notice="done ? $t('resetPassword.doneNotice') : ''"
   >
     <template v-if="done">
       <RouterLink :to="{ name: 'login' }" class="btn btn-primary auth-submit">{{ $t('resetPassword.continueToSignIn') }}</RouterLink>
@@ -98,7 +100,7 @@ async function submit() {
             <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
           </button>
         </div>
-        <p v-if="tooShort" class="form-hint hint-warn">Use at least {{ MIN_LEN }} characters.</p>
+        <p v-if="tooShort" class="form-hint hint-warn">{{ $t('security.useAtLeast', { n: MIN_LEN }) }}</p>
         <p v-else-if="capsOn" class="form-hint hint-warn">
           <span class="mdi mdi-apple-keyboard-caps"></span>{{ $t('login.capsLockIsOn') }}</p>
       </div>
@@ -120,7 +122,7 @@ async function submit() {
 
       <button class="btn btn-primary auth-submit" :disabled="loading || !canSubmit">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Updating…' : 'Update password' }}
+        {{ loading ? $t('resetPassword.updating') : $t('resetPassword.submit') }}
       </button>
     </form>
 

@@ -5,9 +5,11 @@ import { useRouter } from 'vue-router'
 import { apiErrorMessage } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const next = ref('')
 const confirm = ref('')
@@ -38,7 +40,7 @@ async function submit() {
     await auth.completeReset(next.value)
     router.replace({ name: 'dashboard' })
   } catch (e) {
-    error.value = apiErrorMessage(e, 'This password-reset session has expired. Sign in again.')
+    error.value = apiErrorMessage(e, t('changePassword.sessionExpired'))
   } finally {
     loading.value = false
   }
@@ -80,7 +82,7 @@ function signOut() {
             <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
           </button>
         </div>
-        <p v-if="tooShort" class="form-hint hint-warn">Use at least {{ MIN_LEN }} characters.</p>
+        <p v-if="tooShort" class="form-hint hint-warn">{{ $t('security.useAtLeast', { n: MIN_LEN }) }}</p>
       </div>
 
       <div class="form-group">
@@ -100,7 +102,7 @@ function signOut() {
 
       <button class="btn btn-primary auth-submit" :disabled="loading || !canSubmit">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Saving…' : 'Set password & continue' }}
+        {{ loading ? $t('action.saving') : $t('changePassword.submit') }}
       </button>
     </form>
 

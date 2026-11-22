@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The series arrives gap-filled, so column N is always one bucket after N-1.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AnalyticsSeriesPoint } from '@/api/analytics'
 import { fmtNum, fmtMs, niceAxisMax } from './format'
 import { buildTicks, bucketLabel, type Granularity } from './timeaxis'
@@ -99,9 +100,9 @@ const tipStyle = computed(() => {
   return { left: `${pct}%`, transform: `translateX(${shift})` }
 })
 
-const summary = computed(
-  () =>
-    `Requests per ${props.granularity} — ${props.series.length} buckets, peak ${fmtNum(peak.value)}`,
+const { t } = useI18n()
+const summary = computed(() =>
+  t('analytics.requestsSummary', { per: t(`analytics.per.${props.granularity}`), n: props.series.length, peak: fmtNum(peak.value) }),
 )
 </script>
 
@@ -161,7 +162,7 @@ const summary = computed(
               <i class="k k-5xx"></i><span>{{ $t('dashboard.analytics.serverErrors') }}</span><b>{{ fmtNum(active.col.e5) }}</b>
             </div>
             <div class="rc-tip-foot">
-              {{ fmtNum(active.point.requests) }} requests · p95 {{ fmtMs(active.point.p95_latency_ms) }}
+              {{ $t('analytics.requestsCount', { count: fmtNum(active.point.requests) }) }} · p95 {{ fmtMs(active.point.p95_latency_ms) }}
             </div>
           </template>
           <!-- A quiet bucket has no percentiles to report — zeroes would read as data. -->

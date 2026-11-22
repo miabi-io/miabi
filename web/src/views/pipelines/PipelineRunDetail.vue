@@ -219,11 +219,11 @@ async function rerun(noCache = false) {
   try {
     const fresh = (await pipelineApi.rerun(wid, run.value.id, noCache)).data.data
     notify.success(t('notify.pipelines.runNumberQueued', { number: fresh.number }), {
-      detail: noCache ? 'Building without cache — expect a slower run.' : 'Re-running the same commit.',
+      detail: noCache ? t('pipelines.buildingWithoutCache') : t('pipelines.reRunningSameCommit'),
     })
     await router.push({ name: 'pipeline-run', params: { id: pipelineId.value, runId: fresh.id } })
   } catch (e) {
-    notify.apiError(e, 'Could not re-run')
+    notify.apiError(e, t('pipelines.reRunFailed'))
   } finally {
     rerunning.value = false
   }
@@ -241,7 +241,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
       <div>
         <router-link :to="{ name: 'pipeline-runs', params: { id: pipelineId } }" class="back-link">
           <span class="mdi mdi-arrow-left"></span>{{ $t('pipelines.runs') }}</router-link>
-        <h1 v-if="run">Run #{{ run.number }}
+        <h1 v-if="run">{{ $t('pipelines.runNumber', { number: run.number }) }}
           <code v-if="run.image_tag" class="run-version" :title="$t('versioning.runVersionTitle')">{{ run.image_tag }}</code>
         </h1>
         <p v-if="run" class="subtitle">
@@ -315,7 +315,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
                   <span>{{ statusMeta(s.status).label }}</span>
                   <span v-if="s.status === 'failed' && s.continue_on_error" class="allow-note">{{ $t('pipelines.failureIgnored') }}</span>
                   <span v-if="s.started_at">· {{ stepDuration(s) }}</span>
-                  <span v-if="s.status === 'succeeded' || s.status === 'failed'" class="mono">· exit {{ s.exit_code }}</span>
+                  <span v-if="s.status === 'succeeded' || s.status === 'failed'" class="mono">· {{ $t('pipelines.exitCode', { code: s.exit_code }) }}</span>
                 </span>
               </span>
             </button>
@@ -334,10 +334,10 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
                 {{ steps.find((s) => s.ordinal === selectedOrdinal)?.name }}
                 <span class="mdi mdi-close"></span>
               </button>
-              <span class="line-count">{{ displayLines.length }} lines</span>
+              <span class="line-count">{{ $t('pipelines.lineCount', displayLines.length) }}</span>
             </div>
             <div class="logs-actions">
-              <button class="btn-icon btn-icon-muted" :class="{ on: wrap }" :title="wrap ? 'Disable wrap' : 'Wrap lines'" @click="wrap = !wrap">
+              <button class="btn-icon btn-icon-muted" :class="{ on: wrap }" :title="wrap ? $t('pipelines.disableWrap') : $t('pipelines.wrapLines')" @click="wrap = !wrap">
                 <span class="mdi mdi-wrap"></span>
               </button>
               <button class="btn-icon btn-icon-muted" :class="{ on: autoScroll }" :title="$t('pipelines.autoScroll')" @click="autoScroll = !autoScroll">
@@ -354,7 +354,7 @@ onBeforeUnmount(() => { es?.close(); if (ticker) clearInterval(ticker) })
           <div class="logs-wrap">
             <div ref="logBox" class="logs" :class="{ nowrap: !wrap }" @scroll="onLogScroll">
               <div v-if="displayLines.length === 0" class="logs-empty">
-                {{ streaming ? 'Waiting for output…' : 'No log output.' }}
+                {{ streaming ? $t('pipelines.waitingForOutput') : $t('pipelines.noLogOutput') }}
               </div>
               <div v-for="(l, i) in displayLines" :key="i" class="log-line" :class="{ sep: l.startsWith('─') }">
                 <span class="ln">{{ i + 1 }}</span><span class="lt">{{ l }}</span>

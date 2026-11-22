@@ -96,7 +96,7 @@ async function openEdit(c: Config) {
     affected.value = (await configApi.usage(id, c.id)).data.data ?? []
     showForm.value = true
   } catch (e) {
-    notify.apiError(e, 'Only admins can open a config for editing')
+    notify.apiError(e, t('configs.editAdminOnly'))
   }
 }
 
@@ -167,7 +167,7 @@ async function confirmDelete() {
     toDelete.value = null
     reload()
   } catch (e) {
-    notify.apiError(e, 'A config cannot be deleted while an application still mounts it')
+    notify.apiError(e, t('configs.deleteMounted'))
   } finally { deleting.value = false }
 }
 </script>
@@ -190,7 +190,7 @@ async function confirmDelete() {
           <input v-model="search" class="form-input" type="search" :placeholder="$t('configs.searchPlaceholder')"
             :aria-label="$t('configs.searchConfigs')" @input="onSearchInput" />
         </div>
-        <span class="text-muted">{{ pageable.total_elements }} config{{ pageable.total_elements === 1 ? '' : 's' }}</span>
+        <span class="text-muted">{{ $t('count.configs', pageable.total_elements) }}</span>
       </div>
 
       <div v-if="loading && configs.length === 0" class="card-body"><span class="spinner"></span></div>
@@ -252,7 +252,7 @@ async function confirmDelete() {
     <!-- Create / edit -->
     <AppModal v-if="showForm" max-width="860px" @close="showForm = false">
       <div class="modal-header">
-        <h3>{{ editingId ? 'Edit config' : 'New config' }}</h3>
+        <h3>{{ editingId ? $t('configs.editConfig') : $t('configs.newConfig') }}</h3>
         <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showForm = false"><span class="mdi mdi-close"></span></button>
       </div>
       <div class="modal-body">
@@ -293,7 +293,7 @@ async function confirmDelete() {
 
         <div v-if="editingId && affected.length" class="app-banner app-banner--warning">
           <span class="mdi mdi-restart"></span>
-          <span>Saving redeploys {{ affected.length }} app(s): {{ affected.map((a) => a.name).join(', ') }}</span>
+          <span>{{ $t('configs.savingRedeploys', { n: affected.length, apps: affected.map((a) => a.name).join(', ') }, affected.length) }}</span>
         </div>
 
         <div class="files">
@@ -305,7 +305,7 @@ async function confirmDelete() {
               :class="{ active: i === activeFile }"
               @click="activeFile = i"
             >
-              {{ f.key || 'untitled' }}
+              {{ f.key || $t('configs.untitled') }}
             </button>
             <button class="file-tab add" @click="addFile"><span class="mdi mdi-plus"></span></button>
           </div>
@@ -315,7 +315,7 @@ async function confirmDelete() {
               <input
                 v-model="files[activeFile].key"
                 class="form-input"
-                placeholder="prometheus.yml or rules/alerts.yml"
+                :placeholder="$t('configs.fileNamePlaceholder')"
               />
               <span class="badge badge-neutral">{{ fileLanguage(files[activeFile].key) }}</span>
               <button class="btn btn-sm btn-danger" :disabled="files.length === 1" @click="removeFile(activeFile)">
@@ -340,7 +340,7 @@ async function confirmDelete() {
         <button class="btn btn-secondary" @click="showForm = false">{{ $t('action.cancel') }}</button>
         <button class="btn btn-primary" :disabled="!formValid || saving" @click="save">
           <span v-if="saving" class="spinner spinner-sm"></span>
-          {{ editingId ? 'Save changes' : 'Create config' }}
+          {{ editingId ? $t('marketplace.saveChanges') : $t('configs.createConfig') }}
         </button>
       </div>
     </AppModal>

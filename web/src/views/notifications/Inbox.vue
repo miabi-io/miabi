@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { inboxApi, type InboxNotification } from '@/api/inbox'
 import { useInboxStore } from '@/stores/inbox'
@@ -8,6 +9,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { followNotificationLink } from '@/utils/notificationLink'
 
 const router = useRouter()
+const { t } = useI18n()
 const inbox = useInboxStore()
 const ws = useWorkspaceStore()
 const { workspaces } = storeToRefs(ws)
@@ -52,9 +54,9 @@ async function markAll() {
 
 // Workspace 0 is the platform scope: an announcement belongs to no one workspace.
 function wsName(id: number) {
-  if (id === 0) return 'Platform'
+  if (id === 0) return t('switcher.platform')
   const w = workspaces.value.find((x) => x.id === id)
-  return w?.display_name || w?.name || `Workspace #${id}`
+  return w?.display_name || w?.name || t('apiKeys.workspaceId', { id })
 }
 function sevClass(s: string) {
   return s === 'critical' ? 'sev-crit' : s === 'warning' ? 'sev-warn' : 'sev-info'
@@ -96,7 +98,7 @@ onMounted(() => load())
       <div v-else-if="!items.length" class="empty-state">
         <span class="mdi mdi-bell-check-outline" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('inbox.nothingHere') }}</h3>
-        <p>{{ unreadOnly ? 'No unread notifications.' : 'You have no notifications yet.' }}</p>
+        <p>{{ unreadOnly ? $t('inbox.noUnread') : $t('inbox.empty') }}</p>
       </div>
       <div v-else class="n-list">
         <button

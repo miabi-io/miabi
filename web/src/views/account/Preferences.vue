@@ -63,7 +63,7 @@ async function saveDefaultWorkspace(raw: string) {
     await authApi.setDefaultWorkspace(id)
     defaultWorkspaceId.value = id
     if (auth.user) auth.setUser({ ...auth.user, default_workspace_id: id ?? undefined })
-    notify.success(id ? 'Default workspace saved' : 'Default workspace cleared')
+    notify.success(id ? t('notify.workspaces.defaultSaved') : t('notify.workspaces.defaultCleared'))
   } catch (e) {
     notify.apiError(e)
     defaultWorkspaceId.value = auth.user?.default_workspace_id ?? null
@@ -206,7 +206,7 @@ async function saveDisplay() {
       </div>
       <div class="card-footer">
         <button class="btn btn-primary" :disabled="saving" @click="saveDisplay">
-          {{ saving ? 'Saving…' : 'Save' }}
+          {{ saving ? t('action.saving') : t('action.save') }}
         </button>
       </div>
     </div>

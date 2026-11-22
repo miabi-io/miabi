@@ -73,7 +73,7 @@ function when(ts: string): string {
     <div class="page-header">
       <div>
         <h1>{{ $t('nav.workspace.auditLog') }}</h1>
-        <p class="subtitle">Activity in {{ ws.contextLabel }}</p>
+        <p class="subtitle">{{ $t('audit.activityIn', { name: ws.contextLabel }) }}</p>
       </div>
       <button class="btn btn-ghost btn-sm" :disabled="loading" @click="goToPage(pageable.current_page)">
         <span class="mdi" :class="loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>{{ $t('volumes.refresh') }}</button>

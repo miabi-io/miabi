@@ -24,28 +24,28 @@ function latency(r: AnalyticsReport): number[] {
 <template>
   <AnalyticsShell v-slot="{ report }">
     <div class="a-grid">
-      <StatTile label="Requests" icon="mdi-swap-horizontal" :value="fmtNum(report.totals.requests)"
+      <StatTile :label="$t('dashboard.analytics.requests')" icon="mdi-swap-horizontal" :value="fmtNum(report.totals.requests)"
         :delta="delta(report.totals.requests, report.compare?.requests)" />
-      <StatTile label="Unique visitors" icon="mdi-account-multiple-outline" :value="fmtNum(report.totals.unique_visitors)"
+      <StatTile :label="$t('analytics.uniqueVisitors')" icon="mdi-account-multiple-outline" :value="fmtNum(report.totals.unique_visitors)"
         :delta="delta(report.totals.unique_visitors, report.compare?.unique_visitors)" />
-      <StatTile label="Data served" icon="mdi-swap-vertical" :value="fmtBytes(report.totals.bytes_in + report.totals.bytes_out)"
+      <StatTile :label="$t('analytics.dataServed')" icon="mdi-swap-vertical" :value="fmtBytes(report.totals.bytes_in + report.totals.bytes_out)"
         :delta="delta(report.totals.bytes_out, report.compare?.bytes_out)">
         <template #sub>
-          <span class="mdi mdi-arrow-down-thin io-in" :title="$t('analytics.inboundRequestsReceived')"></span>{{ fmtBytes(report.totals.bytes_in) }} in
+          <span class="mdi mdi-arrow-down-thin io-in" :title="$t('analytics.inboundRequestsReceived')"></span>{{ $t('analytics.bytesIn', { bytes: fmtBytes(report.totals.bytes_in) }) }}
           <span class="io-dot">·</span>
-          <span class="mdi mdi-arrow-up-thin io-out" :title="$t('analytics.outboundResponsesSent')"></span>{{ fmtBytes(report.totals.bytes_out) }} out
+          <span class="mdi mdi-arrow-up-thin io-out" :title="$t('analytics.outboundResponsesSent')"></span>{{ $t('analytics.bytesOut', { bytes: fmtBytes(report.totals.bytes_out) }) }}
         </template>
       </StatTile>
-      <StatTile label="Server errors (5xx)" icon="mdi-alert-octagon-outline"
+      <StatTile :label="$t('analytics.serverErrors5xx')" icon="mdi-alert-octagon-outline"
         :value="fmtPct(rate(report.status.s5xx, report.totals.requests))"
         :danger="rate(report.status.s5xx, report.totals.requests) >= 0.01" invert
-        :sub="`Client errors (4xx): ${fmtPct(rate(report.status.s4xx, report.totals.requests))}`" />
+        :sub="$t('analytics.clientErrorsRate', { pct: fmtPct(rate(report.status.s4xx, report.totals.requests)) })" />
     </div>
 
     <div class="card">
       <div class="a-card-header">
         <h3>{{ $t('analytics.requestsOverTime') }}</h3>
-        <span class="a-muted">{{ fmtNum(report.totals.requests) }} requests · per {{ report.granularity }}</span>
+        <span class="a-muted">{{ $t('analytics.requestsCount', { count: fmtNum(report.totals.requests) }) }} · {{ $t(`analytics.per.${report.granularity}`) }}</span>
       </div>
       <div class="card-body">
         <RequestsChart v-if="report.series.length" :series="report.series" :granularity="report.granularity" />
@@ -59,7 +59,7 @@ function latency(r: AnalyticsReport): number[] {
         <div class="card-body">
           <StatusPie :status="report.status" />
           <div class="perf-inline">
-            <span>Avg {{ fmtMs(report.totals.avg_latency_ms) }}</span>
+            <span>{{ $t('analytics.avgValue', { value: fmtMs(report.totals.avg_latency_ms) }) }}</span>
             <span>p95 {{ fmtMs(report.totals.p95_latency_ms) }}</span>
             <Sparkline v-if="latency(report).length > 1" :values="latency(report)" :width="180" :height="34" stroke="var(--warning-600)" />
           </div>
@@ -71,7 +71,7 @@ function latency(r: AnalyticsReport): number[] {
         :items="report.web.top_countries"
         kind="country"
         :limit="7"
-        empty-hint="Country data needs the GeoIP database on the gateway."
+        :empty-hint="$t('analytics.countryNeedsGeoip')"
       >
         <template #action>
           <a class="a-muted" href="#" @click.prevent="router.push('/analytics/http')">{{ $t('analytics.viewMap') }}</a>

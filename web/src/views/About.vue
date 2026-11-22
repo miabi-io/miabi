@@ -92,7 +92,7 @@ function copyVersion() {
       <p class="hero-tagline">{{ $t('about.tagline') }}</p>
       <div class="hero-badges">
         <span v-if="info" class="badge badge-neutral">v{{ info.version }}</span>
-        <span v-if="editionLabel" class="badge edition" :class="`edition-${edition}`">{{ editionLabel }} Edition</span>
+        <span v-if="editionLabel" class="badge edition" :class="`edition-${edition}`">{{ $t(`about.editionBadge.${edition}`) }}</span>
       </div>
     </section>
 
@@ -110,11 +110,11 @@ function copyVersion() {
           </div>
           <div class="kv">
             <span class="k">{{ $t('about.edition') }}</span>
-            <span class="v">{{ editionLabel ?? (auth.isAdmin ? '—' : 'Restricted') }}</span>
+            <span class="v">{{ editionLabel ?? (auth.isAdmin ? '—' : $t('about.restricted')) }}</span>
           </div>
           <button class="btn btn-secondary btn-sm copy-btn" @click="copyVersion">
             <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
-            {{ copied ? 'Copied' : 'Copy version' }}
+            {{ copied ? $t('notify.common.copied') : $t('about.copyVersion') }}
           </button>
         </div>
       </div>
@@ -201,7 +201,7 @@ function copyVersion() {
       </div>
     </div>
 
-    <p class="legal">&copy; {{ currentYear }} Jonas Kaninda · AGPL-3.0 licensed</p>
+    <p class="legal">{{ $t('about.legal', { year: currentYear }) }}</p>
   </div>
 </template>
 

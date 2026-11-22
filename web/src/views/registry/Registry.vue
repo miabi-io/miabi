@@ -190,7 +190,7 @@ watch(wsId, async () => {
         <span class="mdi mdi-cube-off-outline empty-icon"></span>
         <div>
           <p class="empty-title">{{ $t('registry.disabledTitle') }}</p>
-          <i18n-t keypath="registry.disabledHint" tag="p" class="text-muted text-sm"><template #menu><strong>Admin → Container Registry</strong></template></i18n-t>
+          <i18n-t keypath="registry.disabledHint" tag="p" class="text-muted text-sm"><template #menu><strong>{{ $t('nav.palette.adminSub') }} → {{ $t('adminNav.infrastructure.containerRegistry') }}</strong></template></i18n-t>
         </div>
       </div>
     </div>
@@ -256,8 +256,7 @@ watch(wsId, async () => {
             <div>
               <h2>{{ $t('registry.repositories') }}</h2>
               <p class="text-muted text-sm" style="margin: 2px 0 0">
-                {{ pageable.total_elements }}
-                {{ pageable.total_elements === 1 ? 'repository' : 'repositories' }}{{ search ? ' matching' : '' }}
+                {{ search ? $t('registry.repoCountMatching', pageable.total_elements) : $t('registry.repoCount', pageable.total_elements) }}
               </p>
             </div>
             <div class="repos-actions">
@@ -275,7 +274,7 @@ watch(wsId, async () => {
           <div v-else-if="repos.length === 0 && search" class="card-body empty">
             <span class="mdi mdi-magnify empty-icon"></span>
             <div>
-              <p class="empty-title">No image matches &ldquo;{{ search }}&rdquo;</p>
+              <p class="empty-title">{{ $t('registry.noImageMatch', { query: search }) }}</p>
               <p class="text-muted text-sm">
                 <button class="link-btn" @click="search = ''; goToPage(0)">{{ $t('registry.clearTheFilter') }}</button>
               </p>
@@ -297,7 +296,7 @@ watch(wsId, async () => {
               <div class="repo-head">
                 <span class="mdi mdi-cube-outline repo-icon"></span>
                 <button class="repo-name mono link" @click="openRepo(r.name)">{{ info.image_prefix }}/{{ r.name }}</button>
-                <span class="badge badge-neutral">{{ r.tag_count }} {{ r.tag_count === 1 ? 'tag' : 'tags' }}</span>
+                <span class="badge badge-neutral">{{ $t('registry.tagCount', r.tag_count) }}</span>
                 <span
                   v-if="usageByRepo.get(r.name)?.bytes"
                   class="badge badge-neutral"
@@ -307,7 +306,7 @@ watch(wsId, async () => {
               <div v-if="preview(r).length" class="tag-grid">
                 <code v-for="t in preview(r)" :key="t" class="tag">{{ t }}</code>
                 <button v-if="r.tag_count > preview(r).length" class="link-btn more-note" @click="openRepo(r.name)">
-                  +{{ r.tag_count - preview(r).length }} more
+                  {{ $t('registry.moreCount', { n: r.tag_count - preview(r).length }) }}
                 </button>
               </div>
               <p v-else class="text-muted text-sm no-tags">{{ $t('registry.emptyRepoHint') }}</p>

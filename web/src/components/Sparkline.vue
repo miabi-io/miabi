@@ -46,7 +46,7 @@ const area = computed(() => {
   >
     <path v-if="area" :d="area" class="spark-area" :style="{ fill: stroke }" />
     <path v-if="line" :d="line" class="spark-line" :style="{ stroke }" fill="none" />
-    <text v-if="values.length < 2" :x="width / 2" :y="height / 2 + 3" class="spark-empty">no data yet</text>
+    <text v-if="values.length < 2" :x="width / 2" :y="height / 2 + 3" class="spark-empty">{{ $t('sparkline.noData') }}</text>
   </svg>
 </template>
 

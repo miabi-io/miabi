@@ -2,11 +2,11 @@ import { ref, watch } from 'vue'
 
 export type LogSize = 'small' | 'medium' | 'large'
 
-// LogSizeControl draws each option, so title is the only text a user ever reads.
-export const LOG_SIZES: { value: LogSize; title: string; height: string }[] = [
-  { value: 'small', title: 'Small', height: '350px' },
-  { value: 'medium', title: 'Medium', height: '600px' },
-  { value: 'large', title: 'Large (fill screen)', height: 'calc(100vh - 240px)' },
+// LogSizeControl labels each option through logSize.<value>, so a size needs a catalogue entry.
+export const LOG_SIZES: { value: LogSize; height: string }[] = [
+  { value: 'small', height: '350px' },
+  { value: 'medium', height: '600px' },
+  { value: 'large', height: 'calc(100vh - 240px)' },
 ]
 
 const STORAGE_KEY = 'miabi_log_size'

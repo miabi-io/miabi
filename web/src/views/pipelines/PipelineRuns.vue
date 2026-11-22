@@ -96,10 +96,10 @@ async function trigger(noCache = false) {
     if (!runs.value.some((r) => r.id === run.id)) runs.value.unshift(run)
     if (policy.value) loadPipeline()
     notify.success(t('notify.pipelines.runNumberQueued', { number: run.number }), {
-      detail: noCache ? 'Building without cache — expect a slower run.' : 'Open it to follow the logs.',
+      detail: noCache ? t('pipelines.buildingWithoutCache') : t('pipelines.openToFollowLogs'),
     })
   } catch (e) {
-    notify.apiError(e, 'Could not trigger run')
+    notify.apiError(e, t('pipelines.triggerFailed'))
   } finally {
     triggering.value = false
   }
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
       <div>
         <router-link to="/pipelines" class="back-link"><span class="mdi mdi-arrow-left"></span>{{ $t('pipelines.pipelines') }}</router-link>
         <div class="title-row">
-          <h1>{{ pipeline?.display_name || pipeline?.name || 'Pipeline' }}</h1>
+          <h1>{{ pipeline?.display_name || pipeline?.name || $t('pipelines.pipeline') }}</h1>
           <span v-if="pipeline?.last_run" class="badge" :class="statusMeta(pipeline.last_run.status).badge">
             <span class="mdi" :class="statusMeta(pipeline.last_run.status).icon"></span> {{ statusMeta(pipeline.last_run.status).label }}
           </span>

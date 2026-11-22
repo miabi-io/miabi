@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { memberApi } from '@/api/resources'
@@ -9,6 +10,7 @@ import type { AuditLogDetail } from '@/api/types'
 
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
@@ -25,7 +27,7 @@ async function load() {
   try {
     entry.value = (await memberApi.auditLog(wsId, entryId.value)).data.data
   } catch (e) {
-    notify.apiError(e, 'Failed to load audit entry')
+    notify.apiError(e, t('audit.loadFailed'))
     router.replace('/audit-log')
   } finally {
     loading.value = false
@@ -51,7 +53,7 @@ const actorLabel = computed(() => {
   if (e.actor_name || e.actor_email) {
     return e.actor_name && e.actor_email ? `${e.actor_name} · ${e.actor_email}` : e.actor_name || e.actor_email || ''
   }
-  return e.actor_id ? `#${e.actor_id}` : 'System'
+  return e.actor_id ? `#${e.actor_id}` : t('switcher.systemBadge')
 })
 
 // Pretty-print the metadata object; empty when there's none.
@@ -71,7 +73,7 @@ const prettyMetadata = computed(() => {
         </button>
         <div class="header-title">
           <h1>{{ $t('audit.auditEntry') }}</h1>
-          <span class="subline">Activity in {{ ws.contextLabel }}</span>
+          <span class="subline">{{ $t('audit.activityIn', { name: ws.contextLabel }) }}</span>
         </div>
       </div>
     </div>

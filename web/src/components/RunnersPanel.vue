@@ -249,7 +249,7 @@ function platform(r: Runner): string {
               <td class="cell-sub">{{ r.version || '—' }}</td>
               <td style="text-align: right; white-space: nowrap">
                 <template v-if="canEdit">
-                  <button class="btn btn-secondary btn-sm" @click="toggleCordon(r)">{{ r.cordoned ? 'Resume' : 'Cordon' }}</button>
+                  <button class="btn btn-secondary btn-sm" @click="toggleCordon(r)">{{ r.cordoned ? $t('routes.flow.rollout.resume') : $t('runners.cordon') }}</button>
                   <button class="btn btn-secondary btn-sm" style="margin-left: 8px" @click="pendingRegenerate = r">{{ $t('runners.token') }}</button>
                   <button class="btn btn-danger btn-sm" style="margin-left: 8px" @click="pendingDelete = r">{{ $t('action.delete') }}</button>
                 </template>
@@ -263,7 +263,7 @@ function platform(r: Runner): string {
     <Teleport to="body">
       <AppModal v-if="showRegister" @close="showRegister = false">
         <div class="modal-header">
-          <h3>{{ shared ? 'Add shared runner' : 'Add runner' }}</h3>
+          <h3>{{ shared ? $t('runners.addSharedRunner') : $t('runners.addRunner') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showRegister = false"><span class="mdi mdi-close"></span></button>
         </div>
 
@@ -290,7 +290,7 @@ function platform(r: Runner): string {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showRegister = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Add runner' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : $t('runners.addRunner') }}</button>
           </div>
         </form>
 

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useInboxStore } from '@/stores/inbox'
 import type { InboxNotification } from '@/api/inbox'
 import { followNotificationLink } from '@/utils/notificationLink'
@@ -9,6 +10,7 @@ import { followNotificationLink } from '@/utils/notificationLink'
 const store = useInboxStore()
 const { unread, items, loading } = storeToRefs(store)
 const router = useRouter()
+const { t } = useI18n()
 
 const open = ref(false)
 const badge = computed(() => (unread.value > 99 ? '99+' : String(unread.value)))
@@ -40,10 +42,10 @@ function itemIcon(n: InboxNotification) {
 }
 function timeAgo(iso: string): string {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  if (s < 60) return t('time.justNow')
+  if (s < 3600) return t('time.minutesAgo', { n: Math.floor(s / 60) })
+  if (s < 86400) return t('time.hoursAgo', { n: Math.floor(s / 3600) })
+  return t('time.daysAgo', { n: Math.floor(s / 86400) })
 }
 
 function onDocClick(e: MouseEvent) {

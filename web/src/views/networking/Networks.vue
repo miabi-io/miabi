@@ -68,7 +68,7 @@ async function confirmRemove() {
     toDelete.value = null
     load(currentWorkspaceId.value)
   } catch (e) {
-    notify.apiError(e, 'Cannot delete (in use or default)')
+    notify.apiError(e, t('networks.cannotDelete'))
   } finally {
     deleting.value = false
   }
@@ -80,7 +80,7 @@ async function confirmRemove() {
     <div class="page-header">
       <div>
         <h1>{{ $t('networks.networks') }}</h1>
-        <p class="subtitle">Managed Docker networks for {{ ws.contextLabel }}.</p>
+        <p class="subtitle">{{ $t('networks.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('networks.newNetwork') }}</button>
@@ -141,7 +141,7 @@ async function confirmRemove() {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. backend" required autofocus />
+              <input v-model="form.name" class="form-input" :placeholder="$t('networks.namePlaceholder')" required autofocus />
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('networks.driver') }}</label>
@@ -152,7 +152,7 @@ async function confirmRemove() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Creating…' : 'Create network' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('networks.creating') : $t('networks.createNetwork') }}</button>
           </div>
         </form>
       </AppModal>

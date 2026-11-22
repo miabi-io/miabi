@@ -13,7 +13,7 @@ function set(v: string) {
   <div class="form-group">
     <label class="form-label" :for="`dnsf-${props.field.key}`">
       {{ props.field.label }}
-      <span v-if="!props.field.required" class="optional">optional</span>
+      <span v-if="!props.field.required" class="optional">{{ $t('dnsProviders.optionalTag') }}</span>
     </label>
 
     <textarea

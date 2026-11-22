@@ -93,7 +93,7 @@ async function test(r: GitRepository) {
     await gitRepositoryApi.test(currentWorkspaceId.value, r.id)
     notify.success(t('notify.gitRepositories.connectionOk', { name: r.name }))
   } catch (e) {
-    notify.apiError(e, 'Connection failed')
+    notify.apiError(e, t('gitRepos.conn.failed'))
   } finally {
     testing.value = null
     // The outcome is recorded server-side either way, so refresh the row's icon.
@@ -167,7 +167,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('gitRepos.repository') }}</th><th>URL</th><th>{{ $t('gitRepos.auth') }}</th><th>{{ $t('gitRepos.connection') }}</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('gitRepos.repository') }}</th><th>{{ $t('gitops.url') }}</th><th>{{ $t('gitRepos.auth') }}</th><th>{{ $t('gitRepos.connection') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="r in items" :key="r.id">
               <td>
@@ -184,7 +184,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                       <template v-if="r.secret_ref">
                         <span class="mdi mdi-key-variant"></span> {{ r.secret_ref }}
                       </template>
-                      <template v-else>{{ r.has_secret ? 'secret set' : 'no secret' }}</template>
+                      <template v-else>{{ r.has_secret ? $t('gitRepos.secretSet') : $t('gitRepos.noSecret') }}</template>
                     </span>
                   </span>
                 </div>
@@ -213,14 +213,14 @@ const authTypes: { value: GitAuthType; label: string }[] = [
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit repository' : 'New repository' }}</h3>
+          <h3>{{ editing ? $t('gitRepos.editRepository') : $t('gitRepos.newRepository') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div v-if="!editing" class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. acme/api" required autofocus :aria-label="$t('apps.form.name')" />
+              <input v-model="form.name" class="form-input" :placeholder="$t('gitRepos.namePlaceholder')" required autofocus :aria-label="$t('apps.form.name')" />
               <p class="form-hint">{{ $t('gitRepos.authTypeHint') }}</p>
             </div>
             <template v-else>
@@ -252,7 +252,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
               </div>
               <CredentialSecretField
                 v-model="form.secret"
-                :label="form.auth_type === 'ssh' ? 'SSH private key' : 'Access token'"
+                :label="form.auth_type === 'ssh' ? $t('gitRepos.sshPrivateKey') : $t('gitRepos.accessToken')"
                 :editing="!!editing"
                 :current-ref="editing?.secret_ref || ''"
                 :multiline="form.auth_type === 'ssh'"
@@ -263,7 +263,7 @@ const authTypes: { value: GitAuthType; label: string }[] = [
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add repository') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('gitRepos.addRepository')) }}</button>
           </div>
         </form>
       </AppModal>
