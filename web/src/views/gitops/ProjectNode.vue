@@ -20,7 +20,7 @@ const status = computed(() => gitSourceStatusMeta[props.data.status])
     <span class="pnode-icon"><span class="mdi mdi-git"></span></span>
     <span class="pnode-body">
       <span class="pnode-name" :title="data.name">{{ data.name }}</span>
-      <span class="pnode-sub">GitOps project · {{ data.count }} resource{{ data.count === 1 ? '' : 's' }}</span>
+      <span class="pnode-sub">{{ $t('gitops.projectNodeSub', data.count) }}</span>
     </span>
     <span class="pnode-status" :title="status.label"><span class="mdi" :class="status.icon"></span></span>
   </div>

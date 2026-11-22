@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { locationApi, type Location, type LocationNode } from '@/api/locations'
 import { useAuthStore } from '@/stores/auth'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 
 const { currentWorkspaceId } = storeToRefs(useWorkspaceStore())
 const auth = useAuthStore()
+const { t } = useI18n()
 const locations = ref<Location[]>([])
 const nodes = ref<LocationNode[]>([])
 
@@ -74,9 +76,9 @@ function placeable(n: LocationNode): boolean {
   return n.is_local || (n.online && !n.cordoned)
 }
 function nodeLabel(n: LocationNode): string {
-  if (n.is_local) return `${n.display_name} (manager)`
-  if (!n.online) return `${n.display_name} — offline`
-  if (n.cordoned) return `${n.display_name} — cordoned`
+  if (n.is_local) return t('locationPicker.nodeManager', { name: n.display_name })
+  if (!n.online) return `${n.display_name} — ${t('runners.state.offline')}`
+  if (n.cordoned) return `${n.display_name} — ${t('runners.state.cordoned')}`
   return n.display_name
 }
 </script>
@@ -85,7 +87,7 @@ function nodeLabel(n: LocationNode): string {
   <div v-if="locations.length > 1" class="form-group">
     <label class="form-label">{{ $t('locationPicker.location') }}</label>
     <select v-model="location" class="form-select" :aria-label="$t('locationPicker.location')">
-      <option value="">{{ defaultLocation ? `Workspace default — ${locationLabel(defaultLocation)}` : 'Workspace default' }}</option>
+      <option value="">{{ defaultLocation ? `${$t('locationPicker.workspaceDefault')} — ${locationLabel(defaultLocation)}` : $t('locationPicker.workspaceDefault') }}</option>
       <option v-for="l in locations" :key="l.id" :value="l.name">{{ locationLabel(l) }}</option>
     </select>
     <p class="form-hint">{{ $t('locationPicker.privateNetworksDonTSpan') }}</p>

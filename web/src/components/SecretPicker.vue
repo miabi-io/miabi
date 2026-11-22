@@ -143,7 +143,7 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
         <div v-if="loading" class="note"><span class="spinner spinner-sm"></span>{{ $t('secretPicker.searching') }}</div>
         <div v-else-if="failed" class="note">{{ $t('secretPicker.couldNotLoadSecrets') }}</div>
         <div v-else-if="results.length === 0" class="note">
-          {{ query.trim() ? `No secrets match “${query.trim()}”.` : 'No secrets in this workspace yet.' }}
+          {{ query.trim() ? $t('secretPicker.noMatch', { query: query.trim() }) : $t('secretPicker.noSecretsYet') }}
         </div>
         <ul v-else class="options" role="listbox">
           <li v-for="(s, i) in results" :key="s.id" role="option" :aria-selected="i === activeIndex"
@@ -155,7 +155,7 @@ const filters: Array<{ value: SecretOwnership; label: string }> = [
           </li>
         </ul>
         <div v-if="hiddenCount > 0" class="note">
-          {{ hiddenCount }} more — keep typing to narrow the list.
+          {{ $t('secretPicker.moreHidden', { n: hiddenCount }) }}
         </div>
       </div>
     </template>

@@ -106,7 +106,7 @@ function openFromQuery() {
   // Usually a workspace switch mid-click; opening the form on another app would be worse than not opening it.
   if (Number.isFinite(wanted) && wanted > 0) {
     if (!apps.value.some((a) => a.id === wanted)) {
-      notify.error(t('notify.routes.thatApplicationIsNotIn'), 'Route not started')
+      notify.error(t('notify.routes.thatApplicationIsNotIn'), t('routes.notStarted'))
       return
     }
     openCreate(wanted)
@@ -195,7 +195,7 @@ async function confirmRemove() {
       <div v-else-if="items.length === 0" class="empty-state">
         <span class="mdi mdi-routes" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('routes.empty') }}</h3>
-        <p>{{ apps.length === 0 ? 'Create an application first, then expose it with a route.' : 'Expose an application on a hostname and path.' }}</p>
+        <p>{{ apps.length === 0 ? $t('routes.emptyNoApps') : $t('routes.emptyHint') }}</p>
         <button v-if="ws.canEdit && apps.length" class="btn btn-primary mt-4" @click="openCreate()">{{ $t('routes.create') }}</button>
       </div>
       <div v-else-if="filtered.length === 0" class="empty-state">
@@ -220,9 +220,9 @@ async function confirmRemove() {
               <td>
                 <span class="cell-title">
                   <router-link :to="`/routes/${r.id}`" class="route-link" @click.stop>{{ r.display_name || r.name }}</router-link>
-                  <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" :title="$t('routes.generatedHint')">auto</span>
-                  <span v-if="!r.enabled" class="badge badge-neutral" style="margin-left: 8px">disabled</span>
-                  <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" :title="$t('routes.maintenanceHint')">maintenance</span>
+                  <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" :title="$t('routes.generatedHint')">{{ $t('routes.badge.auto') }}</span>
+                  <span v-if="!r.enabled" class="badge badge-neutral" style="margin-left: 8px">{{ $t('routes.badge.disabled') }}</span>
+                  <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" :title="$t('routes.maintenanceHint')">{{ $t('routes.maintenance') }}</span>
                 </span>
                 <div class="cell-sub">{{ r.path }}</div>
               </td>

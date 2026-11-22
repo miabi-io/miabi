@@ -43,7 +43,7 @@ async function acceptInvitation(inv: PendingInvitation) {
     ws.setWorkspace(inv.workspace_id)
     await loadInvitations()
   } catch (e) {
-    notify.apiError(e, 'Failed to accept invitation')
+    notify.apiError(e, t('notify.workspaces.acceptFailed'))
   } finally {
     acceptingId.value = null
   }
@@ -92,7 +92,7 @@ onMounted(async () => {
               </span>
             </div>
             <button class="btn btn-primary btn-sm" :disabled="acceptingId === inv.id" @click="acceptInvitation(inv)">
-              {{ acceptingId === inv.id ? 'Joining…' : 'Accept' }}
+              {{ acceptingId === inv.id ? $t('workspaceLayout.joining') : $t('workspaceLayout.accept') }}
             </button>
           </li>
         </ul>

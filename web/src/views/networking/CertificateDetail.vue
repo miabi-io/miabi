@@ -73,7 +73,7 @@ async function confirmDelete() {
     await certificateApi.remove(wid, item.value.id)
     notify.success(t('notify.certificates.deleted'))
     router.replace('/certificates')
-  } catch (e) { notify.apiError(e, 'Delete failed (certificate may be in use)') }
+  } catch (e) { notify.apiError(e, t('certificates.deleteFailed')) }
   finally { deleting.value = false }
 }
 </script>
@@ -150,7 +150,7 @@ async function confirmDelete() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showReplace = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Replace' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : $t('certificates.replace') }}</button>
           </div>
         </form>
       </AppModal>

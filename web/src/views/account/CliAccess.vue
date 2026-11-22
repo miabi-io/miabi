@@ -18,12 +18,12 @@ type InstallTab = 'brew' | 'go' | 'binary' | 'docker'
 const isWindows = /win/i.test(navigator.userAgent)
 const { t } = useI18n()
 const tab = ref<InstallTab>(isWindows ? 'binary' : 'brew')
-const installTabs: { key: InstallTab; label: string }[] = [
+const installTabs = computed<{ key: InstallTab; label: string }[]>(() => [
   { key: 'brew', label: 'Homebrew' },
   { key: 'go', label: 'Go' },
-  { key: 'binary', label: 'Binary' },
+  { key: 'binary', label: t('cli.binaryTab') },
   { key: 'docker', label: 'Docker' },
-]
+])
 
 const installCmd = computed(() => {
   switch (tab.value) {

@@ -42,7 +42,7 @@ async function start() {
     emit('started', run)
     emit('close')
   } catch (e) {
-    notify.apiError(e, 'Could not trigger run')
+    notify.apiError(e, t('pipelines.triggerFailed'))
   } finally {
     busy.value = false
   }

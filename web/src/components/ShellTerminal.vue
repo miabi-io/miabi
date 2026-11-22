@@ -108,8 +108,8 @@ onBeforeUnmount(() => {
     <div class="modal-header">
       <h3>
         <span class="mdi mdi-console-line"></span>
-        Shell — {{ appName }}
-        <span class="shell-status" :class="status">{{ status }}</span>
+        {{ $t('shellTerminal.title', { name: appName }) }}
+        <span class="shell-status" :class="status">{{ $t(`shellTerminal.status.${status}`) }}</span>
         <span v-if="status !== 'closed'" class="shell-hint">{{ $t('shellTerminal.escGoesToTheShell') }}</span>
       </h3>
       <div class="shell-controls">

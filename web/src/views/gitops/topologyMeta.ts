@@ -1,5 +1,6 @@
 import type { NodeStatus, EdgeType, GitSourceStatus } from '@/api/types'
 import type { RouteLocationRaw } from 'vue-router'
+import { t } from '@/i18n'
 
 export interface KindMeta {
   label: string
@@ -33,19 +34,19 @@ export interface StatusMeta {
 
 // Per-node sync status. Mirrors ArgoCD's sync semantics.
 export const nodeStatusMeta: Record<NodeStatus, StatusMeta> = {
-  synced: { label: 'Synced', badge: 'badge-success', icon: 'mdi-check-circle', color: 'var(--success-600)' },
-  out_of_sync: { label: 'Out of sync', badge: 'badge-warning', icon: 'mdi-circle-edit-outline', color: 'var(--warning-600)' },
-  missing: { label: 'Missing', badge: 'badge-info', icon: 'mdi-plus-circle-outline', color: 'var(--info-600, #3b82f6)' },
-  orphaned: { label: 'Orphaned', badge: 'badge-danger', icon: 'mdi-trash-can-outline', color: 'var(--danger-600)' },
+  synced: { get label() { return t('gitops.status.synced') }, badge: 'badge-success', icon: 'mdi-check-circle', color: 'var(--success-600)' },
+  out_of_sync: { get label() { return t('gitops.status.out_of_sync') }, badge: 'badge-warning', icon: 'mdi-circle-edit-outline', color: 'var(--warning-600)' },
+  missing: { get label() { return t('gitops.nodeStatus.missing') }, badge: 'badge-info', icon: 'mdi-plus-circle-outline', color: 'var(--info-600, #3b82f6)' },
+  orphaned: { get label() { return t('gitops.nodeStatus.orphaned') }, badge: 'badge-danger', icon: 'mdi-trash-can-outline', color: 'var(--danger-600)' },
 }
 
 export const gitSourceStatusMeta: Record<GitSourceStatus, StatusMeta> = {
-  synced: { label: 'Synced', badge: 'badge-success', icon: 'mdi-check-circle-outline', color: 'var(--success-600)' },
-  out_of_sync: { label: 'Out of sync', badge: 'badge-warning', icon: 'mdi-alert-circle-outline', color: 'var(--warning-600)' },
-  progressing: { label: 'Progressing', badge: 'badge-info', icon: 'mdi-loading mdi-spin', color: 'var(--info-600, #3b82f6)' },
-  error: { label: 'Error', badge: 'badge-danger', icon: 'mdi-close-circle-outline', color: 'var(--danger-600)' },
-  degraded: { label: 'Degraded', badge: 'badge-warning', icon: 'mdi-alert-outline', color: 'var(--warning-600)' },
-  unknown: { label: 'Never synced', badge: 'badge-neutral', icon: 'mdi-help-circle-outline', color: 'var(--text-muted)' },
+  synced: { get label() { return t('gitops.status.synced') }, badge: 'badge-success', icon: 'mdi-check-circle-outline', color: 'var(--success-600)' },
+  out_of_sync: { get label() { return t('gitops.status.out_of_sync') }, badge: 'badge-warning', icon: 'mdi-alert-circle-outline', color: 'var(--warning-600)' },
+  progressing: { get label() { return t('gitops.status.progressing') }, badge: 'badge-info', icon: 'mdi-loading mdi-spin', color: 'var(--info-600, #3b82f6)' },
+  error: { get label() { return t('gitops.status.error') }, badge: 'badge-danger', icon: 'mdi-close-circle-outline', color: 'var(--danger-600)' },
+  degraded: { get label() { return t('gitops.status.degraded') }, badge: 'badge-warning', icon: 'mdi-alert-outline', color: 'var(--warning-600)' },
+  unknown: { get label() { return t('gitops.status.unknown') }, badge: 'badge-neutral', icon: 'mdi-help-circle-outline', color: 'var(--text-muted)' },
 }
 
 // Unknown or empty statuses get no dot (see healthOf).
@@ -55,20 +56,20 @@ export interface HealthMeta {
   pulse?: boolean
 }
 const healthMeta: Record<string, HealthMeta> = {
-  running: { label: 'Running', color: 'var(--success-600)' },
-  stopped: { label: 'Stopped', color: 'var(--text-muted)' },
-  failed: { label: 'Failed', color: 'var(--danger-600)' },
-  error: { label: 'Error', color: 'var(--danger-600)' },
-  deploying: { label: 'Deploying', color: 'var(--warning-600)', pulse: true },
-  provisioning: { label: 'Provisioning', color: 'var(--warning-600)', pulse: true },
-  upgrading: { label: 'Upgrading', color: 'var(--warning-600)', pulse: true },
-  created: { label: 'Created', color: 'var(--text-muted)' },
-  scheduled: { label: 'Scheduled', color: 'var(--success-600)' },
-  suspended: { label: 'Suspended', color: 'var(--text-muted)' },
-  pending: { label: 'Pending', color: 'var(--warning-600)', pulse: true },
-  succeeded: { label: 'Succeeded', color: 'var(--success-600)' },
-  skipped: { label: 'Skipped', color: 'var(--warning-600)' },
-  canceled: { label: 'Canceled', color: 'var(--text-muted)' },
+  running: { get label() { return t('gitops.healthState.running') }, color: 'var(--success-600)' },
+  stopped: { get label() { return t('gitops.healthState.stopped') }, color: 'var(--text-muted)' },
+  failed: { get label() { return t('gitops.healthState.failed') }, color: 'var(--danger-600)' },
+  error: { get label() { return t('gitops.healthState.error') }, color: 'var(--danger-600)' },
+  deploying: { get label() { return t('gitops.healthState.deploying') }, color: 'var(--warning-600)', pulse: true },
+  provisioning: { get label() { return t('gitops.healthState.provisioning') }, color: 'var(--warning-600)', pulse: true },
+  upgrading: { get label() { return t('gitops.healthState.upgrading') }, color: 'var(--warning-600)', pulse: true },
+  created: { get label() { return t('gitops.healthState.created') }, color: 'var(--text-muted)' },
+  scheduled: { get label() { return t('gitops.healthState.scheduled') }, color: 'var(--success-600)' },
+  suspended: { get label() { return t('gitops.healthState.suspended') }, color: 'var(--text-muted)' },
+  pending: { get label() { return t('gitops.healthState.pending') }, color: 'var(--warning-600)', pulse: true },
+  succeeded: { get label() { return t('gitops.healthState.succeeded') }, color: 'var(--success-600)' },
+  skipped: { get label() { return t('gitops.healthState.skipped') }, color: 'var(--warning-600)' },
+  canceled: { get label() { return t('gitops.healthState.canceled') }, color: 'var(--text-muted)' },
 }
 
 export function healthOf(status?: string): HealthMeta | null {
@@ -77,16 +78,26 @@ export function healthOf(status?: string): HealthMeta | null {
 }
 
 // Human label per edge type, shown on hover / in the side panel.
-export const edgeLabel: Record<EdgeType, string> = {
-  mount: 'mounts',
-  stack: 'in stack',
-  route: 'routes to',
-  domain: 'under domain',
-  database: 'connects to',
-  secret: 'reads secret',
-  'app-ref': 'links to',
-  schedule: 'runs on schedule in',
-  run: 'runs in',
+const edgeKeys: Record<EdgeType, string> = {
+  mount: 'gitops.edge.mount',
+  stack: 'gitops.edge.stack',
+  route: 'gitops.edge.route',
+  domain: 'gitops.edge.domain',
+  database: 'gitops.edge.database',
+  secret: 'gitops.edge.secret',
+  'app-ref': 'gitops.edge.appRef',
+  schedule: 'gitops.edge.schedule',
+  run: 'gitops.edge.run',
+}
+
+export function edgeLabel(type: string): string {
+  const key = edgeKeys[type as EdgeType]
+  return key ? t(key) : type
+}
+
+export function edgeLabelIncoming(type: string): string {
+  const key = edgeKeys[type as EdgeType]
+  return key ? t(`${key}Incoming`) : type
 }
 
 // Kinds with a detail page take the live id; others route to their list page.

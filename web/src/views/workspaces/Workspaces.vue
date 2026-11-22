@@ -119,7 +119,7 @@ onMounted(() => {
         </div>
         <div class="ws-card-name">{{ w.display_name || w.name }}</div>
         <div class="ws-card-handle mono">{{ w.name }}</div>
-        <div class="ws-card-desc">{{ w.description || 'No description' }}</div>
+        <div class="ws-card-desc">{{ w.description || $t('stacks.noDescription') }}</div>
         <div
           class="ws-card-id"
           role="button"
@@ -148,7 +148,7 @@ onMounted(() => {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. Production" :aria-label="$t('apps.form.name')" required autofocus />
+              <input v-model="form.name" class="form-input" :placeholder="$t('workspaces.namePlaceholder')" :aria-label="$t('apps.form.name')" required autofocus />
             </div>
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('workspaces.optional') }}</span></label>
@@ -158,7 +158,7 @@ onMounted(() => {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.name.trim()">
-              {{ saving ? 'Creating…' : 'Create workspace' }}
+              {{ saving ? $t('serviceAccounts.creating') : $t('switcher.create') }}
             </button>
           </div>
         </form>

@@ -184,7 +184,7 @@ async function disconnect() {
     <div class="page-header">
       <div>
         <h1>{{ $t('nav.networking.dnsProviders') }}</h1>
-        <p class="subtitle">Connect a DNS host so {{ ws.contextLabel }} can automate ownership verification and app records.</p>
+        <p class="subtitle">{{ $t('dnsProviders.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <button v-if="ws.canEdit && allowed" class="btn btn-primary" @click="openConnect">
         <span class="mdi mdi-plus"></span>{{ $t('dnsProviders.connectProvider') }}</button>
@@ -239,7 +239,7 @@ async function disconnect() {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="name" class="form-input" placeholder="e.g. cloudflare-prod" required autofocus />
+              <input v-model="name" class="form-input" :placeholder="$t('dnsProviders.namePlaceholder')" required autofocus />
             </div>
             <div class="form-group">
               <label class="form-label" for="dns-type">{{ $t('dnsProviders.type') }}</label>
@@ -274,7 +274,7 @@ async function disconnect() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showConnect = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving || !ptype || !credsComplete">{{ saving ? 'Connecting…' : 'Connect' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving || !ptype || !credsComplete">{{ saving ? $t('dnsProviders.connecting') : $t('dnsProviders.connect') }}</button>
           </div>
         </form>
       </AppModal>
@@ -283,14 +283,13 @@ async function disconnect() {
     <Teleport to="body">
       <AppModal v-if="rotating" @close="rotating = null">
         <div class="modal-header">
-          <h3>Rotate credentials — {{ rotating.display_name || rotating.name }}</h3>
+          <h3>{{ $t('dnsProviders.rotateTitle', { name: rotating.display_name || rotating.name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="rotating = null"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="rotate">
           <div class="modal-body">
             <p class="form-hint" style="margin-top: 0">
-              Replaces the stored credentials for {{ typeLabel(rotating.type) }}. Domains stay linked —
-              disconnecting instead would unlink them.
+              {{ $t('dnsProviders.rotateBody', { type: typeLabel(rotating.type) }) }}
             </p>
             <template v-if="rotateDescriptor">
               <DnsProviderField
@@ -310,7 +309,7 @@ async function disconnect() {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="rotating = null">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="rotateSaving || !rotateComplete">
-              {{ rotateSaving ? 'Rotating…' : 'Rotate' }}
+              {{ rotateSaving ? $t('dnsProviders.rotating') : $t('dnsProviders.rotate') }}
             </button>
           </div>
         </form>

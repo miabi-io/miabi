@@ -158,7 +158,7 @@ function fmtDate(s?: string) {
     <div class="page-header">
       <div>
         <h1>{{ $t('volumes.volumes') }}</h1>
-        <p class="subtitle">Persistent storage you can attach to {{ ws.contextLabel }}'s applications and databases.</p>
+        <p class="subtitle">{{ $t('volumes.subtitle', { context: ws.contextLabel }) }}</p>
       </div>
       <button v-if="ws.canEdit" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('volumes.newVolume') }}</button>
@@ -169,12 +169,12 @@ function fmtDate(s?: string) {
         <div class="storage-figure">
           <span class="storage-used">{{ fmtSize(storage.used_bytes) }}</span>
           <span class="storage-of">{{ $t('volumes.used') }}</span>
-          <span class="storage-declared">· {{ fmtSize(storage.declared_bytes) }} declared<template v-if="storage.limit_mb >= 0"> · {{ fmtSize(storage.limit_mb * 1024 * 1024) }} limit</template></span>
+          <span class="storage-declared">· {{ $t('volumes.declaredSize', { size: fmtSize(storage.declared_bytes) }) }}<template v-if="storage.limit_mb >= 0"> · {{ $t('volumes.limitSize', { size: fmtSize(storage.limit_mb * 1024 * 1024) }) }}</template></span>
         </div>
-        <span v-if="storage.measured_at" class="storage-measured" :title="storage.measured_at">measured {{ relativeTime(storage.measured_at) }}</span>
+        <span v-if="storage.measured_at" class="storage-measured" :title="storage.measured_at">{{ $t('volumes.measured', { when: relativeTime(storage.measured_at) }) }}</span>
         <span v-else class="storage-measured">{{ $t('volumes.notYetMeasured') }}</span>
       </div>
-      <div v-if="storagePct !== null" class="storage-bar" :title="`${storagePct}% of limit`">
+      <div v-if="storagePct !== null" class="storage-bar" :title="$t('volumes.percentOfLimit', { pct: storagePct })">
         <div class="storage-bar-fill" :class="{ 'storage-bar-warn': storagePct >= 80 }" :style="{ width: storagePct + '%' }"></div>
       </div>
     </div>
@@ -191,8 +191,8 @@ function fmtDate(s?: string) {
         <div class="vol-toolbar">
           <div class="vol-count text-muted">
             <strong>{{ filteredVolumes.length }}</strong>
-            <template v-if="filteredVolumes.length !== volumes.length"> of {{ volumes.length }}</template>
-            volume{{ volumes.length === 1 ? '' : 's' }}
+            <template v-if="filteredVolumes.length !== volumes.length"> {{ $t('volumes.ofTotal', { total: volumes.length }) }}</template>
+            {{ $t('volumes.volumeNoun', volumes.length) }}
           </div>
           <div class="vol-search">
             <span class="mdi mdi-magnify vol-search-icon"></span>
@@ -201,7 +201,7 @@ function fmtDate(s?: string) {
         </div>
         <div v-if="filteredVolumes.length === 0" class="empty-state">
           <span class="mdi mdi-magnify" style="font-size: 36px; color: var(--text-muted)"></span>
-          <p>No volumes match “{{ search }}”.</p>
+          <p>{{ $t('volumes.noMatch', { query: search }) }}</p>
           <button class="btn btn-ghost btn-sm mt-4" @click="search = ''">{{ $t('volumes.clearFilter') }}</button>
         </div>
         <div v-else class="table-wrapper">
@@ -218,7 +218,7 @@ function fmtDate(s?: string) {
                       class="badge badge-info"
                       style="margin-left: 8px"
                       :title="$t('volumes.rwxHint', { driver: v.driver?.toUpperCase() })"
-                    >shared · {{ v.driver }}</span><span
+                    >{{ $t('volumes.sharedDriver', { driver: v.driver }) }}</span><span
                       v-else
                       class="badge badge-muted"
                       style="margin-left: 8px"
@@ -234,7 +234,7 @@ function fmtDate(s?: string) {
                   <span v-if="v.size_bytes"> / {{ fmtSize(v.size_bytes) }}</span>
                 </template>
                 <template v-else>
-                  <span v-if="v.size_bytes">{{ fmtSize(v.size_bytes) }} declared</span>
+                  <span v-if="v.size_bytes">{{ $t('volumes.declaredSize', { size: fmtSize(v.size_bytes) }) }}</span>
                   <span v-else>—</span>
                 </template>
               </td>
@@ -261,16 +261,16 @@ function fmtDate(s?: string) {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="name" class="form-input" placeholder="e.g. app-data" required autofocus />
+              <input v-model="name" class="form-input" :placeholder="$t('volumes.namePlaceholder')" required autofocus />
             </div>
             <LocationPicker v-model="volLocation" v-model:node-name="nodeName" :allow-pin="nodeLocal" />
             <div class="form-group">
               <label class="form-label">{{ $t('volumes.type') }}</label>
               <select v-model="driver" class="form-select">
                 <option value="local">{{ $t('volumes.localNodeLocal') }}</option>
-                <option value="nfs" :disabled="!sharedAllowed">NFS (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
-                <option value="cifs" :disabled="!sharedAllowed">CIFS / SMB (shared){{ sharedAllowed ? '' : ' — not in your plan' }}</option>
-                <option value="host" :disabled="!hostAllowed">Host path (/mnt/*){{ hostAllowed ? '' : ' — privileged only' }}</option>
+                <option value="nfs" :disabled="!sharedAllowed">{{ $t('volumes.driverNfs') }}{{ sharedAllowed ? '' : ' — ' + $t('volumes.notInPlan') }}</option>
+                <option value="cifs" :disabled="!sharedAllowed">{{ $t('volumes.driverCifs') }}{{ sharedAllowed ? '' : ' — ' + $t('volumes.notInPlan') }}</option>
+                <option value="host" :disabled="!hostAllowed">{{ $t('volumes.driverHost') }}{{ hostAllowed ? '' : ' — ' + $t('volumes.privilegedOnly') }}</option>
               </select>
               <p class="form-hint">
                 <template v-if="driver === 'local'">{{ $t('volumes.localHint') }}</template>
@@ -320,7 +320,7 @@ function fmtDate(s?: string) {
                 <label class="form-label">{{ $t('volumes.storage') }}</label>
                 <select v-model="storageClass" class="form-select">
                   <option value="">
-                    {{ storageClasses.find(c => c.is_default)?.display_name || 'Default' }} (default)
+                    {{ storageClasses.find(c => c.is_default)?.display_name || $t('wsSettings.securityDefault') }} {{ $t('apps.form.isDefault') }}
                   </option>
                   <option v-for="c in storageClasses.filter(c => !c.is_default)" :key="c.name" :value="c.name">
                     {{ c.display_name || c.name }}
@@ -328,7 +328,7 @@ function fmtDate(s?: string) {
                 </select>
                 <p class="form-hint">
                   {{ storageClasses.find(c => c.name === storageClass)?.description
-                    || 'Which of this node\'s disks the volume is created on. It cannot be changed later — the data lives there.' }}
+                    || $t('volumes.storageHint') }}
                 </p>
               </div>
             </template>
@@ -340,7 +340,7 @@ function fmtDate(s?: string) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? 'Creating…' : 'Create volume' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="creating">{{ creating ? $t('serviceAccounts.creating') : $t('volumes.createVolume') }}</button>
           </div>
         </form>
       </AppModal>

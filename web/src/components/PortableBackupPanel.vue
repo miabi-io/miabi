@@ -188,7 +188,7 @@ function failedArtifacts(b: BundleInfo): number {
           </div>
           <button class="btn btn-primary" :disabled="exporting || !!activeRun" @click="runExport">
             <span class="mdi mdi-cloud-upload-outline"></span>
-            {{ activeRun ? 'Run in progress…' : exporting ? 'Starting…' : 'Back up now' }}
+            {{ activeRun ? $t('portable.runInProgress') : exporting ? $t('migration.starting') : $t('volumes.rp.backUpNow') }}
           </button>
         </div>
         <div v-if="!encrypted" class="card-body unencrypted-note" role="status">
@@ -232,16 +232,16 @@ function failedArtifacts(b: BundleInfo): number {
                     <span v-if="b.miabi_version"> · v{{ b.miabi_version }}</span>
                     <span v-if="!b.encrypted" class="badge badge-warning">{{ $t('portable.notEncrypted') }}</span>
                     <span v-if="failedArtifacts(b)" class="badge badge-warning">
-                      {{ failedArtifacts(b) }} artifact(s) missing
+                      {{ $t('portable.artifactsMissing', failedArtifacts(b)) }}
                     </span>
                   </div>
                 </td>
                 <td class="text-sm">
-                  {{ b.apps }} apps · {{ b.databases }} databases · {{ b.volumes }} volumes ·
-                  {{ b.secrets }} secrets · {{ b.routes }} routes
-                  <span v-if="b.certificates"> · {{ b.certificates }} certificates</span>
-                  <span v-if="b.pipelines"> · {{ b.pipelines }} pipelines</span>
-                  <span v-if="b.gitops_sources"> · {{ b.gitops_sources }} GitOps</span>
+                  {{ $t('count.apps', b.apps) }} · {{ $t('count.databases', b.databases) }} · {{ $t('count.volumes', b.volumes) }} ·
+                  {{ $t('count.secrets', b.secrets) }} · {{ $t('portable.count.routes', b.routes) }}
+                  <span v-if="b.certificates"> · {{ $t('portable.count.certificates', b.certificates) }}</span>
+                  <span v-if="b.pipelines"> · {{ $t('portable.count.pipelines', b.pipelines) }}</span>
+                  <span v-if="b.gitops_sources"> · {{ $t('portable.count.gitops', { n: b.gitops_sources }) }}</span>
                 </td>
                 <td class="text-sm">{{ fmtSize(bundleSize(b)) }}</td>
                 <td class="text-sm">{{ relativeTime(b.created_at) }}</td>
@@ -249,7 +249,7 @@ function failedArtifacts(b: BundleInfo): number {
                   <button
                     class="btn btn-secondary btn-sm"
                     :disabled="!canRestore || !!activeRun"
-                    :title="canRestore ? 'Restore this bundle' : 'Only an owner can restore'"
+                    :title="canRestore ? $t('portable.restoreThisBundle') : $t('portable.ownerOnlyRestore')"
                     @click="openRestore(b)"
                   >
                     <span class="mdi mdi-backup-restore"></span>{{ $t('portable.restore') }}</button>
@@ -336,7 +336,7 @@ function failedArtifacts(b: BundleInfo): number {
         <div class="modal-footer">
           <button class="btn btn-secondary" @click="restoreOpen = false">{{ $t('action.cancel') }}</button>
           <button class="btn btn-primary" :disabled="restoring" @click="confirmRestore">
-            {{ restoring ? 'Starting…' : 'Restore' }}
+            {{ restoring ? $t('migration.starting') : $t('portable.restore') }}
           </button>
         </div>
       </AppModal>

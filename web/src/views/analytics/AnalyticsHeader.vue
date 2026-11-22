@@ -31,7 +31,7 @@ function rangeLocked(key: string): boolean {
 }
 // "24h" alone doesn't say where the charts start, and every axis label is local.
 const rangeWindow = computed(() => (report.value ? windowLabel(report.value.range.since, report.value.range.until) : ''))
-const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time'
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || t('analytics.localTime')
 
 function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -150,7 +150,7 @@ watch(currentWorkspaceId, () => {
 // Hidden until the first poll answers so it never flashes a meaningless 0.
 const liveLabel = computed(() => {
   const m = Math.round(liveWindowSeconds.value / 60)
-  return `${live.value} visitor${live.value === 1 ? '' : 's'} active in the last ${m} minute${m === 1 ? '' : 's'}`
+  return t('analytics.liveVisitors', { n: live.value ?? 0, window: t('analytics.lastMinutes', m) })
 })
 
 // Mirror the current selection into the URL (replace, so it doesn't spam history).
@@ -182,7 +182,7 @@ function onAppChange(e: Event) {
       <div class="a-title">
         <h1>{{ $t('analytics.analytics') }}<BetaBadge component="analytics" /></h1>
         <span class="a-ns">{{ ws.contextLabel }}</span>
-        <span v-if="rangeWindow" class="a-window" :title="`All times shown in your local timezone (${tz})`">
+        <span v-if="rangeWindow" class="a-window" :title="$t('analytics.localTimezone', { tz })">
           <span class="mdi mdi-clock-outline"></span> {{ rangeWindow }}
         </span>
       </div>
@@ -196,7 +196,7 @@ function onAppChange(e: Event) {
           @change="onAppChange"
         >
           <option value="">{{ $t('analytics.allApplications') }}</option>
-          <option v-for="id in appIds" :key="id" :value="id">{{ appNames[id] || `App #${id}` }}</option>
+          <option v-for="id in appIds" :key="id" :value="id">{{ appNames[id] || $t('analytics.appId', { id }) }}</option>
         </select>
         <div ref="customPicker" class="a-range-wrap">
         <div class="a-range">
@@ -206,7 +206,7 @@ function onAppChange(e: Event) {
             class="a-range-btn"
             :class="{ active: range === r.key }"
             :disabled="rangeLocked(r.key)"
-            :title="rangeLocked(r.key) ? `Retention is limited to ${report?.retention_days} days on this plan — upgrade to Enterprise for longer history` : ''"
+            :title="rangeLocked(r.key) ? $t('analytics.retentionLimited', { days: report?.retention_days ?? 0 }) : ''"
             @click="store.setRange(r.key)"
           >
             {{ $t(r.label) }}

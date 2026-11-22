@@ -6,12 +6,14 @@ import { oauthApi, authorizeUrl } from '@/api/oauth'
 import { useAuthStore } from '@/stores/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 import type { LoginTokenResponse, PublicProvider } from '@/api/types'
 
 // Never mints off the session: the user must re-authenticate; also handles the SSO ?handoff= single-use claim.
 type Step = 'confirm' | 'twofactor' | 'display'
 
 const route = useRoute()
+const { t } = useI18n()
 const auth = useAuthStore()
 
 const step = ref<Step>('confirm')
@@ -34,17 +36,17 @@ const requestedScopes = ((route.query.scopes as string | undefined) || '')
 
 const title = computed(() =>
   step.value === 'display'
-    ? 'Your CLI login token'
+    ? t('requestToken.displayTitle')
     : step.value === 'twofactor'
-      ? 'Two-factor authentication'
-      : 'Confirm your identity',
+      ? t('security.twoFactorAuthentication')
+      : t('requestToken.confirmTitle'),
 )
 const subtitle = computed(() =>
   step.value === 'display'
-    ? 'Use this token with the Miabi CLI or the API. It is shown once.'
+    ? t('requestToken.displaySubtitle')
     : step.value === 'twofactor'
-      ? 'Enter the code from your authenticator app'
-      : 'Re-authenticate to generate a short-lived API token for the CLI.',
+      ? t('login.subtitle.twoFactor')
+      : t('requestToken.confirmSubtitle'),
 )
 
 onMounted(async () => {
@@ -55,7 +57,7 @@ onMounted(async () => {
       token.value = (await authApi.claimLoginToken(handoff)).data.data
       step.value = 'display'
     } catch (e) {
-      error.value = apiErrorMessage(e, 'This login token is no longer available. Request a new one.')
+      error.value = apiErrorMessage(e, t('requestToken.unavailable'))
     } finally {
       loading.value = false
     }
@@ -85,7 +87,7 @@ async function submit() {
     token.value = data
     step.value = 'display'
   } catch (e) {
-    error.value = apiErrorMessage(e, step.value === 'twofactor' ? 'Invalid code' : 'Invalid credentials')
+    error.value = apiErrorMessage(e, step.value === 'twofactor' ? t('login.invalidCode') : t('login.invalidCredentials'))
   } finally {
     loading.value = false
   }
@@ -150,7 +152,7 @@ function expiryLabel(t: LoginTokenResponse): string {
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Verifying…' : 'Generate token' }}
+        {{ loading ? $t('login.verifying') : $t('requestToken.generate') }}
       </button>
 
       <template v-if="providers.length">
@@ -184,7 +186,7 @@ function expiryLabel(t: LoginTokenResponse): string {
       </div>
       <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
         <span v-if="loading" class="mdi mdi-loading mdi-spin"></span>
-        {{ loading ? 'Verifying…' : 'Verify & generate' }}
+        {{ loading ? $t('login.verifying') : $t('requestToken.verifyGenerate') }}
       </button>
     </form>
 
@@ -233,7 +235,7 @@ function expiryLabel(t: LoginTokenResponse): string {
 
       <p class="token-meta">
         <span class="mdi mdi-clock-outline"></span>
-        Expires {{ expiryLabel(token) }}<span v-if="token.scopes?.length"> · scopes: {{ token.scopes.join(', ') }}</span>
+        {{ $t('requestToken.expires', { date: expiryLabel(token) }) }}<span v-if="token.scopes?.length"> · {{ $t('requestToken.scopes', { scopes: token.scopes.join(', ') }) }}</span>
       </p>
 
       <div class="token-actions">

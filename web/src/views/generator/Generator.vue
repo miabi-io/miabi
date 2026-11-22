@@ -84,10 +84,7 @@ async function saveSecret(name: string, description: string, value: string): Pro
             <li><i18n-t keypath="generator.entropyMid" tag="span"><template #range><strong>70–110</strong></template></i18n-t></li>
             <li><i18n-t keypath="generator.entropyHigh" tag="span"><template #range><strong>128+</strong></template></i18n-t></li>
           </ul>
-          <p>
-            A passphrase from the {{ 7776 }}-word EFF list is worth 12.9 bits per word, so six words is about 77 bits —
-            comparable to a 13-character random password, and far easier to read down a phone line.
-          </p>
+          <p>{{ $t('generator.passphraseExplained', { words: 7776 }) }}</p>
 
           <h2 class="aside-title">{{ $t('generator.whatIsnTKept') }}</h2>
           <p>{{ $t('generator.yourOptionsAreRememberedBetween') }}</p>

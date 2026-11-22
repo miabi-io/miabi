@@ -107,7 +107,7 @@ async function remove() {
     notify.success(t('notify.volumeDetail.deleted'))
     router.push('/volumes')
   } catch (e) {
-    notify.apiError(e, 'Failed to delete (volume may be in use)')
+    notify.apiError(e, t('volumes.err.deleteVolume'))
   } finally {
     deleting.value = false
   }
@@ -133,7 +133,7 @@ async function loadFiles() {
   try {
     files.value = (await volumeApi.listFiles(wid.value, volId.value)).data.data
   } catch (e) {
-    notify.apiError(e, 'Failed to list files')
+    notify.apiError(e, t('volumes.err.listFiles'))
   } finally {
     filesLoading.value = false
   }
@@ -151,7 +151,7 @@ async function onUpload(e: Event) {
     uploadPath.value = ''
     await loadFiles()
   } catch (err) {
-    notify.apiError(err, 'Failed to upload file')
+    notify.apiError(err, t('volumes.err.upload'))
   } finally {
     uploading.value = false
     if (fileInput.value) fileInput.value.value = ''
@@ -169,7 +169,7 @@ async function download(f: VolumeFile) {
     a.click()
     URL.revokeObjectURL(url)
   } catch (e) {
-    notify.apiError(e, 'Failed to download')
+    notify.apiError(e, t('volumes.err.download'))
   }
 }
 
@@ -183,7 +183,7 @@ async function removeFile() {
     pendingDelete.value = null
     await loadFiles()
   } catch (e) {
-    notify.apiError(e, 'Failed to delete')
+    notify.apiError(e, t('volumes.err.delete'))
   } finally {
     deletingFile.value = false
   }
@@ -238,7 +238,7 @@ async function loadBackups() {
     rpSealing.value = st.sealing
     schedules.value = scheds.data.data ?? []
   } catch (e) {
-    notify.apiError(e, 'Failed to list backups')
+    notify.apiError(e, t('volumes.err.listBackups'))
   } finally {
     backupsLoading.value = false
   }
@@ -254,7 +254,7 @@ async function runBackup() {
     await loadBackups()
     pollBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to back up volume')
+    notify.apiError(e, t('volumes.err.backup'))
   } finally {
     backingUp.value = false
   }
@@ -307,7 +307,7 @@ async function doRestore() {
     pendingRestore.value = null
     await loadRestores()
   } catch (e) {
-    notify.apiError(e, 'Restore failed')
+    notify.apiError(e, t('volumes.err.restore'))
   } finally {
     restoring.value = false
   }
@@ -329,7 +329,7 @@ async function verifyBackup(b: VolumeBackup) {
     else notify.error(t('volumes.rp.verifyFailed', { error: res.error }))
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Verification failed')
+    notify.apiError(e, t('volumes.err.verify'))
   } finally {
     verifyingId.value = null
   }
@@ -341,7 +341,7 @@ async function togglePin(b: VolumeBackup) {
     await volumeApi.pinBackup(wid.value, volId.value, b.id, !b.pinned)
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to update the recovery point')
+    notify.apiError(e, t('volumes.err.updatePoint'))
   }
 }
 
@@ -359,7 +359,7 @@ async function addSchedule() {
     notify.success(t('volumes.rp.scheduleAdded'))
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to add the schedule')
+    notify.apiError(e, t('volumes.err.addSchedule'))
   } finally {
     savingSchedule.value = false
   }
@@ -373,7 +373,7 @@ async function toggleSchedule(sc: VolumeBackupSchedule) {
     })
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to update the schedule')
+    notify.apiError(e, t('volumes.err.updateSchedule'))
   }
 }
 
@@ -383,7 +383,7 @@ async function removeSchedule(sc: VolumeBackupSchedule) {
     await volumeApi.deleteBackupSchedule(wid.value, volId.value, sc.id)
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to delete the schedule')
+    notify.apiError(e, t('volumes.err.deleteSchedule'))
   }
 }
 
@@ -401,7 +401,7 @@ async function doDeleteBackup() {
     pendingDeleteBackup.value = null
     await loadBackups()
   } catch (e) {
-    notify.apiError(e, 'Failed to delete backup')
+    notify.apiError(e, t('volumes.err.deleteBackup'))
   } finally {
     deletingBackup.value = false
   }
@@ -482,7 +482,7 @@ function isFileVisible(file: VolumeFile): boolean {
           <div>
             <h1>{{ vol.display_name || vol.name }}</h1>
             <div class="text-muted text-sm">
-              <span class="mdi mdi-docker"></span> Persistent volume · {{ vol.driver || 'local' }}
+              <span class="mdi mdi-docker"></span> {{ $t('volumes.persistentVolume') }} · {{ vol.driver || 'local' }}
               <template v-if="vol.server_name"> · <span class="mdi mdi-server-network"></span> {{ vol.server_name }}</template>
               <LocationName :cluster-id="vol.cluster_id" />
             </div>
@@ -491,7 +491,7 @@ function isFileVisible(file: VolumeFile): boolean {
       </div>
       <div class="flex items-center gap-3">
         <span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">
-          {{ vol.in_use ? `in use · ${vol.used_by.length} app${vol.used_by.length === 1 ? '' : 's'}` : 'unused' }}
+          {{ vol.in_use ? $t('volumes.inUseApps', vol.used_by.length) : $t('volumes.unused') }}
         </span>
         <span v-if="!vol.exists" class="badge badge-danger" :title="$t('volumes.missingHint')">{{ $t('volumes.missing') }}</span>
       </div>
@@ -528,7 +528,7 @@ function isFileVisible(file: VolumeFile): boolean {
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">{{ $t('volumes.mountedBy') }}</span><span class="stat-icon stat-icon-info"><span class="mdi mdi-application-outline"></span></span></div>
           <div class="stat-value">{{ vol.used_by.length }}</div>
-          <div class="stat-sub">{{ vol.used_by.length === 1 ? 'application' : 'applications' }}</div>
+          <div class="stat-sub">{{ $t('volumes.applicationNoun', vol.used_by.length) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-header"><span class="stat-label">{{ $t('volumes.files') }}</span><span class="stat-icon stat-icon-secondary"><span class="mdi mdi-folder-outline"></span></span></div>
@@ -549,7 +549,7 @@ function isFileVisible(file: VolumeFile): boolean {
       <div class="card mb-4">
         <div class="card-header"><h2>{{ $t('volumes.details') }}</h2></div>
         <div class="detail-grid">
-          <div><span class="detail-label">{{ $t('dashboard.col.status') }}</span><span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">{{ vol.in_use ? 'in use' : 'unused' }}</span></div>
+          <div><span class="detail-label">{{ $t('dashboard.col.status') }}</span><span class="badge badge-dot" :class="vol.in_use ? 'badge-success' : 'badge-neutral'">{{ vol.in_use ? $t('volumes.inUse') : $t('volumes.unused') }}</span></div>
           <div><span class="detail-label">{{ $t('volumes.owner') }}</span><OwnerChip :metadata="vol.metadata" /></div>
           <div><span class="detail-label">{{ $t('volumes.driver') }}</span>{{ vol.driver || 'local' }}</div>
           <div v-if="vol.storage_class"><span class="detail-label">{{ $t('volumes.storageClass') }}</span>{{ vol.storage_class }}</div>
@@ -607,7 +607,7 @@ function isFileVisible(file: VolumeFile): boolean {
             <input ref="fileInput" type="file" class="hidden-file" :aria-label="$t('volumes.chooseFileToUpload')" @change="onUpload" />
             <button class="btn btn-primary btn-sm" :disabled="uploading || !vol.exists" @click="fileInput?.click()">
               <span class="mdi" :class="uploading ? 'mdi-loading mdi-spin' : 'mdi-upload'"></span>
-              {{ uploading ? 'Uploading…' : 'Upload file' }}
+              {{ uploading ? $t('volumes.uploading') : $t('volumes.uploadFile') }}
             </button>
           </template>
         </div>

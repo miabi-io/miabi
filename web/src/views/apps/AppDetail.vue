@@ -129,7 +129,7 @@ async function saveExternalAccess() {
     extAccess.value = (await appApi.setExternalAccess(wid.value, appId.value, [...extSelected.value])).data.data ?? null
     notify.success(t('notify.appDetail.extAccessUpdated'))
   } catch (e) {
-    notify.apiError(e, 'Failed to update external access')
+    notify.apiError(e, t('appDetail.err.updateExternalAccess'))
   } finally {
     extSaving.value = false
   }
@@ -244,7 +244,7 @@ async function openManifest() {
     manifestYaml.value = typeof data === 'string' ? data : String(data)
   } catch (e) {
     manifestOpen.value = false
-    notify.apiError(e, 'Failed to generate the manifest')
+    notify.apiError(e, t('appDetail.err.generateManifest'))
   } finally {
     manifestLoading.value = false
   }
@@ -277,7 +277,7 @@ async function copyLogs() {
     logCopied.value = true
     setTimeout(() => { logCopied.value = false }, 1500)
   } catch (e) {
-    notify.apiError(e, 'Failed to copy logs')
+    notify.apiError(e, t('appDetail.err.copyLogs'))
   }
 }
 function downloadLogs() {
@@ -756,7 +756,7 @@ async function invalidateBuildCache() {
     await appApi.invalidateBuildCache(wid.value, appId.value)
     notify.success(t('notify.appDetail.cacheInvalidated'), { detail: t('notify.appDetail.cacheInvalidatedDetail') })
   } catch (e) {
-    notify.apiError(e, 'Could not invalidate the build cache')
+    notify.apiError(e, t('appDetail.err.invalidateCache'))
   } finally {
     invalidatingCache.value = false
   }
@@ -808,19 +808,19 @@ const canaryPausedFor = computed(() => {
   const at = app.value?.canary_paused_at
   if (!at) return ''
   const mins = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000))
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m`
+  if (mins < 1) return t('appDetail.duration.justNow')
+  if (mins < 60) return t('appDetail.duration.m', { n: mins })
   const hours = Math.round(mins / 60)
-  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`
+  return hours < 24 ? t('appDetail.duration.h', { n: hours }) : t('appDetail.duration.d', { n: Math.round(hours / 24) })
 })
 
 const canaryModeHint = computed(() => {
   if (canaryPaused.value && app.value?.canary_pause_reason === 'errors') return t('appDetail.canary.autoPausedHint', { for: canaryPausedFor.value })
-  if (canaryPaused.value) return `· paused ${canaryPausedFor.value}`
-  if (!canaryManual.value) return '· shifting automatically, promotes at 100%'
+  if (canaryPaused.value) return t('appDetail.canary.pausedFor', { for: canaryPausedFor.value })
+  if (!canaryManual.value) return t('appDetail.canary.shiftingAuto')
   const rules = app.value?.canary_match?.length ?? 0
-  if (!rules) return '· held manually'
-  return `· held manually, ${rules} match rule${rules === 1 ? '' : 's'}`
+  if (!rules) return t('appDetail.canary.heldManually')
+  return t('appDetail.canary.heldManuallyRules', rules)
 })
 
 async function toggleCanaryPause() {
@@ -962,17 +962,17 @@ function setNoNewPrivileges(e: Event) {
   settingsForm.value.no_new_privileges = (e.target as HTMLInputElement).checked
 }
 const dropCapabilitiesError = computed(() =>
-  dropCapabilityList.value.some((c) => !/^(CAP_)?[A-Z_]+$/.test(c)) ? 'List capability names such as NET_RAW, or ALL.' : '',
+  dropCapabilityList.value.some((c) => !/^(CAP_)?[A-Z_]+$/.test(c)) ? t('appDetail.settings.dropCapabilitiesError') : '',
 )
 
 const runAsUserError = computed(() => {
   const v = settingsForm.value.run_as_user.trim()
   if (!v) return ''
   if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,31})?$/.test(v)) {
-    return 'Use "uid", "uid:gid", "name" or "name:group".'
+    return t('appDetail.settings.runAsUserFormat')
   }
   if (requireNonRoot.value && !/^[1-9][0-9]*(:[0-9]+)?$/.test(v)) {
-    return 'This workspace requires a non-root numeric uid (e.g. 1000 or 1000:1000).'
+    return t('appDetail.settings.runAsUserNonRoot')
   }
   return ''
 })
@@ -1176,7 +1176,7 @@ async function loadOverview() {
 
 // Once an app has an active release, deploying again is a re-deploy.
 const isDeployed = computed(() => !!app.value?.current_release_id || (overview.value?.current_version ?? 0) > 0)
-const deployVerb = computed(() => (isDeployed.value ? 'Redeploy' : 'Deploy'))
+const deployVerb = computed(() => (isDeployed.value ? t('appDetail.deployVerb.redeploy') : t('appDetail.deployVerb.deploy')))
 
 // Config changes don't auto-deploy; a deployed app is flagged as needing a manual redeploy.
 function changeNote(): string {
@@ -1377,7 +1377,7 @@ async function requestBind() {
       notify.success(t('notify.appDetail.bindingRequested'))
     }
   } catch (e) {
-    notify.apiError(e, 'Failed to request binding')
+    notify.apiError(e, t('appDetail.err.requestBinding'))
     // A refusal may mean the platform rule changed since the tab loaded.
     loadPortPolicy()
   } finally {
@@ -1392,7 +1392,7 @@ async function suggestPort() {
     const port = (await portBindingApi.suggest(wid.value, appId.value, bindForm.value.protocol, bindForm.value.host_port)).data.data.host_port
     bindForm.value.host_port = port
   } catch (e) {
-    notify.apiError(e, 'No free host port available')
+    notify.apiError(e, t('appDetail.err.noFreeHostPort'))
   } finally {
     suggestingPort.value = false
   }
@@ -1527,7 +1527,7 @@ const template = computed(() => {
   const slug = m['miabi.io/template'] || ''
   return {
     slug, // stable template identity (the install id is workspace-local & mutable)
-    name: slug || 'a marketplace template',
+    name: slug || t('appDetail.aMarketplaceTemplate'),
     version: m['miabi.io/template-version'] || '',
   }
 })
@@ -1587,7 +1587,7 @@ async function confirmDeploy() {
     showDeploy.value = false
     followDeploy(res, t('notify.appDetail.deploymentStarted'))
   } catch (e) {
-    notify.apiError(e, 'Deploy failed')
+    notify.apiError(e, t('appDetail.err.deployFailed'))
   } finally {
     deploying.value = false
   }
@@ -1633,7 +1633,7 @@ async function deleteRelease(r: Release) {
     if (releaseDetail.value?.id === r.id) releaseDetail.value = null
     loadTab()
   } catch (e) {
-    notify.apiError(e, 'Cannot delete (active or pinned?)')
+    notify.apiError(e, t('appDetail.err.cannotDeleteRelease'))
   } finally {
     releaseBusy.value = null
   }
@@ -1818,7 +1818,7 @@ watch(() => configMount.value.config_id, () => {
 })
 
 function configName(id?: number) {
-  return workspaceConfigs.value.find((c) => c.id === id)?.name || `config ${id}`
+  return workspaceConfigs.value.find((c) => c.id === id)?.name || t('appDetail.configFallback', { id })
 }
 
 // Path shape is where config mounts go wrong, so the result is shown rather than described.
@@ -1958,17 +1958,17 @@ const appBusy = computed(() => app.value?.status === 'stopping' || app.value?.st
 const statusDetail = computed(() => {
   const ls = liveStatus.value
   if (!ls) return ''
-  if (ls.status === 'restarting' && ls.restart_count > 0) return `restarted ${ls.restart_count}×`
-  if (ls.status === 'exited') return ls.exit_code ? `exit ${ls.exit_code}` : ''
-  if (ls.running && ls.uptime_seconds > 0) return `up ${fmtUptime(ls.uptime_seconds)}`
+  if (ls.status === 'restarting' && ls.restart_count > 0) return t('appDetail.statusDetail.restarted', { n: ls.restart_count })
+  if (ls.status === 'exited') return ls.exit_code ? t('appDetail.statusDetail.exit', { code: ls.exit_code }) : ''
+  if (ls.running && ls.uptime_seconds > 0) return t('appDetail.statusDetail.up', { uptime: fmtUptime(ls.uptime_seconds) })
   return ''
 })
 
 function fmtUptime(s: number): string {
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
+  if (s < 60) return t('appDetail.duration.s', { n: s })
+  if (s < 3600) return t('appDetail.duration.m', { n: Math.floor(s / 60) })
+  if (s < 86400) return t('appDetail.duration.h', { n: Math.floor(s / 3600) })
+  return t('appDetail.duration.d', { n: Math.floor(s / 86400) })
 }
 
 
@@ -2083,7 +2083,7 @@ async function scaleBy(delta: number) {
     await loadApp()
     await loadLiveStatus()
   } catch (e) {
-    notify.apiError(e, 'Failed to scale')
+    notify.apiError(e, t('appDetail.err.scale'))
   } finally {
     scaleBusy.value = false
   }
@@ -2301,7 +2301,7 @@ async function detachDatabase(d: AppDatabase) {
                 <router-link
                   class="prov-link"
                   :to="{ name: 'template-install', params: { slug: template.name } }"
-                  :title="`Installed from the “${template.name}” marketplace template`"
+                  :title="$t('appDetail.installedFromTemplate', { name: template.name })"
                 >{{ template.name }}<template v-if="template.version"> v{{ template.version }}</template></router-link>
               </template>
               <template v-else-if="managedBy === 'gitops'"> · <span class="mdi mdi-source-branch"></span>
@@ -2320,7 +2320,7 @@ async function detachDatabase(d: AppDatabase) {
         <span v-if="app.redeploy_required" class="badge badge-warning" :title="$t('appDetail.redeployRequired')">
           <span class="mdi mdi-alert-outline"></span>{{ $t('stacks.redeployRequired') }}</span>
         <span class="status-wrap">
-          <span class="badge badge-dot" :class="badge(displayStatus)" :title="liveStatus?.container_state ? `container: ${liveStatus.container_state}` : ''">{{ displayStatus }}</span>
+          <span class="badge badge-dot" :class="badge(displayStatus)" :title="liveStatus?.container_state ? $t('appDetail.containerState', { state: liveStatus.container_state }) : ''">{{ displayStatus }}</span>
           <span v-if="statusDetail" class="text-muted text-sm status-detail">{{ statusDetail }}</span>
         </span>
         <button
@@ -2355,7 +2355,7 @@ async function detachDatabase(d: AppDatabase) {
     <!-- Redundant on the Deployments tab, which already shows the full canary card. -->
     <button v-if="canaryActive && tab !== 'deployments'" class="canary-strip" :title="$t('appDetail.canaryInProgress')" @click="tab = 'deployments'">
       <span class="mdi mdi-rocket-launch-outline"></span>
-      <span class="canary-strip-text">Canary {{ canaryWeight }}%</span>
+      <span class="canary-strip-text">{{ $t('appDetail.canaryStrip', { weight: canaryWeight }) }}</span>
       <span class="split-bar canary-strip-bar">
         <span class="split-stable" :style="{ width: (100 - canaryWeight) + '%' }"></span>
         <span class="split-canary" :style="{ width: canaryWeight + '%' }"></span>
@@ -2383,7 +2383,7 @@ async function detachDatabase(d: AppDatabase) {
         </div>
         <div v-if="isService && nodePlacement.length" class="summary-item">
           <span class="summary-label">{{ $t('appDetail.nodes') }}</span>
-          <span class="summary-value" :title="`Running on ${nodePlacementLabel}`">
+          <span class="summary-value" :title="$t('appDetail.runningOn', { nodes: nodePlacementLabel })">
             <span class="mdi mdi-server-network"></span> {{ nodePlacementLabel }}
           </span>
         </div>
@@ -2408,10 +2408,10 @@ async function detachDatabase(d: AppDatabase) {
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">{{ overview.source_type === 'git' ? 'Source' : 'Image tag' }}</span>
+          <span class="summary-label">{{ overview.source_type === 'git' ? $t('appDetail.sourceLabel') : $t('appDetail.imageTag') }}</span>
           <span class="summary-value">
             <template v-if="overview.source_type === 'git'">
-              <span class="mdi mdi-git"></span> {{ overview.git_repo || 'Git repository' }}
+              <span class="mdi mdi-git"></span> {{ overview.git_repo || $t('appDetail.source.git') }}
             </template>
             <template v-else>
               <span class="mdi mdi-tag-outline"></span> {{ overview.tag || 'latest' }}
@@ -2467,7 +2467,7 @@ async function detachDatabase(d: AppDatabase) {
           <div class="stat-value">{{ fmtSize(metrics.memory_usage_bytes) }}</div>
           <div class="usage-bar"><div class="usage-fill" :class="usageTone(metrics.memory_percent)" :style="{ width: Math.min(100, metrics.memory_percent) + '%' }"></div></div>
           <div class="stat-sub">
-            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> of {{ fmtSize(metrics.memory_limit_bytes) }}</template>
+            {{ metrics.memory_percent.toFixed(1) }}%<template v-if="metrics.memory_limit_bytes"> {{ $t('appDetail.metrics.ofLimit', { limit: fmtSize(metrics.memory_limit_bytes) }) }}</template>
           </div>
         </div>
         <div class="stat-card">
@@ -2574,7 +2574,7 @@ async function detachDatabase(d: AppDatabase) {
             </div>
             <div v-if="ws.canEdit" class="flex items-center gap-2 mt-4">
               <button class="btn btn-primary btn-sm" :disabled="extSaving || !extDirty" @click="saveExternalAccess">
-                {{ extSaving ? 'Saving…' : 'Save external access' }}
+                {{ extSaving ? $t('action.saving') : $t('appDetail.saveExternalAccess') }}
               </button>
               <button v-if="extExposedCount > 0" class="btn btn-secondary btn-sm" :disabled="extSaving" @click="disableExternalAccess">{{ $t('appDetail.disableExternalAccess') }}</button>
             </div>
@@ -2689,7 +2689,7 @@ async function detachDatabase(d: AppDatabase) {
           </li>
         </ul>
         <div v-if="eventsHasMore" class="text-center" style="padding: 8px 0 4px">
-          <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">{{ loadingMoreEvents ? 'Loading…' : 'Load more' }}</button>
+          <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">{{ loadingMoreEvents ? $t('appDetail.loading') : $t('appDetail.loadMore') }}</button>
         </div>
       </template>
     </div>
@@ -2751,13 +2751,13 @@ async function detachDatabase(d: AppDatabase) {
             @click="toggleLogFollow"
           >
             <span class="mdi mdi-chevron-double-down"></span>
-            {{ logFollow ? 'Following' : 'Follow' }}
+            {{ logFollow ? $t('logViewer.following') : $t('logViewer.follow') }}
           </button>
-          <span class="badge" :class="runtimeConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ runtimeConnected ? 'live' : failedStart ? 'not running' : 'connecting…' }}</span>
+          <span class="badge" :class="runtimeConnected ? 'badge-success badge-dot' : 'badge-neutral'">{{ runtimeConnected ? $t('appDetail.live') : failedStart ? $t('appDetail.logs.notRunning') : $t('appDetail.logs.connecting') }}</span>
         </div>
       </div>
       <div class="card-body">
-        <p v-if="logsTrimmed" class="text-muted text-sm log-trim-note">Showing the most recent {{ RUNTIME_LOG_CAP.toLocaleString() }} lines — older output was trimmed.</p>
+        <p v-if="logsTrimmed" class="text-muted text-sm log-trim-note">{{ $t('appDetail.logs.trimmed', { n: RUNTIME_LOG_CAP.toLocaleString() }) }}</p>
         <div ref="logViewEl" class="code-block log-view" :style="logViewStyle" @scroll="onLogScroll">
           <span v-if="!runtimeLogs.length && failedStart" class="log-placeholder">
             {{ $t('appDetail.logs.failedStart', { number: failedStart.number }) }}
@@ -2783,8 +2783,8 @@ async function detachDatabase(d: AppDatabase) {
               <div class="split-canary" :style="{ width: canaryWeight + '%' }"></div>
             </div>
             <div class="canary-legend">
-              <span><i class="dot dot-stable"></i> stable {{ 100 - canaryWeight }}%</span>
-              <span><i class="dot dot-canary"></i> canary {{ canaryWeight }}%</span>
+              <span><i class="dot dot-stable"></i> {{ $t('appDetail.canaryLegend.stable', { weight: 100 - canaryWeight }) }}</span>
+              <span><i class="dot dot-canary"></i> {{ $t('appDetail.canaryLegend.canary', { weight: canaryWeight }) }}</span>
               <span class="text-muted">{{ canaryModeHint }}</span>
             </div>
           </div>
@@ -2800,7 +2800,7 @@ async function detachDatabase(d: AppDatabase) {
               @click="toggleCanaryPause"
             >
               <span class="mdi" :class="canaryPaused ? 'mdi-play' : 'mdi-pause'"></span>
-              {{ canaryPaused ? 'Resume' : 'Pause' }}
+              {{ canaryPaused ? $t('routes.flow.rollout.resume') : $t('routes.flow.rollout.pause') }}
             </button>
             <button class="btn btn-primary btn-sm" :disabled="canaryBusy" @click="promoteCanary">{{ $t('appDetail.promote') }}</button>
             <button class="btn btn-secondary btn-sm" :disabled="canaryBusy" @click="abortCanary">{{ $t('appDetail.abort') }}</button>
@@ -2850,10 +2850,10 @@ async function detachDatabase(d: AppDatabase) {
             :streaming="deployStreaming"
             :status-label="deployStatus"
             :status-class="depStatusClass(deployStatus)"
-            :trimmed-note="deployLogsTrimmed ? `Showing the most recent ${RUNTIME_LOG_CAP.toLocaleString()} lines — older output was trimmed.` : ''"
+            :trimmed-note="deployLogsTrimmed ? $t('appDetail.logs.trimmed', { n: RUNTIME_LOG_CAP.toLocaleString() }) : ''"
             :placeholder="$t('appDetail.logs.selectDeployment')"
             :download-name="`${app?.name || 'app'}-deployment-${streamingNumber ?? ''}`"
-            search-label="Search deployment logs"
+            :search-label="$t('appDetail.logs.searchDeployment')"
           />
         </div>
       </div>
@@ -2879,9 +2879,9 @@ async function detachDatabase(d: AppDatabase) {
       <!-- Toolbar: count summary + client-side filter -->
       <div v-if="envVars.length" class="env-toolbar">
         <div class="env-stats text-muted text-sm">
-          <strong>{{ envVars.length }}</strong> variable{{ envVars.length === 1 ? '' : 's' }}
+          <i18n-t keypath="appDetail.env.variableCount" :plural="envVars.length" tag="span"><template #n><strong>{{ envVars.length }}</strong></template></i18n-t>
           <span v-if="secretEnvCount" class="env-stats-dot">·</span>
-          <span v-if="secretEnvCount"><span class="mdi mdi-lock-outline"></span> {{ secretEnvCount }} secret</span>
+          <span v-if="secretEnvCount"><span class="mdi mdi-lock-outline"></span> {{ $t('appDetail.env.secretCount', secretEnvCount) }}</span>
         </div>
         <div class="env-search">
           <span class="mdi mdi-magnify env-search-icon"></span>
@@ -2903,7 +2903,7 @@ async function detachDatabase(d: AppDatabase) {
       <!-- Empty: filter matched nothing -->
       <div v-else-if="filteredEnvVars.length === 0" class="empty-state">
         <span class="mdi mdi-magnify" style="font-size: 36px; color: var(--text-muted)"></span>
-        <p>No variables match “{{ envSearch }}”.</p>
+        <p>{{ $t('appDetail.env.noMatch', { search: envSearch }) }}</p>
         <button class="btn btn-ghost btn-sm mt-4" @click="envSearch = ''">{{ $t('volumes.clearFilter') }}</button>
       </div>
 
@@ -3109,7 +3109,7 @@ async function detachDatabase(d: AppDatabase) {
                   <span v-if="b.review_note" class="cell-sub" style="margin-left: 8px">{{ b.review_note }}</span>
                 </td>
                 <td class="text-right">
-                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t(b.status === 'approved' ? 'appDetail.ports.releasePort' : 'appDetail.ports.cancelRequest')" :aria-label="b.status === 'approved' ? 'Release host port' : 'Cancel request'" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
+                  <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t(b.status === 'approved' ? 'appDetail.ports.releasePort' : 'appDetail.ports.cancelRequest')" :aria-label="$t(b.status === 'approved' ? 'appDetail.ports.releasePort' : 'appDetail.ports.cancelRequest')" @click="removeBind(b)"><span class="mdi" :class="b.status === 'approved' ? 'mdi-delete-outline' : 'mdi-close'"></span></button>
                 </td>
               </tr>
             </tbody>
@@ -3138,7 +3138,7 @@ async function detachDatabase(d: AppDatabase) {
           <select v-model.number="mount.volume_id" class="form-select" :aria-label="$t('appDetail.volumeToAttach')" style="max-width: 220px">
             <option :value="0" disabled>{{ $t('appDetail.selectVolume') }}</option>
             <option v-for="v in volumeOptions" :key="v.id" :value="v.id">{{ v.display_name || v.name }}</option>
-            <option v-if="volumeSearch && volumeOptions.length === 0" :value="0" disabled>No volume matches “{{ volumeSearch }}”</option>
+            <option v-if="volumeSearch && volumeOptions.length === 0" :value="0" disabled>{{ $t('appDetail.volumeNoMatch', { search: volumeSearch }) }}</option>
           </select>
           <input v-model="mount.path" class="form-input" :aria-label="$t('volumes.mountPath')" placeholder="/data" style="max-width: 200px" />
           <button class="btn btn-primary">{{ $t('appDetail.attach') }}</button>
@@ -3211,7 +3211,7 @@ async function detachDatabase(d: AppDatabase) {
                 >
                   <option :value="null">{{ $t('appDetail.selectAConfig') }}</option>
                   <option v-for="c in workspaceConfigs" :key="c.id" :value="c.id">
-                    {{ c.display_name || c.name }} ({{ c.keys.length }} file{{ c.keys.length === 1 ? '' : 's' }})
+                    {{ c.display_name || c.name }} {{ $t('appDetail.configFileCount', c.keys.length) }}
                   </option>
                 </select>
               </div>
@@ -3236,7 +3236,7 @@ async function detachDatabase(d: AppDatabase) {
 
               <div class="form-group">
                 <label class="form-label" for="cfg-path">
-                  {{ configMount.whole ? 'Directory in the container' : 'File path in the container' }}
+                  {{ configMount.whole ? $t('appDetail.configs.dirInContainer') : $t('appDetail.configs.fileInContainer') }}
                 </label>
                 <input
                   id="cfg-path"
@@ -3254,7 +3254,7 @@ async function detachDatabase(d: AppDatabase) {
               <p class="form-hint">{{ $t('appDetail.configs.mountHint') }}</p>
 
               <button class="btn btn-primary btn-sm" :disabled="!canAttachConfig || configAttaching" @click="attachConfig">
-                {{ configAttaching ? 'Mounting…' : 'Mount config' }}
+                {{ configAttaching ? $t('appDetail.configs.mounting') : $t('appDetail.configs.mountConfig') }}
               </button>
             </template>
           </div>
@@ -3356,7 +3356,7 @@ async function detachDatabase(d: AppDatabase) {
               </td>
               <td class="text-right table-actions" @click.stop>
                 <button v-if="!r.active && ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('appDetail.redeployThisRelease')" @click="activate(r.id)">{{ $t('appDetail.activate') }}</button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t(r.pinned ? 'appDetail.unpin' : 'appDetail.pin')" :aria-label="r.pinned ? 'Unpin' : 'Pin'" :disabled="releaseBusy === r.id" @click="togglePin(r)">
+                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t(r.pinned ? 'appDetail.unpin' : 'appDetail.pin')" :aria-label="$t(r.pinned ? 'appDetail.unpin' : 'appDetail.pin')" :disabled="releaseBusy === r.id" @click="togglePin(r)">
                   <span class="mdi" :class="r.pinned ? 'mdi-pin-off-outline' : 'mdi-pin-outline'"></span>
                 </button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" :disabled="r.active || r.pinned || releaseBusy === r.id" @click="deleteRelease(r)">
@@ -3405,15 +3405,17 @@ async function detachDatabase(d: AppDatabase) {
           <div class="source-summary">
             <span class="source-badge" :class="app.source_type">
               <span class="mdi" :class="app.source_type === 'git' ? 'mdi-git' : 'mdi-docker'"></span>
-              {{ app.source_type === 'git' ? 'Git repository' : 'Docker image' }}
+              {{ app.source_type === 'git' ? $t('appDetail.source.git') : $t('appDetail.source.image') }}
             </span>
             <code v-if="app.source_type === 'image'" class="source-ref">{{ app.image }}:{{ app.tag || 'latest' }}</code>
             <code v-else class="source-ref">{{ app.git_repo || '—' }}<span v-if="app.git_ref" class="text-muted"> @ {{ app.git_ref }}</span></code>
           </div>
           <p v-if="imageManaged && template" class="form-hint source-managed">
             <span class="mdi mdi-lock-outline"></span>
-            Managed by the “{{ template.name }}” template — change it through a
-            <button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.marketplaceUpgrade') }}</button>.
+            <i18n-t keypath="appDetail.settings.templateManagedSource" tag="span">
+              <template #name>{{ template.name }}</template>
+              <template #link><button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.marketplaceUpgrade') }}</button></template>
+            </i18n-t>
           </p>
           <p v-else-if="managedBy === 'gitops'" class="form-hint source-managed">
             <span class="mdi mdi-lock-outline"></span>
@@ -3538,11 +3540,11 @@ async function detachDatabase(d: AppDatabase) {
 
           <div class="form-actions">
             <button class="btn btn-primary" :disabled="savingSource || !sourceValid" @click="saveSource">
-              {{ savingSource ? 'Saving…' : sourceSwitching ? 'Switch source' : 'Save source' }}
+              {{ savingSource ? $t('action.saving') : sourceSwitching ? $t('appDetail.settings.switchSource') : $t('appDetail.settings.saveSource') }}
             </button>
             <button class="btn btn-ghost" :disabled="savingSource" @click="cancelEditSource">{{ $t('action.cancel') }}</button>
             <span v-if="!sourceValid" class="form-error">
-              {{ sourceDraft.type === 'image' ? 'An image is required.' : 'A repository URL or a saved repository is required.' }}
+              {{ sourceDraft.type === 'image' ? $t('appDetail.settings.imageRequired') : $t('appDetail.settings.repoRequired') }}
             </span>
           </div>
         </div>
@@ -3553,7 +3555,7 @@ async function detachDatabase(d: AppDatabase) {
             <div>
               <strong class="source-pipeline-title">
                 <span class="mdi mdi-pipe"></span>
-                {{ deploysViaPipeline ? 'Repository pipeline' : 'No repository pipeline' }}
+                {{ deploysViaPipeline ? $t('appDetail.settings.repoPipeline') : $t('appDetail.settings.noRepoPipeline') }}
               </strong>
               <p class="form-hint" style="margin: 4px 0 0">
                 <i18n-t v-if="deploysViaPipeline" keypath="appDetail.settings.repoPipelineHint" tag="span">
@@ -3572,7 +3574,7 @@ async function detachDatabase(d: AppDatabase) {
               @click="resyncPipeline"
             >
               <span class="mdi" :class="resyncingPipeline ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
-              {{ resyncingPipeline ? 'Syncing…' : 'Re-sync' }}
+              {{ resyncingPipeline ? $t('appDetail.settings.syncing') : $t('appDetail.settings.resync') }}
             </button>
           </div>
         </div>
@@ -3593,7 +3595,7 @@ async function detachDatabase(d: AppDatabase) {
               @click="invalidateBuildCache"
             >
               <span class="mdi" :class="invalidatingCache ? 'mdi-loading mdi-spin' : 'mdi-cached'"></span>
-              {{ invalidatingCache ? 'Invalidating…' : 'Invalidate' }}
+              {{ invalidatingCache ? $t('appDetail.settings.invalidating') : $t('appDetail.settings.invalidate') }}
             </button>
           </div>
         </div>
@@ -3643,7 +3645,7 @@ async function detachDatabase(d: AppDatabase) {
             <p class="form-hint">{{ $t('appDetail.settings.stackHint') }}</p>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
-            {{ savingSettings ? 'Saving…' : 'Save settings' }}
+            {{ savingSettings ? $t('action.saving') : $t('appDetail.settings.saveSettings') }}
           </button>
           <p v-else class="text-muted text-sm">{{ $t('appDetail.settings.needsDeveloper') }}</p>
         </div>
@@ -3750,7 +3752,7 @@ async function detachDatabase(d: AppDatabase) {
                 </span>
               </label>
             </div>
-            <p class="form-hint">Applied when you Deploy without choosing a strategy. Config-change redeploys always use rolling{{ hasHostPorts ? ', which falls back to recreate here' : '' }}.</p>
+            <p class="form-hint">{{ hasHostPorts ? $t('appDetail.strategy.defaultHintRecreate') : $t('appDetail.strategy.defaultHint') }}</p>
           </div>
           <template v-if="settingsForm.deploy_strategy === 'canary'">
             <div class="form-row">
@@ -3768,12 +3770,11 @@ async function detachDatabase(d: AppDatabase) {
               </div>
             </div>
             <p class="form-hint" style="margin-top: -8px; margin-bottom: 16px">
-              Start at {{ settingsForm.canary_initial_weight }}%, add {{ settingsForm.canary_step_weight }}% every
-              {{ settingsForm.canary_step_interval_seconds }}s, auto-promote at 100%.
+              {{ $t('appDetail.strategy.canarySummary', { initial: settingsForm.canary_initial_weight, step: settingsForm.canary_step_weight, interval: settingsForm.canary_step_interval_seconds }) }}
             </p>
           </template>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
-            {{ savingSettings ? 'Saving…' : 'Save strategy' }}
+            {{ savingSettings ? $t('action.saving') : $t('appDetail.strategy.save') }}
           </button>
         </div>
       </div>
@@ -3786,8 +3787,8 @@ async function detachDatabase(d: AppDatabase) {
               <label class="form-label">{{ $t('appDetail.cpuLimitCores') }}</label>
               <input v-model.number="settingsForm.cpu_cores" type="number" min="0" step="0.1" class="form-input" :class="{ 'input-error': cpuOverCap }" :disabled="!ws.canEdit" />
               <p class="form-hint" :class="{ 'hint-error': cpuOverCap }">
-                <span v-if="cpuOverCap">Exceeds platform max of {{ limits.max_cpu_cores }} cores.</span>
-                <span v-else-if="limits.max_cpu_cores > 0">Max {{ limits.max_cpu_cores }} cores. 0 = unlimited.</span>
+                <span v-if="cpuOverCap">{{ $t('appDetail.limits.cpuOverCap', { max: limits.max_cpu_cores }) }}</span>
+                <span v-else-if="limits.max_cpu_cores > 0">{{ $t('appDetail.limits.cpuMax', { max: limits.max_cpu_cores }) }}</span>
                 <span v-else>{{ $t('appDetail.zeroUnlimited') }}</span>
               </p>
             </div>
@@ -3795,8 +3796,8 @@ async function detachDatabase(d: AppDatabase) {
               <label class="form-label">{{ $t('appDetail.memoryLimitMb') }}</label>
               <input v-model.number="settingsForm.memory_mb" type="number" min="0" step="64" class="form-input" :class="{ 'input-error': memOverCap }" :disabled="!ws.canEdit" />
               <p class="form-hint" :class="{ 'hint-error': memOverCap }">
-                <span v-if="memOverCap">Exceeds platform max of {{ limits.max_memory_mb }} MB.</span>
-                <span v-else-if="limits.max_memory_mb > 0">Max {{ limits.max_memory_mb }} MB. 0 = unlimited.</span>
+                <span v-if="memOverCap">{{ $t('appDetail.limits.memOverCap', { max: limits.max_memory_mb }) }}</span>
+                <span v-else-if="limits.max_memory_mb > 0">{{ $t('appDetail.limits.memMax', { max: limits.max_memory_mb }) }}</span>
                 <span v-else>{{ $t('appDetail.zeroUnlimited') }}</span>
               </p>
             </div>
@@ -3877,7 +3878,7 @@ async function detachDatabase(d: AppDatabase) {
           <div class="form-group">
             <label class="form-label">{{ $t('appDetail.dropCapabilities') }}</label>
             <input
-              v-model="settingsForm.drop_capabilities" type="text" class="form-input mono" placeholder="NET_RAW, SYS_CHROOT or ALL"
+              v-model="settingsForm.drop_capabilities" type="text" class="form-input mono" :placeholder="$t('appDetail.settings.dropCapsPlaceholder')"
               :disabled="!ws.canEdit" :aria-label="$t('appDetail.capabilitiesToDrop')"
             />
             <p v-if="dropCapabilitiesError" class="form-hint" style="color: var(--danger)">{{ dropCapabilitiesError }}</p>
@@ -3966,7 +3967,7 @@ async function detachDatabase(d: AppDatabase) {
             <p class="form-hint">{{ $t('appDetail.settings.restartExternalStopsHint') }}</p>
           </div>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings || !resourcesValid || !!runAsUserError || !!dropCapabilitiesError" @click="saveSettings">
-            {{ savingSettings ? 'Saving…' : 'Save resources' }}
+            {{ savingSettings ? $t('action.saving') : $t('appDetail.settings.saveResources') }}
           </button>
         </div>
       </div>
@@ -4060,7 +4061,7 @@ async function detachDatabase(d: AppDatabase) {
             </div>
           </template>
           <button v-if="ws.canEdit" class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
-            {{ savingSettings ? 'Saving…' : 'Save healthcheck' }}
+            {{ savingSettings ? $t('action.saving') : $t('appDetail.settings.saveHealthcheck') }}
           </button>
         </div>
       </div>
@@ -4136,7 +4137,7 @@ async function detachDatabase(d: AppDatabase) {
         :editing-key="editingEnvKey"
         :initial="envForm"
         :saving="savingEnv"
-        :apply-note="isDeployed ? 'Applies on the next deploy.' : ''"
+        :apply-note="isDeployed ? $t('appDetail.appliesNextDeploy') : ''"
         @close="showEnvModal = false"
         @save="saveEnv"
       />
@@ -4191,7 +4192,7 @@ async function detachDatabase(d: AppDatabase) {
             </button>
           </div>
           <p v-if="hiddenInstanceCount > 0" class="form-hint" style="margin-top: 6px">
-            {{ hiddenInstanceCount }} instance(s) are hidden — this app cannot reach them: they run on another node, outside cluster networking.
+            {{ $t('appDetail.db.instancesHidden', hiddenInstanceCount) }}
           </p>
 
           <!-- Step 2: database on the instance -->
@@ -4248,7 +4249,7 @@ async function detachDatabase(d: AppDatabase) {
         <div class="modal-footer">
           <button class="btn btn-ghost" @click="linkModal = false">{{ $t('action.cancel') }}</button>
           <button class="btn btn-primary" :disabled="!selInstance || linkBusy || envClashes.length > 0" @click="confirmLink">
-            {{ linkBusy ? 'Linking…' : 'Attach' }}
+            {{ linkBusy ? $t('appDetail.db.linking') : $t('appDetail.attach') }}
           </button>
         </div>
       </AppModal>
@@ -4294,14 +4295,14 @@ async function detachDatabase(d: AppDatabase) {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('stacks.pasteKeyValueLines') }}</label>
-              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="DATABASE_URL=postgres://...&#10;# comments and blank lines are ignored&#10;LOG_LEVEL=info" required></textarea>
+              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" :placeholder="$t('appDetail.env.importPlaceholder')" required></textarea>
             </div>
             <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" />{{ $t('stacks.markAllSecrets') }}</label>
-            <p class="form-hint">Existing keys are overwritten. {{ isDeployed ? 'The app redeploys after import.' : '' }}</p>
+            <p class="form-hint">{{ isDeployed ? $t('appDetail.env.importHintRedeploy') : $t('appDetail.env.importHint') }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showEnvImport = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? $t('appDetail.env.importing') : $t('appDetail.env.import') }}</button>
           </div>
         </form>
       </AppModal>
@@ -4350,7 +4351,7 @@ async function detachDatabase(d: AppDatabase) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showAddPort = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="savingSettings || portForm.container_port <= 0">{{ savingSettings ? 'Adding…' : 'Add port' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="savingSettings || portForm.container_port <= 0">{{ savingSettings ? $t('appDetail.ports.adding') : $t('appDetail.addPort') }}</button>
           </div>
         </form>
       </AppModal>
@@ -4377,7 +4378,7 @@ async function detachDatabase(d: AppDatabase) {
                 <label class="form-label">{{ $t('appDetail.hostPort') }}</label>
                 <div class="flex items-center gap-2">
                   <input v-model.number="bindForm.host_port" type="number" class="form-input" placeholder="30080" required />
-                  <button type="button" class="btn btn-secondary" :disabled="suggestingPort" :title="$t('appDetail.pickAFreeHostPort')" @click="suggestPort">{{ suggestingPort ? '…' : 'Suggest' }}</button>
+                  <button type="button" class="btn btn-secondary" :disabled="suggestingPort" :title="$t('appDetail.pickAFreeHostPort')" @click="suggestPort">{{ suggestingPort ? '…' : $t('appDetail.ports.suggest') }}</button>
                 </div>
               </div>
             </div>
@@ -4386,7 +4387,7 @@ async function detachDatabase(d: AppDatabase) {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showBindReq = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port || bindBlocked" :title="bindBlockedReason">{{ requestingBind ? 'Requesting…' : 'Request' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="requestingBind || !bindForm.host_port || bindBlocked" :title="bindBlockedReason">{{ requestingBind ? $t('appDetail.ports.requesting') : $t('appDetail.ports.request') }}</button>
           </div>
         </form>
       </AppModal>
@@ -4396,7 +4397,7 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="showDeploy" @close="showDeploy = false">
         <div class="modal-header">
-          <h3>{{ deployVerb }} {{ app.name }}</h3>
+          <h3>{{ $t(isDeployed ? 'appDetail.deployTitle.redeploy' : 'appDetail.deployTitle.deploy', { name: app.name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDeploy = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="confirmDeploy">
@@ -4404,7 +4405,7 @@ async function detachDatabase(d: AppDatabase) {
             <div v-if="template" class="tpl-notice">
               <span class="mdi mdi-store-outline"></span>
               <div class="tpl-notice-text">
-                <strong>Managed by the “{{ template.name }}” template.</strong>{{ $t('appDetail.settings.templateImageWarning') }}<button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.upgradeViaMarketplace') }}</button>
+                <strong>{{ $t('appDetail.deploy.templateTitle', { name: template.name }) }}</strong>{{ $t('appDetail.settings.templateImageWarning') }}<button type="button" class="tpl-notice-link" @click="goToUpgrade">{{ $t('appDetail.upgradeViaMarketplace') }}</button>
               </div>
             </div>
             <div v-else-if="managedBy === 'gitops'" class="tpl-notice">
@@ -4454,7 +4455,7 @@ async function detachDatabase(d: AppDatabase) {
             <p class="form-hint">
               {{ $t(strategyHint(deployStrategy)) }}
               <span v-if="!isDeployed && deployStrategy === 'canary'"><br />{{ $t('appDetail.deploy.firstDeployNoCanary') }}</span>
-              <span v-if="hasHostPorts"><br />Rolling isn't available: host port {{ hostPortList }} can only be held by one container at a time.</span>
+              <span v-if="hasHostPorts"><br />{{ $t('appDetail.deploy.rollingUnavailable', { ports: hostPortList }) }}</span>
               <span v-if="hasHostPorts && deployStrategy === 'canary'"><br />{{ $t('appDetail.ports.canaryHint') }}</span>
             </p>
             <div v-if="app.source_type === 'git'" class="form-group" style="margin-top: 16px; margin-bottom: 0">
@@ -4466,7 +4467,7 @@ async function detachDatabase(d: AppDatabase) {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showDeploy = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="deploying">
-              <span class="mdi mdi-rocket-launch-outline"></span> {{ deploying ? 'Starting…' : deployVerb }}
+              <span class="mdi mdi-rocket-launch-outline"></span> {{ deploying ? $t('appDetail.deploy.starting') : deployVerb }}
             </button>
           </div>
         </form>
@@ -4477,7 +4478,7 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="releaseDetail" @close="releaseDetail = null">
         <div class="modal-header">
-          <h3>Release v{{ releaseDetail.version }}</h3>
+          <h3>{{ $t('appDetail.releaseTitle', { version: releaseDetail.version }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="releaseDetail = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -4493,12 +4494,12 @@ async function detachDatabase(d: AppDatabase) {
             <span v-if="releaseDetail.active" class="badge badge-success badge-dot">{{ $t('appDetail.active') }}</span>
             <span v-else class="badge badge-neutral">{{ $t('appDetail.inactive') }}</span>
             <span v-if="releaseDetail.pinned" class="badge badge-info"><span class="mdi mdi-pin" style="font-size: 12px"></span>{{ $t('appDetail.pinned') }}</span>
-            <span class="text-muted text-sm">Created {{ new Date(releaseDetail.created_at).toLocaleString() }}</span>
+            <span class="text-muted text-sm">{{ $t('appDetail.createdAt', { date: new Date(releaseDetail.created_at).toLocaleString() }) }}</span>
           </div>
         </div>
         <div class="modal-footer">
           <button v-if="!releaseDetail.active && ws.canEdit" class="btn btn-secondary" @click="activate(releaseDetail.id); releaseDetail = null">{{ $t('appDetail.activate') }}</button>
-          <button v-if="ws.canEdit" class="btn btn-secondary" @click="togglePin(releaseDetail)">{{ releaseDetail.pinned ? 'Unpin' : 'Pin' }}</button>
+          <button v-if="ws.canEdit" class="btn btn-secondary" @click="togglePin(releaseDetail)">{{ releaseDetail.pinned ? $t('appDetail.unpin') : $t('appDetail.pin') }}</button>
           <button v-if="ws.canEdit" class="btn btn-danger" :disabled="releaseDetail.active || releaseDetail.pinned" @click="deleteRelease(releaseDetail)">{{ $t('action.delete') }}</button>
         </div>
       </AppModal>
@@ -4507,11 +4508,11 @@ async function detachDatabase(d: AppDatabase) {
     <Teleport to="body">
       <AppModal v-if="manifestOpen" dialog-class="modal-xl" @close="manifestOpen = false">
         <div class="modal-header">
-          <h3><span class="mdi mdi-file-code-outline"></span> Manifest — {{ app.name }}</h3>
+          <h3><span class="mdi mdi-file-code-outline"></span> {{ $t('appDetail.manifest.title', { name: app.name }) }}</h3>
           <div class="manifest-actions">
             <button type="button" class="btn btn-ghost btn-sm" @click="copyManifest">
               <span class="mdi" :class="manifestCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
-              {{ manifestCopied ? 'Copied' : 'Copy' }}
+              {{ manifestCopied ? $t('notify.common.copied') : $t('appDetail.copy') }}
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="downloadManifest">
               <span class="mdi mdi-download"></span>{{ $t('appDetail.download') }}</button>

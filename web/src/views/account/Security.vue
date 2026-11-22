@@ -38,8 +38,8 @@ onMounted(async () => {
 const pw = ref({ current: '', next: '', confirm: '' })
 const pwBusy = ref(false)
 const pwError = computed(() => {
-  if (pw.value.next && pw.value.next.length < MIN_PASSWORD_LENGTH) return `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`
-  if (pw.value.confirm && pw.value.next !== pw.value.confirm) return 'New passwords do not match.'
+  if (pw.value.next && pw.value.next.length < MIN_PASSWORD_LENGTH) return t('security.newPasswordTooShort', { n: MIN_PASSWORD_LENGTH })
+  if (pw.value.confirm && pw.value.next !== pw.value.confirm) return t('security.newPasswordsMismatch')
   return ''
 })
 const pwValid = computed(
@@ -53,7 +53,7 @@ async function changePassword() {
     pw.value = { current: '', next: '', confirm: '' }
     notify.success(t('notify.security.passwordChanged'))
   } catch (e) {
-    notify.apiError(e, 'Could not change password')
+    notify.apiError(e, t('notify.security.passwordChangeFailed'))
   } finally {
     pwBusy.value = false
   }
@@ -89,7 +89,7 @@ async function confirmSetup() {
     notify.success(t('notify.security.twoFactorEnabled'))
     modal.value = 'codes'
   } catch (e) {
-    notify.apiError(e, 'Invalid code')
+    notify.apiError(e, t('login.invalidCode'))
   } finally {
     busy.value = false
   }
@@ -110,7 +110,7 @@ async function confirmDisable() {
     notify.success(t('notify.security.twoFactorDisabled'))
     closeModal()
   } catch (e) {
-    notify.apiError(e, 'Invalid code')
+    notify.apiError(e, t('login.invalidCode'))
   } finally {
     busy.value = false
   }
@@ -131,7 +131,7 @@ async function confirmRegenerate() {
     notify.success(t('notify.security.codesRegenerated'))
     modal.value = 'codes'
   } catch (e) {
-    notify.apiError(e, 'Invalid code')
+    notify.apiError(e, t('login.invalidCode'))
   } finally {
     busy.value = false
   }
@@ -183,7 +183,7 @@ function downloadCodes() {
           <p v-if="pwError" class="pw-error"><span class="mdi mdi-alert-circle-outline"></span> {{ pwError }}</p>
           <div>
             <button type="submit" class="btn btn-primary" :disabled="!pwValid || pwBusy">
-              <span class="mdi mdi-lock-reset"></span> {{ pwBusy ? 'Changing…' : 'Change password' }}
+              <span class="mdi mdi-lock-reset"></span> {{ pwBusy ? $t('security.changing') : $t('security.changePassword') }}
             </button>
           </div>
         </form>
@@ -205,7 +205,7 @@ function downloadCodes() {
         <template v-if="!enabled">
           <button class="btn btn-primary" :disabled="busy" @click="startSetup">
             <span class="mdi mdi-shield-plus-outline"></span>
-            {{ busy ? 'Preparing…' : 'Enable two-factor' }}
+            {{ busy ? $t('security.preparing') : $t('security.enableTwoFactor') }}
           </button>
         </template>
 
@@ -274,7 +274,7 @@ function downloadCodes() {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeModal">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="busy">
-              {{ busy ? 'Verifying…' : 'Verify & enable' }}
+              {{ busy ? $t('login.verifying') : $t('security.verifyEnable') }}
             </button>
           </div>
         </form>
@@ -308,24 +308,22 @@ function downloadCodes() {
       <!-- Disable / Regenerate: ask for a code -->
       <AppModal v-if="modal === 'disable' || modal === 'regenerate'" max-width="460px" @close="closeModal">
         <div class="modal-header">
-          <h3>{{ modal === 'disable' ? 'Disable two-factor' : 'Regenerate recovery codes' }}</h3>
+          <h3>{{ modal === 'disable' ? $t('security.disableTwoFactor') : $t('security.regenerateRecoveryCodes') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="closeModal"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="modal === 'disable' ? confirmDisable() : confirmRegenerate()">
           <div class="modal-body">
             <p class="sec-desc" style="margin-bottom: 14px">
-              {{ modal === 'disable'
-                ? 'Enter a code from your authenticator app (or a recovery code) to turn off two-factor authentication.'
-                : 'Enter a code from your authenticator app. This invalidates your existing recovery codes.' }}
+              {{ modal === 'disable' ? $t('security.disablePrompt') : $t('security.regeneratePrompt') }}
             </p>
             <div class="form-group" style="margin-bottom: 0">
-              <label class="form-label">{{ modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code' }}</label>
+              <label class="form-label">{{ modal === 'disable' ? $t('security.authOrRecoveryCode') : $t('login.authenticationCode') }}</label>
               <input
                 v-model="code"
                 class="form-input totp-input"
                 placeholder="123456"
                 autocomplete="one-time-code"
-                :aria-label="modal === 'disable' ? 'Authentication or recovery code' : 'Authentication code'"
+                :aria-label="modal === 'disable' ? $t('security.authOrRecoveryCode') : $t('login.authenticationCode')"
                 required
                 autofocus
               />
@@ -339,7 +337,7 @@ function downloadCodes() {
               :class="modal === 'disable' ? 'btn-danger' : 'btn-primary'"
               :disabled="busy"
             >
-              {{ busy ? 'Working…' : modal === 'disable' ? 'Disable' : 'Regenerate' }}
+              {{ busy ? $t('action.working') : modal === 'disable' ? $t('action.disable') : $t('action.regenerate') }}
             </button>
           </div>
         </form>

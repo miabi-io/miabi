@@ -27,7 +27,7 @@ const visiblePages = computed<(number | null)[]>(() => {
 <template>
   <div v-if="totalPages > 1" class="pagination">
     <span class="pagination-info">
-      Page {{ currentPage + 1 }} of {{ totalPages }} · {{ pageable.total_elements }} total
+      {{ $t('pagination.summary', { page: currentPage + 1, pages: totalPages, total: pageable.total_elements }) }}
     </span>
     <div class="pagination-buttons">
       <button class="btn btn-secondary btn-sm" :disabled="currentPage === 0" :aria-label="$t('marketplace.previousPage')" @click="emit('page', currentPage - 1)">

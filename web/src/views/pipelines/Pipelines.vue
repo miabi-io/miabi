@@ -235,7 +235,7 @@ async function trigger(p: PipelineDefinition) {
     p.last_run = { ...run } as PipelineDefinition['last_run']
     notify.success(t('notify.pipelines.runQueued', { name: p.name, number: run.number }), { detail: t('notify.pipelines.runQueuedDetail') })
   } catch (e) {
-    notify.apiError(e, 'Could not trigger run')
+    notify.apiError(e, t('pipelines.triggerFailed'))
   } finally {
     triggering.value = null
   }
@@ -260,7 +260,7 @@ async function confirmDelete() {
 
 function appName(id?: number | null) {
   if (!id) return null
-  return apps.value.find((a) => a.id === id)?.name ?? `app #${id}`
+  return apps.value.find((a) => a.id === id)?.name ?? t('db.appNumber', { id })
 }
 function openRuns(p: PipelineDefinition) {
   router.push({ name: 'pipeline-runs', params: { id: p.id } })
@@ -322,7 +322,7 @@ function openLastRun(p: PipelineDefinition) {
                   <span
                     v-else-if="p.git_repository"
                     class="target-chip"
-                    :title="`Clones this repository${p.branch ? ' (' + p.branch + ')' : ''} and pushes an image — no deploy target`"
+                    :title="p.branch ? $t('pipelines.repoTargetBranchTitle', { branch: p.branch }) : $t('pipelines.repoTargetTitle')"
                   >
                     <span class="mdi mdi-git"></span> {{ repoLabel(p.git_repository) }}
                     <span v-if="p.branch" class="branch-chip">{{ p.branch }}</span>
@@ -330,7 +330,7 @@ function openLastRun(p: PipelineDefinition) {
                   <span v-else class="cell-sub" :title="$t('pipelines.noSourceNote')">—</span>
                 </td>
                 <td>
-                  <button v-if="p.last_run" class="last-run" :title="`Run #${p.last_run.number} · open`" @click="openLastRun(p)">
+                  <button v-if="p.last_run" class="last-run" :title="$t('pipelines.openRunTitle', { number: p.last_run.number })" @click="openLastRun(p)">
                     <span class="badge" :class="statusMeta(p.last_run.status).badge">
                       <span class="mdi" :class="statusMeta(p.last_run.status).icon"></span> {{ statusMeta(p.last_run.status).label }}
                     </span>
@@ -340,7 +340,7 @@ function openLastRun(p: PipelineDefinition) {
                   <span v-else class="cell-sub">{{ $t('pipelines.neverRun') }}</span>
                 </td>
                 <td>
-                  <span class="badge" :class="p.enabled ? 'badge-success' : 'badge-neutral'">{{ p.enabled ? 'enabled' : 'disabled' }}</span>
+                  <span class="badge" :class="p.enabled ? 'badge-success' : 'badge-neutral'">{{ p.enabled ? $t('jobs.enabledState') : $t('db.disabled') }}</span>
                 </td>
                 <td class="text-right table-actions">
                   <button class="btn-icon btn-icon-muted" :title="$t('pipelines.viewRuns')" :aria-label="$t('pipelines.viewRuns')" @click="openRuns(p)"><span class="mdi mdi-history"></span></button>
@@ -373,7 +373,7 @@ function openLastRun(p: PipelineDefinition) {
     <Teleport to="body">
       <AppModal v-if="showModal" dialog-class="modal-lg" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? (editingRepoOwned ? 'Pipeline' : 'Edit pipeline') : 'New pipeline' }}</h3>
+          <h3>{{ editing ? (editingRepoOwned ? $t('pipelines.pipeline') : $t('pipelines.editPipeline')) : $t('pipelines.newPipeline') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">

@@ -52,7 +52,7 @@ watch(
     <AppModal v-if="open" elevated max-width="460px" :escapable="!busy" :auto-focus="false" @close="emit('cancel')">
         <div class="modal-header">
           <h3 :id="titleId">{{ title }}</h3>
-          <button class="btn-icon btn-icon-muted" aria-label="Close dialog" @click="emit('cancel')"><span class="mdi mdi-close"></span></button>
+          <button class="btn-icon btn-icon-muted" :aria-label="t('generator.closeDialog')" @click="emit('cancel')"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <p v-if="message" class="confirm-message">{{ message }}</p>

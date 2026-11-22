@@ -20,6 +20,7 @@
 
 // Owns no chrome so page, modal and popover share it; nothing reaches the API unless saved to the Vault.
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   DEFAULT_PASSPHRASE_OPTIONS,
   DEFAULT_PASSWORD_OPTIONS,
@@ -46,6 +47,7 @@ import {
 
 export type GeneratorMode = 'password' | 'passphrase' | 'token'
 
+const { t } = useI18n()
 const props = withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 
 const emit = defineEmits<{ (e: 'use', value: string): void; (e: 'save', value: string): void }>()
@@ -102,7 +104,7 @@ async function ensureWordlist() {
   try {
     wordlist.value = await loadWordlist()
   } catch {
-    wordlistError.value = 'Could not load the wordlist. Check your connection and try again.'
+    wordlistError.value = t('generator.wordlistError')
   } finally {
     wordlistLoading.value = false
   }
@@ -152,9 +154,9 @@ const adjusted = computed(() => {
   const n = normalizePasswordOptions(password.value)
   const o = password.value
   if (n.minDigits !== o.minDigits || n.minSymbols !== o.minSymbols) {
-    return `Minimums trimmed to fit the length: ${n.minDigits} digit(s), ${n.minSymbols} symbol(s).`
+    return t('generator.minimumsTrimmed', { digits: n.minDigits, symbols: n.minSymbols })
   }
-  if (!o.upper && !o.lower && !o.digits && !o.symbols) return 'No character set selected — using lowercase letters.'
+  if (!o.upper && !o.lower && !o.digits && !o.symbols) return t('generator.noCharset')
   return ''
 })
 
@@ -178,19 +180,19 @@ defineExpose({ regenerate, value })
     <div class="gen-tabs" role="tablist" :aria-label="$t('generator.generatorType')">
       <button v-for="m in (['password', 'passphrase', 'token'] as GeneratorMode[])" :key="m" type="button" role="tab"
         class="gen-tab" :class="{ active: mode === m }" :aria-selected="mode === m" @click="selectMode(m)">
-        {{ m === 'password' ? 'Password' : m === 'passphrase' ? 'Passphrase' : 'Token' }}
+        {{ m === 'password' ? $t('generator.mode.password') : m === 'passphrase' ? $t('generator.mode.passphrase') : $t('generator.mode.token') }}
       </button>
     </div>
 
     <!-- Output first: it is what the user came for. -->
     <div class="gen-output">
       <input id="generator-output" class="form-input gen-value" :value="value" readonly :aria-label="$t('generator.generatedValue')"
-        :placeholder="wordlistLoading ? 'Loading wordlist…' : ''" @focus="($event.target as HTMLInputElement).select()" />
+        :placeholder="wordlistLoading ? $t('generator.loadingWordlist') : ''" @focus="($event.target as HTMLInputElement).select()" />
       <button type="button" class="btn btn-icon" :title="$t('generator.generateAnother')" :aria-label="$t('generator.generateAnother')"
         @click="regenerate">
         <span class="mdi mdi-refresh"></span>
       </button>
-      <button type="button" class="btn btn-icon" :title="copied ? 'Copied' : 'Copy'" :aria-label="$t('generator.copy')" :disabled="!value"
+      <button type="button" class="btn btn-icon" :title="copied ? $t('notify.common.copied') : $t('generator.copy')" :aria-label="$t('generator.copy')" :disabled="!value"
         @click="copy">
         <span class="mdi" :class="copied ? 'mdi-check' : 'mdi-content-copy'"></span>
       </button>
@@ -198,11 +200,11 @@ defineExpose({ regenerate, value })
 
     <div class="gen-meta">
       <span class="gen-bits" :class="`tone-${strength.tone}`">
-        {{ Math.round(bits) }} bits
+        {{ $t('generator.bits', { n: Math.round(bits) }) }}
         <span class="text-muted">· {{ strength.label }}</span>
       </span>
       <span v-if="mode === 'passphrase' && wordlist.length" class="text-muted gen-note">
-        {{ wordlist.length.toLocaleString() }}-word EFF list · {{ Math.log2(wordlist.length).toFixed(1) }} bits/word
+        {{ $t('generator.wordlistMeta', { words: wordlist.length.toLocaleString(), bits: Math.log2(wordlist.length).toFixed(1) }) }}
       </span>
     </div>
 

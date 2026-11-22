@@ -8,7 +8,7 @@ import { fmtNum, fmtMs, fmtPct, routeLabel } from './format'
 <template>
   <AnalyticsShell v-slot="{ report }">
     <div class="a-grid">
-      <StatTile label="Avg latency" icon="mdi-clock-outline" :value="fmtMs(report.totals.avg_latency_ms)" />
+      <StatTile :label="$t('analytics.avgLatency')" icon="mdi-clock-outline" :value="fmtMs(report.totals.avg_latency_ms)" />
       <StatTile label="p50" icon="mdi-speedometer-slow" :value="fmtMs(report.performance.request_p50_ms)" />
       <StatTile label="p95" icon="mdi-speedometer-medium" :value="fmtMs(report.performance.request_p95_ms)" />
       <StatTile label="p99" icon="mdi-speedometer" :value="fmtMs(report.performance.request_p99_ms)" />
@@ -16,7 +16,7 @@ import { fmtNum, fmtMs, fmtPct, routeLabel } from './format'
 
     <div class="two-col">
       <div class="card">
-        <div class="a-card-header"><h3>{{ $t('analytics.p95LatencyOverTime') }}</h3><span class="a-muted">per {{ report.granularity }}</span></div>
+        <div class="a-card-header"><h3>{{ $t('analytics.p95LatencyOverTime') }}</h3><span class="a-muted">{{ $t(`analytics.per.${report.granularity}`) }}</span></div>
         <div class="card-body">
           <LatencyChart v-if="report.series.length" :series="report.series" :granularity="report.granularity" :height="150" />
           <p v-else class="a-muted">{{ $t('analytics.notEnoughDataPointsTo') }}</p>

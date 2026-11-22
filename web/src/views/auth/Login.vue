@@ -208,7 +208,7 @@ async function continueWithSSO() {
   try {
     const res = await oauthApi.discoverSSO(ssoEmail.value.trim())
     const name = res.data.data?.name
-    if (!name) throw new Error('no provider')
+    if (!name) throw new Error(t('login.noSsoProvider'))
     window.location.href = authorizeUrl(name, undefined, [], next.value)
   } catch (e) {
     error.value = apiErrorMessage(e, t('login.noSsoProvider'))

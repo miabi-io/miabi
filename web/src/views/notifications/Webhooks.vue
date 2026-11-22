@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { webhookApi, type WebhookInput } from '@/api/webhooks'
-import { NOTIFIABLE_EVENT_GROUPS, eventLabel } from '@/constants/notifiableEvents'
+import { NOTIFIABLE_EVENT_GROUPS, eventLabel, groupLabel } from '@/constants/notifiableEvents'
 import { copyText } from '@/utils/clipboard'
 import type { Webhook, WebhookDelivery } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -127,7 +127,7 @@ async function test(w: Webhook) {
     await webhookApi.test(currentWorkspaceId.value, w.id)
     notify.success(t('notify.webhooks.testOk', { name: w.name || w.url }))
   } catch (e) {
-    notify.apiError(e, 'Test delivery failed')
+    notify.apiError(e, t('notify.webhooks.testFailed'))
   } finally {
     testing.value = null
   }
@@ -172,7 +172,7 @@ async function redeliver(d: WebhookDelivery) {
     notify.success(t('notify.webhooks.requeued'))
     openDeliveries(deliveriesFor.value)
   } catch (e) {
-    notify.apiError(e, 'Redelivery failed')
+    notify.apiError(e, t('notify.webhooks.redeliveryFailed'))
   }
 }
 
@@ -209,15 +209,15 @@ function fmtTime(s: string) {
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-webhook" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ w.name || 'Webhook' }}</span>
+                    <span class="cell-title">{{ w.name || $t('webhooks.webhook') }}</span>
                     <span class="cell-sub">{{ w.url }}</span>
                   </span>
                 </div>
               </td>
-              <td class="cell-sub">{{ w.events.length }} event{{ w.events.length === 1 ? '' : 's' }}</td>
+              <td class="cell-sub">{{ $t('count.events', w.events.length) }}</td>
               <td>
                 <span class="badge" :class="w.enabled ? 'badge-success' : 'badge-neutral'">
-                  {{ w.enabled ? 'Enabled' : 'Disabled' }}
+                  {{ w.enabled ? $t('webhooks.status.enabled') : $t('webhooks.status.disabled') }}
                 </span>
               </td>
               <td class="text-right table-actions">
@@ -240,7 +240,7 @@ function fmtTime(s: string) {
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ revealSecret ? 'Webhook created' : editing ? 'Edit webhook' : 'New webhook' }}</h3>
+          <h3>{{ revealSecret ? $t('webhooks.createdTitle') : editing ? $t('webhooks.editWebhook') : $t('webhooks.newWebhook') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
 
@@ -274,11 +274,11 @@ function fmtTime(s: string) {
             <div class="form-group">
               <label class="form-label">{{ $t('webhooks.events') }}</label>
               <div v-for="g in NOTIFIABLE_EVENT_GROUPS" :key="g.label" class="event-group">
-                <div class="event-group-label">{{ g.label }}</div>
+                <div class="event-group-label">{{ groupLabel(g) }}</div>
                 <div class="event-grid">
                   <label v-for="e in g.events" :key="e.value" class="event-option">
                     <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                    <span>{{ e.label }}</span>
+                    <span>{{ eventLabel(e.value) }}</span>
                   </label>
                 </div>
               </div>
@@ -298,7 +298,7 @@ function fmtTime(s: string) {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">
-              {{ saving ? 'Saving…' : editing ? 'Save' : 'Create webhook' }}
+              {{ saving ? $t('action.saving') : editing ? $t('action.save') : $t('webhooks.createWebhook') }}
             </button>
           </div>
         </form>

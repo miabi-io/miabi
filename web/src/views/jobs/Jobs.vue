@@ -36,10 +36,10 @@ function runAsUserError(v: string): string {
   v = v.trim()
   if (!v) return ''
   if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,31})?$/.test(v)) {
-    return 'Use "uid", "uid:gid", "name" or "name:group".'
+    return t('appDetail.settings.runAsUserFormat')
   }
   if (requireNonRoot.value && !/^[1-9][0-9]*(:[0-9]+)?$/.test(v)) {
-    return 'This workspace requires a non-root numeric uid (e.g. 1000).'
+    return t('jobs.runAsUserNonRoot')
   }
   return ''
 }
@@ -79,7 +79,7 @@ function splitCommand(s: string): string[] {
   return s.trim().split(/\s+/).filter(Boolean)
 }
 function appName(id: number) {
-  return apps.value.find((a) => a.id === id)?.name || `app #${id}`
+  return apps.value.find((a) => a.id === id)?.name || t('db.appNumber', { id })
 }
 
 // --- Run a one-off job ---
@@ -358,7 +358,7 @@ const noApps = computed(() => apps.value.length === 0)
               <td class="cell-sub" style="font-family: monospace">{{ c.schedule }}</td>
               <td class="cell-sub" style="font-family: monospace">{{ cmd(c.command) }}</td>
               <td class="cell-sub">{{ when(c.last_run_at) }}</td>
-              <td><span class="badge badge-dot" :class="c.enabled ? 'badge-success' : 'badge-warning'">{{ c.enabled ? 'enabled' : 'disabled' }}</span></td>
+              <td><span class="badge badge-dot" :class="c.enabled ? 'badge-success' : 'badge-warning'">{{ c.enabled ? $t('jobs.enabledState') : $t('db.disabled') }}</span></td>
               <td class="text-right table-actions">
                 <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('jobs.runNow')" @click="runCronNow(c)">{{ $t('jobs.runNow') }}</button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEditCron(c)"><span class="mdi mdi-pencil-outline"></span></button>
@@ -427,7 +427,7 @@ const noApps = computed(() => apps.value.length === 0)
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showRun = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="running">{{ running ? 'Starting…' : 'Run' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="running">{{ running ? $t('migration.starting') : $t('pipelines.run') }}</button>
           </div>
         </form>
       </AppModal>
@@ -435,7 +435,7 @@ const noApps = computed(() => apps.value.length === 0)
       <!-- CronJob modal -->
       <AppModal v-if="showCron" @close="showCron = false">
         <div class="modal-header">
-          <h3>{{ editingCronId ? 'Edit cronjob' : 'New cronjob' }}</h3>
+          <h3>{{ editingCronId ? $t('jobs.editCronjob') : $t('jobs.newCronjob') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showCron = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="saveCron">
@@ -455,7 +455,7 @@ const noApps = computed(() => apps.value.length === 0)
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('jobs.displayName') }}<span class="text-muted">{{ $t('jobs.optional') }}</span></label>
-              <input v-model="cronForm.display_name" class="form-input" placeholder="Nightly cleanup" :aria-label="$t('jobs.displayName')" />
+              <input v-model="cronForm.display_name" class="form-input" :placeholder="$t('jobs.displayNamePlaceholder')" :aria-label="$t('jobs.displayName')" />
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('jobs.scheduleLabel') }}</label>
@@ -510,7 +510,7 @@ const noApps = computed(() => apps.value.length === 0)
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showCron = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="savingCron">{{ savingCron ? 'Saving…' : 'Save' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="savingCron">{{ savingCron ? $t('action.saving') : $t('action.save') }}</button>
           </div>
         </form>
       </AppModal>
@@ -518,12 +518,12 @@ const noApps = computed(() => apps.value.length === 0)
       <!-- Logs modal -->
       <AppModal v-if="logModal" max-width="720px" @close="logModal = null">
         <div class="modal-header">
-          <h3>Job #{{ logModal.id }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>
+          <h3>{{ $t('jobs.jobNumber', { id: logModal.id }) }} · <span class="badge badge-dot" :class="badge(logModal.status)">{{ logModal.status }}</span></h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="logModal = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <div class="text-muted text-sm" style="margin-bottom: 8px; font-family: monospace">{{ logModal.image }} · {{ cmd(logModal.command) }}</div>
-          <pre class="log-view">{{ logModal.logs || (logModal.status === 'pending' ? 'Waiting to start…' : '(no output)') }}</pre>
+          <pre class="log-view">{{ logModal.logs || (logModal.status === 'pending' ? $t('jobs.waitingToStart') : $t('jobs.noOutput')) }}</pre>
           <p v-if="logModal.error" class="text-sm" style="color: var(--danger-600); margin-top: 8px">{{ logModal.error }}</p>
         </div>
       </AppModal>

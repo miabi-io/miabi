@@ -47,7 +47,7 @@ async function saveProfile() {
     username.value = auth.user?.username ?? username.value
     notify.success(t('notify.profile.updated'))
   } catch (e) {
-    notify.apiError(e, 'Could not update profile')
+    notify.apiError(e, t('notify.profile.updateFailed'))
   } finally {
     nameBusy.value = false
   }
@@ -66,7 +66,7 @@ async function loadSessions() {
   try {
     sessions.value = (await authApi.listSessions()).data.data ?? []
   } catch (e) {
-    notify.apiError(e, 'Could not load sessions')
+    notify.apiError(e, t('notify.profile.sessionsLoadFailed'))
   } finally {
     sessionsLoading.value = false
   }
@@ -82,7 +82,7 @@ async function confirmAction() {
       confirmTarget.value = null
       await loadSessions()
     } catch (e) {
-      notify.apiError(e, 'Could not revoke sessions')
+      notify.apiError(e, t('notify.profile.sessionsRevokeFailed'))
     } finally {
       revokingOthers.value = false
     }
@@ -96,13 +96,13 @@ async function confirmAction() {
     confirmTarget.value = null
     sessions.value = sessions.value.filter((x) => x.id !== s.id)
   } catch (e) {
-    notify.apiError(e, 'Could not revoke session')
+    notify.apiError(e, t('notify.profile.sessionRevokeFailed'))
   } finally {
     revokingSession.value = null
   }
 }
 
-const confirmTitle = computed(() => (confirmTarget.value === 'others' ? 'Revoke all other sessions' : 'Revoke session'))
+const confirmTitle = computed(() => (confirmTarget.value === 'others' ? t('profile.revokeOthersTitle') : t('profile.revokeSessionTitle')))
 const confirmMessage = computed(() =>
   confirmTarget.value === 'others'
     ? t('confirm.message.profile.signOutOthers')
@@ -112,7 +112,7 @@ const confirmBusy = computed(() => revokingOthers.value || revokingSession.value
 
 // Render a friendly browser/OS label from a raw User-Agent string.
 function sessionLabel(ua: string): string {
-  if (!ua) return 'Unknown device'
+  if (!ua) return t('profile.unknownDevice')
   const browser =
     /Edg\//.test(ua) ? 'Edge'
     : /OPR\/|Opera/.test(ua) ? 'Opera'
@@ -120,7 +120,7 @@ function sessionLabel(ua: string): string {
     : /Firefox\//.test(ua) ? 'Firefox'
     : /Safari\//.test(ua) ? 'Safari'
     : /curl/.test(ua) ? 'curl'
-    : 'Browser'
+    : t('profile.browser')
   const os =
     /Windows/.test(ua) ? 'Windows'
     : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
@@ -128,13 +128,13 @@ function sessionLabel(ua: string): string {
     : /iPhone|iPad|iOS/.test(ua) ? 'iOS'
     : /Linux/.test(ua) ? 'Linux'
     : ''
-  return os ? `${browser} on ${os}` : browser
+  return os ? t('profile.browserOnOs', { browser, os }) : browser
 }
 
 // Short form-factor hint shown as a badge, when the User-Agent reveals one.
 function sessionDevice(ua: string): string {
-  if (/Mobile|iPhone|Android.*Mobile/.test(ua)) return 'Mobile'
-  if (/iPad|Tablet/.test(ua)) return 'Tablet'
+  if (/Mobile|iPhone|Android.*Mobile/.test(ua)) return t('profile.mobile')
+  if (/iPad|Tablet/.test(ua)) return t('profile.tablet')
   return ''
 }
 
@@ -175,7 +175,7 @@ onMounted(loadSessions)
             </div>
             <div class="form-group">
               <label class="form-label" for="profile-username">{{ $t('profile.username') }}</label>
-              <input id="profile-username" v-model="username" type="text" class="form-input mono" autocomplete="username" spellcheck="false" placeholder="your-handle" :disabled="managed" />
+              <input id="profile-username" v-model="username" type="text" class="form-input mono" autocomplete="username" spellcheck="false" :placeholder="$t('profile.usernamePlaceholder')" :disabled="managed" />
               <small class="form-hint">{{ $t('profile.yourUniqueHandleLowercaseLetters') }}</small>
             </div>
             <div class="form-group">
@@ -184,7 +184,7 @@ onMounted(loadSessions)
               <small class="form-hint">{{ $t('profile.contactAnAdministratorToChange') }}</small>
             </div>
             <button v-if="!managed" type="submit" class="btn btn-primary" :disabled="!nameValid || !profileChanged || nameBusy">
-              {{ nameBusy ? 'Saving…' : 'Save changes' }}
+              {{ nameBusy ? $t('action.saving') : $t('profile.saveChanges') }}
             </button>
           </form>
         </div>
@@ -200,7 +200,7 @@ onMounted(loadSessions)
             :disabled="revokingOthers"
             @click="confirmTarget = 'others'"
           >
-            {{ revokingOthers ? 'Revoking…' : 'Revoke All Others' }}
+            {{ revokingOthers ? $t('profile.revoking') : $t('profile.revokeAllOthers') }}
           </button>
         </div>
         <div class="card-body">
@@ -221,7 +221,7 @@ onMounted(loadSessions)
                   <span v-if="s.current" class="badge badge-success" style="margin-left: 6px">{{ $t('profile.current') }}</span>
                 </div>
                 <div class="session-meta">
-                  {{ s.ip_address || 'unknown IP' }} &middot; Created {{ formatSessionDate(s.created_at) }} &middot; Expires {{ formatSessionDate(s.expires_at) }}
+                  {{ $t('profile.sessionMeta', { ip: s.ip_address || $t('profile.unknownIp'), created: formatSessionDate(s.created_at), expires: formatSessionDate(s.expires_at) }) }}
                 </div>
               </div>
               <button
@@ -230,7 +230,7 @@ onMounted(loadSessions)
                 :disabled="revokingSession === s.id"
                 @click="confirmTarget = s"
               >
-                {{ revokingSession === s.id ? 'Revoking…' : 'Revoke' }}
+                {{ revokingSession === s.id ? $t('profile.revoking') : $t('action.revoke') }}
               </button>
             </div>
           </div>

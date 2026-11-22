@@ -4,10 +4,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { pendingInvite } from '@/utils/pendingInvite'
 import { safeNext } from '@/utils/safeNext'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const { t } = useI18n()
 const error = ref('')
 
 onMounted(async () => {
@@ -22,7 +24,7 @@ onMounted(async () => {
     if (!auth.isAuthenticated) throw new Error('no session')
     router.replace(pendingInvite() ? { name: 'accept-invitation' } : safeNext(route.query.next) || '/')
   } catch {
-    error.value = 'Failed to complete sign in.'
+    error.value = t('login.callbackFailed')
     router.replace({ name: 'login', query: { error: 'oauth_failed' } })
   }
 })

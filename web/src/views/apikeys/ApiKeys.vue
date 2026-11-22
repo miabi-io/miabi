@@ -23,7 +23,7 @@ const ACCOUNT = 'account' as const
 const workspaceScope = ref<number | typeof ACCOUNT>(ACCOUNT)
 function workspaceName(id?: number | null): string {
   if (!id) return 'Account-wide'
-  return workspaces.value.find((w) => w.id === id)?.name ?? `Workspace #${id}`
+  return workspaces.value.find((w) => w.id === id)?.name ?? t('apiKeys.workspaceId', { id })
 }
 async function copyWorkspaceId(id: number) {
   if (await copyText(String(id))) notify.success(t('notify.apiKeys.workspaceIdCopied'))
@@ -181,12 +181,12 @@ function canDelete(k: ApiKey): boolean {
   return k.revoked || isExpired(k)
 }
 function status(k: ApiKey): { label: string; class: string } {
-  if (k.revoked) return { label: 'revoked', class: 'badge-danger' }
-  if (isExpired(k)) return { label: 'expired', class: 'badge-warning' }
-  return { label: 'active', class: 'badge-success badge-dot' }
+  if (k.revoked) return { label: 'apiKeys.status.revoked', class: 'badge-danger' }
+  if (isExpired(k)) return { label: 'apiKeys.status.expired', class: 'badge-warning' }
+  return { label: 'apiKeys.status.active', class: 'badge-success badge-dot' }
 }
 function formatDate(s: string | null): string {
-  return s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'
+  return s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : t('apiKeys.expiry.never')
 }
 </script>
 
@@ -257,9 +257,9 @@ function formatDate(s: string | null): string {
                 </template>
                 <span v-else style="color: var(--text-muted)">{{ $t('apiKeys.any') }}</span>
               </td>
-              <td class="cell-sub">{{ k.last_used_at ? formatDate(k.last_used_at) : 'Never' }}</td>
+              <td class="cell-sub">{{ k.last_used_at ? formatDate(k.last_used_at) : $t('apiKeys.expiry.never') }}</td>
               <td class="cell-sub">{{ formatDate(k.expires_at) }}</td>
-              <td><span class="badge" :class="status(k).class">{{ status(k).label }}</span></td>
+              <td><span class="badge" :class="status(k).class">{{ $t(status(k).label) }}</span></td>
               <td class="text-right">
                 <div style="display: inline-flex; gap: 6px">
                   <button v-if="isActive(k)" class="btn btn-sm btn-warning" @click="toRevoke = k">{{ $t('apiKeys.revoke') }}</button>
@@ -336,7 +336,7 @@ function formatDate(s: string | null): string {
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="showCreate = false">{{ $t('action.cancel') }}</button>
               <button type="submit" class="btn btn-primary" :disabled="creating || !name.trim() || scopes.length === 0">
-                {{ creating ? 'Creating…' : 'Create key' }}
+                {{ creating ? $t('serviceAccounts.creating') : $t('serviceAccounts.createKey') }}
               </button>
             </div>
           </form>
@@ -353,7 +353,7 @@ function formatDate(s: string | null): string {
             </div>
             <div class="code-block" style="margin-top: 14px">{{ createdKey.key }}</div>
             <p class="form-hint" style="margin-top: 8px">
-              {{ createdKey.expires_at ? `Expires ${formatDate(createdKey.expires_at)}` : 'This key never expires.' }}
+              {{ createdKey.expires_at ? $t('serviceAccounts.expiresOn', { date: formatDate(createdKey.expires_at) }) : $t('serviceAccounts.neverExpires') }}
             </p>
 
             <div v-if="createdKey.workspace_id" class="created-ws">
@@ -368,7 +368,7 @@ function formatDate(s: string | null): string {
             <p v-if="createdKey.workspace_id" class="form-hint" style="margin-top: 6px">{{ $t('apiKeys.workspaceScopedHint') }}</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" @click="copyKey">{{ copied ? 'Copied!' : 'Copy key' }}</button>
+            <button type="button" class="btn btn-secondary" @click="copyKey">{{ copied ? $t('serviceAccounts.copied') : $t('serviceAccounts.copyKey') }}</button>
             <button type="button" class="btn btn-primary" @click="showCreate = false">{{ $t('apiKeys.done') }}</button>
           </div>
         </template>

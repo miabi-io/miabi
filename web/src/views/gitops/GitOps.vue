@@ -135,7 +135,7 @@ async function sync(s: GitSource) {
     if (updated.status === 'error') notify.error(t('notify.gitOps.syncFailed', { name: s.name, message: updated.message || t('notify.gitOps.syncFailedFallback') }))
     else notify.success(t('notify.gitOps.synced', { name: s.name }))
   } catch (e) {
-    notify.apiError(e, 'Sync failed')
+    notify.apiError(e, t('notify.gitOpsDetail.sourceSyncFailed'))
     load(currentWorkspaceId.value)
   } finally {
     syncing.value = null
@@ -151,7 +151,7 @@ async function openDiff(s: GitSource) {
   try {
     diffPlan.value = (await gitopsApi.diff(currentWorkspaceId.value, s.id)).data.data
   } catch (e) {
-    notify.apiError(e, 'Could not compute diff')
+    notify.apiError(e, t('gitops.err.diff'))
     showDiff.value = false
   } finally {
     diffLoading.value = false
@@ -215,10 +215,10 @@ const planChanges = computed(() => (diffPlan.value?.changes ?? []).filter((c) =>
 function shortSha(sha?: string) { return sha ? sha.slice(0, 7) : '—' }
 // The column shows the last commit that changed something, often behind HEAD, which the tooltip explains.
 function syncedTitle(s: GitSource) {
-  if (!s.last_synced_commit) return 'Nothing has been applied from this repository yet'
-  const parts = [`Last applied commit: ${s.last_synced_commit}`]
+  if (!s.last_synced_commit) return t('gitops.nothingApplied')
+  const parts = [t('gitops.lastAppliedCommit', { commit: s.last_synced_commit })]
   if (s.last_synced_subject) parts.push(s.last_synced_subject)
-  if (s.last_synced_author) parts.push(`by ${s.last_synced_author}`)
+  if (s.last_synced_author) parts.push(t('appDetail.byName', { name: s.last_synced_author }))
   return parts.join('\n')
 }
 </script>
@@ -335,7 +335,7 @@ function syncedTitle(s: GitSource) {
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit git source' : 'New git source' }}</h3>
+          <h3>{{ editing ? $t('gitops.editGitSource') : $t('gitops.newGitSource') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
@@ -397,7 +397,7 @@ function syncedTitle(s: GitSource) {
     <Teleport to="body">
       <AppModal v-if="showDiff" dialog-class="modal-lg" @close="showDiff = false">
         <div class="modal-header">
-          <h3>Diff — {{ diffSource?.name }}</h3>
+          <h3>{{ $t('gitops.diffTitle', { name: diffSource?.name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDiff = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -410,7 +410,7 @@ function syncedTitle(s: GitSource) {
           <div v-else class="diff-list">
             <div v-for="(c, i) in planChanges" :key="i" class="diff-item">
               <div class="diff-head">
-                <span class="badge" :class="actionBadge[c.action]">{{ c.action }}</span>
+                <span class="badge" :class="actionBadge[c.action]">{{ ['create', 'update', 'delete'].includes(c.action) ? $t(`gitops.action.${c.action}`) : c.action }}</span>
                 <span class="mono diff-name">{{ c.kind }}/{{ c.name }}</span>
                 <span v-if="c.reason" class="cell-sub">{{ c.reason }}</span>
               </div>
@@ -438,17 +438,17 @@ function syncedTitle(s: GitSource) {
     <Teleport to="body">
       <AppModal v-if="teardown" dialog-class="modal-lg" @close="teardown = null">
         <div class="modal-header">
-          <h3>Resources removed — {{ teardown.name }}</h3>
+          <h3>{{ $t('marketplace.teardown.title', { name: teardown.name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="teardown = null"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
           <p v-if="teardownFailed" class="teardown-summary failed">
             <span class="mdi mdi-alert-circle-outline"></span>
-            {{ teardown.result.applied }} removed, {{ teardown.result.failures?.length }} failed — the failed resources may need manual cleanup.
+            {{ $t('marketplace.teardown.partial', { removed: teardown.result.applied, failed: teardown.result.failures?.length ?? 0 }) }}
           </p>
           <p v-else class="teardown-summary ok">
             <span class="mdi mdi-check-circle-outline"></span>
-            {{ teardownItems.length }} resource{{ teardownItems.length === 1 ? '' : 's' }} removed.
+            {{ $t('marketplace.teardown.removedCount', teardownItems.length) }}
           </p>
           <div v-if="teardownItems.length === 0" class="empty-state">
             <p>{{ $t('gitops.nothingToRemove') }}</p>
@@ -456,7 +456,7 @@ function syncedTitle(s: GitSource) {
           <div v-else class="diff-list">
             <div v-for="(it, i) in teardownItems" :key="i" class="diff-item">
               <div class="diff-head">
-                <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? 'failed' : 'removed' }}</span>
+                <span class="badge" :class="it.error ? 'badge-danger' : 'badge-neutral'">{{ it.error ? $t('migration.item.failed') : $t('marketplace.teardown.removed') }}</span>
                 <span class="mono diff-name">{{ it.kind }}/{{ it.name }}</span>
                 <span v-if="it.error" class="cell-sub teardown-err">{{ it.error }}</span>
               </div>

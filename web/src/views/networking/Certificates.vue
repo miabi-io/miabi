@@ -159,7 +159,7 @@ function open(c: Certificate) { router.push(`/certificates/${c.id}`) }
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showForm = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Import' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : $t('certificates.import') }}</button>
           </div>
         </form>
       </AppModal>
@@ -187,7 +187,7 @@ function open(c: Certificate) { router.push(`/certificates/${c.id}`) }
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showIssue = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="issuing || !issueForm.domain_id">{{ issuing ? 'Starting…' : 'Issue certificate' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="issuing || !issueForm.domain_id">{{ issuing ? $t('certificates.starting') : $t('certificates.issueCertificate') }}</button>
           </div>
         </form>
       </AppModal>

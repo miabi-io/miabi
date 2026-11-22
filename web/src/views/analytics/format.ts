@@ -1,5 +1,7 @@
 // Formatting helpers shared by the analytics pages.
 
+import { activeLanguage, t } from '@/i18n'
+
 export function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(n >= 10_000 ? 0 : 1) + 'k'
@@ -54,16 +56,21 @@ export function routeLabel(name: string): string {
   return name.replace(/^mb-ws\d+-/, '')
 }
 
-let regionNames: Intl.DisplayNames | null = null
-try {
-  regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
-} catch {
-  regionNames = null
+const regionNames = new Map<string, Intl.DisplayNames | null>()
+function displayNames(lang: string): Intl.DisplayNames | null {
+  if (!regionNames.has(lang)) {
+    try {
+      regionNames.set(lang, new Intl.DisplayNames([lang], { type: 'region' }))
+    } catch {
+      regionNames.set(lang, null)
+    }
+  }
+  return regionNames.get(lang) ?? null
 }
 export function countryName(code: string): string {
-  if (!code) return 'Unknown'
+  if (!code) return t('analytics.unknown')
   try {
-    return regionNames?.of(code.toUpperCase()) || code
+    return displayNames(activeLanguage())?.of(code.toUpperCase()) || code
   } catch {
     return code
   }

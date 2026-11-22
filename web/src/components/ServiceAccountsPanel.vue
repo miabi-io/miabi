@@ -209,9 +209,9 @@ function isExpired(k: ApiKey): boolean {
   return !!k.expires_at && new Date(k.expires_at) < new Date()
 }
 function status(k: ApiKey): { label: string; class: string } {
-  if (k.revoked) return { label: 'revoked', class: 'badge-danger' }
-  if (isExpired(k)) return { label: 'expired', class: 'badge-warning' }
-  return { label: 'active', class: 'badge-success badge-dot' }
+  if (k.revoked) return { label: 'apiKeys.status.revoked', class: 'badge-danger' }
+  if (isExpired(k)) return { label: 'apiKeys.status.expired', class: 'badge-warning' }
+  return { label: 'apiKeys.status.active', class: 'badge-success badge-dot' }
 }
 </script>
 
@@ -322,7 +322,7 @@ function status(k: ApiKey): { label: string; class: string } {
               </td>
               <td class="cell-sub">{{ k.last_used_at ? fmtDate(k.last_used_at) : $t('serviceAccounts.never') }}</td>
               <td class="cell-sub">{{ k.expires_at ? fmtDate(k.expires_at) : $t('serviceAccounts.never') }}</td>
-              <td><span class="badge" :class="status(k).class">{{ status(k).label }}</span></td>
+              <td><span class="badge" :class="status(k).class">{{ $t(status(k).label) }}</span></td>
               <td class="text-right">
                 <button v-if="!k.revoked && !isExpired(k)" class="btn btn-sm btn-warning" @click="toRevoke = k">{{ $t('apiKeys.revoke') }}</button>
               </td>

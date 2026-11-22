@@ -36,9 +36,9 @@ function emptyForm(): DomainInput {
 
 // An admin override must never look like a DNS proof.
 function verifiedLabel(d: Domain): string {
-  if (d.verified_via === 'admin') return 'verified · admin override'
-  if (d.verified_via === 'dns_provider') return 'verified · DNS provider'
-  return 'verified'
+  if (d.verified_via === 'admin') return t('domains.state.verifiedAdmin')
+  if (d.verified_via === 'dns_provider') return t('domains.state.verifiedProvider')
+  return t('domains.state.verified')
 }
 
 // Meaningful for any domain ever checked, verified or not.
@@ -47,14 +47,14 @@ function proofPresent(d: Domain): boolean {
 }
 
 function lastChecked(d: Domain): string {
-  if (!d.verification_checked_at) return 'never checked'
+  if (!d.verification_checked_at) return t('domains.checked.never')
   const secs = Math.max(0, Math.round((Date.now() - new Date(d.verification_checked_at).getTime()) / 1000))
-  if (secs < 60) return 'checked just now'
+  if (secs < 60) return t('domains.checked.justNow')
   const mins = Math.round(secs / 60)
-  if (mins < 60) return `checked ${mins}m ago`
+  if (mins < 60) return t('domains.checked.minutes', { n: mins })
   const hours = Math.round(mins / 60)
-  if (hours < 24) return `checked ${hours}h ago`
-  return `checked ${Math.round(hours / 24)}d ago`
+  if (hours < 24) return t('domains.checked.hours', { n: hours })
+  return t('domains.checked.days', { n: Math.round(hours / 24) })
 }
 
 async function load(id: number | null) {
@@ -79,7 +79,7 @@ async function setProvider(d: Domain, raw: string) {
     const updated = (await domainApi.setDnsProvider(currentWorkspaceId.value, d.id, pid)).data.data
     const i = items.value.findIndex(x => x.id === d.id)
     if (i >= 0) items.value[i] = updated
-    notify.success(pid ? 'DNS provider linked — verification is now automatic' : 'Reverted to manual DNS')
+    notify.success(t(pid ? 'notify.domainDetail.providerLinked' : 'notify.domainDetail.providerCleared'))
   } catch (e) {
     notify.apiError(e)
   }
@@ -134,7 +134,7 @@ async function verify(d: Domain) {
     notify.success(t('domains.verified', { name: d.name }))
     showDns.value = false
   } catch (e) {
-    notify.apiError(e, 'DNS record not found yet — it can take a few minutes to propagate.')
+    notify.apiError(e, t('domains.recordNotFoundYet'))
   } finally {
     verifying.value = null
   }
@@ -199,11 +199,11 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
                   <span class="avatar avatar-sm"><span class="mdi mdi-web" style="font-size: 14px"></span></span>
                   <span class="cell-text">
                     <router-link :to="`/domains/${d.id}`" class="cell-title cell-link">{{ d.name }}</router-link>
-                    <span v-if="d.wildcard" class="cell-sub">wildcard · *.{{ d.name }}</span>
+                    <span v-if="d.wildcard" class="cell-sub">{{ $t('domains.wildcardCell', { name: d.name }) }}</span>
                   </span>
                 </div>
               </td>
-              <td><span class="badge badge-neutral">{{ d.tls_mode === 'acme' ? 'automatic' : 'custom' }}</span></td>
+              <td><span class="badge badge-neutral">{{ d.tls_mode === 'acme' ? $t('domains.tlsBadge.automatic') : $t('domains.tlsBadge.custom') }}</span></td>
               <td>
                 <select
                   v-if="ws.canEdit && dnsProviders.length"
@@ -211,20 +211,20 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
                   :value="d.dns_provider_id == null ? '' : String(d.dns_provider_id)"
                   @change="setProvider(d, ($event.target as HTMLSelectElement).value)"
                 >
-                  <option value="">Manual</option>
+                  <option value="">{{ $t('domains.manual') }}</option>
                   <option v-for="p in dnsProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
                 </select>
-                <span v-else class="badge" :class="d.automated ? 'badge-success' : 'badge-neutral'">{{ d.automated ? 'automated' : 'manual' }}</span>
+                <span v-else class="badge" :class="d.automated ? 'badge-success' : 'badge-neutral'">{{ d.automated ? $t('domains.automatedBadge') : $t('domains.manualBadge') }}</span>
               </td>
               <td>
-                <span v-if="d.banned" class="badge badge-danger" :title="$t('domains.bannedHint')"><span class="mdi mdi-cancel"></span> banned</span>
+                <span v-if="d.banned" class="badge badge-danger" :title="$t('domains.bannedHint')"><span class="mdi mdi-cancel"></span> {{ $t('domainDetail.banned') }}</span>
                 <span v-else-if="d.verified" class="badge" :class="d.verified_via === 'admin' ? 'badge-info' : 'badge-success'" :title="d.verified_via === 'admin' ? $t('domains.grantedByAdmin') : ''">
                   <span class="mdi" :class="d.verified_via === 'admin' ? 'mdi-shield-account-outline' : 'mdi-check-decagram'"></span> {{ verifiedLabel(d) }}
                 </span>
                 <span v-else-if="d.serving_unverified" class="badge badge-info" :title="$t('domains.servingHint')">
                   <span class="mdi mdi-shield-star-outline"></span> {{ $t('domains.servingUnverifiedBadge') }}
                 </span>
-                <span v-else class="badge badge-warning"><span class="mdi mdi-clock-alert-outline"></span> pending</span>
+                <span v-else class="badge badge-warning"><span class="mdi mdi-clock-alert-outline"></span> {{ $t('domainDetail.pending') }}</span>
               </td>
               <td class="text-right table-actions">
                 <button v-if="!d.banned" class="btn-icon btn-icon-muted" :title="$t('domains.dnsRecords')" :aria-label="$t('domains.dnsRecords')" @click="openDns(d)"><span class="mdi mdi-dns-outline"></span></button>
@@ -265,7 +265,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add domain') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('dashboard.quick.addDomain.label')) }}</button>
           </div>
         </form>
       </AppModal>
@@ -275,7 +275,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
     <Teleport to="body">
       <AppModal v-if="showDns && dnsDomain" @close="showDns = false">
         <div class="modal-header">
-          <h3>DNS for {{ dnsDomain.name }}</h3>
+          <h3>{{ $t('domains.dnsFor', { name: dnsDomain.name }) }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDns = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
@@ -284,7 +284,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
             {{ $t('domains.verifiedByAdmin') }}
           </div>
           <div v-else-if="dnsDomain.verified" class="gate gate-ok">
-            <span class="mdi mdi-check-decagram"></span> Ownership verified{{ dnsDomain.verified_via === 'dns_provider' ? ' through the connected DNS provider' : ' by DNS' }}.
+            <span class="mdi mdi-check-decagram"></span> {{ dnsDomain.verified_via === 'dns_provider' ? $t('domains.ownershipVerifiedProvider') : $t('domains.ownershipVerifiedDns') }}
           </div>
           <div v-else-if="dnsDomain.serving_unverified" class="gate gate-warn">
             <span class="mdi mdi-shield-star-outline"></span>
@@ -319,7 +319,7 @@ const tlsModes: { value: DomainTLSMode; label: string }[] = [
           <button type="button" class="btn btn-secondary" @click="showDns = false">{{ $t('shell.close') }}</button>
           <button v-if="ws.canEdit" type="button" class="btn btn-primary" :disabled="verifying === dnsDomain.id" @click="verify(dnsDomain)">
             <span class="mdi" :class="verifying === dnsDomain.id ? 'mdi-loading mdi-spin' : 'mdi-shield-check-outline'"></span>
-            {{ dnsDomain.verified ? 'Re-check' : 'Verify' }}
+            {{ dnsDomain.verified ? $t('domains.recheck') : $t('domains.verify') }}
           </button>
         </div>
       </AppModal>

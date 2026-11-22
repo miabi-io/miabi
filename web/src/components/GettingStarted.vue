@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
+import { useI18n } from 'vue-i18n'
 
 // Completion is derived from real resources by the parent, so there is no step-tracking to drift.
 const props = defineProps<{
@@ -14,6 +15,7 @@ const props = defineProps<{
 const router = useRouter()
 const auth = useAuthStore()
 const notify = useNotificationStore()
+const { t } = useI18n()
 
 const dismissing = ref(false)
 
@@ -30,25 +32,25 @@ const steps = computed<Step[]>(() => [
   {
     key: 'workspace',
     label: 'workspaces.createYourFirstWorkspace',
-    desc: 'A workspace groups your applications, databases, domains and team.',
+    desc: 'gettingStarted.workspaceDesc',
     done: props.hasWorkspace,
-    cta: 'Create workspace',
+    cta: 'switcher.create',
     to: '/workspaces?create=1',
   },
   {
     key: 'app',
     label: 'apps.deployFirst',
-    desc: 'Launch from a Docker image, a Git repository, or the marketplace.',
+    desc: 'gettingStarted.appDesc',
     done: props.hasApp,
-    cta: 'Deploy an app',
+    cta: 'gettingStarted.deployApp',
     to: '/apps',
   },
   {
     key: 'domain',
     label: 'gettingStarted.connectDomain',
-    desc: 'Point a custom domain at your app and get automatic SSL.',
+    desc: 'gettingStarted.domainDesc',
     done: props.hasDomain,
-    cta: 'Add a domain',
+    cta: 'domains.addOne',
     to: '/domains',
   },
 ])
@@ -63,7 +65,7 @@ async function dismiss() {
   try {
     await auth.dismissOnboarding()
   } catch (e) {
-    notify.apiError(e, 'Could not dismiss')
+    notify.apiError(e, t('gettingStarted.dismissFailed'))
   } finally {
     dismissing.value = false
   }
@@ -80,12 +82,10 @@ function go(to: string) {
       <div class="gs-head-left">
         <h2 class="gs-title">
           <span class="mdi mdi-rocket-launch-outline"></span>
-          {{ allDone ? "You're all set!" : 'Get started with Miabi' }}
+          {{ allDone ? $t('gettingStarted.allSet') : $t('gettingStarted.title') }}
         </h2>
         <p class="gs-sub">
-          {{ allDone
-            ? 'Your platform is up and running. You can revisit these anytime.'
-            : 'A few steps to get your first app online.' }}
+          {{ allDone ? $t('gettingStarted.allSetHint') : $t('gettingStarted.subtitle') }}
         </p>
       </div>
       <div class="gs-head-right">
@@ -95,7 +95,7 @@ function go(to: string) {
           :disabled="dismissing"
           @click="dismiss"
         >
-          {{ allDone ? 'Finish' : 'Dismiss' }}
+          {{ allDone ? $t('gettingStarted.finish') : $t('action.dismiss') }}
         </button>
       </div>
     </div>
@@ -111,14 +111,14 @@ function go(to: string) {
           </span>
           <div class="gs-step-label">{{ $t(s.label) }}</div>
         </div>
-          <div class="gs-step-desc">{{ s.desc }}</div>
+          <div class="gs-step-desc">{{ $t(s.desc) }}</div>
         </div>
         <button
           v-if="!s.done && s.key === activeKey"
           class="btn btn-primary btn-sm gs-step-cta"
           @click="go(s.to)"
         >
-          {{ s.cta }} <span class="mdi mdi-arrow-right"></span>
+          {{ $t(s.cta) }} <span class="mdi mdi-arrow-right"></span>
         </button>
       </li>
     </ul>

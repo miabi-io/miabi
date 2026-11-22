@@ -126,7 +126,7 @@ watch([activeTab, repo], () => {
 
 function appName(id?: number) {
   if (!id) return null
-  return apps.value.find((a) => a.id === id)?.name ?? `app #${id}`
+  return apps.value.find((a) => a.id === id)?.name ?? t('db.appNumber', { id })
 }
 
 function shortDigest(d?: string) {
@@ -386,7 +386,7 @@ async function confirmDelete() {
             <div v-if="recentTags.length" class="tag-grid">
               <code v-for="t in recentTags" :key="t" class="tag">{{ t }}</code>
               <button v-if="overview.tag_count > recentTags.length" class="link-btn" @click="setTab('tags')">
-                See all {{ overview.tag_count }} tags →
+                {{ $t('registry.seeAllTags', { n: overview.tag_count }) }}
               </button>
             </div>
             <p v-else class="text-muted text-sm" style="margin: 0">{{ $t('registry.noTagsDot') }}</p>
@@ -412,8 +412,7 @@ async function confirmDelete() {
             <div>
               <h2>{{ $t('registry.tags') }}</h2>
               <p class="text-muted text-sm" style="margin: 2px 0 0">
-                {{ pageable.total_elements }}
-                {{ pageable.total_elements === 1 ? 'tag' : 'tags' }}{{ search ? ' matching' : '' }}
+                {{ search ? $t('registry.tagCountMatching', pageable.total_elements) : $t('registry.tagCount', pageable.total_elements) }}
                 <template v-if="deleteDisabledByPlatform">{{ $t('registry.deletionDisabled') }}</template>
               </p>
             </div>
@@ -434,7 +433,7 @@ async function confirmDelete() {
           <div v-else-if="tags.length === 0" class="card-body empty">
             <span class="mdi mdi-tag-off-outline empty-icon"></span>
             <div>
-              <p class="empty-title">{{ search ? `No tag matches “${search}”` : 'No tags' }}</p>
+              <p class="empty-title">{{ search ? $t('registry.noTagMatch', { query: search }) : $t('registry.noTags') }}</p>
               <p v-if="search" class="text-muted text-sm">
                 <button class="link-btn" @click="search = ''; goToPage(0)">{{ $t('registry.clearTheFilter') }}</button>
               </p>
@@ -490,7 +489,7 @@ async function confirmDelete() {
                       <span class="mdi mdi-link-variant"></span> {{ $t('registry.sameImageAs', { tags: sameImageAs(t).join(', ') }) }}
                     </span>
                     <span v-if="appName(t.application_id)" class="cell-sub">
-                      built for {{ appName(t.application_id) }}
+                      {{ $t('registry.builtForApp', { app: appName(t.application_id) }) }}
                       <template v-if="t.commit"> · {{ t.commit.slice(0, 8) }}</template>
                     </span>
                   </td>

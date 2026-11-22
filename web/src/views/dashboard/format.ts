@@ -1,5 +1,7 @@
 // Formatting helpers shared by the dashboard cards.
 
+import { t } from '@/i18n'
+
 export function fmtBytes(n?: number): string {
   if (!n || n < 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -23,11 +25,11 @@ export function fmtDate(ts?: string): string {
 export function relTime(ts: string): string {
   const d = new Date(ts).getTime()
   const s = Math.round((Date.now() - d) / 1000)
-  if (s < 60) return `${s}s ago`
+  if (s < 60) return t('time.secondsAgo', { n: s })
   const m = Math.round(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return t('time.minutesAgo', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return t('time.hoursAgo', { n: h })
   return new Date(ts).toLocaleString()
 }
 

@@ -20,6 +20,7 @@
 
 // Saves straight to the vault, skipping the clipboard, which any app can read and which keeps the value.
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 // A prop, not an emit: emits return void, so awaiting one would treat every save as success.
 const props = defineProps<{
@@ -28,6 +29,7 @@ const props = defineProps<{
   save: (name: string, description: string, value: string) => Promise<boolean>
 }>()
 
+const { t } = useI18n()
 const open = ref(false)
 const name = ref('')
 const description = ref('')
@@ -37,7 +39,7 @@ const NAME_RE = /^[A-Za-z0-9_-]+$/
 const nameError = computed(() => {
   const n = name.value.trim()
   if (!n) return ''
-  return NAME_RE.test(n) ? '' : 'Letters, digits, underscore or hyphen only.'
+  return NAME_RE.test(n) ? '' : t('saveAsSecret.nameInvalid')
 })
 const canSave = computed(() => !!name.value.trim() && !nameError.value && !!props.value && !props.saving)
 
@@ -72,7 +74,7 @@ async function submit() {
       </div>
       <div class="save-actions">
         <button type="submit" class="btn btn-primary btn-sm" :disabled="!canSave">
-          {{ saving ? 'Saving…' : 'Save' }}
+          {{ saving ? $t('action.saving') : $t('action.save') }}
         </button>
         <button type="button" class="btn btn-secondary btn-sm" :disabled="saving" @click="open = false">{{ $t('action.cancel') }}</button>
       </div>

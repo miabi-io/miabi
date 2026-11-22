@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { appApi } from '@/api/apps'
 import { apiErrorMessage } from '@/api/client'
 import type { ProcessList } from '@/api/types'
@@ -8,6 +9,7 @@ import AppModal from '@/components/AppModal.vue'
 // Sourced from the host's ps, so it works for images that ship no ps binary.
 const props = defineProps<{ ws: number; appId: number; appName: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+const { t } = useI18n()
 
 const data = ref<ProcessList | null>(null)
 const error = ref('')
@@ -23,7 +25,7 @@ async function refresh() {
     error.value = ''
     updatedAt.value = Date.now()
   } catch (e) {
-    error.value = apiErrorMessage(e, 'Failed to read processes')
+    error.value = apiErrorMessage(e, t('processes.failedToRead'))
   } finally {
     loading.value = false
   }
@@ -41,12 +43,12 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
     <div class="modal-header">
       <h3>
         <span class="mdi mdi-format-list-bulleted"></span>
-        Processes — {{ appName }}
+        {{ $t('processes.title', { name: appName }) }}
         <span v-if="data" class="text-muted" style="font-weight: 400; font-size: 13px">{{ data.processes.length }}</span>
       </h3>
       <div class="flex items-center gap-2">
-        <button class="btn btn-secondary btn-sm" :title="paused ? 'Resume live updates' : 'Pause live updates'" @click="paused = !paused">
-          <span class="mdi" :class="paused ? 'mdi-play' : 'mdi-pause'"></span> {{ paused ? 'Resume' : 'Pause' }}
+        <button class="btn btn-secondary btn-sm" :title="paused ? $t('processes.resumeLive') : $t('processes.pauseLive')" @click="paused = !paused">
+          <span class="mdi" :class="paused ? 'mdi-play' : 'mdi-pause'"></span> {{ paused ? $t('processes.resume') : $t('processes.pause') }}
         </button>
         <button class="btn-icon btn-icon-muted" :title="$t('shell.close')" :aria-label="$t('shell.close')" @click="emit('close')"><span class="mdi mdi-close"></span></button>
       </div>
@@ -67,7 +69,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       </div>
     </div>
     <div class="modal-footer" style="justify-content: space-between">
-      <span class="text-muted" style="font-size: 12px">{{ paused ? 'Paused' : 'Live' }}<span v-if="updatedAt"> · updated {{ new Date(updatedAt).toLocaleTimeString() }}</span></span>
+      <span class="text-muted" style="font-size: 12px">{{ paused ? $t('processes.paused') : $t('processes.live') }}<span v-if="updatedAt"> · {{ $t('processes.updatedAt', { time: new Date(updatedAt).toLocaleTimeString() }) }}</span></span>
       <span class="text-muted" style="font-size: 12px">{{ $t('processes.viaDockerTopHostPs') }}</span>
     </div>
   </AppModal>

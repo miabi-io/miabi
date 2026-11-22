@@ -20,7 +20,7 @@ import ResourceNode from './ResourceNode.vue'
 import ProjectNode from './ProjectNode.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import LogViewer from '@/components/LogViewer.vue'
-import { kindOf, nodeStatusMeta, gitSourceStatusMeta, edgeLabel, resourceRoute } from './topologyMeta'
+import { kindOf, nodeStatusMeta, gitSourceStatusMeta, edgeLabel, edgeLabelIncoming, resourceRoute } from './topologyMeta'
 import AppModal from '@/components/AppModal.vue'
 import type { GitSource, Topology, TopologyNode, PlanChange, NodeStatus, AppEvent, ApplyPlan } from '@/api/types'
 
@@ -138,7 +138,7 @@ async function load() {
     const src = await gitopsApi.get(currentWorkspaceId.value, sourceId.value)
     source.value = src.data.data
   } catch (e) {
-    notify.apiError(e, 'Could not load git source')
+    notify.apiError(e, t('gitops.err.loadSource'))
     loading.value = false
     return
   }
@@ -148,7 +148,7 @@ async function load() {
   } catch (e) {
     // Rare, since the backend degrades to live state; keep the header and error visible.
     topo.value = null
-    notify.apiError(e, 'Could not load project topology')
+    notify.apiError(e, t('gitops.err.loadTopology'))
   } finally {
     loading.value = false
   }
@@ -225,7 +225,7 @@ function buildGraph() {
     type: 'smoothstep',
     animated: false,
     markerEnd: MarkerType.ArrowClosed,
-    label: edgeLabel[e.type],
+    label: edgeLabel(e.type),
     labelBgStyle: { fill: 'var(--bg-primary)' },
     labelStyle: { fontSize: '10px', fill: 'var(--text-muted)' },
     style: { stroke: 'var(--border-primary)', strokeWidth: 1.5 },
@@ -314,7 +314,7 @@ async function syncResource() {
     else notify.success(t('notify.gitOpsDetail.nodeSynced', { name: node.name }))
     await refreshGraph()
   } catch (e) {
-    notify.apiError(e, `Could not sync ${node.name}`)
+    notify.apiError(e, t('gitops.err.syncNode', { name: node.name }))
   } finally {
     resourceBusy.value = false
   }
@@ -333,7 +333,7 @@ async function deleteResource() {
     confirmDelete.value = false
     await refreshGraph()
   } catch (e) {
-    notify.apiError(e, `Could not delete ${node.name}`)
+    notify.apiError(e, t('gitops.err.deleteNode', { name: node.name }))
   } finally {
     resourceBusy.value = false
   }
@@ -378,7 +378,7 @@ async function loadEvents(node: TopologyNode) {
     drawerEvents.value = res.data.data ?? []
     eventsHasMore.value = drawerEvents.value.length >= EVENTS_PAGE
   } catch (e) {
-    notify.apiError(e, 'Could not load events')
+    notify.apiError(e, t('gitops.err.loadEvents'))
   } finally {
     eventsLoading.value = false
   }
@@ -464,7 +464,7 @@ async function openPreview() {
     const res = await gitopsApi.diff(currentWorkspaceId.value, source.value.id)
     previewPlan.value = res.data.data ?? null
   } catch (e) {
-    notify.apiError(e, 'Could not load the plan')
+    notify.apiError(e, t('gitops.err.loadPlan'))
   } finally {
     previewLoading.value = false
   }
@@ -524,7 +524,7 @@ async function sync() {
     // Reflect new live state in the graph (degrades gracefully if the sync errored).
     await refreshGraph()
   } catch (e) {
-    notify.apiError(e, 'Sync failed')
+    notify.apiError(e, t('notify.gitOpsDetail.sourceSyncFailed'))
   } finally {
     syncing.value = false
   }
@@ -540,18 +540,18 @@ function shortSha(sha?: string) {
   return sha ? sha.slice(0, 7) : '—'
 }
 function relTime(ts?: string | null) {
-  if (!ts) return 'never'
+  if (!ts) return t('gitops.never')
   const diff = Date.now() - new Date(ts).getTime()
   const m = Math.round(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
+  if (m < 1) return t('db.ago.justNow')
+  if (m < 60) return t('db.ago.minutes', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return t('db.ago.hours', { n: h })
   const d = Math.round(h / 24)
-  if (d < 60) return `${d}d ago`
+  if (d < 60) return t('db.ago.days', { n: d })
   const mo = Math.round(d / 30)
-  if (mo < 24) return `${mo}mo ago`
-  return `${Math.round(mo / 12)}y ago`
+  if (mo < 24) return t('db.ago.months', { n: mo })
+  return t('db.ago.years', { n: Math.round(mo / 12) })
 }
 function absDate(ts?: string | null) {
   return ts ? new Date(ts).toLocaleString() : ''
@@ -610,10 +610,10 @@ const policyFlags = computed(() => {
         <button
           class="live-toggle"
           :class="{ on: liveOn, err: liveOn && liveError }"
-          :title="liveOn ? 'Live status updates are on — click to pause' : 'Live status updates paused — click to resume'"
+          :title="liveOn ? $t('gitops.liveOnTitle') : $t('gitops.livePausedTitle')"
           @click="toggleLive"
         >
-          <span class="live-dot"></span>{{ liveOn ? 'Live' : 'Paused' }}
+          <span class="live-dot"></span>{{ liveOn ? $t('pipelines.live') : $t('gitops.paused') }}
         </button>
         <button v-if="ws.canEdit" class="btn btn-secondary" :title="$t('gitops.previewHint')" :disabled="syncing" @click="openPreview">
           <span class="mdi mdi-file-search-outline"></span>{{ $t('gitops.preview') }}</button>
@@ -631,10 +631,10 @@ const policyFlags = computed(() => {
         <span class="fact-label">{{ $t('gitops.sync') }}</span>
         <span class="badge" :class="source.sync_policy === 'auto' ? 'badge-info' : 'badge-neutral'">
           <span class="mdi" :class="source.sync_policy === 'auto' ? 'mdi-autorenew' : 'mdi-gesture-tap'"></span>
-          {{ source.sync_policy === 'auto' ? 'Automatic' : 'Manual' }}
+          {{ source.sync_policy === 'auto' ? $t('gitops.automatic') : $t('gitops.manual') }}
         </span>
         <span v-for="f in policyFlags" :key="f.label" class="badge badge-neutral" :title="f.help">
-          <span class="mdi" :class="f.icon"></span> {{ $t(f.label) }}
+          <span class="mdi" :class="f.icon"></span> {{ f.label }}
         </span>
       </div>
       <span class="meta-sep"></span>
@@ -645,7 +645,7 @@ const policyFlags = computed(() => {
           <template v-if="source.last_synced_at">
             <span v-if="source.last_synced_commit" class="mono">{{ shortSha(source.last_synced_commit) }}</span>
             <span class="fact-muted" :title="absDate(source.last_synced_at)"> · {{ relTime(source.last_synced_at) }}</span>
-            <span v-if="source.last_synced_author" class="fact-muted"> · by {{ source.last_synced_author }}</span>
+            <span v-if="source.last_synced_author" class="fact-muted"> · {{ $t('appDetail.byName', { name: source.last_synced_author }) }}</span>
           </template>
           <span v-else class="fact-muted" :title="$t('gitops.nothingApplied')">{{ $t('gitops.never') }}</span>
         </span>
@@ -687,14 +687,14 @@ const policyFlags = computed(() => {
 
     <!-- Status legend — click a chip to filter the graph by that status -->
     <div v-if="nodeCount" class="legend">
-      <span class="legend-total">{{ nodeCount }} resource{{ nodeCount === 1 ? '' : 's' }}</span>
+      <span class="legend-total">{{ $t('gitops.resourceCount', nodeCount) }}</span>
       <button
         v-for="c in visibleCounts"
         :key="c.status"
         type="button"
         class="legend-item legend-chip"
         :class="{ active: statusFilter.has(c.status), faded: statusFilter.size > 0 && !statusFilter.has(c.status) }"
-        :title="`Show only ${nodeStatusMeta[c.status].label.toLowerCase()}`"
+        :title="$t('gitops.showOnly', { status: nodeStatusMeta[c.status].label.toLowerCase() })"
         @click="toggleStatusFilter(c.status)"
       >
         <span class="dot" :style="{ background: nodeStatusMeta[c.status].color }"></span>
@@ -781,7 +781,7 @@ const policyFlags = computed(() => {
 
             <!-- Public URL (routes) — open the live service from here -->
             <div v-if="selectedNode.url" class="side-section">
-              <span class="side-label">URL</span>
+              <span class="side-label">{{ $t('gitops.url') }}</span>
               <a class="side-url" :href="selectedNode.url" target="_blank" rel="noopener noreferrer">
                 <span class="mdi mdi-open-in-new"></span>
                 <span class="side-url-text">{{ selectedNode.url }}</span>
@@ -805,7 +805,7 @@ const policyFlags = computed(() => {
             <div v-if="selectedDeps.out.length" class="side-section">
               <span class="side-label">{{ $t('gitops.dependsOn') }}</span>
               <div v-for="(d, i) in selectedDeps.out" :key="'o' + i" class="rel">
-                <span class="rel-verb">{{ edgeLabel[d.type as keyof typeof edgeLabel] }}</span>
+                <span class="rel-verb">{{ edgeLabel(d.type) }}</span>
                 <span class="rel-target mono">{{ nameOf(d.key) }}</span>
               </div>
             </div>
@@ -813,7 +813,7 @@ const policyFlags = computed(() => {
               <span class="side-label">{{ $t('volumes.usedBy') }}</span>
               <div v-for="(d, i) in selectedDeps.in" :key="'i' + i" class="rel">
                 <span class="rel-target mono">{{ nameOf(d.key) }}</span>
-                <span class="rel-verb">{{ edgeLabel[d.type as keyof typeof edgeLabel] }} this</span>
+                <span class="rel-verb">{{ edgeLabelIncoming(d.type) }}</span>
               </div>
             </div>
           </div>
@@ -840,7 +840,7 @@ const policyFlags = computed(() => {
               </ul>
               <div v-if="eventsHasMore" class="text-center" style="padding: 8px 0 2px">
                 <button class="btn btn-secondary btn-sm" :disabled="loadingMoreEvents" @click="loadMoreEvents">
-                  {{ loadingMoreEvents ? 'Loading…' : 'Load more' }}
+                  {{ loadingMoreEvents ? $t('dashboard.health.loading') : $t('inbox.loadMore') }}
                 </button>
               </div>
             </template>
@@ -851,7 +851,7 @@ const policyFlags = computed(() => {
             <LogViewer
               :lines="drawerLogs"
               :streaming="logsConnected"
-              :status-label="logsConnected ? 'Live' : 'Disconnected'"
+              :status-label="logsConnected ? $t('pipelines.live') : $t('gitops.disconnected')"
               :status-class="logsConnected ? 'badge-success' : 'badge-neutral'"
               :download-name="`${selectedNode.name}-logs`"
               :placeholder="$t('gitops.waitingForLogOutput')"

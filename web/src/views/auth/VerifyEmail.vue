@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
 import AuthShell from './AuthShell.vue'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const state = ref<'working' | 'done' | 'failed'>('working')
 const error = ref('')
 
@@ -16,7 +18,7 @@ onMounted(async () => {
   if (token) router.replace({ name: 'verify-email', query: {} })
   if (!token) {
     state.value = 'failed'
-    error.value = 'That link is missing its verification token.'
+    error.value = t('verifyEmail.missingToken')
     return
   }
   try {
@@ -24,7 +26,7 @@ onMounted(async () => {
     state.value = 'done'
   } catch (e) {
     state.value = 'failed'
-    error.value = apiErrorMessage(e, 'That verification link is invalid or has expired.')
+    error.value = apiErrorMessage(e, t('verifyEmail.invalidLink'))
   }
 })
 </script>

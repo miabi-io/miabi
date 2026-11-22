@@ -102,14 +102,14 @@ watch([stackId, wid], ([, id]) => {
   })
 }, { immediate: true })
 
-function summarize(results: StackActionResult[], verb: string) {
+function summarize(results: StackActionResult[], action: 'start' | 'stop' | 'restart') {
   const ok = results.filter((r) => r.status === 'ok').length
   const skipped = results.filter((r) => r.status === 'skipped').length
   const failed = results.filter((r) => r.status === 'failed').length
-  let msg = `${ok} app${ok === 1 ? '' : 's'} ${verb}`
-  if (skipped) msg += `, ${skipped} skipped (not deployed)`
-  if (failed) msg += `, ${failed} failed`
-  notify[failed ? 'error' : 'success'](msg)
+  const parts = [t(`stacks.result.${action}`, ok)]
+  if (skipped) parts.push(t('stacks.result.skipped', { n: skipped }))
+  if (failed) parts.push(t('stacks.result.failed', { n: failed }))
+  notify[failed ? 'error' : 'success'](parts.join(', '))
 }
 
 async function lifecycle(action: 'start' | 'stop' | 'restart', rolling = false) {
@@ -120,7 +120,7 @@ async function lifecycle(action: 'start' | 'stop' | 'restart', rolling = false) 
       action === 'restart'
         ? (await stackApi.restart(wid.value, stackId.value, rolling)).data.data ?? []
         : (await stackApi[action](wid.value, stackId.value)).data.data ?? []
-    summarize(results, action === 'start' ? 'started' : action === 'stop' ? 'stopped' : 'restarted')
+    summarize(results, action)
     load()
   } catch (e) {
     notify.apiError(e)
@@ -139,7 +139,7 @@ async function deployOutdated() {
     const results = (await stackApi.deployOutdated(wid.value, stackId.value)).data.data ?? []
     const queued = results.filter((r) => r.status === 'queued').length
     const failed = results.filter((r) => r.status === 'failed').length
-    notify[failed ? 'error' : 'success'](`${queued} deploy${queued === 1 ? '' : 's'} queued${failed ? `, ${failed} failed` : ''}`)
+    notify[failed ? 'error' : 'success'](deploySummary(queued, failed))
     load()
   } catch (e) {
     notify.apiError(e)
@@ -155,13 +155,18 @@ async function deployAll() {
     const results = (await stackApi.deploy(wid.value, stackId.value)).data.data ?? []
     const queued = results.filter((r) => r.status === 'queued').length
     const failed = results.filter((r) => r.status === 'failed').length
-    notify[failed ? 'error' : 'success'](`${queued} deploy${queued === 1 ? '' : 's'} queued${failed ? `, ${failed} failed` : ''}`)
+    notify[failed ? 'error' : 'success'](deploySummary(queued, failed))
     load()
   } catch (e) {
     notify.apiError(e)
   } finally {
     busyAction.value = ''
   }
+}
+
+function deploySummary(queued: number, failed: number): string {
+  const msg = t('stacks.result.deploysQueued', queued)
+  return failed ? `${msg}, ${t('stacks.result.failed', { n: failed })}` : msg
 }
 
 function openEdit() {
@@ -357,14 +362,14 @@ function eventIcon(type: string): string {
 }
 function relTime(ts: string): string {
   const s = Math.round((Date.now() - new Date(ts).getTime()) / 1000)
-  if (s < 60) return `${s}s ago`
+  if (s < 60) return t('db.ago.seconds', { n: s })
   const m = Math.round(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return t('db.ago.minutes', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return t('db.ago.hours', { n: h })
   return new Date(ts).toLocaleString()
 }
-const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? `app #${id}`
+const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? t('db.appNumber', { id })
 </script>
 
 <template>
@@ -376,7 +381,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         <h1 style="margin-top: 8px">
           {{ stack.display_name || stack.name }}
           <span class="badge" :class="aggregateClass()" style="margin-left: 8px; vertical-align: middle">
-            {{ aggregate.running }}/{{ aggregate.total }} running
+            {{ $t('dashboard.stackRunning', { running: aggregate.running, total: aggregate.total }) }}
           </span>
         </h1>
         <div class="text-muted text-sm">{{ stack.description || $t('stacks.noDescription') }}</div>
@@ -387,19 +392,19 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
       <div class="flex items-center gap-2">
         <template v-if="ws.canEdit && stack.apps && stack.apps.length">
           <button class="btn btn-primary btn-sm" :disabled="!!busyAction" @click="deployAll">
-            <span class="mdi mdi-rocket-launch-outline"></span> {{ busyAction === 'deploy' ? 'Deploying…' : 'Deploy all' }}
+            <span class="mdi mdi-rocket-launch-outline"></span> {{ busyAction === 'deploy' ? $t('stacks.deploying') : $t('stacks.deployAll') }}
           </button>
           <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" @click="lifecycle('start')">
-            <span class="mdi mdi-play"></span> {{ busyAction === 'start' ? 'Starting…' : 'Start' }}
+            <span class="mdi mdi-play"></span> {{ busyAction === 'start' ? $t('migration.starting') : $t('db.start') }}
           </button>
           <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" @click="lifecycle('stop')">
-            <span class="mdi mdi-stop"></span> {{ busyAction === 'stop' ? 'Stopping…' : 'Stop' }}
+            <span class="mdi mdi-stop"></span> {{ busyAction === 'stop' ? $t('stacks.stopping') : $t('action.stop') }}
           </button>
           <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" @click="lifecycle('restart')">
-            <span class="mdi mdi-restart"></span> {{ busyAction === 'restart' ? 'Restarting…' : 'Restart' }}
+            <span class="mdi mdi-restart"></span> {{ busyAction === 'restart' ? $t('stacks.restarting') : $t('action.restart') }}
           </button>
           <button class="btn btn-secondary btn-sm" :disabled="!!busyAction" :title="$t('stacks.rollingRestart')" @click="lifecycle('restart', true)">
-            <span class="mdi mdi-sync"></span> {{ busyAction === 'rolling' ? 'Rolling…' : 'Rolling' }}
+            <span class="mdi mdi-sync"></span> {{ busyAction === 'rolling' ? $t('stacks.rollingBusy') : $t('appDetail.strategy.rolling') }}
           </button>
           <span class="header-divider"></span>
         </template>
@@ -417,9 +422,9 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
       <div v-if="outdated.length" class="stale-banner">
         <span class="mdi mdi-alert-outline"></span>
         <span class="stale-text">
-          <strong>{{ outdated.length }}</strong>
-          {{ outdated.length === 1 ? 'application is' : 'applications are' }} running configuration
-          older than this stack's. Redeploy to apply the shared environment.
+          <i18n-t keypath="stacks.outdatedBanner" :plural="outdated.length" tag="span">
+            <template #n><strong>{{ outdated.length }}</strong></template>
+          </i18n-t>
         </span>
         <button
           v-if="ws.canEdit"
@@ -427,7 +432,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           :disabled="!!busyAction"
           @click="deployOutdated"
         >
-          {{ busyAction === 'deploy-outdated' ? 'Deploying…' : `Redeploy ${outdated.length}` }}
+          {{ busyAction === 'deploy-outdated' ? $t('stacks.deploying') : $t('stacks.redeployN', { n: outdated.length }) }}
         </button>
       </div>
 
@@ -494,10 +499,10 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
                 <span
                   v-if="v.overridden_by?.length"
                   class="badge badge-warning env-tag"
-                  :title="`Overridden by ${v.overridden_by.join(', ')} — these apps define their own ${v.key} and will ignore this value`"
+                  :title="$t('stacks.overriddenByTitle', { apps: v.overridden_by.join(', '), key: v.key })"
                 >
                   <span class="mdi mdi-arrow-down-bold-outline"></span>
-                  overridden in {{ v.overridden_by.join(', ') }}
+                  {{ $t('stacks.overriddenIn', { apps: v.overridden_by.join(', ') }) }}
                 </span>
               </td>
               <td class="cell-sub" style="font-family: monospace">
@@ -572,7 +577,7 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
         :editing-key="editingEnvKey"
         :initial="envForm"
         :saving="savingEnv"
-        apply-note="Applies to every app in the stack on its next deploy."
+        :apply-note="$t('stacks.envApplyNote')"
         @close="showEnvModal = false"
         @save="saveEnv"
       />
@@ -639,14 +644,14 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('stacks.pasteKeyValueLines') }}</label>
-              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" placeholder="SHARED_SECRET=...&#10;# comments and blank lines are ignored&#10;REGION=eu" :aria-label="$t('stacks.pasteKeyValueLines')" required></textarea>
+              <textarea v-model="envImport.content" class="form-input" rows="10" spellcheck="false" style="font-family: monospace; font-size: 12px" :placeholder="$t('stacks.envImportPlaceholder')" :aria-label="$t('stacks.pasteKeyValueLines')" required></textarea>
             </div>
             <label class="checkbox-label" style="margin-bottom: 0"><input type="checkbox" v-model="envImport.secret" />{{ $t('stacks.markAllSecrets') }}</label>
-            <p class="form-hint">{{ $t('stacks.importHint') }}</p>
+            <p class="form-hint">{{ $t('stacks.envImportHint') }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showEnvImport = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? 'Importing…' : 'Import' }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="importingEnv">{{ importingEnv ? $t('marketplace.importing') : $t('marketplace.import') }}</button>
           </div>
         </form>
       </AppModal>
@@ -657,16 +662,16 @@ const appName = (id: number) => allApps.value.find((a) => a.id === id)?.name ?? 
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showDelete = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="modal-body">
-          <p>{{ $t('action.delete') }}<strong>{{ stack.name }}</strong>?</p>
+          <i18n-t keypath="marketplace.deleteTitle" tag="p"><template #name><strong>{{ stack.name }}</strong></template></i18n-t>
           <label class="checkbox-label" style="margin-top: 8px">
             <input type="checkbox" v-model="deleteWithApps" />
-            Also delete its {{ stack.apps?.length ?? 0 }} application(s) and their containers
+            {{ $t('stacks.alsoDeleteApps', stack.apps?.length ?? 0) }}
           </label>
-          <p class="text-muted text-sm">{{ deleteWithApps ? 'Applications and their containers will be permanently removed.' : 'Applications are detached and keep running.' }}</p>
+          <p class="text-muted text-sm">{{ deleteWithApps ? $t('stacks.deleteWithAppsHint') : $t('stacks.detachAppsHint') }}</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="showDelete = false">{{ $t('action.cancel') }}</button>
-          <button type="button" class="btn btn-danger" @click="confirmDelete">{{ deleteWithApps ? 'Delete stack & apps' : 'Delete stack' }}</button>
+          <button type="button" class="btn btn-danger" @click="confirmDelete">{{ deleteWithApps ? $t('stacks.deleteStackAndApps') : $t('stacks.deleteStack') }}</button>
         </div>
       </AppModal>
     </Teleport>

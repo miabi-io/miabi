@@ -66,7 +66,7 @@ function submit() {
   <Teleport to="body">
     <AppModal v-if="open" max-width="480px" :escapable="!confirmDiscard" @close="requestClose">
         <div class="modal-header">
-          <h3 id="envvar-form-title">{{ editingKey ? 'Update variable' : 'Add variable' }}</h3>
+          <h3 id="envvar-form-title">{{ editingKey ? $t('envVar.updateVariable') : $t('envVar.addVariable') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose">
             <span class="mdi mdi-close"></span>
           </button>
@@ -101,7 +101,7 @@ function submit() {
                 class="form-input mono-input"
                 rows="3"
                 spellcheck="false"
-                :placeholder="form.secret ? 'super-secret-value' : `value or ${secretRefHint}`"
+                :placeholder="form.secret ? 'super-secret-value' : $t('envVar.valuePlaceholder', { ref: secretRefHint })"
               ></textarea>
             </div>
             <label class="checkbox-label" style="margin-bottom: 0">
@@ -115,7 +115,7 @@ function submit() {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving || !form.key.trim()">
-              {{ saving ? 'Saving…' : editingKey ? 'Update' : 'Add variable' }}
+              {{ saving ? $t('action.saving') : editingKey ? $t('envVar.update') : $t('envVar.addVariable') }}
             </button>
           </div>
         </form>

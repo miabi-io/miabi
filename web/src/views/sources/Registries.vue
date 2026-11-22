@@ -75,7 +75,7 @@ async function test(r: Registry) {
     await registryApi.test(currentWorkspaceId.value, r.id)
     notify.success(t('notify.registries.authOk', { name: r.name }))
   } catch (e) {
-    notify.apiError(e, 'Authentication failed')
+    notify.apiError(e, t('registries.authFailed'))
   } finally {
     testing.value = null
   }
@@ -132,7 +132,7 @@ async function confirmDelete() {
                       <template v-if="r.secret_ref">
                         <span class="mdi mdi-key-variant"></span> {{ r.secret_ref }}
                       </template>
-                      <template v-else>{{ r.has_secret ? 'secret set' : 'no secret' }}</template>
+                      <template v-else>{{ r.has_secret ? $t('gitRepos.secretSet') : $t('gitRepos.noSecret') }}</template>
                     </span>
                   </span>
                 </div>
@@ -155,14 +155,14 @@ async function confirmDelete() {
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit registry' : 'New registry' }}</h3>
+          <h3>{{ editing ? $t('registries.editRegistry') : $t('registries.newRegistry') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="form.name" class="form-input" placeholder="e.g. GHCR (prod)" required autofocus :aria-label="$t('apps.form.name')" />
+              <input v-model="form.name" class="form-input" :placeholder="$t('registries.namePlaceholder')" required autofocus :aria-label="$t('apps.form.name')" />
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('registries.server') }}<span class="text-muted">{{ $t('registries.serverHint') }}</span></label>
@@ -170,18 +170,18 @@ async function confirmDelete() {
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('registries.username') }}</label>
-              <input v-model="form.username" class="form-input" placeholder="username" autocomplete="off" :aria-label="$t('registries.username')" />
+              <input v-model="form.username" class="form-input" :placeholder="$t('registries.usernamePlaceholder')" autocomplete="off" :aria-label="$t('registries.username')" />
             </div>
             <CredentialSecretField
               v-model="form.secret"
-              label="Password / token"
+              :label="$t('registries.passwordOrToken')"
               :editing="!!editing"
               :current-ref="editing?.secret_ref || ''"
             />
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Add registry') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('registries.addRegistry')) }}</button>
           </div>
         </form>
       </AppModal>

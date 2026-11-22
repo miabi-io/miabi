@@ -3,14 +3,15 @@ import { ref } from 'vue'
 import { analyticsApi, type AnalyticsReport } from '@/api/analytics'
 import { appApi } from '@/api/apps'
 import { useWorkspaceStore } from './workspace'
+import { t } from '@/i18n'
 
 // Range options shared by every analytics page (Cloudflare-style windows).
 export const ANALYTICS_RANGES = [
-  { key: '30m', label: 'Last 30 min' },
-  { key: '1h', label: 'Last hour' },
-  { key: '24h', label: 'Last 24 hours' },
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
+  { key: '30m', label: 'analytics.range.last30m' },
+  { key: '1h', label: 'analytics.range.last1h' },
+  { key: '24h', label: 'analytics.range.last24h' },
+  { key: '7d', label: 'analytics.range.last7d' },
+  { key: '30d', label: 'analytics.range.last30d' },
 ] as const
 
 // One report shared by all four sub-pages so switching pages doesn't refetch.
@@ -78,7 +79,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       await loadApps(ws)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: { message?: string } } } }
-      error.value = err.response?.data?.error?.message || 'Failed to load analytics'
+      error.value = err.response?.data?.error?.message || t('analytics.loadFailed')
       report.value = null
     } finally {
       loading.value = false

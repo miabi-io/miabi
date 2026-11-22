@@ -2,11 +2,13 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { authApi } from '@/api/auth'
 import type { Brand } from '@/api/types'
+import { i18n, label } from '@/i18n'
 
 // The public auth status carries a brand only under a white_label licence.
 export const useBrandStore = defineStore('brand', () => {
   const brand = ref<Brand>({})
   const page = ref<string | undefined>()
+  const pageKey = ref<string | undefined>()
   let loading: Promise<void> | null = null
 
   const name = computed(() => brand.value.name?.trim() ?? '')
@@ -31,13 +33,15 @@ export const useBrandStore = defineStore('brand', () => {
   }
 
   // The suffix follows the brand, including when the brand arrives after the first navigation.
-  function setTitle(base?: string) {
+  function setTitle(base?: string, key?: string) {
     page.value = base
+    pageKey.value = key
   }
 
-  watch([page, name], ([p, n]) => {
+  watch([page, pageKey, name, () => i18n.global.locale.value], ([p, k, n]) => {
     const suffix = n || 'Miabi'
-    document.title = p ? `${p} — ${suffix}` : suffix
+    const title = p && k ? label(k, p) : p
+    document.title = title ? `${title} — ${suffix}` : suffix
   }, { flush: 'sync' })
 
   // Repointed, not replaced, so clearing the brand favicon restores Miabi's; a stale type makes browsers skip one.

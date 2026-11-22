@@ -1,5 +1,7 @@
 // Never talks to the API: a discarded value must not cross the network, reach audit logs or sit in server memory.
 
+import { t } from '@/i18n'
+
 /** Character classes a password may draw from. */
 export const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 export const LOWER = 'abcdefghijklmnopqrstuvwxyz'
@@ -190,10 +192,10 @@ export function tokenEntropyBits(o: TokenOptions): number {
 
 
 export function strengthLabel(bits: number): { label: string; tone: 'weak' | 'fair' | 'good' | 'strong' } {
-  if (bits < 45) return { label: 'Weak', tone: 'weak' }
-  if (bits < 70) return { label: 'Fair', tone: 'fair' }
-  if (bits < 110) return { label: 'Good', tone: 'good' }
-  return { label: 'Strong', tone: 'strong' }
+  if (bits < 45) return { label: t('passwordStrength.weak'), tone: 'weak' }
+  if (bits < 70) return { label: t('passwordStrength.fair'), tone: 'fair' }
+  if (bits < 110) return { label: t('passwordStrength.good'), tone: 'good' }
+  return { label: t('passwordStrength.strong'), tone: 'strong' }
 }
 
 /** Lazily fetches the passphrase wordlist, so it is not in the main bundle. */

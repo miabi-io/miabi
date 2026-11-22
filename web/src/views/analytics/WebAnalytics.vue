@@ -21,21 +21,21 @@ function botPct(r: AnalyticsReport): number {
 
 <template>
   <AnalyticsShell v-slot="{ report }">
-    <h2 class="web-title">Web Analytics for {{ contextLabel }}</h2>
+    <h2 class="web-title">{{ $t('analytics.webAnalyticsFor', { name: contextLabel }) }}</h2>
 
     <div class="a-grid">
-      <StatTile label="Unique visitors" icon="mdi-account-multiple-outline" :value="fmtNum(report.web.unique_visitors)"
-        sub="cookieless · daily-salted"
+      <StatTile :label="$t('analytics.uniqueVisitors')" icon="mdi-account-multiple-outline" :value="fmtNum(report.web.unique_visitors)"
+        :sub="$t('analytics.visitorsMethod')"
         :delta="delta(report.web.unique_visitors, report.compare?.unique_visitors)" />
-      <StatTile label="Page views" icon="mdi-eye-outline" :value="fmtNum(report.totals.requests)"
+      <StatTile :label="$t('analytics.pageViews')" icon="mdi-eye-outline" :value="fmtNum(report.totals.requests)"
         :delta="delta(report.totals.requests, report.compare?.requests)" />
-      <StatTile label="Views / visitor" icon="mdi-account-eye-outline" :value="perVisitor(report)" />
-      <StatTile label="Human traffic" icon="mdi-account-check-outline" :value="fmtNum(report.web.human_requests)"
-        :sub="`${fmtNum(report.web.bot_requests)} bot requests`" />
+      <StatTile :label="$t('analytics.viewsPerVisitor')" icon="mdi-account-eye-outline" :value="perVisitor(report)" />
+      <StatTile :label="$t('analytics.humanTraffic')" icon="mdi-account-check-outline" :value="fmtNum(report.web.human_requests)"
+        :sub="$t('analytics.botRequests', { count: fmtNum(report.web.bot_requests) })" />
     </div>
 
     <div class="card">
-      <div class="a-card-header"><h3>{{ $t('analytics.humanVsBot') }}</h3><span class="a-muted">{{ botPct(report).toFixed(1) }}% automated</span></div>
+      <div class="a-card-header"><h3>{{ $t('analytics.humanVsBot') }}</h3><span class="a-muted">{{ $t('analytics.automatedPct', { pct: botPct(report).toFixed(1) }) }}</span></div>
       <div class="card-body">
         <div class="status-bar">
           <div class="seg seg-2xx" :style="{ width: (100 - botPct(report)) + '%' }"></div>
@@ -52,7 +52,7 @@ function botPct(r: AnalyticsReport): number {
       <Breakdown :title="$t('analytics.topPages')" :items="report.web.top_paths" :limit="15" other-key="analytics.otherPaths" />
       <Breakdown :title="$t('analytics.referrers')" :items="report.web.top_referrers" />
       <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" :limit="15" other-key="analytics.otherCountries"
-        empty-hint="Country data needs the GeoIP database on the gateway." />
+        :empty-hint="$t('analytics.countryNeedsGeoip')" />
       <Breakdown :title="$t('analytics.browsers')" :items="report.web.top_browsers" />
       <Breakdown :title="$t('analytics.operatingSystems')" :items="report.web.top_os" />
       <Breakdown :title="$t('analytics.devices')" :items="report.web.top_devices" />
@@ -60,7 +60,7 @@ function botPct(r: AnalyticsReport): number {
 
     <div class="ua-grid">
       <Breakdown :title="$t('analytics.topUserAgents')" :items="report.web.top_user_agents" scroll share searchable
-        empty-hint="No requests carried a User-Agent header in this range." />
+        :empty-hint="$t('analytics.noUserAgents')" />
     </div>
   </AnalyticsShell>
 </template>

@@ -150,7 +150,7 @@ async function save() {
   try {
     builtRule = buildRule()
   } catch {
-    ruleError.value = 'Rule must be valid YAML'
+    ruleError.value = t('middlewares.ruleInvalidYaml')
     return
   }
   ruleError.value = ''
@@ -174,7 +174,7 @@ async function save() {
   <Teleport to="body">
     <AppModal v-if="open" dialog-class="modal-lg" auto-focus :escapable="!confirmDiscard" @close="requestClose">
       <div class="modal-header">
-        <h3 id="mw-form-title">{{ editing ? 'Edit policy' : 'New security policy' }}</h3>
+        <h3 id="mw-form-title">{{ editing ? $t('middlewares.editPolicy') : $t('middlewares.newPolicy') }}</h3>
         <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" data-modal-skip-focus @click="requestClose"><span class="mdi mdi-close"></span></button>
       </div>
       <form @submit.prevent="save">
@@ -195,7 +195,7 @@ async function save() {
 
           <div class="form-group">
             <label class="form-label">{{ $t('apps.form.name') }}</label>
-            <input v-model="form.name" class="form-input" placeholder="e.g. basic-auth" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" :aria-label="$t('apps.form.name')" required autofocus />
+            <input v-model="form.name" class="form-input" :placeholder="$t('middlewares.namePlaceholder')" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" :title="$t('routes.nameTitle')" :aria-label="$t('apps.form.name')" required autofocus />
             <p class="form-hint">{{ $t('middlewares.lowercaseLettersDigitsAndHyphens') }}</p>
           </div>
 
@@ -205,14 +205,13 @@ async function save() {
               <optgroup v-for="g in typesByCategory" :key="g.cat" :label="g.cat">
                 <option v-for="d in g.items" :key="d.type" :value="d.type">{{ d.display_name }}</option>
               </optgroup>
-              <option v-if="!isCatalogued" :value="form.type">{{ form.type }} (advanced)</option>
+              <option v-if="!isCatalogued" :value="form.type">{{ $t('middlewares.advancedType', { type: form.type }) }}</option>
             </select>
             <p v-if="descriptor" class="form-hint">{{ descriptor.description }}</p>
             <!-- Advisory: Miabi does not read the gateway version; a route using a type an older gateway lacks fails at load. -->
             <p v-if="descriptor?.min_gateway_version" class="form-hint gateway-req">
               <span class="mdi mdi-information-outline"></span>
-              Needs Goma Gateway {{ descriptor.min_gateway_version }} or newer. On an older gateway the route
-              using it fails to load.
+              {{ $t('middlewares.needsGateway', { version: descriptor.min_gateway_version }) }}
             </p>
           </div>
 
@@ -239,7 +238,7 @@ async function save() {
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
-          <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+          <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('action.create')) }}</button>
         </div>
       </form>
     </AppModal>

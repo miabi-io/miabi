@@ -96,7 +96,7 @@ async function confirmDelete() {
         </button>
         <div>
           <h1>{{ item.display_name || item.name }}</h1>
-          <span class="cell-sub">{{ typeInfo(item.type)?.description || 'Goma Gateway middleware' }}</span>
+          <span class="cell-sub">{{ typeInfo(item.type)?.description || $t('middlewares.gomaMiddleware') }}</span>
         </div>
         <span class="badge badge-neutral">{{ item.type }}</span>
       </div>

@@ -49,9 +49,9 @@ const hasDomain = computed(() => hasApp.value && domainCount.value > 0)
 // Time-of-day greeting with the user's first name.
 const greeting = computed(() => {
   const h = new Date().getHours()
-  const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'
   const name = auth.user?.name?.trim().split(' ')[0]
-  return name ? `${part}, ${name}` : part
+  return name ? t(`dashboard.greeting.${part}Named`, { name }) : t(`dashboard.greeting.${part}`)
 })
 
 // Failures get their own banner, so this pill stays quiet.
@@ -87,7 +87,7 @@ async function accept(inv: PendingInvitation) {
     ws.setWorkspace(inv.workspace_id)
     await loadInvitations()
   } catch (e) {
-    notify.apiError(e, 'Failed to accept invitation')
+    notify.apiError(e, t('notify.workspaces.acceptFailed'))
   } finally {
     acceptingId.value = null
   }
@@ -152,7 +152,7 @@ watch(
       <div>
         <h1>{{ greeting }}</h1>
         <p class="subtitle">
-          {{ $t('dashboard.overviewOf') }} <strong>{{ ws.contextLabel }}</strong>
+          <i18n-t keypath="dashboard.overviewOfName" tag="span"><template #name><strong>{{ ws.contextLabel }}</strong></template></i18n-t>
           <span v-if="overview" class="health-pill" :class="`health-${health.tone}`">
             <span class="mdi" :class="health.icon"></span> {{ health.text }}
           </span>

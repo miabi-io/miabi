@@ -35,7 +35,7 @@ watch(
 <template>
   <AppModal @close="emit('close')">
     <div class="modal-header">
-      <h3>{{ detail?.display_name || detail?.name || network?.name || 'Network' }}</h3>
+      <h3>{{ detail?.display_name || detail?.name || network?.name || $t('networks.network') }}</h3>
       <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="emit('close')">
         <span class="mdi mdi-close"></span>
       </button>
@@ -59,7 +59,7 @@ watch(
             <span class="text-muted">{{ $t('networks.ipv6') }}</span>
             <span>
               <span class="badge" :class="detail.enable_ipv6 ? 'badge-success' : 'badge-neutral'">
-                {{ detail.enable_ipv6 ? 'enabled' : 'disabled' }}
+                {{ detail.enable_ipv6 ? $t('networks.enabled') : $t('networks.disabled') }}
               </span>
             </span>
             <template v-if="detail.enable_ipv6">
@@ -71,7 +71,7 @@ watch(
           </template>
         </div>
         <!-- An overlay exists on a node only once one of its containers attaches, so absence is not an error. -->
-        <p v-if="!detail.exists" class="form-hint text-muted" style="margin-top: 10px">{{ $t('networks.thisNetworkIsNotPresent') }}<template v-if="detail.driver === 'overlay'">{{ $t('networks.anOverlayAppearsOnA') }}</template>
+        <p v-if="!detail.exists" class="form-hint text-muted" style="margin-top: 10px">{{ $t('networks.thisNetworkIsNotPresent') }} <template v-if="detail.driver === 'overlay'">{{ $t('networks.anOverlayAppearsOnA') }}</template>
         </p>
       </template>
     </div>

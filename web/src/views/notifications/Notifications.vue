@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { channelApi, type ChannelInput } from '@/api/notifications'
-import { NOTIFIABLE_EVENT_GROUPS } from '@/constants/notifiableEvents'
+import { NOTIFIABLE_EVENT_GROUPS, eventLabel, groupLabel } from '@/constants/notifiableEvents'
 import type { NotificationChannel } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -105,7 +105,7 @@ async function test(c: NotificationChannel) {
     await channelApi.test(currentWorkspaceId.value, c.id)
     notify.success(t('notify.notifications.testSent', { name: c.name }))
   } catch (e) {
-    notify.apiError(e, 'Test message failed')
+    notify.apiError(e, t('notify.notifications.testFailed'))
   } finally {
     testing.value = null
   }
@@ -160,10 +160,10 @@ async function confirmDelete() {
                 </div>
               </td>
               <td class="cell-sub">{{ c.config?.chat_id || '—' }}</td>
-              <td class="cell-sub">{{ c.events.length }} event{{ c.events.length === 1 ? '' : 's' }}</td>
+              <td class="cell-sub">{{ $t('count.events', c.events.length) }}</td>
               <td>
                 <span class="badge" :class="c.enabled ? 'badge-success' : 'badge-neutral'">
-                  {{ c.enabled ? 'Enabled' : 'Disabled' }}
+                  {{ c.enabled ? $t('notifications.status.enabled') : $t('notifications.status.disabled') }}
                 </span>
               </td>
               <td class="text-right table-actions">
@@ -182,7 +182,7 @@ async function confirmDelete() {
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit channel' : 'New notification channel' }}</h3>
+          <h3>{{ editing ? $t('notifications.editChannel') : $t('notifications.newChannelTitle') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
@@ -217,17 +217,17 @@ async function confirmDelete() {
               <div class="form-group">
                 <label class="form-label">{{ $t('notifications.webhookUrl') }}<span v-if="editing" class="text-muted">{{ $t('secrets.keepCurrent') }}</span></label>
                 <input v-model="form.webhook_url" type="password" class="form-input" :placeholder="form.type === 'slack' ? 'https://hooks.slack.com/services/…' : 'https://discord.com/api/webhooks/…'" autocomplete="new-password" :aria-label="$t('notifications.webhookUrl')" :required="!editing" />
-                <p class="form-hint">Create an incoming webhook in your {{ typeLabel(form.type || '') }} workspace and paste its URL.</p>
+                <p class="form-hint">{{ $t('notifications.incomingWebhookHint', { service: typeLabel(form.type || '') }) }}</p>
               </div>
             </template>
             <div class="form-group">
               <label class="form-label">{{ $t('notifications.events') }}</label>
               <div v-for="g in NOTIFIABLE_EVENT_GROUPS" :key="g.label" class="event-group">
-                <div class="event-group-label">{{ g.label }}</div>
+                <div class="event-group-label">{{ groupLabel(g) }}</div>
                 <div class="event-grid">
                   <label v-for="e in g.events" :key="e.value" class="event-option">
                     <input type="checkbox" :checked="form.events.includes(e.value)" @change="toggleEvent(e.value)" />
-                    <span>{{ e.label }}</span>
+                    <span>{{ eventLabel(e.value) }}</span>
                   </label>
                 </div>
               </div>
@@ -242,7 +242,7 @@ async function confirmDelete() {
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">
-              {{ saving ? 'Saving…' : editing ? 'Save' : 'Add channel' }}
+              {{ saving ? $t('action.saving') : editing ? $t('action.save') : $t('notifications.addChannel') }}
             </button>
           </div>
         </form>

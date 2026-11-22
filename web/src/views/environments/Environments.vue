@@ -127,7 +127,7 @@ async function confirmDelete() {
               <td>
                 <span class="badge" :class="e.required_approvals > 0 ? 'badge-warning' : 'badge-neutral'">
                   <span class="mdi mdi-account-check-outline"></span>
-                  {{ e.required_approvals > 0 ? `${e.required_approvals} required` : 'no gate' }}
+                  {{ e.required_approvals > 0 ? $t('environments.nRequired', { n: e.required_approvals }) : $t('environments.noGate') }}
                 </span>
               </td>
               <td class="text-right table-actions">
@@ -143,7 +143,7 @@ async function confirmDelete() {
     <Teleport to="body">
       <AppModal v-if="showModal" @close="showModal = false">
         <div class="modal-header">
-          <h3>{{ editing ? 'Edit environment' : 'New environment' }}</h3>
+          <h3>{{ editing ? $t('environments.editEnvironment') : $t('environments.newEnvironment') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showModal = false"><span class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
@@ -154,7 +154,7 @@ async function confirmDelete() {
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('plans.description') }}<span class="text-muted">{{ $t('environments.optional') }}</span></label>
-              <input v-model="form.description" class="form-input" placeholder="Customer-facing production stage" :aria-label="$t('plans.description')" />
+              <input v-model="form.description" class="form-input" :placeholder="$t('environments.descriptionPlaceholder')" :aria-label="$t('plans.description')" />
             </div>
             <div class="form-row">
               <div class="form-group">
@@ -171,7 +171,7 @@ async function confirmDelete() {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showModal = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('action.saving') : (editing ? $t('action.save') : $t('action.create')) }}</button>
           </div>
         </form>
       </AppModal>

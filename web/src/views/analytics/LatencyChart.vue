@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Empty buckets break the line rather than diving to zero: a quiet hour is missing data, not a fast one.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AnalyticsSeriesPoint } from '@/api/analytics'
 import { fmtMs, fmtNum, niceAxisMax } from './format'
 import { buildTicks, bucketLabel, type Granularity } from './timeaxis'
@@ -111,7 +112,8 @@ const tipStyle = computed(() => {
   return { left: `${pct}%`, transform: `translateX(${shift})` }
 })
 
-const summary = computed(() => `p95 latency per ${props.granularity} over ${props.series.length} buckets`)
+const { t } = useI18n()
+const summary = computed(() => t('analytics.latencySummary', { per: t(`analytics.per.${props.granularity}`), n: props.series.length }))
 </script>
 
 <template>
@@ -151,7 +153,7 @@ const summary = computed(() => `p95 latency per ${props.granularity} over ${prop
           <template v-if="active.v !== null">
             <div class="lc-tip-row"><i class="k"></i><span>p95</span><b>{{ fmtMs(active.v) }}</b></div>
             <div class="lc-tip-row"><i class="k k-avg"></i><span>{{ $t('analytics.average') }}</span><b>{{ fmtMs(active.point.avg_latency_ms) }}</b></div>
-            <div class="lc-tip-foot">{{ fmtNum(active.point.requests) }} requests</div>
+            <div class="lc-tip-foot">{{ $t('analytics.requestsCount', { count: fmtNum(active.point.requests) }) }}</div>
           </template>
           <div v-else class="lc-tip-foot no-top">{{ $t('analytics.noTraffic') }}</div>
         </div>

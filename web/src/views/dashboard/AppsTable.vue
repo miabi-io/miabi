@@ -39,7 +39,7 @@ const router = useRouter()
               </div>
             </td>
             <td>
-              <span class="node-cell"><span class="mdi mdi-server-network"></span> {{ a.server_name || 'Local' }}</span>
+              <span class="node-cell"><span class="mdi mdi-server-network"></span> {{ a.server_name || $t('dashboard.local') }}</span>
             </td>
             <td class="cell-sub">{{ fmtDate(a.created_at) }}</td>
             <td><span class="badge badge-dot" :class="statusBadge(a.status)">{{ a.status }}</span></td>

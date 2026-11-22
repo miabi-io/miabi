@@ -31,7 +31,7 @@ const props = withDefaults(
     streaming: false,
     trimmedNote: '',
     defaultSize: 'medium',
-    searchLabel: 'Search logs',
+    searchLabel: '',
   },
 )
 
@@ -133,7 +133,7 @@ function downloadLogs() {
           type="search"
           class="form-input log-search-input"
           :placeholder="$t(logRegexMode ? 'appDetail.logs.searchRegex' : 'appDetail.logs.search')"
-          :aria-label="searchLabel"
+          :aria-label="searchLabel || $t('logViewer.searchLogs')"
         />
         <button v-if="logSearch" type="button" class="log-search-clear" @click="logSearch = ''">{{ $t('logViewer.clear') }}</button>
       </div>
@@ -151,8 +151,8 @@ function downloadLogs() {
         type="button"
         class="log-icon-btn"
         :disabled="!filtered.length"
-        :title="logSearch.trim() ? 'Copy matching lines' : 'Copy logs'"
-        :aria-label="logSearch.trim() ? 'Copy matching lines' : 'Copy logs'"
+        :title="$t(logSearch.trim() ? 'appDetail.logs.copyMatching' : 'appDetail.copyLogs')"
+        :aria-label="$t(logSearch.trim() ? 'appDetail.logs.copyMatching' : 'appDetail.copyLogs')"
         @click="copyLogs"
       >
         <span class="mdi" :class="logCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
@@ -161,8 +161,8 @@ function downloadLogs() {
         type="button"
         class="log-icon-btn"
         :disabled="!filtered.length"
-        :title="logSearch.trim() ? 'Download matching lines' : 'Download logs'"
-        :aria-label="logSearch.trim() ? 'Download matching lines' : 'Download logs'"
+        :title="$t(logSearch.trim() ? 'appDetail.logs.downloadMatching' : 'appDetail.downloadLogs')"
+        :aria-label="$t(logSearch.trim() ? 'appDetail.logs.downloadMatching' : 'appDetail.downloadLogs')"
         @click="downloadLogs"
       >
         <span class="mdi mdi-tray-arrow-down"></span>
@@ -172,11 +172,11 @@ function downloadLogs() {
         class="log-follow-btn"
         :class="{ active: logFollow }"
         :aria-pressed="logFollow"
-        :title="logFollow ? 'Following new output — click to pause' : 'Jump to latest and follow'"
+        :title="$t(logFollow ? 'appDetail.logs.following' : 'appDetail.logs.jumpToLatest')"
         @click="toggleFollow"
       >
         <span class="mdi mdi-chevron-double-down"></span>
-        {{ logFollow ? 'Following' : 'Follow' }}
+        {{ logFollow ? $t('logViewer.following') : $t('logViewer.follow') }}
       </button>
       <LogSizeControl v-model="logSize" />
       <span v-if="statusLabel" class="badge" :class="[statusClass, { 'badge-dot': streaming }]">{{ statusLabel }}</span>
