@@ -3654,7 +3654,26 @@
     "whatTheCallerGets": "Ce que reçoit l’appelant",
     "backToApp": "Retour à l’application",
     "allRoutes": "Toutes les routes",
-    "maintenanceOpenHint": "En maintenance : les visiteurs reçoivent la réponse de maintenance. Ouvrez les réglages pour la modifier."
+    "maintenanceOpenHint": "En maintenance : les visiteurs reçoivent la réponse de maintenance. Ouvrez les réglages pour la modifier.",
+    "searchPlaceholder": "Rechercher un nom, un hôte ou un chemin",
+    "filter": {
+      "allApps": "Toutes les applications",
+      "anyStatus": "Tous les statuts",
+      "live": "Actives",
+      "failing": "En échec",
+      "pending": "En attente",
+      "disabled": "Désactivées",
+      "maintenance": "En maintenance",
+      "kind": "Type",
+      "anyKind": "Tous les types",
+      "custom": "Personnalisées",
+      "generated": "Générées automatiquement",
+      "count": "{n} route | {n} routes",
+      "countOf": "{n} sur {total}",
+      "clear": "Effacer les filtres",
+      "none": "Aucune route ne correspond à ces filtres.",
+      "page": "Page {n} sur {total}"
+    }
   },
   "runners": {
     "addARunner": "Ajouter un runner",

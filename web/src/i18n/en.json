@@ -3654,7 +3654,26 @@
     "whatTheCallerGets": "What the caller gets",
     "backToApp": "Back to the application",
     "allRoutes": "All routes",
-    "maintenanceOpenHint": "In maintenance: visitors get the maintenance response. Open the settings to change it."
+    "maintenanceOpenHint": "In maintenance: visitors get the maintenance response. Open the settings to change it.",
+    "searchPlaceholder": "Search name, host or path",
+    "filter": {
+      "allApps": "All applications",
+      "anyStatus": "Any status",
+      "live": "Live",
+      "failing": "Failing",
+      "pending": "Pending",
+      "disabled": "Disabled",
+      "maintenance": "In maintenance",
+      "kind": "Kind",
+      "anyKind": "Any kind",
+      "custom": "Custom",
+      "generated": "Auto-generated",
+      "count": "{n} route | {n} routes",
+      "countOf": "{n} of {total}",
+      "clear": "Clear filters",
+      "none": "No route matches these filters.",
+      "page": "Page {n} of {total}"
+    }
   },
   "runners": {
     "addARunner": "Add a runner",
