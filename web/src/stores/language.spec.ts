@@ -55,6 +55,6 @@ describe('browserLanguage', () => {
 
   it('falls back to English for an empty or entirely unknown list', () => {
     expect(browserLanguage([])).toBe('en')
-    expect(browserLanguage(['nl', 'ja'])).toBe('en')
+    expect(browserLanguage(['nl', 'sv'])).toBe('en')
   })
 })

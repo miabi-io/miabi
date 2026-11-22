@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
           <p class="auth-options-label" id="auth-language-label">
             <span class="mdi mdi-translate"></span>{{ $t('auth.language') }}
           </p>
-          <div role="radiogroup" aria-labelledby="auth-language-label">
+          <div class="auth-options-langs" role="radiogroup" aria-labelledby="auth-language-label">
             <button
               v-for="l in LANGUAGES"
               :key="l.code"
@@ -236,6 +236,10 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
+.auth-options-langs {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+}
 .auth-options-item {
   display: flex;
   align-items: center;

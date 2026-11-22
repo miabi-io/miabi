@@ -72,16 +72,21 @@ func ValidAccent(a Accent) bool {
 
 // Display languages the console ships.
 const (
-	LocaleEnglish    = "en"
-	LocaleFrench     = "fr"
-	LocaleGerman     = "de"
-	LocaleSpanish    = "es"
-	LocaleItalian    = "it"
-	LocalePortuguese = "pt"
+	LocaleEnglish            = "en"
+	LocaleFrench             = "fr"
+	LocaleGerman             = "de"
+	LocaleSpanish            = "es"
+	LocaleItalian            = "it"
+	LocalePortuguese         = "pt"
+	LocaleChineseSimplified  = "zh-cn"
+	LocaleChineseTraditional = "zh-tw"
+	LocaleJapanese           = "ja"
+	LocaleKorean             = "ko"
 )
 
 // locale_test.go fails if this drifts from web/src/i18n/languages.ts.
-var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish, LocaleItalian, LocalePortuguese}
+var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish, LocaleItalian, LocalePortuguese,
+	LocaleChineseSimplified, LocaleChineseTraditional, LocaleJapanese, LocaleKorean}
 
 // Locales lists the display languages the console ships.
 func Locales() []string {
@@ -100,6 +105,16 @@ func ResolveLocale(l string) string {
 	l = strings.ToLower(strings.TrimSpace(l))
 	if ValidLocale(l) {
 		return l
+	}
+	parts := strings.Split(strings.ReplaceAll(l, "_", "-"), "-")
+	// Chinese splits on script, not language: zh-TW, zh-HK, zh-MO and zh-Hant read Traditional.
+	if parts[0] == "zh" {
+		for _, p := range parts[1:] {
+			if p == "hant" || p == "tw" || p == "hk" || p == "mo" {
+				return LocaleChineseTraditional
+			}
+		}
+		return LocaleChineseSimplified
 	}
 	if i := strings.IndexAny(l, "-_"); i > 0 && ValidLocale(l[:i]) {
 		return l[:i]

@@ -46,6 +46,10 @@ export const datetimeFormats = {
   es: datetime,
   it: datetime,
   pt: datetime,
+  'zh-cn': datetime,
+  'zh-tw': datetime,
+  ja: datetime,
+  ko: datetime,
 } satisfies Record<LanguageCode, typeof datetime>
 
 export const numberFormats = {
@@ -55,4 +59,8 @@ export const numberFormats = {
   es: number,
   it: number,
   pt: number,
+  'zh-cn': number,
+  'zh-tw': number,
+  ja: number,
+  ko: number,
 } satisfies Record<LanguageCode, typeof number>

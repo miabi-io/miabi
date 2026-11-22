@@ -25,10 +25,14 @@ import de from './de.json'
 import es from './es.json'
 import itCatalogue from './it.json'
 import pt from './pt.json'
+import zhCN from './zh-cn.json'
+import zhTW from './zh-tw.json'
+import ja from './ja.json'
+import ko from './ko.json'
 import { LANGUAGES, DEFAULT_LANGUAGE } from './languages'
 
 // Missing or orphaned keys never break a build, which is why they need a test.
-const catalogues: Record<string, unknown> = { en, fr, de, es, it: itCatalogue, pt }
+const catalogues: Record<string, unknown> = { en, fr, de, es, it: itCatalogue, pt, 'zh-cn': zhCN, 'zh-tw': zhTW, ja, ko }
 
 function valueAt(cat: unknown, key: string): unknown {
   return key.split('.').reduce<unknown>((o, p) => (o as Record<string, unknown>)?.[p], cat)
