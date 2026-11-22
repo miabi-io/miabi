@@ -204,6 +204,7 @@ It grows from one server to a cluster to several regions without a reinstall. Se
 - **Logs** — deployment, pipeline, job and backup logs kept with retention and full download, plus live tailing
 - **Audit log** of every change, streamed to a **SIEM** over syslog or webhook (Enterprise)
 - **Admin platform** — nodes, clusters, organizations, users, plans, settings, SSO and license
+- **The console in 10 languages** — English, French, German, Spanish, Italian, Portuguese, Simplified and Traditional Chinese, Japanese and Korean, chosen per user
 
 ### Marketplace
 
