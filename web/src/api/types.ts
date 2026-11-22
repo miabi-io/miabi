@@ -1822,6 +1822,42 @@ export interface RouteFlow {
   }[]
 }
 
+export interface RouteTraceRequest {
+  scheme?: 'http' | 'https'
+  method?: string
+  host?: string
+  path: string
+  headers?: Record<string, string>
+  ip?: string
+}
+
+export interface RouteTraceStep {
+  stage: 'visitors' | 'gateway' | 'middleware' | 'split' | 'backend'
+  code: string
+  outcome: 'pass' | 'stop' | 'skip' | 'note' | 'fork'
+  index?: number
+  status?: number
+  params?: Record<string, string>
+  detail: string
+}
+
+export interface RouteTrace {
+  method: string
+  url: string
+  steps: RouteTraceStep[]
+  result: {
+    kind: 'app' | 'redirect' | 'early_answer' | 'maintenance' | 'other_route' | 'no_route' | 'not_served' | 'no_replica'
+    status?: number
+    backend?: 'stable' | 'canary' | 'split'
+    canary_chance?: number
+    upstream_path?: string
+    location?: string
+    route_id?: number
+    route_name?: string
+    detail: string
+  }
+}
+
 export interface RouteMaintenance {
   enabled: boolean
   status_code?: number

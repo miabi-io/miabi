@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Route, RouteFlow, RouteTLSMode } from './types'
+import type { ApiResponse, Route, RouteFlow, RouteTLSMode, RouteTrace, RouteTraceRequest } from './types'
 
 export interface RouteInput {
   name: string
@@ -29,6 +29,7 @@ export const routeApi = {
   setSecurity: (ws: number, id: number, body: { exploit_protection?: boolean }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/security`, body),
   flow: (ws: number, id: number) => api.get<ApiResponse<RouteFlow>>(`${base(ws)}/${id}/flow`),
+  trace: (ws: number, id: number, body: RouteTraceRequest) => api.post<ApiResponse<RouteTrace>>(`${base(ws)}/${id}/flow/trace`, body),
   setMaintenance: (ws: number, id: number, body: { enabled: boolean; status_code?: number; message?: string; html?: string }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/maintenance`, body),
   // Works on generated routes too, so users can layer middlewares onto managed routes.

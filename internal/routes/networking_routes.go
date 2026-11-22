@@ -115,6 +115,16 @@ func (r *Router) routeRoutes() []okapi.RouteDefinition {
 			Description: "The route as a request travels it: hosts and their domains, TLS, the serving gateway, the middleware chain with the statuses each can answer early, other routes on the same hosts, and the stable and canary backends with their releases and replica health.",
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        base + "/{routeID}/flow/trace",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     okapi.H(r.h.route.Trace),
+			Summary:     "Trace a request through a route",
+			Description: "Follows one imagined request through the route's configuration and says where it ends: a redirect, an early answer from a middleware, a longer route on the same host, maintenance, or the stable or canary release. Nothing is sent to the app, and the request (headers included) is never logged or stored. Runtime decisions such as rate limits and token validity are reported as notes, not results.",
+			Request:     &handlers.TraceRouteRequest{},
+		},
+		{
 			Method:      http.MethodPatch,
 			Path:        base + "/{routeID}",
 			Group:       g,

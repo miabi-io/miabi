@@ -145,7 +145,7 @@ func (e *UserSuspendedError) Code() string { return "USER_SUSPENDED" }
 func SuspensionGuard() okapi.Middleware {
 	return func(c *okapi.Context) error {
 		reason := c.GetString(CtxSuspended)
-		if reason == "" || safeMethod(c.Request().Method) || strings.Contains(c.Request().URL.Path, "/auth/") {
+		if reason == "" || safeMethod(c.Request().Method) || ReadOnlyPost(c.Request().Method, c.Request().URL.Path) || strings.Contains(c.Request().URL.Path, "/auth/") {
 			return c.Next()
 		}
 		return c.AbortWithError(http.StatusForbidden, &UserSuspendedError{Reason: reason})

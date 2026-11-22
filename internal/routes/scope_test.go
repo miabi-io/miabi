@@ -82,6 +82,9 @@ func TestScopeFor_Defaults(t *testing.T) {
 		// Reading a runner or a webhook is ordinary; writing one is not.
 		{"GET", "/api/v1/workspaces/{workspace}/runners", models.ScopeRead},
 		{"GET", "/api/v1/workspaces/{workspace}/webhooks", models.ScopeRead},
+		// A trace only computes an answer, so a read-only key may run it.
+		{"POST", "/api/v1/workspaces/{workspace}/routes/{routeID}/flow/trace", models.ScopeRead},
+		{"POST", "/api/v1/workspaces/{workspace}/routes/{routeID}/middlewares", models.ScopeWrite},
 		// Deployment lifecycle.
 		{"POST", "/api/v1/workspaces/{workspace}/apps/{appID}/deploy", models.ScopeDeploy},
 		{"POST", "/api/v1/workspaces/{workspace}/apps/{appID}/restart", models.ScopeDeploy},

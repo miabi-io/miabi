@@ -22,6 +22,7 @@ package application
 import (
 	"testing"
 
+	"github.com/miabi-io/miabi/internal/canaryroute"
 	"github.com/miabi-io/miabi/internal/models"
 )
 
@@ -111,7 +112,7 @@ func TestPreviewOperators(t *testing.T) {
 		{"unknown_operator", "x", "x", false}, // never matches, as at the gateway
 	}
 	for _, c := range cases {
-		if got := evaluateCanaryOperator(c.op, c.actual, c.expected); got != c.want {
+		if got := canaryroute.MatchOperator(c.op, c.actual, c.expected); got != c.want {
 			t.Errorf("%s(%q, %q) = %v, want %v", c.op, c.actual, c.expected, got, c.want)
 		}
 	}

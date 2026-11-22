@@ -38,7 +38,7 @@ func scopeFor(method, path string) string {
 	if s := adminScope(method, path, segs); s != "" {
 		return s
 	}
-	if method == "GET" || method == "HEAD" {
+	if method == "GET" || method == "HEAD" || middlewares.ReadOnlyPost(method, path) {
 		return models.ScopeRead
 	}
 	if isDeployAction(segs) {

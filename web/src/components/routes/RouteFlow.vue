@@ -2,14 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { routeApi } from '@/api/routes'
-import type { RouteFlow } from '@/api/types'
+import type { RouteFlow, RouteTrace, RouteTraceStep } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { relativeTime } from '@/utils/time'
 import { relativeBox, wirePath } from '@/utils/flowWires'
+import { parseHeaders, tracePath } from '@/utils/routeTrace'
 
 const props = defineProps<{ wsId: number; routeId: number }>()
 const emit = defineEmits<{ openSettings: [] }>()
-const { t } = useI18n()
+const { t, te } = useI18n()
 const notify = useNotificationStore()
 
 const flow = ref<RouteFlow | null>(null)
@@ -21,8 +22,11 @@ const selected = ref<Selection | null>(null)
 
 async function load() {
   loading.value = true
+  trace.value = null
   try {
     flow.value = (await routeApi.flow(props.wsId, props.routeId)).data.data
+    if (!traceForm.value.path) traceForm.value.path = flow.value?.route.path || '/'
+    if (!traceForm.value.host) traceForm.value.host = flow.value?.hosts[0]?.host || ''
   } catch (e) {
     notify.apiError(e)
   } finally {
@@ -116,8 +120,76 @@ function setNode(key: NodeKey) {
   }
 }
 
+const traceForm = ref({ method: 'GET', scheme: 'https' as 'http' | 'https', host: '', path: '', headers: '', ip: '' })
+const trace = ref<RouteTrace | null>(null)
+const tracing = ref(false)
+const traceView = computed(() => {
+  if (!trace.value) return null
+  const v = tracePath(trace.value)
+  // The empty-chain placeholder has no step of its own; a request that got past it went through it.
+  if (!flow.value?.chain.length && ['split', 'stable', 'canary', 'app'].some((k) => v.visited.has(k))) v.visited.add('chain')
+  return v
+})
+
+async function runTrace() {
+  if (!traceForm.value.path.trim()) return
+  tracing.value = true
+  try {
+    const f = traceForm.value
+    trace.value = (await routeApi.trace(props.wsId, props.routeId, {
+      method: f.method, scheme: f.scheme, host: f.host || undefined, path: f.path.trim(),
+      headers: parseHeaders(f.headers), ip: f.ip.trim() || undefined,
+    })).data.data
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    tracing.value = false
+  }
+}
+function clearTrace() {
+  trace.value = null
+}
+const canaryHeaderRule = computed(() => canaryRules.value.find((r) => r.source === 'header'))
+function addCanaryHeader() {
+  const r = canaryHeaderRule.value
+  if (!r) return
+  const line = `${r.name}: ${r.operator === 'equals' ? r.value : ''}`
+  const lines = traceForm.value.headers.split('\n').filter((l) => l.trim() && !l.toLowerCase().startsWith(r.name.toLowerCase() + ':'))
+  traceForm.value.headers = [...lines, line].join('\n')
+}
+function stepText(s: RouteTraceStep): string {
+  const key = `routes.flow.trace.code.${s.code}`
+  const params: Record<string, string> = { ...(s.params || {}) }
+  if (params.body) params.body = params.body === 'page' ? t('routes.flow.maintPage') : t('routes.flow.maintMessage')
+  if (params.role) params.role = t(`routes.flow.role.${params.role}`)
+  return te(key) ? t(key, params) : s.detail
+}
+const resultText = computed(() => {
+  const r = trace.value?.result
+  if (!r) return ''
+  const key = `routes.flow.trace.result.${r.kind}`
+  const params = {
+    status: r.status ?? '', location: r.location ?? '', route: r.route_name ?? '', path: r.upstream_path ?? '',
+    backend: r.backend ? t(`routes.flow.trace.backend.${r.backend}`, { chance: r.canary_chance ?? 0 }) : '',
+  }
+  return te(key) ? t(key, params) : r.detail
+})
+const resultTone = computed(() => {
+  const k = trace.value?.result.kind
+  if (k === 'app') return 'is-ok'
+  if (k === 'redirect' || k === 'other_route' || k === 'no_route') return 'is-info'
+  return 'is-stop'
+})
+// Classes for a canvas box while a trace is shown: on the path, off it, or where the request stopped.
+function tclass(key: string) {
+  const v = traceView.value
+  if (!v) return {}
+  return { 'on-path': v.visited.has(key), 'off-path': !v.visited.has(key), 'stop-here': v.stop === key }
+}
+watch(trace, () => nextTick(draw))
+
 type WireKind = 'ok' | 'canary' | 'warn' | 'bad' | 'off'
-interface DrawnWire { d: string; kind: WireKind; label?: string; x: number; y: number }
+interface DrawnWire { d: string; kind: WireKind; label?: string; x: number; y: number; onPath?: boolean }
 const wires = ref<DrawnWire[]>([])
 
 const plannedWires = computed<[NodeKey, NodeKey, WireKind, string?][]>(() => {
@@ -153,7 +225,8 @@ function draw() {
     const b = nodes.get(to)
     if (!a || !b) continue
     const w = wirePath(relativeBox(a, c), relativeBox(b, c), vertical)
-    out.push({ d: w.d, kind, label, x: w.mid.x, y: w.mid.y })
+    const v = traceView.value
+    out.push({ d: w.d, kind, label, x: w.mid.x, y: w.mid.y, onPath: v ? v.visited.has(from) && v.visited.has(to) : undefined })
   }
   wires.value = out
 }
@@ -301,7 +374,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <path d="M0 0L10 5L0 10z" :class="`ah-${k}`" />
               </marker>
             </defs>
-            <path v-for="(w, i) in wires" :key="i" :d="w.d" class="wire" :class="`wire-${w.kind}`" :marker-end="`url(#flow-ah-${w.kind})`" />
+            <path v-for="(w, i) in wires" :key="i" :d="w.d" class="wire" :class="[`wire-${w.kind}`, { 'wire-path': w.onPath === true, 'wire-dim': w.onPath === false }]" :marker-end="`url(#flow-ah-${w.kind})`" />
           </svg>
           <div class="flow-labels" aria-hidden="true">
             <span v-for="(w, i) in wires.filter((x) => x.label)" :key="i" class="wire-label" :class="`wire-label-${w.kind}`" :style="{ left: `${w.x}px`, top: `${w.y}px` }">{{ w.label }}</span>
@@ -312,7 +385,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
             <div
               :ref="setNode('visitors')"
               class="flow-node"
-              :class="{ selected: isSelected('visitors') }"
+              :class="[{ selected: isSelected('visitors') }, tclass('visitors')]"
               tabindex="0"
               role="button"
               :aria-pressed="isSelected('visitors')"
@@ -337,7 +410,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
             <div
               :ref="setNode('gateway')"
               class="flow-node"
-              :class="{ selected: isSelected('gateway') }"
+              :class="[{ selected: isSelected('gateway') }, tclass('gateway')]"
               tabindex="0"
               role="button"
               :aria-pressed="isSelected('gateway')"
@@ -371,7 +444,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
               v-if="parked"
               :ref="setNode('maint')"
               class="flow-node is-maint"
-              :class="{ selected: isSelected('maint') }"
+              :class="[{ selected: isSelected('maint') }, tclass('maint')]"
               tabindex="0"
               role="button"
               :aria-pressed="isSelected('maint')"
@@ -387,7 +460,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 v-for="(m, i) in flow.chain"
                 :key="m.name"
                 class="mw"
-                :class="{ selected: isSelected('mw', i), missing: m.missing }"
+                :class="[{ selected: isSelected('mw', i), missing: m.missing }, tclass(`mw:${i}`)]"
                 tabindex="0"
                 role="button"
                 :aria-pressed="isSelected('mw', i)"
@@ -399,7 +472,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <span v-if="m.early_status.length" class="mw-stop" :title="$t('routes.flow.canAnswer', { codes: m.early_status.join(', ') })">{{ m.early_status.join(' ') }}</span>
               </div>
             </div>
-            <div v-else-if="!parked" :ref="setNode('chain')" class="flow-empty-col" :class="{ bypassed: downstreamOff }">{{ $t('routes.flow.noMiddlewares') }}</div>
+            <div v-else-if="!parked" :ref="setNode('chain')" class="flow-empty-col" :class="[{ bypassed: downstreamOff }, tclass('chain')]">{{ $t('routes.flow.noMiddlewares') }}</div>
           </div>
 
           <div v-if="canary" class="flow-col">
@@ -407,7 +480,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
             <div
               :ref="setNode('split')"
               class="flow-node"
-              :class="{ selected: isSelected('split'), bypassed: downstreamOff }"
+              :class="[{ selected: isSelected('split'), bypassed: downstreamOff }, tclass('split')]"
               tabindex="0"
               role="button"
               :aria-pressed="isSelected('split')"
@@ -433,7 +506,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
               v-if="!flow.app.deployed"
               :ref="setNode('app')"
               class="flow-node is-bad"
-              :class="{ selected: isSelected('app') }"
+              :class="[{ selected: isSelected('app') }, tclass('app')]"
               tabindex="0"
               role="button"
               @click="select({ kind: 'app' })"
@@ -446,7 +519,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
               <div
                 :ref="setNode(b.role)"
                 class="flow-node backend"
-                :class="[`is-${b.role}`, { selected: isSelected(b.role), bypassed: downstreamOff, 'no-replica': b.health && b.health.desired > 0 && b.health.running === 0 }]"
+                :class="[`is-${b.role}`, { selected: isSelected(b.role), bypassed: downstreamOff, 'no-replica': b.health && b.health.desired > 0 && b.health.running === 0 }, tclass(b.role)]"
                 tabindex="0"
                 role="button"
                 :aria-pressed="isSelected(b.role)"
@@ -470,6 +543,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
         </div>
       </div>
 
+      <div class="flow-panels">
       <section class="flow-details" aria-live="polite">
         <template v-if="details">
           <div class="flow-details-head">
@@ -486,6 +560,48 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
         </template>
         <p v-else class="text-muted text-sm">{{ $t('routes.flow.selectHint') }}</p>
       </section>
+
+      <section class="flow-details flow-trace">
+        <div class="flow-details-head">
+          <h3>{{ $t('routes.flow.trace.title') }}</h3>
+          <button v-if="trace" type="button" class="btn btn-ghost btn-sm" @click="clearTrace">{{ $t('routes.flow.trace.clear') }}</button>
+        </div>
+        <p class="text-muted text-sm">{{ $t('routes.flow.trace.hint') }}</p>
+        <form class="trace-form" @submit.prevent="runTrace">
+          <div class="trace-line">
+            <select id="trace-method" v-model="traceForm.method" class="form-select" :aria-label="$t('routes.methods')">
+              <option v-for="m in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']" :key="m">{{ m }}</option>
+            </select>
+            <select id="trace-scheme" v-model="traceForm.scheme" class="form-select" :aria-label="$t('routes.flow.trace.scheme')">
+              <option value="https">https://</option>
+              <option value="http">http://</option>
+            </select>
+            <select v-if="flow.hosts.length > 1" id="trace-host" v-model="traceForm.host" class="form-select trace-host" :aria-label="$t('routes.host')">
+              <option v-for="h in flow.hosts" :key="h.host" :value="h.host">{{ h.host }}</option>
+            </select>
+            <span v-else-if="flow.hosts.length" class="trace-host-text mono">{{ flow.hosts[0].host }}</span>
+            <input id="trace-path" v-model="traceForm.path" class="form-input mono trace-path" spellcheck="false" :aria-label="$t('routes.path')" placeholder="/" />
+          </div>
+          <textarea id="trace-headers" v-model="traceForm.headers" class="form-input mono" rows="3" spellcheck="false" :placeholder="$t('routes.flow.trace.headersPlaceholder')" :aria-label="$t('routes.flow.trace.headers')"></textarea>
+          <div class="trace-line">
+            <input id="trace-ip" v-model="traceForm.ip" class="form-input mono trace-ip" spellcheck="false" :placeholder="$t('routes.flow.trace.ipPlaceholder')" :aria-label="$t('routes.flow.trace.ip')" />
+            <button v-if="canaryHeaderRule" type="button" class="btn btn-ghost btn-sm" @click="addCanaryHeader">+ {{ canaryHeaderRule.name }}</button>
+            <button type="submit" class="btn btn-primary btn-sm trace-run" :disabled="tracing || !traceForm.path.trim()">{{ tracing ? $t('routes.flow.trace.running') : $t('routes.flow.trace.run') }}</button>
+          </div>
+        </form>
+        <template v-if="trace">
+          <div class="trace-result" :class="resultTone">{{ resultText }}</div>
+          <ol class="trace-steps">
+            <li v-for="(s, i) in trace.steps" :key="i" :class="`is-${s.outcome}`">
+              <span class="trace-mark">{{ s.outcome === 'stop' ? '!' : s.outcome === 'skip' ? '–' : s.outcome === 'note' ? 'i' : s.outcome === 'fork' ? '⑂' : '✓' }}</span>
+              <span>{{ stepText(s) }}</span>
+            </li>
+          </ol>
+          <router-link v-if="trace.result.kind === 'other_route' && trace.result.route_id" :to="routeLink(trace.result.route_id)" class="flow-banner-link">{{ $t('routes.flow.trace.openOther', { route: trace.result.route_name }) }} →</router-link>
+          <p class="text-muted text-xs">{{ $t('routes.flow.trace.disclaimer') }}</p>
+        </template>
+      </section>
+      </div>
     </template>
   </div>
 </template>
@@ -511,7 +627,8 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 .flow-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; position: relative; z-index: 1; }
 .flow-col-head { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); font-weight: 600; }
 .flow-empty-col { font-size: 12px; color: var(--text-muted); padding: 10px 12px; border: 1px dashed var(--border-primary); border-radius: 10px; text-align: center; background: var(--bg-primary); }
-.flow-empty-col.bypassed { opacity: .45; }
+.flow-empty-col.bypassed, .flow-empty-col.off-path { opacity: .45; }
+.flow-empty-col.on-path { border-color: var(--primary-500); color: var(--text-secondary); }
 
 .flow-node { background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; min-width: 0; transition: border-color .15s, box-shadow .15s, opacity .2s; }
 .flow-node:hover, .mw:hover { border-color: var(--primary-500); }
@@ -580,9 +697,34 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 .wire-label-warn { color: var(--warning-600); border-color: var(--warning-500); }
 .wire-label-canary { color: var(--info-600); }
 
+.flow-panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .flow-details { border: 1px solid var(--border-primary); border-radius: 12px; padding: 14px 16px; background: var(--bg-primary); display: flex; flex-direction: column; gap: 10px; }
 .flow-details-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .flow-details-head h3 { margin: 0; font-size: 14px; }
+.trace-form { display: flex; flex-direction: column; gap: 8px; }
+.trace-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.trace-line .form-select { width: auto; }
+.trace-host-text { color: var(--text-muted); overflow-wrap: anywhere; }
+.trace-path { flex: 1; min-width: 140px; }
+.trace-ip { width: 200px; max-width: 100%; }
+.trace-run { margin-left: auto; }
+.trace-result { padding: 8px 12px; border-radius: 9px; font-size: 13px; font-weight: 600; }
+.trace-result.is-ok { background: var(--success-50); color: var(--success-700, var(--success-600)); }
+.trace-result.is-info { background: var(--info-50); color: var(--info-700, var(--info-600)); }
+.trace-result.is-stop { background: var(--warning-50); color: var(--warning-700, var(--warning-600)); }
+.trace-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.trace-steps li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; }
+.trace-mark { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; margin-top: 1px; background: var(--success-50); color: var(--success-600); }
+.is-stop .trace-mark { background: var(--warning-50); color: var(--warning-600); }
+.is-skip .trace-mark, .is-note .trace-mark { background: var(--bg-tertiary); color: var(--text-muted); }
+.is-skip, .is-note { color: var(--text-secondary); }
+.is-fork .trace-mark { background: var(--info-50); color: var(--info-600); }
+.text-xs { font-size: 12px; margin: 0; }
+.flow-node.on-path, .mw.on-path { border-color: var(--primary-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-500) 18%, transparent); }
+.flow-node.off-path, .mw.off-path { opacity: .35; }
+.flow-node.stop-here, .mw.stop-here { border-color: var(--warning-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning-500) 25%, transparent); opacity: 1; }
+.wire-path { stroke-width: 3.5; }
+.wire-dim { opacity: .25; }
 .detail-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13px; }
 .detail-rows dt { color: var(--text-muted); }
 .detail-rows dd { margin: 0; overflow-wrap: anywhere; }
@@ -590,6 +732,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 @media (max-width: 760px) {
   .flow-canvas, .flow-canvas.has-split { min-width: 0; grid-template-columns: minmax(0, 1fr); row-gap: 44px; padding: 20px 14px; }
   .detail-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .flow-panels { grid-template-columns: minmax(0, 1fr); }
   .detail-rows dd { margin-bottom: 6px; }
 }
 </style>
