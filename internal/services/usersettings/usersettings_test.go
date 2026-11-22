@@ -320,7 +320,7 @@ func TestEnforcedAccentWithoutABrandUsesTheDefault(t *testing.T) {
 func TestResolveLocale(t *testing.T) {
 	for in, want := range map[string]string{
 		"en": "en", "fr": "fr", "FR": "fr", "fr-CA": "fr", "en_US": "en",
-		"de": "de", "de-AT": "de", "es": "es", "es-MX": "es", "it": "it", "pt": "en", "": "en", "-fr": "en",
+		"de": "de", "de-AT": "de", "es": "es", "es-MX": "es", "it": "it", "pt": "pt", "pt-BR": "pt", "nl": "en", "": "en", "-fr": "en",
 	} {
 		if got := models.ResolveLocale(in); got != want {
 			t.Errorf("ResolveLocale(%q) = %q, want %q", in, got, want)

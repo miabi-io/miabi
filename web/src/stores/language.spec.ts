@@ -50,11 +50,11 @@ describe('browserLanguage', () => {
   })
 
   it('skips languages we do not ship rather than letting the first tag win', () => {
-    expect(browserLanguage(['pt-BR', 'fr-FR'])).toBe('fr')
+    expect(browserLanguage(['nl-NL', 'fr-FR'])).toBe('fr')
   })
 
   it('falls back to English for an empty or entirely unknown list', () => {
     expect(browserLanguage([])).toBe('en')
-    expect(browserLanguage(['pt', 'ja'])).toBe('en')
+    expect(browserLanguage(['nl', 'ja'])).toBe('en')
   })
 })

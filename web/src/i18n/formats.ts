@@ -45,6 +45,7 @@ export const datetimeFormats = {
   de: datetime,
   es: datetime,
   it: datetime,
+  pt: datetime,
 } satisfies Record<LanguageCode, typeof datetime>
 
 export const numberFormats = {
@@ -53,4 +54,5 @@ export const numberFormats = {
   de: number,
   es: number,
   it: number,
+  pt: number,
 } satisfies Record<LanguageCode, typeof number>
