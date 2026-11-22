@@ -72,15 +72,16 @@ func ValidAccent(a Accent) bool {
 
 // Display languages the console ships.
 const (
-	LocaleEnglish = "en"
-	LocaleFrench  = "fr"
-	LocaleGerman  = "de"
-	LocaleSpanish = "es"
-	LocaleItalian = "it"
+	LocaleEnglish    = "en"
+	LocaleFrench     = "fr"
+	LocaleGerman     = "de"
+	LocaleSpanish    = "es"
+	LocaleItalian    = "it"
+	LocalePortuguese = "pt"
 )
 
 // locale_test.go fails if this drifts from web/src/i18n/languages.ts.
-var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish, LocaleItalian}
+var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish, LocaleItalian, LocalePortuguese}
 
 // Locales lists the display languages the console ships.
 func Locales() []string {
