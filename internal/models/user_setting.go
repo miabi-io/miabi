@@ -76,10 +76,11 @@ const (
 	LocaleFrench  = "fr"
 	LocaleGerman  = "de"
 	LocaleSpanish = "es"
+	LocaleItalian = "it"
 )
 
 // locale_test.go fails if this drifts from web/src/i18n/languages.ts.
-var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish}
+var locales = []string{LocaleEnglish, LocaleFrench, LocaleGerman, LocaleSpanish, LocaleItalian}
 
 // Locales lists the display languages the console ships.
 func Locales() []string {
