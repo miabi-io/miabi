@@ -28,7 +28,7 @@ export const routeApi = {
   setEnabled: (ws: number, id: number, enabled: boolean) => api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/enabled`, { enabled }),
   setSecurity: (ws: number, id: number, body: { exploit_protection?: boolean }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/security`, body),
-  setMaintenance: (ws: number, id: number, body: { enabled: boolean; status_code?: number; message?: string }) =>
+  setMaintenance: (ws: number, id: number, body: { enabled: boolean; status_code?: number; message?: string; html?: string }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/maintenance`, body),
   // Works on generated routes too, so users can layer middlewares onto managed routes.
   setMiddlewares: (ws: number, id: number, middlewares: string[]) =>

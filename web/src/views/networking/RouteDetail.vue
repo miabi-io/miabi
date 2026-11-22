@@ -10,9 +10,10 @@ import { appApi } from '@/api/apps'
 import { middlewareApi } from '@/api/middlewares'
 import type { Route, Application, Middleware } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { MAINTENANCE_HTML_MAX, htmlBytes, maintenancePageTemplate } from '@/utils/maintenancePage'
 
 const route = useRoute()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const ws = useWorkspaceStore()
 const notify = useNotificationStore()
@@ -123,6 +124,8 @@ async function copy(text: string) {
 const maintenanceOn = computed(() => item.value?.maintenance?.enabled === true)
 const mtStatus = ref<number | undefined>(undefined)
 const mtMessage = ref('')
+const mtHtml = ref('')
+const htmlSource = ref(false)
 const mtBusy = ref(false)
 const secBusy = ref(false)
 const previewAs = ref<'text' | 'json' | 'xml'>('text')
@@ -138,12 +141,27 @@ const STATUS_TEXT: Record<number, string> = {
 function syncMaintenanceForm(r: Route | null) {
   mtStatus.value = r?.maintenance?.status_code || undefined
   mtMessage.value = r?.maintenance?.message || ''
+  mtHtml.value = r?.maintenance?.html || ''
 }
 
 const mtDirty = computed(() => {
   const saved = item.value?.maintenance
   return (mtStatus.value || 0) !== (saved?.status_code || 0) || mtMessage.value !== (saved?.message || '')
+    || mtHtml.value.trim() !== (saved?.html || '')
 })
+const htmlSize = computed(() => htmlBytes(mtHtml.value))
+const htmlTooLarge = computed(() => htmlSize.value > MAINTENANCE_HTML_MAX)
+const hasHtml = computed(() => mtHtml.value.trim() !== '')
+function insertTemplate() {
+  mtHtml.value = maintenancePageTemplate({
+    title: item.value?.display_name || item.value?.name || t('routes.htmlTemplateHeading'),
+    heading: t('routes.htmlTemplateHeading'),
+    message: mtMessage.value.trim() && !messageIsJson.value ? mtMessage.value.trim() : t('routes.htmlTemplateMessage'),
+    lang: locale.value,
+  })
+  htmlSource.value = false
+  previewAs.value = 'text'
+}
 const statusInvalid = computed(() => {
   const v = mtStatus.value
   return v !== undefined && v !== null && String(v) !== '' && (v < 400 || v > 599)
@@ -161,7 +179,7 @@ const messageIsJson = computed(() => {
 const previewContentType = computed(() =>
   previewAs.value === 'json' ? 'application/json'
     : previewAs.value === 'xml' ? 'application/xhtml+xml'
-      : 'text/plain; charset=utf-8',
+      : hasHtml.value ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
 )
 function escapeXml(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -284,6 +302,7 @@ async function saveMaintenance(enabled: boolean) {
       enabled,
       status_code: mtStatus.value || 0,
       message: mtMessage.value || '',
+      html: mtHtml.value.trim(),
     })
     notify.success(t(enabled ? 'notify.routeDetail.maintenanceOn' : 'notify.routeDetail.maintenanceOff'))
     await load(true)
@@ -540,6 +559,30 @@ async function removeRoute() {
                 ></textarea>
                 <span class="form-hint">{{ mtMessage.length }}/1024 · plain text, or JSON to answer API clients in your own shape</span>
               </label>
+
+              <div class="mt-field mt-field-html">
+                <div class="mt-html-head">
+                  <label class="form-label" for="mt-html">{{ $t('routes.htmlPage') }} <span class="text-muted text-sm">{{ $t('routes.optional') }}</span></label>
+                  <button v-if="!hasHtml && ws.canEdit" type="button" class="btn btn-ghost btn-sm" @click="insertTemplate">
+                    <span class="mdi mdi-file-document-edit-outline"></span> {{ $t('routes.htmlStartFromTemplate') }}
+                  </button>
+                  <button v-else-if="ws.canEdit" type="button" class="btn btn-ghost btn-sm" @click="mtHtml = ''">
+                    <span class="mdi mdi-close"></span> {{ $t('routes.htmlRemove') }}
+                  </button>
+                </div>
+                <textarea
+                  id="mt-html"
+                  v-model="mtHtml"
+                  class="form-input mt-message"
+                  :class="{ 'is-invalid': htmlTooLarge }"
+                  :rows="hasHtml ? 12 : 3"
+                  spellcheck="false"
+                  placeholder="<!doctype html>…"
+                  :disabled="!ws.canEdit"
+                ></textarea>
+                <span v-if="htmlTooLarge" class="form-error">{{ $t('routes.htmlTooLarge') }}</span>
+                <span v-else class="form-hint">{{ $t('routes.htmlHint', { size: (htmlSize / 1024).toFixed(1) }) }}</span>
+              </div>
             </div>
 
             <div class="mt-preview">
@@ -562,12 +605,25 @@ async function removeRoute() {
                   </button>
                 </div>
               </div>
-              <pre class="mt-preview-body"><code>{{ previewStatusLine }}
+              <template v-if="previewAs === 'text' && hasHtml">
+                <div class="mt-preview-page-head">
+                  <code>{{ previewStatusLine }} · Content-Type: {{ previewContentType }}</code>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="htmlSource = !htmlSource">
+                    <span class="mdi" :class="htmlSource ? 'mdi-eye-outline' : 'mdi-code-tags'"></span>
+                    {{ htmlSource ? $t('routes.htmlShowPage') : $t('routes.htmlShowSource') }}
+                  </button>
+                </div>
+                <pre v-if="htmlSource" class="mt-preview-body mt-preview-source"><code>{{ mtHtml.trim() }}</code></pre>
+                <!-- Empty sandbox: no scripts and an opaque origin, so the page can't reach the console. -->
+                <iframe v-else class="mt-preview-frame" sandbox="" referrerpolicy="no-referrer" :srcdoc="mtHtml" :title="$t('routes.htmlPreviewTitle')"></iframe>
+              </template>
+              <pre v-else class="mt-preview-body"><code>{{ previewStatusLine }}
 Content-Type: {{ previewContentType }}
 
 {{ previewBody }}</code></pre>
               <p class="text-muted text-sm mt-preview-note">
-                <i18n-t v-if="previewAs === 'text'" keypath="routes.previewTextHint" tag="span"><template #header><code>Accept</code></template></i18n-t>
+                <template v-if="previewAs === 'text' && hasHtml">{{ $t('routes.htmlPreviewHint') }}</template>
+                <i18n-t v-else-if="previewAs === 'text'" keypath="routes.previewTextHint" tag="span"><template #header><code>Accept</code></template></i18n-t>
                 <template v-else-if="previewAs === 'json'">
                   <template v-if="messageIsJson">{{ $t('routes.messageIsJson') }}</template>
                   <template v-else>{{ $t('routes.messageNotJson') }}</template>
@@ -585,7 +641,7 @@ Content-Type: {{ previewContentType }}
               >{{ $t('routes.discard') }}</button>
               <button
                 class="btn btn-primary btn-sm"
-                :disabled="!ws.canEdit || mtBusy || !mtDirty || statusInvalid"
+                :disabled="!ws.canEdit || mtBusy || !mtDirty || statusInvalid || htmlTooLarge"
                 @click="saveMaintenance(maintenanceOn)"
               >
                 {{ mtBusy ? 'Saving…' : mtDirty ? 'Save response' : 'Saved' }}
@@ -743,6 +799,11 @@ Content-Type: {{ previewContentType }}
 .mt-field-message { flex: 1; min-width: 260px; }
 .mt-field .form-label { display: flex; align-items: center; gap: 8px; margin: 0; }
 .mt-json-badge { font-size: 10px; }
+.mt-field-html { flex-basis: 100%; }
+.mt-html-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mt-preview-page-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
+.mt-preview-frame { display: block; width: 100%; height: 360px; border: 1px solid var(--border-primary); border-radius: 8px; background: #fff; }
+.mt-preview-source { max-height: 360px; overflow: auto; }
 .mt-message { font-family: var(--font-mono, monospace); font-size: 12px; resize: vertical; }
 .form-input.is-invalid { border-color: var(--danger-500, #ef4444); }
 

@@ -992,6 +992,10 @@
         "enabled": {
           "type": "boolean"
         },
+        "html": {
+          "description": "HTML is served to browsers; Message still answers API clients.",
+          "type": "string"
+        },
         "message": {
           "type": "string"
         },

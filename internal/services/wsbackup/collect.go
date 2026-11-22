@@ -780,6 +780,7 @@ func (s *Service) collectRouting(workspaceID uint, st *wsbundle.State, report *m
 		if r.Maintenance.Enabled {
 			entry.Maintenance = &wsbundle.RouteMaintenance{
 				Enabled: true, StatusCode: r.Maintenance.StatusCode, Message: r.Maintenance.Message,
+				HTML: r.Maintenance.HTML,
 			}
 		}
 		if r.CertificateID != nil {

@@ -3673,7 +3673,18 @@
       "clear": "Effacer les filtres",
       "none": "Aucune route ne correspond à ces filtres.",
       "page": "Page {n} sur {total}"
-    }
+    },
+    "htmlPage": "Page HTML pour les navigateurs",
+    "htmlStartFromTemplate": "Partir d’un modèle",
+    "htmlRemove": "Retirer la page",
+    "htmlTooLarge": "La page dépasse 64 Ko.",
+    "htmlHint": "{size} Ko sur 64 Ko · les navigateurs reçoivent cette page ; les clients d’API reçoivent toujours le message en JSON ou XML, les autres en texte",
+    "htmlShowPage": "Page",
+    "htmlShowSource": "Source",
+    "htmlPreviewTitle": "Aperçu de la page de maintenance",
+    "htmlPreviewHint": "Affichée dans un bac à sable, scripts désactivés. Sur vos hôtes, la page s’exécute telle quelle, scripts compris.",
+    "htmlTemplateHeading": "Nous revenons très vite",
+    "htmlTemplateMessage": "Une maintenance est en cours. Merci de revenir dans quelques minutes."
   },
   "runners": {
     "addARunner": "Ajouter un runner",

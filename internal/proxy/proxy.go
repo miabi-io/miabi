@@ -72,6 +72,7 @@ type RouteMaintenance struct {
 	Enabled    bool
 	StatusCode int
 	Message    string
+	HTML       string
 }
 
 // RenderedMiddleware is the desired Goma middleware definition.

@@ -2680,6 +2680,7 @@ func (s *Service) routeInput(workspaceID uint, name string, appID uint, spec *de
 	if spec.Maintenance != nil {
 		mt = models.RouteMaintenance{
 			Enabled: spec.Maintenance.Enabled, StatusCode: spec.Maintenance.StatusCode, Message: spec.Maintenance.Message,
+			HTML: spec.Maintenance.HTML,
 		}
 	}
 	certID, err := s.resolveCertificate(workspaceID, name, spec)
@@ -2749,6 +2750,7 @@ func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string)
 	if r.Maintenance.Enabled {
 		spec.Maintenance = &declarative.RouteMaintenanceSpec{
 			Enabled: true, StatusCode: r.Maintenance.StatusCode, Message: r.Maintenance.Message,
+			HTML: r.Maintenance.HTML,
 		}
 	}
 	return spec

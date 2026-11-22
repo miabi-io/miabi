@@ -71,18 +71,29 @@ func TestNormalizeMaintenanceTrimsMessage(t *testing.T) {
 	}
 }
 
+func TestNormalizeMaintenanceCapsHTML(t *testing.T) {
+	page := "<p>" + strings.Repeat("x", maintenanceHTMLMax) + "</p>"
+	if _, err := normalizeMaintenance(&models.RouteMaintenance{Enabled: true, HTML: page}); !errors.Is(err, ErrMaintenanceHTML) {
+		t.Errorf("err = %v, want ErrMaintenanceHTML", err)
+	}
+	mt, err := normalizeMaintenance(&models.RouteMaintenance{Enabled: true, HTML: "\n<h1>brb</h1>\n"})
+	if err != nil || mt.HTML != "<h1>brb</h1>" {
+		t.Errorf("mt = %+v, err = %v", mt, err)
+	}
+}
+
 func TestRenderedRouteCarriesGatewaySettings(t *testing.T) {
 	rt := &models.Route{
 		ID: 3, WorkspaceID: 1, Name: "api", Path: "/",
 		ExploitProtection: true,
-		Maintenance:       models.RouteMaintenance{Enabled: true, StatusCode: 503, Message: "brb"},
+		Maintenance:       models.RouteMaintenance{Enabled: true, StatusCode: 503, Message: "brb", HTML: "<h1>brb</h1>"},
 	}
 	rr := renderedRoute(rt, []proxy.Backend{{Endpoint: "http://mb-app-3:80"}}, false)
 
 	if !rr.ExploitProtection {
 		t.Error("ExploitProtection did not reach the renderer")
 	}
-	if rr.Maintenance == nil || !rr.Maintenance.Enabled || rr.Maintenance.StatusCode != 503 {
+	if rr.Maintenance == nil || !rr.Maintenance.Enabled || rr.Maintenance.StatusCode != 503 || rr.Maintenance.HTML != "<h1>brb</h1>" {
 		t.Errorf("Maintenance = %+v", rr.Maintenance)
 	}
 }

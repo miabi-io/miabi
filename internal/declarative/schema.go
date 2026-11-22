@@ -468,6 +468,8 @@ type RouteMaintenanceSpec struct {
 	// StatusCode must be 4xx or 5xx: a 2xx parked route reads as healthy to monitors and search engines.
 	StatusCode int    `yaml:"statusCode,omitempty" json:"statusCode,omitempty"`
 	Message    string `yaml:"message,omitempty" json:"message,omitempty"`
+	// HTML is served to browsers; Message still answers API clients.
+	HTML string `yaml:"html,omitempty" json:"html,omitempty"`
 }
 
 // MiddlewareSpec Rule is the gateway type's own configuration, passed through untranslated.

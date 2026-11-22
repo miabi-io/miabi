@@ -44,6 +44,7 @@ var (
 	ErrHostRequired        = errors.New("at least one host is required")
 	ErrMaintenanceStatus   = errors.New("maintenance status code must be between 400 and 599")
 	ErrMaintenanceMessage  = errors.New("maintenance message is too long (max 1024 characters)")
+	ErrMaintenanceHTML     = errors.New("maintenance HTML page is too large (max 64 KB)")
 	ErrNameTaken           = errors.New("a route with this name already exists")
 	ErrAppRequired         = errors.New("application not found in workspace")
 	ErrNotFound            = errors.New("route not found")
@@ -59,6 +60,9 @@ var (
 )
 
 const maintenanceMessageMax = 1024
+
+// Every route's page sits in the gateway config, so one page is capped.
+const maintenanceHTMLMax = 64 << 10
 
 type CertResolver interface {
 	Resolve(workspaceID, id uint) (certPEM, keyPEM string, err error)
@@ -1076,12 +1080,16 @@ func normalizeMaintenance(in *models.RouteMaintenance) (models.RouteMaintenance,
 		Enabled:    in.Enabled,
 		StatusCode: in.StatusCode,
 		Message:    strings.TrimSpace(in.Message),
+		HTML:       strings.TrimSpace(in.HTML),
 	}
 	if out.StatusCode != 0 && (out.StatusCode < 400 || out.StatusCode > 599) {
 		return models.RouteMaintenance{}, ErrMaintenanceStatus
 	}
 	if len(out.Message) > maintenanceMessageMax {
 		return models.RouteMaintenance{}, ErrMaintenanceMessage
+	}
+	if len(out.HTML) > maintenanceHTMLMax {
+		return models.RouteMaintenance{}, ErrMaintenanceHTML
 	}
 	return out, nil
 }
@@ -1108,6 +1116,7 @@ func renderedRoute(rt *models.Route, backends []proxy.Backend, disabled bool) pr
 			Enabled:    true,
 			StatusCode: rt.Maintenance.StatusCode,
 			Message:    rt.Maintenance.Message,
+			HTML:       rt.Maintenance.HTML,
 		}
 	}
 	return rr
