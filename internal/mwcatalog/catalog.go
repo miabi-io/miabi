@@ -87,6 +87,8 @@ type Descriptor struct {
 	Description string   `json:"description"`
 	Category    Category `json:"category"`
 	Fields      []Field  `json:"fields"`
+	// EarlyStatus are the statuses this type can answer with before the app is reached; see EarlyStatusOf for rule-aware values.
+	EarlyStatus []int `json:"early_status,omitempty"`
 	// Advisory only: Miabi does not read the gateway version, so this is shown in the form rather than hiding the type.
 	MinGatewayVersion string `json:"min_gateway_version,omitempty"`
 	// Not serialized: the client cannot run it, and the server enforces it on write.
@@ -127,6 +129,7 @@ func collectSecretPaths(fields []Field, prefix []string) []secretPath {
 var registry = []Descriptor{
 	{
 		Type:        "basicAuth",
+		EarlyStatus: []int{401},
 		DisplayName: "Basic authentication",
 		Description: "Require a username and password (HTTP Basic) to reach the route.",
 		Category:    CategoryAccess,
@@ -138,6 +141,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "jwtAuth",
+		EarlyStatus: []int{401},
 		DisplayName: "JWT authentication",
 		Description: "Require a valid JSON Web Token. Verify with a shared secret (HS*), a public key, or a JWKS endpoint.",
 		Category:    CategoryAccess,
@@ -180,6 +184,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:              "oidc",
+		EarlyStatus:       []int{302, 401},
 		DisplayName:       "OpenID Connect (SSO)",
 		Description:       "Sign users in at the gateway against an identity provider, and pass who they are to the app.",
 		Category:          CategoryAccess,
@@ -266,6 +271,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "forwardAuth",
+		EarlyStatus: []int{401, 403},
 		DisplayName: "Forward authentication",
 		Description: "Delegate authentication to an external service, like Authelia or oauth2-proxy.",
 		Category:    CategoryAccess,
@@ -292,6 +298,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "ldapAuth",
+		EarlyStatus: []int{401},
 		DisplayName: "LDAP authentication",
 		Description: "Authenticate users against an LDAP / Active Directory directory.",
 		Category:    CategoryAccess,
@@ -314,6 +321,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "access",
+		EarlyStatus: []int{403},
 		DisplayName: "Block access",
 		Description: "Deny requests to the matched paths with a fixed status code.",
 		Category:    CategorySecurity,
@@ -323,6 +331,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "accessPolicy",
+		EarlyStatus: []int{403},
 		DisplayName: "IP access policy",
 		Description: "Allow or deny requests by client IP / CIDR range.",
 		Category:    CategorySecurity,
@@ -335,6 +344,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "bodyLimit",
+		EarlyStatus: []int{413},
 		DisplayName: "Request body limit",
 		Description: "Reject requests whose body exceeds a size limit.",
 		Category:    CategorySecurity,
@@ -344,6 +354,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "rateLimit",
+		EarlyStatus: []int{429},
 		DisplayName: "Rate limit",
 		Description: "Throttle requests per client over a time unit.",
 		Category:    CategoryTraffic,
@@ -361,6 +372,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "redirectScheme",
+		EarlyStatus: []int{302},
 		DisplayName: "Force scheme (HTTPS)",
 		Description: "Redirect requests to a different scheme — typically http→https.",
 		Category:    CategoryTransform,
@@ -372,6 +384,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "redirectHost",
+		EarlyStatus: []int{302},
 		DisplayName: "Redirect host (www)",
 		Description: "Redirect to another host, keeping the path and query — add or remove www, or send aliases to one domain.",
 		Category:    CategoryTransform,
@@ -387,6 +400,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "redirect",
+		EarlyStatus: []int{302},
 		DisplayName: "Redirect",
 		Description: "Redirect every matched request to a fixed URL.",
 		Category:    CategoryTransform,
@@ -397,6 +411,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "redirectRegex",
+		EarlyStatus: []int{302},
 		DisplayName: "Redirect (regex)",
 		Description: "Redirect using a regular-expression match on the request path.",
 		Category:    CategoryTransform,
@@ -488,6 +503,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "userAgentBlock",
+		EarlyStatus: []int{403},
 		DisplayName: "Block user agents",
 		Description: "Reject requests whose User-Agent matches any of the listed patterns.",
 		Category:    CategorySecurity,
@@ -562,6 +578,7 @@ var registry = []Descriptor{
 	},
 	{
 		Type:        "geoBlock",
+		EarlyStatus: []int{403},
 		DisplayName: "Country access policy (GeoIP)",
 		Description: "Allow or deny requests by client country (GeoIP).",
 		Category:    CategorySecurity,
@@ -605,4 +622,36 @@ func All() []Descriptor {
 	out := make([]Descriptor, len(registry))
 	copy(out, registry)
 	return out
+}
+
+// EarlyStatusOf refines a type's early statuses with the rule: a redirect's permanence, a block's own status code.
+func EarlyStatusOf(typ string, rule map[string]any) []int {
+	d, ok := Get(typ)
+	if !ok {
+		return nil
+	}
+	switch typ {
+	case "redirectScheme", "redirectHost", "redirect", "redirectRegex":
+		if p, _ := rule["permanent"].(bool); p {
+			return []int{301}
+		}
+		return []int{302}
+	case "access", "geoBlock":
+		if code, ok := intOf(rule["statusCode"]); ok && code >= 100 && code <= 599 {
+			return []int{code}
+		}
+	}
+	return append([]int(nil), d.EarlyStatus...)
+}
+
+func intOf(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), n == float64(int(n))
+	}
+	return 0, false
 }

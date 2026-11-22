@@ -88,6 +88,7 @@ type Service struct {
 	external  ExternalDomains
 	// externalCerts serves a cluster's generated URLs from one certificate; nil leaves each its own.
 	externalCerts ExternalCertificates
+	health        ReleaseHealthReader
 }
 
 // ClusterCap reports whether a gateway of its own serves a cluster. Implemented by services/cluster.
