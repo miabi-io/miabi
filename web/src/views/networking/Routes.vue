@@ -10,6 +10,7 @@ import { appApi } from '@/api/apps'
 import type { Route, Application } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
+import { routeStatusBadge, routeStatusLabel } from '@/utils/routes'
 
 const ws = useWorkspaceStore()
 const { t } = useI18n()
@@ -29,17 +30,8 @@ const toDelete = ref<Route | null>(null)
 const deleting = ref(false)
 
 // Not upstream health.
-function statusBadge(r: Route): string {
-  const s = r.status ?? 'pending'
-  if (s === 'live') return 'badge-success'
-  if (s === 'error') return 'badge-danger'
-  if (s === 'offline') return 'badge-warning'
-  return 'badge-neutral'
-}
-function statusLabel(r: Route): string {
-  const s = r.status ?? 'pending'
-  return s === 'live' ? 'live' : s === 'offline' ? 'offline' : s
-}
+const statusBadge = routeStatusBadge
+const statusLabel = routeStatusLabel
 
 async function load(id: number | null) {
   if (!id) { items.value = []; return }

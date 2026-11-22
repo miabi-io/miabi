@@ -793,7 +793,13 @@
       "nextDeploy": "Valeurs que le prochain déploiement définit, sauf MIABI_RELEASE, qui indique la release en cours et passe au numéro suivant à chaque déploiement. L'ID de déploiement, le digest de l'image et le commit ne sont connus qu'à ce déploiement.",
       "enabled": "Les variables MIABI_* seront définies au prochain déploiement",
       "disabled": "Les variables MIABI_* seront retirées au prochain déploiement"
-    }
+    },
+    "routesEmptyHint": "Pour une URL publique rapide sans votre propre domaine, activez l’accès externe dans {ports}.",
+    "routeDisabled": "désactivée",
+    "copyRouteUrl": "Copier l’URL",
+    "openRoute": "Ouvrir la route",
+    "enableRoute": "Activer la route",
+    "disableRoute": "Désactiver la route"
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
@@ -2617,7 +2623,9 @@
       "varAdded": "Variable ajoutée",
       "varUpdated": "Variable mise à jour",
       "volumeAttached": "Volume attaché",
-      "primaryPortSet": "Port principal défini sur {port}"
+      "primaryPortSet": "Port principal défini sur {port}",
+      "routeEnabled": "Route {name} activée",
+      "routeDisabled": "Route {name} désactivée"
     },
     "branding": {
       "imagesMayBeAtMost": "Les images ne doivent pas dépasser {formatSize}."

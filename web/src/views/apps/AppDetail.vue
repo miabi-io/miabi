@@ -40,6 +40,7 @@ import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, N
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText, copyLoaded } from '@/utils/clipboard'
+import { routeStatusBadge, routeStatusLabel, routeUrl } from '@/utils/routes'
 import { envFields, linksWholeInstance, prefixedName, sanitizePrefix, type DBEnvField } from '@/utils/dbEnv'
 
 // Built here so `}}` doesn't break the template's mustache parser.
@@ -368,20 +369,37 @@ function addRoute() {
   showRouteModal.value = true
 }
 function editRoute(r: Route) {
-  // Generated external-access routes are managed from External Access.
-  if (r.generated) { router.push(`/routes/${r.id}`); return }
   editingRoute.value = r
   showRouteModal.value = true
 }
-async function onRouteSaved() {
-  showRouteModal.value = false
+async function reloadRoutes() {
   if (wid.value) appRoutes.value = (await routeApi.listByApp(wid.value, appId.value)).data.data ?? []
 }
-
-function routeUrl(r: Route, host: string): string {
-  const scheme = r.tls_mode && r.tls_mode !== 'none' ? 'https' : 'http'
-  const path = r.path && r.path !== '/' ? r.path : ''
-  return `${scheme}://${host}${path}`
+async function onRouteSaved() {
+  showRouteModal.value = false
+  await reloadRoutes()
+}
+// from= lets the route page's Back return to this tab.
+function openRoute(r: Route) {
+  router.push({ path: `/routes/${r.id}`, query: { from: `app:${appId.value}` } })
+}
+const routeBusy = ref<number | null>(null)
+async function toggleRouteEnabled(r: Route) {
+  if (!wid.value) return
+  routeBusy.value = r.id
+  try {
+    await routeApi.setEnabled(wid.value, r.id, !r.enabled)
+    notify.success(t(r.enabled ? 'notify.appDetail.routeDisabled' : 'notify.appDetail.routeEnabled', { name: r.name }))
+    await reloadRoutes()
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    routeBusy.value = null
+  }
+}
+async function copyRouteUrl(url: string) {
+  if (await copyText(url)) notify.success(t('notify.common.copiedToClipboard'))
+  else notify.error(t('notify.common.copyFailedSelectAndCopy'))
 }
 
 // Ports / host bindings
@@ -2958,7 +2976,7 @@ async function detachDatabase(d: AppDatabase) {
       <div class="card-header">
         <h2>{{ $t('appDetail.routes') }}</h2>
         <div class="flex items-center gap-2">
-          <button class="btn btn-ghost btn-sm" @click="router.push('/routes')">{{ $t('appDetail.manageRoutes') }}</button>
+          <button class="btn btn-ghost btn-sm" @click="router.push({ path: '/routes', query: { app: String(appId) } })">{{ $t('appDetail.manageRoutes') }}</button>
           <button v-if="ws.canEdit" class="btn btn-primary btn-sm" @click="addRoute">
             <span class="mdi mdi-plus"></span>{{ $t('dashboard.quick.addRoute.label') }}</button>
         </div>
@@ -2966,24 +2984,52 @@ async function detachDatabase(d: AppDatabase) {
       <div v-if="appRoutes.length === 0" class="empty-state">
         <span class="mdi mdi-routes" style="font-size: 36px; color: var(--text-muted)"></span>
         <p>{{ $t('appDetail.noRoutesForThisApp') }}</p>
+        <i18n-t keypath="appDetail.routesEmptyHint" tag="p" class="text-muted text-sm">
+          <template #ports><a href="#" @click.prevent="tab = 'ports'">{{ $t('appDetail.tab.ports') }}</a></template>
+        </i18n-t>
         <button v-if="ws.canEdit" class="btn btn-primary mt-4" @click="addRoute">{{ $t('appDetail.addARoute') }}</button>
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('appDetail.route') }}</th><th>{{ $t('appDetail.hosts') }}</th><th>TLS</th><th class="text-right">{{ $t('dashboard.col.status') }}</th></tr></thead>
+          <thead><tr><th>{{ $t('appDetail.route') }}</th><th>{{ $t('appDetail.hosts') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>TLS</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="r in appRoutes" :key="r.id" class="row-clickable" @click="editRoute(r)">
-              <td><span class="cell-title">{{ r.name }}</span><div class="cell-sub">{{ r.path }}</div></td>
+            <tr v-for="r in appRoutes" :key="r.id" class="row-clickable" :class="{ 'row-busy': routeBusy === r.id }" @click="openRoute(r)">
               <td>
-                <template v-if="r.hosts && r.hosts.length">
-                  <a v-for="h in r.hosts" :key="h" class="host-link" :href="routeUrl(r, h)" target="_blank" rel="noopener" @click.stop>
-                    {{ h }}<span class="mdi mdi-open-in-new"></span>
-                  </a>
-                </template>
-                <span v-else class="cell-sub">—</span>
+                <router-link :to="{ path: `/routes/${r.id}`, query: { from: `app:${appId}` } }" class="cell-title route-link" @click.stop>{{ r.display_name || r.name }}</router-link>
+                <div class="cell-sub">{{ r.path }}</div>
+                <div class="route-badges">
+                  <span v-if="r.maintenance?.enabled" class="badge badge-warning badge-dot">{{ $t('routes.maintenance') }}</span>
+                  <span v-if="!r.enabled" class="badge badge-neutral badge-dot">{{ $t('appDetail.routeDisabled') }}</span>
+                  <span v-if="r.generated" class="badge badge-info badge-dot" :title="$t('routes.generatedHint')">{{ $t('routes.autoGenerated') }}</span>
+                  <span v-if="r.middlewares?.length" class="badge badge-neutral" :title="r.middlewares.join(', ')">
+                    <span class="mdi mdi-layers-outline"></span> {{ r.middlewares.length }}</span>
+                </div>
               </td>
+              <td @click.stop>
+                <div v-for="h in r.hosts || []" :key="h" class="host-row">
+                  <a class="host-link" :href="routeUrl(r, h)" target="_blank" rel="noopener">{{ h }}<span class="mdi mdi-open-in-new"></span></a>
+                  <button class="btn-icon btn-icon-muted btn-icon-xs" :title="$t('appDetail.copyRouteUrl')" :aria-label="$t('appDetail.copyRouteUrl')" @click="copyRouteUrl(routeUrl(r, h))">
+                    <span class="mdi mdi-content-copy"></span></button>
+                </div>
+                <span v-if="!r.hosts?.length" class="cell-sub">—</span>
+              </td>
+              <td><span class="badge" :class="routeStatusBadge(r)" :title="r.status_reason || ''">{{ routeStatusLabel(r) }}</span></td>
               <td><span class="badge badge-neutral">{{ r.tls_mode }}</span></td>
-              <td class="text-right"><span class="badge badge-dot" :class="r.enabled ? 'badge-success' : 'badge-neutral'">{{ r.enabled ? 'enabled' : 'disabled' }}</span></td>
+              <td class="text-right table-actions route-actions" @click.stop>
+                <template v-if="ws.canEdit && !r.generated">
+                  <button
+                    class="btn-icon btn-icon-muted"
+                    :disabled="routeBusy === r.id"
+                    :title="$t(r.enabled ? 'appDetail.disableRoute' : 'appDetail.enableRoute')"
+                    :aria-label="$t(r.enabled ? 'appDetail.disableRoute' : 'appDetail.enableRoute')"
+                    @click="toggleRouteEnabled(r)"
+                  ><span class="mdi" :class="r.enabled ? 'mdi-toggle-switch' : 'mdi-toggle-switch-off-outline'"></span></button>
+                  <button class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="editRoute(r)">
+                    <span class="mdi mdi-pencil-outline"></span></button>
+                </template>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.openRoute')" :aria-label="$t('appDetail.openRoute')" @click="openRoute(r)">
+                  <span class="mdi mdi-chevron-right"></span></button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -4484,6 +4530,15 @@ async function detachDatabase(d: AppDatabase) {
 </template>
 
 <style scoped>
+.route-link { color: var(--text-primary); text-decoration: none; }
+.route-link:hover { color: var(--primary-500); text-decoration: underline; }
+.route-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.route-badges:empty { display: none; }
+.host-row { display: flex; align-items: center; gap: 4px; }
+.btn-icon-xs { width: 22px; height: 22px; font-size: 13px; }
+tr.row-busy { opacity: 0.6; }
+/* Fixed so a badge appearing in the row never moves the buttons under the pointer. */
+.route-actions { width: 120px; white-space: nowrap; }
 .port-primary-badge { margin-left: 8px; }
 .image-tag {
   margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;

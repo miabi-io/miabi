@@ -793,7 +793,13 @@
       "nextDeploy": "Values the next deploy sets, except MIABI_RELEASE, which shows the running release and moves to the next number at each deploy. The deployment ID, image digest and commit are known only at that deploy.",
       "enabled": "MIABI_* variables will be set at the next deploy",
       "disabled": "MIABI_* variables will be dropped at the next deploy"
-    }
+    },
+    "routesEmptyHint": "For a quick public URL without your own domain, turn on external access in {ports}.",
+    "routeDisabled": "disabled",
+    "copyRouteUrl": "Copy URL",
+    "openRoute": "Open route",
+    "enableRoute": "Enable route",
+    "disableRoute": "Disable route"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -2617,7 +2623,9 @@
       "varAdded": "Variable added",
       "varUpdated": "Variable updated",
       "volumeAttached": "Volume attached",
-      "primaryPortSet": "Primary port set to {port}"
+      "primaryPortSet": "Primary port set to {port}",
+      "routeEnabled": "Route {name} enabled",
+      "routeDisabled": "Route {name} disabled"
     },
     "branding": {
       "imagesMayBeAtMost": "Images may be at most {formatSize}."
