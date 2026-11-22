@@ -3960,7 +3960,7 @@
       "monitoring": "Monitoring"
     },
     "language": {
-      "hint": "Dates, times and numbers follow this language now. The console's own text is being translated view by view — anything not yet translated stays in English.",
+      "hint": "The console's text, dates, times and numbers follow this language. Some messages sent by the server, such as certain statuses and errors, may still appear in English.",
       "label": "Language"
     },
     "saved": "Preferences saved",

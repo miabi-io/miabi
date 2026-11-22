@@ -3960,7 +3960,7 @@
       "monitoring": "Supervisión"
     },
     "language": {
-      "hint": "Las fechas, horas y números ya siguen este idioma. El texto propio de la consola se está traduciendo vista a vista: lo que aún no está traducido se queda en inglés.",
+      "hint": "Los textos de la consola, las fechas, las horas y los números siguen este idioma. Algunos mensajes que envía el servidor, como ciertos estados y errores, pueden seguir apareciendo en inglés.",
       "label": "Idioma"
     },
     "saved": "Preferencias guardadas",
