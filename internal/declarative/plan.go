@@ -20,6 +20,8 @@
 package declarative
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -754,6 +756,7 @@ func specFields(r Resource) map[string]string {
 		f["maintenance.enabled"] = fmt.Sprintf("%t", mt.Enabled)
 		f["maintenance.statusCode"] = fmt.Sprintf("%d", mt.StatusCode)
 		f["maintenance.message"] = mt.Message
+		f["maintenance.html"] = textDigest(mt.HTML)
 		// Chain order is behaviour at the gateway, so it compares as an ordered list.
 		f["middlewares"] = strings.Join(r.Route.Middlewares, ",")
 	case r.Stack != nil:
@@ -826,4 +829,14 @@ func scheduleFields(prefix string, on bool, schedule string, ret *RetentionSpec,
 	f[prefix+".schedule"] = ScheduleOrDefault(schedule)
 	f[prefix+".retention.keep"] = strconv.Itoa(ret.KeepOr0())
 	f[prefix+".retention.days"] = strconv.Itoa(ret.DaysOr0())
+}
+
+// textDigest keeps a large text field comparable without printing it in a plan; trimmed because the route stores it trimmed.
+func textDigest(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%d bytes, sha256:%s", len(s), hex.EncodeToString(sum[:])[:12])
 }

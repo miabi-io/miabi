@@ -432,6 +432,7 @@ type RouteMaintenance struct {
 	Enabled    bool   `json:"enabled"`
 	StatusCode int    `json:"status_code,omitempty"`
 	Message    string `json:"message,omitempty"`
+	HTML       string `json:"html,omitempty"`
 }
 
 // Ownership is not carried: a restored domain starts unverified and re-proves itself against DNS.

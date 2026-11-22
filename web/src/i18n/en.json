@@ -3673,7 +3673,22 @@
       "clear": "Clear filters",
       "none": "No route matches these filters.",
       "page": "Page {n} of {total}"
-    }
+    },
+    "htmlPage": "HTML page for browsers",
+    "htmlStartFromTemplate": "Start from a template",
+    "htmlRemove": "Remove page",
+    "htmlTooLarge": "The page is larger than 64 KB.",
+    "htmlHint": "{size} KB of 64 KB · browsers get this page; API clients still get the message as JSON or XML, other clients as text",
+    "htmlShowPage": "Page",
+    "htmlShowSource": "Source",
+    "htmlPreviewTitle": "Maintenance page preview",
+    "htmlPreviewHint": "Rendered in a sandbox with scripts off. On your hosts the page runs as written, scripts included.",
+    "htmlTemplateHeading": "We'll be right back",
+    "htmlTemplateMessage": "We're doing some maintenance. Please check back in a few minutes.",
+    "htmlTemplateBadge": "Scheduled maintenance",
+    "htmlTemplateCheckAgain": "Check again",
+    "htmlTemplateRefresh": "This page checks again every minute.",
+    "htmlTemplateHostedOn": "Hosted on"
   },
   "runners": {
     "addARunner": "Add a runner",

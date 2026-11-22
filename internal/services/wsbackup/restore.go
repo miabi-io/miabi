@@ -844,6 +844,7 @@ func (r *restoreRun) applyRouting(ctx context.Context) {
 		if rt.Maintenance != nil {
 			in.Maintenance = &models.RouteMaintenance{
 				Enabled: rt.Maintenance.Enabled, StatusCode: rt.Maintenance.StatusCode, Message: rt.Maintenance.Message,
+				HTML: rt.Maintenance.HTML,
 			}
 		}
 		detail := ""

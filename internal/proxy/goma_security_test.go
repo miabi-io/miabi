@@ -89,6 +89,18 @@ func TestMaintenanceCarriesStatusAndMessage(t *testing.T) {
 	}
 }
 
+func TestMaintenanceCarriesHTMLOnlyWhenSet(t *testing.T) {
+	r := base("parked")
+	r.Maintenance = &RouteMaintenance{Enabled: true, Message: "brb"}
+	if _, ok := renderMap(t, r)["maintenance"].(map[string]any)["html"]; ok {
+		t.Error("html rendered without a page")
+	}
+	r.Maintenance.HTML = "<h1>brb</h1>"
+	if got := renderMap(t, r)["maintenance"].(map[string]any)["html"]; got != "<h1>brb</h1>" {
+		t.Errorf("html = %v", got)
+	}
+}
+
 func TestMaintenanceDisabledOmitsBlock(t *testing.T) {
 	r := base("live")
 	r.Maintenance = &RouteMaintenance{Enabled: false, Message: "ignored"}

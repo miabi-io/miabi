@@ -48,6 +48,8 @@ type RouteMaintenance struct {
 	Enabled    bool   `json:"enabled"`
 	StatusCode int    `json:"status_code,omitempty"`
 	Message    string `json:"message,omitempty"`
+	// HTML is what browsers get; API clients still get Message as JSON or XML.
+	HTML string `json:"html,omitempty"`
 }
 
 // Route's container backend is injected at render time from the app's network alias, so users never set it.

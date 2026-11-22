@@ -116,6 +116,7 @@ func maintenanceOf(route RenderedRoute) *gomaMaintenance {
 		Enabled:    true,
 		StatusCode: route.Maintenance.StatusCode,
 		Message:    route.Maintenance.Message,
+		HTML:       route.Maintenance.HTML,
 	}
 }
 
@@ -158,6 +159,8 @@ type gomaMaintenance struct {
 	Enabled    bool   `yaml:"enabled"`
 	StatusCode int    `yaml:"statusCode,omitempty"`
 	Message    string `yaml:"message,omitempty"`
+	// Older gateways log html as an unknown key and serve Message instead.
+	HTML string `yaml:"html,omitempty"`
 }
 
 type gomaMiddleware struct {

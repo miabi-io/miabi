@@ -195,6 +195,7 @@ type SetRouteMaintenanceRequest struct {
 		Enabled    bool   `json:"enabled"`
 		StatusCode int    `json:"status_code"`
 		Message    string `json:"message"`
+		HTML       string `json:"html"`
 	} `json:"body"`
 }
 
@@ -205,7 +206,7 @@ func (h *RouteHandler) SetMaintenance(c *okapi.Context, req *SetRouteMaintenance
 	}
 	wsID := middlewares.WorkspaceID(c)
 	rt, err := h.svc.SetMaintenance(c.Request().Context(), wsID, id, models.RouteMaintenance{
-		Enabled: req.Body.Enabled, StatusCode: req.Body.StatusCode, Message: req.Body.Message,
+		Enabled: req.Body.Enabled, StatusCode: req.Body.StatusCode, Message: req.Body.Message, HTML: req.Body.HTML,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -367,7 +368,7 @@ func (h *RouteHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, route.ErrAppRequired), errors.Is(err, route.ErrExternalAccessDisabled), errors.Is(err, route.ErrMiddlewareRequired):
 		return c.AbortBadRequest(err.Error())
-	case errors.Is(err, route.ErrMiddlewareDuplicate), errors.Is(err, route.ErrMaintenanceStatus), errors.Is(err, route.ErrMaintenanceMessage):
+	case errors.Is(err, route.ErrMiddlewareDuplicate), errors.Is(err, route.ErrMaintenanceStatus), errors.Is(err, route.ErrMaintenanceMessage), errors.Is(err, route.ErrMaintenanceHTML):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, route.ErrMiddlewareNotFound):
 		return c.AbortNotFound(err.Error())

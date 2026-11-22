@@ -1755,6 +1755,7 @@ export interface RouteMaintenance {
   enabled: boolean
   status_code?: number
   message?: string
+  html?: string
 }
 
 export interface Route {

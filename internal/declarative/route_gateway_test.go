@@ -19,7 +19,11 @@
 
 package declarative
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func routeRes(name string, mutate func(*RouteSpec)) Resource {
 	spec := &RouteSpec{Hosts: []string{"app.example.com"}, App: "web", Path: "/"}
@@ -57,7 +61,7 @@ func TestParkedRouteIsDriftAgainstAServingManifest(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("a manifest with no maintenance block did not plan to resume traffic")
 	}
-	want := map[string]bool{"maintenance.enabled": true, "maintenance.message": true, "maintenance.statusCode": true}
+	want := map[string]bool{"maintenance.enabled": true, "maintenance.message": true, "maintenance.statusCode": true, "maintenance.html": true}
 	for _, f := range got {
 		if !want[f] {
 			t.Errorf("unexpected drift field %q", f)
@@ -184,5 +188,27 @@ func TestExportedTLSMatchesTheManifest(t *testing.T) {
 func TestExportedCustomWithoutCertificateStaysCustom(t *testing.T) {
 	if got := (&RouteSpec{TLS: RouteTLSOf("custom", "", "")}).TLSMode(); got != "custom" {
 		t.Errorf("mode = %q", got)
+	}
+}
+
+func TestMaintenanceHTMLDriftIgnoresBlockScalarNewline(t *testing.T) {
+	live := routeRes("web", func(s *RouteSpec) {
+		s.Maintenance = &RouteMaintenanceSpec{Enabled: true, HTML: "<h1>Back soon</h1>"}
+	})
+	same := routeRes("web", func(s *RouteSpec) {
+		s.Maintenance = &RouteMaintenanceSpec{Enabled: true, HTML: "<h1>Back soon</h1>\n"}
+	})
+	if d := diffFields(live, same); len(d) != 0 {
+		t.Errorf("phantom drift: %v", fieldNames(d))
+	}
+	changed := routeRes("web", func(s *RouteSpec) {
+		s.Maintenance = &RouteMaintenanceSpec{Enabled: true, HTML: "<h1>Back at 16:00</h1>\n"}
+	})
+	d := diffFields(live, changed)
+	if len(d) != 1 || d[0].Field != "maintenance.html" {
+		t.Fatalf("fields = %v, want just maintenance.html", fieldNames(d))
+	}
+	if strings.Contains(fmt.Sprint(d[0]), "<h1>") {
+		t.Errorf("the plan prints the page: %v", d[0])
 	}
 }
