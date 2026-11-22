@@ -44,6 +44,13 @@ const (
 	RouteStatusError   RouteStatus = "error"
 )
 
+// ReleaseHealth is one release's runtime state; Desired is 1 for a container release.
+type ReleaseHealth struct {
+	Status  string `json:"status"`
+	Running uint64 `json:"running"`
+	Desired uint64 `json:"desired"`
+}
+
 type RouteMaintenance struct {
 	Enabled    bool   `json:"enabled"`
 	StatusCode int    `json:"status_code,omitempty"`

@@ -565,6 +565,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	proxyReconciler := worker.NewProxyNetworkReconciler(appRepo, releaseRepo, nodeClients)
 	routeService.SetProxyAttacher(proxyReconciler)
 	routeService.SetAddressListener(appService.MarkAddressConsumers)
+	routeService.SetReleaseHealth(appService)
 	workspaceService.SetRenameListener(appService.MarkWorkspaceRenamed)
 	appService.SetManagedEnv(&managedenv.Source{Workspaces: workspaceRepo, Clusters: repositories.NewClusterRepository(db), Servers: repositories.NewServerRepository(db), Routes: routeRepo})
 	// Re-asserted on every refresh so a gateway recreate cannot leave clustered apps dark, and once now at boot.

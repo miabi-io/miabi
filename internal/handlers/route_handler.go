@@ -123,6 +123,18 @@ func (h *RouteHandler) Get(c *okapi.Context) error {
 	return ok(c, rt)
 }
 
+func (h *RouteHandler) Flow(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	f, err := h.svc.Flow(c.Request().Context(), middlewares.WorkspaceID(c), id)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return ok(c, f)
+}
+
 func (h *RouteHandler) Update(c *okapi.Context, req *UpdateRouteRequest) error {
 	id, err := h.id(c)
 	if err != nil {

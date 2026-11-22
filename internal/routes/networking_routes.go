@@ -106,6 +106,15 @@ func (r *Router) routeRoutes() []okapi.RouteDefinition {
 			Summary:     "Get a route",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        base + "/{routeID}/flow",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.route.Flow,
+			Summary:     "Get a route's request flow",
+			Description: "The route as a request travels it: hosts and their domains, TLS, the serving gateway, the middleware chain with the statuses each can answer early, other routes on the same hosts, and the stable and canary backends with their releases and replica health.",
+		},
+		{
 			Method:      http.MethodPatch,
 			Path:        base + "/{routeID}",
 			Group:       g,
