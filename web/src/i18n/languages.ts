@@ -25,6 +25,10 @@ export const LANGUAGES = [
   { code: 'es', label: 'Español', english: 'Spanish' },
   { code: 'it', label: 'Italiano', english: 'Italian' },
   { code: 'pt', label: 'Português', english: 'Portuguese' },
+  { code: 'zh-cn', label: '简体中文', english: 'Chinese (Simplified)' },
+  { code: 'zh-tw', label: '繁體中文', english: 'Chinese (Traditional)' },
+  { code: 'ja', label: '日本語', english: 'Japanese' },
+  { code: 'ko', label: '한국어', english: 'Korean' },
 ] as const
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code']
@@ -39,6 +43,8 @@ function isLanguage(code: string): code is LanguageCode {
 export function resolveLanguage(tag: string | null | undefined): LanguageCode {
   const t = (tag ?? '').trim().toLowerCase()
   if (isLanguage(t)) return t
-  const primary = t.split(/[-_]/)[0]
+  const [primary, ...rest] = t.split(/[-_]/)
+  // Chinese splits on script, not language: zh-TW, zh-HK, zh-MO and zh-Hant read Traditional.
+  if (primary === 'zh') return rest.some((s) => ['hant', 'tw', 'hk', 'mo'].includes(s)) ? 'zh-tw' : 'zh-cn'
   return isLanguage(primary) ? primary : DEFAULT_LANGUAGE
 }
