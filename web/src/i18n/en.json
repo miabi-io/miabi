@@ -3636,7 +3636,6 @@
     "removeHost": "Remove host",
     "responseWhileParked": "Response while parked",
     "rewrite": "Rewrite",
-    "rootDomainHint": "Leave a subdomain blank to serve the domain at its root. Routes: {host}",
     "saveOrderFirst": "Save or discard the order change first",
     "selectAStoredCertificate": "Select a stored certificate…",
     "settings": "Settings",
@@ -3688,7 +3687,21 @@
     "htmlTemplateBadge": "Scheduled maintenance",
     "htmlTemplateCheckAgain": "Check again",
     "htmlTemplateRefresh": "This page checks again every minute.",
-    "htmlTemplateHostedOn": "Hosted on"
+    "htmlTemplateHostedOn": "Hosted on",
+    "rootDomainTip": "Leave a subdomain blank to serve the domain at its root.",
+    "answersAt": "Answers at",
+    "hostIssue": {
+      "scheme": "{host}: enter the host only, without http:// or https://.",
+      "path": "{host}: enter the host only; set the path in the Path field.",
+      "port": "{host}: a host can't carry a port; the gateway listens on 80 and 443.",
+      "invalid": "{host} isn't a valid host name.",
+      "duplicate": "{host} is listed twice; it is saved once.",
+      "unregistered": "{host} isn't under a domain of this workspace. Add the domain first.",
+      "banned": "{host} is under {domain}, which is suspended.",
+      "unverified": "{domain} isn't verified yet; {host} goes live once it is.",
+      "openDomains": "Domains",
+      "fixFirst": "Fix the hosts marked in red first."
+    }
   },
   "runners": {
     "addARunner": "Add a runner",

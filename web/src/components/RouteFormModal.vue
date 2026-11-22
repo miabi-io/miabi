@@ -9,6 +9,7 @@ import { certificateApi } from '@/api/certificates'
 import { appApi } from '@/api/apps'
 import { domainApi } from '@/api/domains'
 import { parseYaml, toYaml } from '@/utils/yaml'
+import { checkHosts, routeUrls, type HostCheck } from '@/utils/hostChecks'
 import { useDirtyGuard } from '@/composables/useModal'
 import AppModal from '@/components/AppModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -37,6 +38,7 @@ const notify = useNotificationStore()
 const middlewares = ref<Middleware[]>([])
 const certificates = ref<Certificate[]>([])
 const domains = ref<Domain[]>([])
+const domainsKnown = ref(false)
 const saving = ref(false)
 
 interface RouteForm {
@@ -123,8 +125,17 @@ function yamlToSimple(text: string) {
 function hasAdvancedKeys(cfg: Record<string, unknown>): boolean {
   return Object.keys(cfg).some((k) => !simpleKeys.has(k))
 }
+const MODE_KEY = 'miabi.routeForm.mode'
+function rememberedMode(): 'simple' | 'advanced' {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'advanced' ? 'advanced' : 'simple'
+  } catch {
+    return 'simple'
+  }
+}
 function switchMode(mode: 'simple' | 'advanced') {
   if (mode === formMode.value) return
+  try { localStorage.setItem(MODE_KEY, mode) } catch { /* private window: the choice just isn't remembered */ }
   yamlError.value = ''
   if (mode === 'advanced') {
     advancedConfig.value = simpleToYaml()
@@ -195,6 +206,18 @@ function removeExtraHost(i: number) { extraHosts.value.splice(i, 1) }
 // Rebuilding from rows is idempotent, so the parse/build round-trip on open is safe.
 watch([hostRows, extraHosts], syncHostsFromRows, { deep: true })
 
+// Advanced YAML is checked by the server on save; live checks follow the builder only.
+const hostChecks = computed<HostCheck[]>(() =>
+  formMode.value === 'simple' ? checkHosts(splitCsv(form.value.hosts), domainsKnown.value ? domains.value : null) : [],
+)
+const hostErrors = computed(() => hostChecks.value.filter((c) => c.level === 'error'))
+const previewUrls = computed(() =>
+  formMode.value === 'simple' ? routeUrls(splitCsv(form.value.hosts), form.value.path, form.value.tls_mode !== 'none') : [],
+)
+function hostCheckText(c: HostCheck): string {
+  return t(`routes.hostIssue.${c.issue}`, { host: c.host, domain: c.domain ?? '' })
+}
+
 // Fetched once per session so a host page needn't know the form needs them.
 let loaded = false
 async function ensureRefData() {
@@ -208,13 +231,14 @@ async function ensureRefData() {
     middlewares.value = mw.data.data ?? []
     certificates.value = certs.data.data ?? []
     domains.value = doms.data.data ?? []
+    domainsKnown.value = true
     loaded = true
   } catch {
     // The form still works: hosts fall back to free text, pickers just have nothing to offer.
   }
 }
 // A workspace switch invalidates every list above.
-watch(() => props.workspaceId, () => { loaded = false; portCache.clear() })
+watch(() => props.workspaceId, () => { loaded = false; domainsKnown.value = false; portCache.clear() })
 
 // immediate, so a parent that mounts this already open still gets an initialised form.
 watch(
@@ -223,8 +247,11 @@ watch(
     if (!open) return
     await ensureRefData()
     if (props.editing) resetForEdit(props.editing)
-    else resetForCreate()
+    else await resetForCreate()
     await nextTick()
+    // Built after the host rows have synced, so the YAML starts from the same defaults the builder shows.
+    if (!props.editing && rememberedMode() === 'advanced') switchMode('advanced')
+    // After every async default (ports, hosts), or an untouched form would count as edited.
     resetDirty()
   },
   { immediate: true },
@@ -252,7 +279,7 @@ function discard() {
 }
 
 
-function resetForCreate() {
+async function resetForCreate() {
   form.value = emptyForm()
   // New routes compress by default, through the seeded middleware the user can untick.
   const compression = middlewares.value.find(m => m.name === 'compression' && m.type === 'compress')
@@ -263,9 +290,8 @@ function resetForCreate() {
   yamlError.value = ''
   parseHostsToRows() // empty
   if (!hostRows.value.length && domains.value.length) addHostRow()
-  loadAppPorts(form.value.application_id).then(() => {
-    if (appPorts.value.length === 1) form.value.target_port = appPorts.value[0].container_port
-  })
+  await loadAppPorts(form.value.application_id)
+  if (appPorts.value.length === 1) form.value.target_port = appPorts.value[0].container_port
 }
 
 function resetForEdit(r: Route) {
@@ -390,12 +416,23 @@ async function save() {
               </div>
               <button type="button" class="btn btn-secondary btn-sm" @click="addHostRow"><span class="mdi mdi-plus"></span>{{ $t('routes.addHost') }}</button>
               <p v-if="!hostRows.length && !extraHosts.length" class="hint">{{ $t('routes.noHostsHint') }}</p>
-              <i18n-t v-else keypath="routes.rootDomainHint" tag="p" class="hint"><template #host><code>{{ form.hosts || $t('routes.catchAll') }}</code></template></i18n-t>
+              <p v-else class="hint">{{ $t('routes.rootDomainTip') }}</p>
             </template>
             <template v-else>
               <input v-model="form.hosts" class="form-input" placeholder="app.example.com" />
               <i18n-t keypath="routes.noDomainsHint" tag="p" class="hint"><template #link><router-link to="/domains">{{ $t('routes.addADomain') }}</router-link></template></i18n-t>
             </template>
+            <ul v-if="hostChecks.length" class="host-checks" aria-live="polite">
+              <li v-for="c in hostChecks" :key="c.issue + c.host" :class="c.level === 'error' ? 'is-error' : 'is-warning'">
+                <span class="mdi" :class="c.level === 'error' ? 'mdi-alert-circle-outline' : 'mdi-alert-outline'"></span>
+                <span>{{ hostCheckText(c) }}</span>
+                <router-link v-if="c.issue === 'unverified' || c.issue === 'unregistered'" to="/domains" class="host-check-link">{{ $t('routes.hostIssue.openDomains') }}</router-link>
+              </li>
+            </ul>
+            <div v-if="previewUrls.length" class="url-preview">
+              <span class="url-preview-label">{{ $t('routes.answersAt') }}</span>
+              <a v-for="u in previewUrls" :key="u" :href="u" target="_blank" rel="noopener" class="url-preview-link mono">{{ u }}</a>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('routes.path') }}</label>
@@ -469,7 +506,7 @@ async function save() {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" @click="requestClose">{{ $t('action.cancel') }}</button>
-        <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
+        <button type="submit" class="btn btn-primary" :disabled="saving || hostErrors.length > 0" :title="hostErrors.length ? $t('routes.hostIssue.fixFirst') : undefined">{{ saving ? 'Saving…' : (editing ? 'Save' : 'Create') }}</button>
       </div>
     </form>
     </AppModal>
@@ -502,6 +539,15 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: va
 .host-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .host-sub { flex: 1; }
 .host-dot { color: var(--text-muted); font-weight: 600; }
+.host-checks { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.host-checks li { display: flex; align-items: flex-start; gap: 6px; }
+.host-checks .mdi { font-size: 14px; line-height: 1.3; }
+.host-checks .is-error { color: var(--danger, #dc2626); }
+.host-checks .is-warning { color: var(--warning, #d97706); }
+.host-check-link { margin-left: auto; white-space: nowrap; color: var(--primary-500); }
+.url-preview { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 8px; font-size: 12px; }
+.url-preview-label { color: var(--text-muted); }
+.url-preview-link { color: var(--primary-500); word-break: break-all; }
 .host-domain { flex: 0 0 auto; max-width: 55%; font-family: 'JetBrains Mono', monospace; }
 .info-icon { font-size: 14px; color: var(--text-muted); cursor: help; margin-left: 2px; vertical-align: middle; }
 .info-icon:hover { color: var(--primary-500); }
