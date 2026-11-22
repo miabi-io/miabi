@@ -242,6 +242,10 @@ type QuotaBreach struct {
 	Resource    string // human label, e.g. "apps"
 	Used        int
 	Limit       int
+	// Unit, Hint and Link are optional; without them the breach reads as a plan count.
+	Unit string
+	Hint string
+	Link string
 }
 
 // QuotaLister reports workspace resources at/over a usage fraction (0..1).
@@ -268,13 +272,21 @@ func (e *Engine) scanQuotas(ctx context.Context) {
 		e.doFire(ctx, b.WorkspaceID, intent{
 			kind: fire, ruleKey: "quota_near", dedupKey: key,
 			category: models.CategoryQuota, severity: models.AlertWarning,
-			subjectType: "quota", subjectRef: ref, subjectLink: "/workspaces",
+			subjectType: "quota", subjectRef: ref, subjectLink: orDefault(b.Link, "/workspaces"),
 			minRole: models.WorkspaceRoleAdmin,
 			title:   fmt.Sprintf("Approaching %s quota", b.Resource),
-			body:    fmt.Sprintf("Using %d of %d %s. Upgrade the plan or free resources.", b.Used, b.Limit, b.Resource),
+			body:    quotaBody(b),
 		})
 	}
 	e.resolveStale(ctx, models.CategoryQuota, "quota_near:", fired)
+}
+
+func quotaBody(b QuotaBreach) string {
+	hint := orDefault(b.Hint, "Upgrade the plan or free resources.")
+	if b.Unit == "" {
+		return fmt.Sprintf("Using %d of %d %s. %s", b.Used, b.Limit, b.Resource, hint)
+	}
+	return fmt.Sprintf("Using %d %s of %d %s of %s. %s", b.Used, b.Unit, b.Limit, b.Unit, b.Resource, hint)
 }
 
 // The generic "condition no longer holds" reconciliation used by all scans.

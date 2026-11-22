@@ -22,10 +22,12 @@ package main
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/alerting"
 	"github.com/miabi-io/miabi/internal/services/quota"
+	"github.com/miabi-io/miabi/internal/services/registryserver"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -110,6 +112,8 @@ type quotaScanner struct {
 	apps *repositories.ApplicationRepository
 	vols *repositories.VolumeRepository
 	dbs  *repositories.DatabaseRepository
+	// registry is set once the routes build it, after the scan loop has started.
+	registry *atomic.Pointer[registryserver.Service]
 }
 
 func (s quotaScanner) NearQuota(threshold float64) ([]alerting.QuotaBreach, error) {
@@ -135,8 +139,37 @@ func (s quotaScanner) NearQuota(threshold float64) ([]alerting.QuotaBreach, erro
 		if n, err := s.dbs.CountInstancesByWorkspace(w.ID); err == nil {
 			add("database instances", n, lim.MaxDatabaseInstances)
 		}
+		if b, ok := s.registryBreach(w.ID, threshold); ok {
+			out = append(out, b)
+		}
 	}
 	return out, nil
+}
+
+// Reads only cached usage: a scan never walks the registry, and a workspace nobody has pushed to has none.
+func (s quotaScanner) registryBreach(workspaceID uint, threshold float64) (alerting.QuotaBreach, bool) {
+	if s.registry == nil {
+		return alerting.QuotaBreach{}, false
+	}
+	reg := s.registry.Load()
+	if reg == nil {
+		return alerting.QuotaBreach{}, false
+	}
+	return registryQuotaBreach(workspaceID, reg.CachedUsage(workspaceID), reg.QuotaMB(), threshold)
+}
+
+func registryQuotaBreach(workspaceID uint, u *registryserver.Usage, limitMB int, threshold float64) (alerting.QuotaBreach, bool) {
+	if limitMB <= 0 || u == nil {
+		return alerting.QuotaBreach{}, false
+	}
+	usedMB := u.TotalBytes / (1024 * 1024)
+	if float64(usedMB)/float64(limitMB) < threshold {
+		return alerting.QuotaBreach{}, false
+	}
+	return alerting.QuotaBreach{
+		WorkspaceID: workspaceID, Resource: "registry storage", Used: int(usedMB), Limit: limitMB, Unit: "MB",
+		Hint: "Delete tags you no longer need; past the quota, pushes are refused.", Link: "/registry",
+	}, true
 }
 
 // platformAlerter bridges node/runner online/offline hooks to alerts.

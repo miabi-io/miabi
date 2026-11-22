@@ -288,6 +288,23 @@ func TestQuotaScanFireAndResolve(t *testing.T) {
 	}
 }
 
+func TestQuotaScanWordsAMeasuredResource(t *testing.T) {
+	eng, alerts, _, _ := newEngineDB(t)
+	eng.SetQuotaLister(&quotaLister{b: []QuotaBreach{{
+		WorkspaceID: 1, Resource: "registry storage", Used: 950, Limit: 1000, Unit: "MB",
+		Hint: "Delete tags you no longer need.", Link: "/registry",
+	}}})
+	eng.scanQuotas(context.Background())
+	active, _ := alerts.ListByWorkspace(1, true, 0)
+	if len(active) != 1 {
+		t.Fatalf("want 1 alert, got %d", len(active))
+	}
+	a := active[0]
+	if a.Body != "Using 950 MB of 1000 MB of registry storage. Delete tags you no longer need." || a.SubjectLink != "/registry" {
+		t.Fatalf("body %q, link %q", a.Body, a.SubjectLink)
+	}
+}
+
 func TestCertScanFireAndResolve(t *testing.T) {
 	eng, alerts, inbox, _ := newEngineDB(t)
 	soon := time.Now().UTC().Add(2 * 24 * time.Hour) // < 3d → critical

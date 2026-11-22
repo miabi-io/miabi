@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -392,12 +393,14 @@ func runServer(cli *okapicli.CLI) {
 			securityQuota.SetForceNonRoot(cfg.ForceNonRootUser)
 			securityQuota.SetCPUOvercommit(cfg.QuotaCPUOvercommit)
 			res.entitlements = edition.Entitlements()
+			var registryForQuota atomic.Pointer[registryserver.Service]
 			alertEngine.SetQuotaLister(quotaScanner{
-				ws:   repositories.NewWorkspaceRepository(res.db),
-				q:    securityQuota,
-				apps: repositories.NewApplicationRepository(res.db),
-				vols: repositories.NewVolumeRepository(res.db),
-				dbs:  dbRepo,
+				ws:       repositories.NewWorkspaceRepository(res.db),
+				q:        securityQuota,
+				apps:     repositories.NewApplicationRepository(res.db),
+				vols:     repositories.NewVolumeRepository(res.db),
+				dbs:      dbRepo,
+				registry: &registryForQuota,
 			})
 			securityResolver := newSecurityResolver(cfg, securityQuota)
 			grantGuard := newGrantGuard(cfg.ContainerGrantsEnabled, repositories.NewWorkspaceRepository(res.db), securityQuota)
@@ -558,7 +561,9 @@ func runServer(cli *okapicli.CLI) {
 
 			var wsBundleSvc *wsbackup.Service
 			var migrationSvc *locationmigration.Service
-			res.forward, runnerDispatcher, _, wsBundleSvc, migrationSvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore, removals, eventsSvc)
+			var registrySvc *registryserver.Service
+			res.forward, runnerDispatcher, _, wsBundleSvc, migrationSvc, registrySvc = routes.InitRoutes(app, res.db, res.redis, cfg, res.producer, dockerClient, nodeService, nodeManager, nodeGateway, clusterService, bus, proxyMgr, res.cron, logStore, removals, eventsSvc)
+			registryForQuota.Store(registrySvc)
 
 			// This process holds the runner tunnels, so it dispatches builds; must be wired before the worker starts.
 			pipelineHandler.SetRunnerDispatch(runnerDispatcher, repositories.NewWorkspaceRepository(res.db), cfg.Registry.Host, registryDistributor, cfg.RunnerWaitTimeout)
