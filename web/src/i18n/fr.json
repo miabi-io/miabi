@@ -3468,7 +3468,15 @@
     "deleteRepository": "Supprimer le dépôt",
     "deleteRepositoryHint": "Supprime tous ses tags. Refusé tant qu’une de ses images est utilisée.",
     "deleteRepositoryConfirm": "Tous les tags de {repo} seront supprimés. Saisissez le nom du dépôt pour confirmer.",
-    "typeRepositoryName": "Nom du dépôt"
+    "typeRepositoryName": "Nom du dépôt",
+    "retentionRule": "Chaque dépôt garde ses {n} images les plus récentes ; les plus anciennes sont supprimées chaque nuit. Les images de moins de {days} jours, utilisées ou issues des releases récentes d’une application sont toujours gardées.",
+    "retentionOptedOut": "Cet espace de travail est exclu du nettoyage nocturne du registre.",
+    "retentionChoice": "Nettoyage pour cet espace de travail",
+    "retentionFollow": "Suivre la plateforme (garder {n})",
+    "retentionMore": "Garder plus d’images",
+    "retentionOff": "Ne jamais nettoyer cet espace de travail",
+    "retentionKeepLabel": "Images à garder par dépôt",
+    "retentionSaved": "Réglage de nettoyage enregistré"
   },
   "releases": {
     "active": "active",

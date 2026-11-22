@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   registryApi,
   type AdminRegistryUsage,
+  type RetentionPolicy,
+  type RetentionRun,
+  type RetentionWorkspaceReport,
   type RegistryLocks,
   type RegistryRuntime,
   type RegistrySettingsPayload,
@@ -16,13 +19,14 @@ import { relativeTime } from '@/utils/time'
 
 const notify = useNotificationStore()
 
-type Tab = 'overview' | 'configuration' | 'storage' | 'usage' | 'maintenance'
+type Tab = 'overview' | 'configuration' | 'storage' | 'usage' | 'retention' | 'maintenance'
 const tab = ref<Tab>('overview')
 const tabs: Array<{ id: Tab; label: string; icon: string }> = [
   { id: 'overview', label: 'Overview', icon: 'mdi-view-dashboard-outline' },
   { id: 'configuration', label: 'Configuration', icon: 'mdi-cog-outline' },
   { id: 'storage', label: 'Storage', icon: 'mdi-database-outline' },
   { id: 'usage', label: 'Usage', icon: 'mdi-chart-donut' },
+  { id: 'retention', label: 'Retention', icon: 'mdi-history' },
   { id: 'maintenance', label: 'Maintenance', icon: 'mdi-broom' },
 ]
 
@@ -117,6 +121,85 @@ function selectTab(id: Tab) {
   tab.value = id
   syncPolling()
   if (id === 'usage') void loadUsage()
+  if (id === 'retention') void loadRetention()
+}
+
+const retention = ref<RetentionPolicy | null>(null)
+const protectedText = ref('')
+const savingRetention = ref(false)
+const runs = ref<RetentionRun[]>([])
+const report = ref<(RetentionRun & { workspaces: RetentionWorkspaceReport[] }) | null>(null)
+const showRunConfirm = ref(false)
+const startingRun = ref(false)
+const workspaceNames = ref<Map<number, string>>(new Map())
+let runPoll: ReturnType<typeof setTimeout> | undefined
+
+async function loadRetention() {
+  try {
+    const [p, r] = await Promise.all([registryApi.retentionPolicy(), registryApi.retentionRuns()])
+    retention.value = p.data.data
+    protectedText.value = (p.data.data.protected_tags ?? []).join(', ')
+    runs.value = r.data.data ?? []
+    if (!report.value && runs.value[0]) await openRun(runs.value[0].id)
+  } catch (e) {
+    notify.apiError(e)
+  }
+  // Report rows name workspaces; the usage list is the cheap source of names.
+  try {
+    const u = (await registryApi.adminUsage()).data.data
+    workspaceNames.value = new Map(u.workspaces.map((w) => [w.workspace_id, w.workspace]))
+  } catch { /* ids are shown instead */ }
+}
+
+async function saveRetention() {
+  if (!retention.value) return
+  savingRetention.value = true
+  try {
+    const p = retention.value
+    retention.value = (await registryApi.saveRetentionPolicy({
+      enabled: p.enabled, keep_images: p.keep_images, min_age_days: p.min_age_days, release_window: p.release_window,
+      protected_tags: protectedText.value.split(',').map((t) => t.trim()).filter(Boolean),
+    })).data.data
+    notify.success(retention.value.enabled ? 'Retention policy saved; it runs nightly at 03:30.' : 'Retention policy saved; it is off.')
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingRetention.value = false
+  }
+}
+
+async function startRun(dryRun: boolean) {
+  startingRun.value = true
+  try {
+    const run = (await registryApi.startRetention(dryRun)).data.data
+    showRunConfirm.value = false
+    await openRun(run.id)
+    runs.value = [run, ...runs.value.filter((r) => r.id !== run.id)]
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    startingRun.value = false
+  }
+}
+
+// A run can take minutes across many workspaces, so its report fills in by polling.
+async function openRun(id: number) {
+  clearTimeout(runPoll)
+  try {
+    report.value = (await registryApi.retentionRun(id)).data.data
+    if (report.value.status === 'running') {
+      runPoll = setTimeout(() => openRun(id), 3000)
+    } else {
+      runs.value = runs.value.map((r) => (r.id === id ? { ...r, ...report.value! } : r))
+    }
+  } catch (e) {
+    notify.apiError(e)
+  }
+}
+
+const reportRows = computed(() => (report.value?.workspaces ?? []).filter((w) => w.count > 0 || w.skipped || w.repositories.some((r) => r.error)))
+function wsName(id: number) {
+  return workspaceNames.value.get(id) ?? `workspace #${id}`
 }
 
 const usage = ref<AdminRegistryUsage | null>(null)
@@ -264,7 +347,7 @@ onMounted(async () => {
   await Promise.all([load(), loadStorageClasses()])
   syncPolling()
 })
-onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry) })
+onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry); clearTimeout(runPoll) })
 </script>
 
 <template>
@@ -530,6 +613,115 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry) 
         </div>
       </div>
 
+      <template v-else-if="tab === 'retention'">
+        <div class="card mb-4" style="max-width: 720px">
+          <div class="card-body">
+            <h3 class="section-title">Retention policy</h3>
+            <p class="section-note">
+              Deletes old images from every workspace's registry, keeping the newest ones per repository. Tags on one image
+              count as one. It runs nightly at 03:30, before garbage collection reclaims the space at 04:00.
+            </p>
+            <div v-if="!retention" class="spinner"></div>
+            <template v-else>
+              <label class="toggle-row">
+                <input v-model="retention.enabled" type="checkbox" />
+                <span>Run the policy every night</span>
+              </label>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Keep the newest images per repository</label>
+                  <input v-model.number="retention.keep_images" type="number" min="1" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Never delete images younger than (days)</label>
+                  <input v-model.number="retention.min_age_days" type="number" min="0" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Keep the images of each app's last releases</label>
+                  <input v-model.number="retention.release_window" type="number" min="0" class="form-input" />
+                  <small class="form-hint">So rolling back to a recent release still finds its image.</small>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Protected tags</label>
+                  <input v-model="protectedText" class="form-input mono" placeholder="latest, v*.*.*" />
+                  <small class="form-hint">Comma-separated globs; an image carrying a matching tag is never deleted.</small>
+                </div>
+              </div>
+              <p class="form-hint">
+                Images in use by a live deployment or a pinned release, and images with no known build time, are never deleted.
+                Workspace admins can opt their workspace out or keep more images.
+              </p>
+              <div class="actions">
+                <button class="btn btn-primary" :disabled="savingRetention" @click="saveRetention">
+                  {{ savingRetention ? 'Saving…' : 'Save policy' }}
+                </button>
+                <button class="btn btn-secondary" :disabled="startingRun" @click="startRun(true)">Preview</button>
+                <button class="btn btn-danger" :disabled="startingRun || !form.delete_enabled" @click="showRunConfirm = true">Run now</button>
+              </div>
+              <p v-if="!form.delete_enabled" class="form-hint">Enable tag deletion under Configuration first.</p>
+            </template>
+          </div>
+        </div>
+
+        <div v-if="report" class="card mb-4">
+          <div class="card-header usage-header">
+            <div>
+              <h2>{{ report.dry_run ? 'Preview' : 'Run' }} #{{ report.id }}</h2>
+              <p class="section-note" style="margin: 2px 0 0">
+                <template v-if="report.status === 'running'"><span class="mdi mdi-loading mdi-spin"></span> Running…</template>
+                <template v-else-if="report.status === 'failed'">Failed: {{ report.error }}</template>
+                <template v-else>
+                  {{ report.dry_run ? 'Would delete' : 'Deleted' }} {{ report.tags }} tag(s), freeing about
+                  {{ fmtBytes(report.freed_bytes) }}{{ report.dry_run ? '' : ' at the next garbage collection' }}.
+                </template>
+              </p>
+            </div>
+          </div>
+          <div v-if="report.status !== 'running' && reportRows.length === 0" class="card-body text-muted">
+            Nothing to delete: every repository is within the policy.
+          </div>
+          <div v-else-if="reportRows.length" class="table-wrapper">
+            <table>
+              <thead><tr><th>Workspace</th><th>Kept per repository</th><th>Tags</th><th>Frees</th><th>Repositories</th></tr></thead>
+              <tbody>
+                <tr v-for="w in reportRows" :key="w.workspace_id">
+                  <td><router-link :to="`/admin/workspaces/${w.workspace_id}`">{{ wsName(w.workspace_id) }}</router-link></td>
+                  <td>{{ w.skipped ? 'Opted out' : w.keep }}</td>
+                  <td>{{ w.skipped ? '—' : w.count }}</td>
+                  <td>{{ w.skipped ? '—' : fmtBytes(w.freed_bytes) }}</td>
+                  <td class="text-sm">
+                    <div v-for="r in w.repositories" :key="r.repository">
+                      <code class="mono">{{ r.repository }}</code>: {{ r.count }}
+                      <span v-if="r.tags.length" class="text-muted">({{ r.tags.slice(0, 6).join(', ') }}<template v-if="r.count > 6">, …</template>)</span>
+                      <span v-if="r.error" class="text-danger"> — {{ r.error }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div v-if="runs.length" class="card">
+          <div class="card-header"><h2>Recent runs</h2></div>
+          <div class="table-wrapper">
+            <table>
+              <thead><tr><th>#</th><th>Kind</th><th>Started</th><th>Status</th><th>Tags</th><th>Frees</th></tr></thead>
+              <tbody>
+                <tr v-for="r in runs" :key="r.id" class="clickable" @click="openRun(r.id)">
+                  <td>{{ r.id }}</td>
+                  <td>{{ r.dry_run ? 'Preview' : r.trigger === 'schedule' ? 'Nightly' : 'Run now' }}</td>
+                  <td class="text-muted">{{ relativeTime(r.started_at) }}</td>
+                  <td>{{ r.status }}</td>
+                  <td>{{ r.tags }}</td>
+                  <td>{{ fmtBytes(r.freed_bytes) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
       <!-- ── Maintenance ──────────────────────────────────────────────────── -->
       <div v-else class="card" style="max-width: 720px">
         <div class="card-body">
@@ -568,6 +760,17 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry) 
     />
 
     <ConfirmDialog
+      :open="showRunConfirm"
+      title="Run the retention policy now?"
+      message="Old images are deleted from every workspace that hasn't opted out. Run a preview first to see what goes. This can't be undone."
+      confirm-label="Run now"
+      variant="danger"
+      :busy="startingRun"
+      @confirm="startRun(false)"
+      @cancel="showRunConfirm = false"
+    />
+
+    <ConfirmDialog
       :open="showGcConfirm"
       :title="$t('confirm.title.runGarbageCollection')"
       :message="$t('confirm.message.registry.runGarbageCollectionThe')"
@@ -584,6 +787,8 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); clearTimeout(usageRetry) 
 .subtitle { margin: 4px 0 0; }
 .tabs { margin-bottom: 16px; }
 .usage-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: var(--bg-tertiary); }
 .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 .toggle-row { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-primary); }
 .toggle-row input { width: auto; margin: 0; }

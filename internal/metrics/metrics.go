@@ -87,8 +87,15 @@ func init() {
 		gpuUtilization, gpuMemoryUsed, gpuMemoryTotal,
 		analyticsIngested, analyticsRejected, leaderHeld,
 		controlManagerSweep, controlManagerDrift, controlManagerUnobserved, controlManagerBlocked,
-		controlManagerActions)
+		controlManagerActions, registryRetentionDeleted)
 }
+
+var registryRetentionDeleted = prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "miabi_registry_retention_deleted_tags_total",
+	Help: "Registry tags the retention policy deleted.",
+})
+
+func RegistryRetentionDeleted(n int) { registryRetentionDeleted.Add(float64(n)) }
 
 // SetLeader records whether this process holds the named leader lease.
 func SetLeader(lease string, held bool) {

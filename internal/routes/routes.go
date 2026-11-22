@@ -250,6 +250,7 @@ type routerHandlers struct {
 	deploymentCfg       *handlers.DeploymentConfigHandler
 	adminJob            *handlers.AdminJobHandler
 	adminControlManager *handlers.AdminControlManagerHandler
+	registryRetention   *handlers.RegistryRetentionHandler
 	adminPlatformBackup *handlers.AdminPlatformBackupHandler
 	adminRecovery       *handlers.AdminRecoveryHandler
 	adminRegistry       *handlers.AdminRegistryHandler
@@ -1186,6 +1187,18 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	imageService := image.NewService(repositories.NewImageRepository(db), releaseRepo)
 	// Deleting a tag must not pull an image held by a live deployment or pinned release, the same set GC exempts.
 	registryServerService.SetCatalog(imageService)
+	retentionRepo := repositories.NewRegistryRetentionRepository(db)
+	retentionRunner := registryserver.NewRetentionRunner(registryServerService, retentionRepo, func(rep registryserver.RetentionWorkspaceReport) {
+		wsID := rep.WorkspaceID
+		repos := make([]string, 0, len(rep.Repositories))
+		for _, r := range rep.Repositories {
+			repos = append(repos, r.Repository)
+		}
+		auditLogger.Record(audit.Entry{
+			WorkspaceID: &wsID, Action: "registry.retention_delete", TargetType: "registry", IP: "",
+			Metadata: map[string]any{"actor": "registry-retention", "tags": rep.Count, "freed_bytes": rep.FreedBytes, "repositories": repos},
+		})
+	})
 	// Without the sealed identity a dump on a fresh host is ciphertext under a key that died with the old machine.
 	platformBackupService.SetIdentitySource(func() (*dr.Identity, error) {
 		id := &dr.Identity{
@@ -1487,6 +1500,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminPlatformBackup: handlers.NewAdminPlatformBackupHandler(platformBackupService, ee, auditLogger),
 			adminRegistry:       handlers.NewAdminRegistryHandler(registryServerService, ee, auditLogger),
 			registryServer:      handlers.NewRegistryServerHandler(registryServerService, workspaceRepo, auditLogger),
+			registryRetention:   handlers.NewRegistryRetentionHandler(retentionRepo, retentionRunner, auditLogger),
 			components: handlers.NewComponentHandler(components.NewService(components.Probes{
 				RegistryEnabled: func() bool {
 					st, err := registryServerService.Get()
@@ -1747,6 +1761,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}()
 	// No-op unless enabled with deletes on; flips read-only during collection.
+	// Half an hour before GC, so what it deletes is reclaimed the same night.
+	if err := cronManager.RegisterTask("registry_retention", 0, "Registry retention", "30 3 * * *", retentionRunner.Scheduled); err != nil {
+		logger.Error("failed to register registry retention cron", "error", err)
+	}
 	if err := cronManager.RegisterTask("registry_gc", 0, "Registry garbage collection", "0 4 * * *", func() error {
 		return registryServerService.GarbageCollect(context.Background(), dockerClient)
 	}); err != nil {

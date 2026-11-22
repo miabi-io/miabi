@@ -30,12 +30,18 @@ import (
 
 // Provenance is always empty: the delete path doesn't consult it.
 type stubCatalog struct {
-	digests map[string]bool
-	refs    map[string]bool
-	rows    map[string]models.Image
+	digests       map[string]bool
+	refs          map[string]bool
+	rows          map[string]models.Image
+	recentDigests map[string]bool
+	recentRefs    map[string]bool
 }
 
 func (s stubCatalog) ProtectedRefs() (map[string]bool, error) { return s.refs, nil }
+
+func (s stubCatalog) RecentReleaseRefs(int) (map[string]bool, map[string]bool, error) {
+	return s.recentDigests, s.recentRefs, nil
+}
 
 func (s stubCatalog) ProtectedDigests() (map[string]bool, error) {
 	if s.digests == nil {

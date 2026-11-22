@@ -2,7 +2,14 @@
 import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { registryApi, type RegistryInfo, type RegistryRepository, type RegistryUsage } from '@/api/registry'
+import {
+  registryApi,
+  type RegistryInfo,
+  type RegistryRepository,
+  type RegistryUsage,
+  type RetentionOverride,
+  type RetentionPolicy,
+} from '@/api/registry'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { usePagination } from '@/composables/usePagination'
@@ -76,6 +83,46 @@ async function loadUsage(attempt = 0) {
 }
 onBeforeUnmount(() => clearTimeout(usageRetry))
 
+const retention = ref<{ platform: RetentionPolicy; override: RetentionOverride } | null>(null)
+type RetentionMode = 'follow' | 'more' | 'off'
+const retentionMode = ref<RetentionMode>('follow')
+const retentionKeep = ref(10)
+const savingRetention = ref(false)
+const retentionChanged = computed(() => {
+  const o = retention.value?.override
+  if (!o) return false
+  const mode: RetentionMode = o.disabled ? 'off' : o.keep_images > 0 ? 'more' : 'follow'
+  return mode !== retentionMode.value || (mode === 'more' && o.keep_images !== retentionKeep.value)
+})
+
+async function loadRetention() {
+  if (!wsId.value) return
+  try {
+    retention.value = (await registryApi.workspaceRetention(wsId.value)).data.data
+    const o = retention.value.override
+    retentionMode.value = o.disabled ? 'off' : o.keep_images > 0 ? 'more' : 'follow'
+    retentionKeep.value = o.keep_images > 0 ? o.keep_images : Math.max(10, retention.value.platform.keep_images * 2)
+  } catch {
+    retention.value = null
+  }
+}
+
+async function saveRetention() {
+  if (!wsId.value || !retention.value) return
+  savingRetention.value = true
+  try {
+    retention.value.override = (await registryApi.saveWorkspaceRetention(wsId.value, {
+      disabled: retentionMode.value === 'off',
+      keep_images: retentionMode.value === 'more' ? retentionKeep.value : 0,
+    })).data.data
+    notify.success(t('registry.retentionSaved'))
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    savingRetention.value = false
+  }
+}
+
 async function loadInfo() {
   if (!wsId.value) return
   try {
@@ -99,6 +146,7 @@ const { pageable, goToPage } = usePagination(async (page) => {
   }
   reposLoading.value = true
   loadUsage()
+  if (!retention.value) loadRetention()
   try {
     const res = await registryApi.repositories(wsId.value, page, pageable.value.size, search.value.trim())
     repos.value = res.data.data ?? []
@@ -120,6 +168,7 @@ watch(wsId, async () => {
   search.value = '' // a filter from the previous workspace means nothing here
   info.value = null
   usage.value = null
+  retention.value = null
   await loadInfo()
   loading.value = false
   await goToPage(0)
@@ -172,6 +221,33 @@ watch(wsId, async () => {
               <div class="usage-fill" :class="usageBarClass" :style="{ width: `${usagePercent}%` }"></div>
             </div>
             <p class="text-muted text-sm usage-hint">{{ $t('registry.usageReclaimHint') }}</p>
+            <div v-if="retention?.platform.enabled" class="retention">
+              <p class="text-sm">
+                <span class="mdi mdi-history"></span>
+                <template v-if="retention.override.disabled">{{ $t('registry.retentionOptedOut') }}</template>
+                <template v-else>{{ $t('registry.retentionRule', {
+                  n: Math.max(retention.platform.keep_images, retention.override.keep_images),
+                  days: retention.platform.min_age_days,
+                }) }}</template>
+              </p>
+              <div v-if="ws.isWorkspaceAdmin" class="retention-form">
+                <select v-model="retentionMode" class="form-select" :aria-label="$t('registry.retentionChoice')">
+                  <option value="follow">{{ $t('registry.retentionFollow', { n: retention.platform.keep_images }) }}</option>
+                  <option value="more">{{ $t('registry.retentionMore') }}</option>
+                  <option value="off">{{ $t('registry.retentionOff') }}</option>
+                </select>
+                <input
+                  v-if="retentionMode === 'more'"
+                  v-model.number="retentionKeep"
+                  type="number"
+                  :min="retention.platform.keep_images + 1"
+                  class="form-input retention-keep"
+                  :aria-label="$t('registry.retentionKeepLabel')"
+                />
+                <button class="btn btn-secondary btn-sm" :disabled="!retentionChanged || savingRetention" @click="saveRetention">
+                  {{ $t('action.save') }}</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -347,6 +423,12 @@ watch(wsId, async () => {
 .usage-fill.bar-warning { background: var(--warning-500); }
 .usage-fill.bar-danger { background: var(--danger-500); }
 .usage-hint { margin: 0; }
+.retention { border-top: 1px solid var(--border-primary); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.retention p { margin: 0; }
+.retention p .mdi { margin-right: 4px; }
+.retention-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.retention-form .form-select { width: auto; }
+.retention-keep { width: 90px; }
 .repo-icon { color: var(--primary-500); font-size: 18px; }
 .repo-name { font-size: 14px; color: var(--text-primary); }
 .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }

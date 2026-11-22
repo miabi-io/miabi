@@ -250,6 +250,27 @@ func (s *Service) ProtectedRefs() (map[string]bool, error) {
 	return p.refs, nil
 }
 
+// RecentReleaseRefs are the images of each app's last window releases, which a rollback may still need.
+func (s *Service) RecentReleaseRefs(window int) (digests, refs map[string]bool, err error) {
+	digests, refs = map[string]bool{}, map[string]bool{}
+	if window <= 0 {
+		return digests, refs, nil
+	}
+	rels, err := s.releases.ListRecentPerApp(window)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, rel := range rels {
+		if rel.Digest != "" {
+			digests[rel.Digest] = true
+		}
+		if rel.Image != "" {
+			refs[rel.Image] = true
+		}
+	}
+	return digests, refs, nil
+}
+
 // Hand-pushed images have no catalog row and are simply absent.
 func (s *Service) ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error) {
 	rows, err := s.images.ListByDigests(workspaceID, digests)
