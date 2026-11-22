@@ -22,10 +22,11 @@ import { createI18n } from 'vue-i18n'
 import en from './en.json'
 import fr from './fr.json'
 import de from './de.json'
+import es from './es.json'
 import { LANGUAGES, DEFAULT_LANGUAGE } from './languages'
 
 // Missing or orphaned keys never break a build, which is why they need a test.
-const catalogues: Record<string, unknown> = { en, fr, de }
+const catalogues: Record<string, unknown> = { en, fr, de, es }
 
 function valueAt(cat: unknown, key: string): unknown {
   return key.split('.').reduce<unknown>((o, p) => (o as Record<string, unknown>)?.[p], cat)

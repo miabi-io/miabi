@@ -57,7 +57,7 @@ describe('locale-aware formatting', () => {
 
   it('falls back to English for a language we do not ship', async () => {
     const english = fmtDate(iso)
-    await setLanguage('es-ES')
+    await setLanguage('it-IT')
     expect(fmtDate(iso)).toBe(english)
   })
 })

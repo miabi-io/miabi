@@ -43,10 +43,12 @@ export const datetimeFormats = {
   en: datetime,
   fr: datetime,
   de: datetime,
+  es: datetime,
 } satisfies Record<LanguageCode, typeof datetime>
 
 export const numberFormats = {
   en: number,
   fr: number,
   de: number,
+  es: number,
 } satisfies Record<LanguageCode, typeof number>
