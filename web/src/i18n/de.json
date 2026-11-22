@@ -3960,7 +3960,7 @@
       "monitoring": "Monitoring"
     },
     "language": {
-      "hint": "Datum, Uhrzeit und Zahlen richten sich ab sofort nach dieser Sprache. Die Texte der Konsole werden Ansicht für Ansicht übersetzt – noch nicht Übersetztes bleibt auf Englisch.",
+      "hint": "Texte der Konsole, Datum, Uhrzeit und Zahlen richten sich nach dieser Sprache. Einige Meldungen des Servers, etwa bestimmte Status und Fehler, können weiterhin auf Englisch erscheinen.",
       "label": "Sprache"
     },
     "saved": "Einstellungen gespeichert",
