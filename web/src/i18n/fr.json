@@ -799,7 +799,9 @@
     "copyRouteUrl": "Copier l’URL",
     "openRoute": "Ouvrir la route",
     "enableRoute": "Activer la route",
-    "disableRoute": "Désactiver la route"
+    "disableRoute": "Désactiver la route",
+    "routeFlow": "Flux des requêtes",
+    "seeTrafficFlow": "Voir le flux du trafic"
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
@@ -3701,6 +3703,121 @@
       "unverified": "{domain} n’est pas encore vérifié ; {host} sera en ligne dès qu’il le sera.",
       "openDomains": "Domaines",
       "fixFirst": "Corrigez d’abord les hôtes signalés en rouge."
+    },
+    "flow": {
+      "tab": "Flux",
+      "visitors": "Visiteurs",
+      "internet": "Internet",
+      "browsersAndClients": "Navigateurs et clients d’API",
+      "noHosts": "Aucun hôte : répond à tous les hôtes",
+      "gatewayTitle": "Passerelle",
+      "gateway": {
+        "platform": "Passerelle de la plateforme",
+        "cluster": "Passerelle {cluster}",
+        "edge": "Passerelle de bordure sur {server}"
+      },
+      "tls": {
+        "none": "HTTP simple",
+        "custom": "Certificat {name}",
+        "external": "Certificat du cluster",
+        "acme": "ACME, émis par la passerelle",
+        "acmeProvider": "ACME via {provider}"
+      },
+      "allMethods": "toutes",
+      "exploitProtection": "protection contre les exploits",
+      "maintenanceOn": "maintenance active",
+      "maintenanceOff": "maintenance inactive",
+      "narrowerNote": "{n} chemin plus long sur cet hôte va vers une autre route | {n} chemins plus longs sur cet hôte vont vers d’autres routes",
+      "advancedNote": "YAML avancé présent : les clés qui y sont définies ne sont pas représentées.",
+      "answeredAtGateway": "Réponse de la passerelle",
+      "middlewares": "Middlewares · dans l’ordre",
+      "suspendedNotice": "Avis de suspension",
+      "maintTitle": "Réponse de maintenance",
+      "maintPage": "page HTML",
+      "maintMessage": "message",
+      "mwMissingShort": "introuvable",
+      "canAnswer": "Peut répondre tôt avec {codes}",
+      "noMiddlewares": "Aucun middleware",
+      "splitTitle": "Répartition du trafic",
+      "canary": "Canary",
+      "ruleN": "Règle {n}",
+      "exclusive": "exclusive",
+      "weightSplit": "{stable} % stable, {canary} % canary",
+      "role": {
+        "stable": "stable",
+        "canary": "canary"
+      },
+      "application": "Application",
+      "notDeployed": "Pas encore déployée",
+      "replicas": "{running}/{desired} en cours",
+      "selectHint": "Sélectionnez un bloc pour voir ses réglages et où les modifier.",
+      "notServed": "non servie",
+      "rulesOnly": "règles seules",
+      "openSettings": "Ouvrir les réglages",
+      "openApp": "Ouvrir l’application",
+      "openDomains": "Ouvrir les domaines",
+      "openMiddleware": "Ouvrir le middleware",
+      "canaryControls": "Contrôles du canary",
+      "state": {
+        "disabled": "Cette route est désactivée : la passerelle ne la sert pas.",
+        "notDeployed": "L’application n’a pas encore de version déployée : la passerelle n’a nulle part où envoyer le trafic.",
+        "noHosts": "Cette route n’a aucun hôte : la passerelle ne la sert pas.",
+        "unverified": "Non servie : {host} appartient à un domaine pas encore vérifié. La route sera en ligne dès qu’il le sera.",
+        "banned": "Non servie : {host} appartient à un domaine suspendu.",
+        "unregistered": "Non servie : aucun domaine de cet espace de travail ne couvre {host}.",
+        "notServed": "Non servie : {reason}",
+        "suspended": "Cet espace de travail est suspendu : les visiteurs reçoivent un avis de la passerelle.",
+        "maintenance": "En maintenance : la passerelle répond {code} elle-même et l’application n’est pas atteinte. L’application continue de tourner.",
+        "noReplica": "Aucune réplique ne tourne : la passerelle répond 502 jusqu’au retour de l’application.",
+        "canary": "La version canary v{version} reçoit {weight} % du trafic.",
+        "canaryRules": "La version canary v{version} reçoit les requêtes qui correspondent à ses règles, et {weight} % du reste."
+      },
+      "op": {
+        "equals": "=",
+        "not_equals": "≠",
+        "contains": "contient",
+        "not_contains": "ne contient pas",
+        "starts_with": "commence par",
+        "ends_with": "se termine par",
+        "regex": "correspond à",
+        "in": "dans"
+      },
+      "relation": {
+        "narrower": "l’emporte sous son chemin plus long",
+        "broader": "cette route l’emporte sous son chemin plus long",
+        "separate": "chemin distinct"
+      },
+      "d": {
+        "gateway": "Passerelle",
+        "exploit": "Protection contre les exploits",
+        "sameHost": "Même hôte",
+        "browsers": "Navigateurs",
+        "apiClients": "Clients d’API",
+        "order": "Ordre",
+        "state": "État",
+        "type": "Type",
+        "answersEarly": "Répond tôt",
+        "paths": "Chemins",
+        "release": "Version",
+        "rule": "Règle {n}",
+        "weight": "Tous les autres",
+        "image": "Image",
+        "health": "Santé",
+        "target": "Cible"
+      },
+      "host": {
+        "external": "Hôte généré sur le domaine d’accès externe du cluster",
+        "unregistered": "Aucun domaine de l’espace de travail ne le couvre",
+        "banned": "{domain} · suspendu",
+        "verified": "{domain} · vérifié",
+        "unverified": "{domain} · non vérifié"
+      },
+      "on": "actif",
+      "off": "inactif",
+      "never": "jamais",
+      "allPaths": "tous les chemins",
+      "expires": "expire le {date}",
+      "mwMissing": "L’espace de travail n’a plus ce middleware ; la passerelle l’ignore."
     }
   },
   "runners": {

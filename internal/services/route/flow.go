@@ -80,6 +80,7 @@ type FlowApp struct {
 type FlowHost struct {
 	Host       string `json:"host"`
 	Domain     string `json:"domain,omitempty"`
+	DomainID   uint   `json:"domain_id,omitempty"`
 	Registered bool   `json:"registered"`
 	Verified   bool   `json:"verified"`
 	Banned     bool   `json:"banned"`
@@ -107,6 +108,7 @@ type FlowGateway struct {
 }
 
 type FlowMiddleware struct {
+	ID          uint     `json:"id,omitempty"`
 	Name        string   `json:"name"`
 	Type        string   `json:"type,omitempty"`
 	DisplayName string   `json:"display_name,omitempty"`
@@ -270,7 +272,7 @@ func buildFlow(in flowInput) *Flow {
 		}
 		fh := FlowHost{Host: h, External: rt.Generated}
 		if d := matchDomain(h, in.domains); d != nil && !rt.Generated {
-			fh.Domain, fh.Registered, fh.Verified, fh.Banned = d.Name, true, d.Verified, d.Banned
+			fh.Domain, fh.DomainID, fh.Registered, fh.Verified, fh.Banned = d.Name, d.ID, true, d.Verified, d.Banned
 		}
 		if in.cert != nil {
 			covers := certCovers(in.cert, h)
@@ -353,7 +355,7 @@ func flowChain(names []string, mws []models.Middleware) []FlowMiddleware {
 			out = append(out, FlowMiddleware{Name: n, Missing: true, EarlyStatus: []int{}, Paths: []string{}})
 			continue
 		}
-		fm := FlowMiddleware{Name: n, Type: m.Type, EarlyStatus: mwcatalog.EarlyStatusOf(m.Type, m.Rule), Paths: nonNil(m.Paths)}
+		fm := FlowMiddleware{ID: m.ID, Name: n, Type: m.Type, EarlyStatus: mwcatalog.EarlyStatusOf(m.Type, m.Rule), Paths: nonNil(m.Paths)}
 		if d, ok := mwcatalog.Get(m.Type); ok {
 			fm.DisplayName, fm.Category = d.DisplayName, string(d.Category)
 		}

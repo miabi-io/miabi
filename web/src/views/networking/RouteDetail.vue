@@ -10,6 +10,7 @@ import { appApi } from '@/api/apps'
 import { middlewareApi } from '@/api/middlewares'
 import type { Route, Application, Middleware } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import RouteFlow from '@/components/routes/RouteFlow.vue'
 import { MAINTENANCE_HTML_MAX, htmlBytes, maintenancePageTemplate } from '@/utils/maintenancePage'
 
 const route = useRoute()
@@ -25,10 +26,10 @@ const app = ref<Application | null>(null)
 const loading = ref(false)
 const showDelete = ref(false)
 const deleting = ref(false)
-type Tab = 'overview' | 'settings'
+type Tab = 'overview' | 'flow' | 'settings'
 // In the URL, so reload, Back and a shared link land on the same tab; replace keeps tabs out of history.
 const tab = computed<Tab>({
-  get: () => (route.query.tab === 'settings' ? 'settings' : 'overview'),
+  get: () => (route.query.tab === 'settings' || route.query.tab === 'flow' ? route.query.tab : 'overview'),
   set: (v) => {
     if (v !== tab.value) router.replace({ query: { ...route.query, tab: v === 'overview' ? undefined : v } })
   },
@@ -55,6 +56,7 @@ function goBack() {
 
 const tabs = [
   { key: 'overview', label: 'routes.overview' },
+  { key: 'flow', label: 'routes.flow.tab' },
   { key: 'settings', label: 'routes.settings' },
 ] as const
 
@@ -501,8 +503,10 @@ async function removeRoute() {
       </div>
     </div>
 
+    <RouteFlow v-else-if="tab === 'flow' && currentWorkspaceId" :ws-id="currentWorkspaceId" :route-id="item.id" @open-settings="tab = 'settings'" />
+
     <!-- Settings -->
-    <div v-else>
+    <div v-else-if="tab === 'settings'">
       <div class="card mb-4">
         <div class="card-header"><h2>{{ $t('routes.maintenanceTitle') }}</h2></div>
         <div class="card-body detail-list">

@@ -799,7 +799,9 @@
     "copyRouteUrl": "Copy URL",
     "openRoute": "Open route",
     "enableRoute": "Enable route",
-    "disableRoute": "Disable route"
+    "disableRoute": "Disable route",
+    "routeFlow": "Request flow",
+    "seeTrafficFlow": "See traffic flow"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -3701,6 +3703,121 @@
       "unverified": "{domain} isn't verified yet; {host} goes live once it is.",
       "openDomains": "Domains",
       "fixFirst": "Fix the hosts marked in red first."
+    },
+    "flow": {
+      "tab": "Flow",
+      "visitors": "Visitors",
+      "internet": "Internet",
+      "browsersAndClients": "Browsers and API clients",
+      "noHosts": "No hosts: matches every host",
+      "gatewayTitle": "Gateway",
+      "gateway": {
+        "platform": "Platform gateway",
+        "cluster": "{cluster} gateway",
+        "edge": "Edge gateway on {server}"
+      },
+      "tls": {
+        "none": "Plain HTTP",
+        "custom": "Certificate {name}",
+        "external": "Cluster certificate",
+        "acme": "ACME, issued by the gateway",
+        "acmeProvider": "ACME via {provider}"
+      },
+      "allMethods": "all",
+      "exploitProtection": "exploit protection",
+      "maintenanceOn": "maintenance on",
+      "maintenanceOff": "maintenance off",
+      "narrowerNote": "{n} longer path on this host goes to another route | {n} longer paths on this host go to other routes",
+      "advancedNote": "Has Advanced YAML: keys set there aren't drawn.",
+      "answeredAtGateway": "Answered at the gateway",
+      "middlewares": "Middlewares · in order",
+      "suspendedNotice": "Suspension notice",
+      "maintTitle": "Maintenance response",
+      "maintPage": "HTML page",
+      "maintMessage": "message",
+      "mwMissingShort": "missing",
+      "canAnswer": "Can answer early with {codes}",
+      "noMiddlewares": "No middlewares",
+      "splitTitle": "Traffic split",
+      "canary": "Canary",
+      "ruleN": "Rule {n}",
+      "exclusive": "exclusive",
+      "weightSplit": "{stable}% stable, {canary}% canary",
+      "role": {
+        "stable": "stable",
+        "canary": "canary"
+      },
+      "application": "Application",
+      "notDeployed": "Not deployed yet",
+      "replicas": "{running}/{desired} running",
+      "selectHint": "Select a box to see its settings and where to change them.",
+      "notServed": "not served",
+      "rulesOnly": "rules only",
+      "openSettings": "Open Settings",
+      "openApp": "Open app",
+      "openDomains": "Open Domains",
+      "openMiddleware": "Open middleware",
+      "canaryControls": "Canary controls",
+      "state": {
+        "disabled": "This route is disabled, so the gateway doesn't serve it.",
+        "notDeployed": "The app has no deployed release yet, so the gateway has nowhere to send traffic.",
+        "noHosts": "This route has no hosts, so the gateway doesn't serve it.",
+        "unverified": "Not served: {host} is under a domain that isn't verified yet. The route goes live by itself once it is.",
+        "banned": "Not served: {host} is under a suspended domain.",
+        "unregistered": "Not served: no domain of this workspace covers {host}.",
+        "notServed": "Not served: {reason}",
+        "suspended": "This workspace is suspended: visitors get a notice from the gateway.",
+        "maintenance": "In maintenance: the gateway answers {code} itself and the app isn't reached. The app keeps running.",
+        "noReplica": "No replica is running: the gateway answers 502 until the app is back.",
+        "canary": "Canary release v{version} takes {weight}% of traffic.",
+        "canaryRules": "Canary release v{version} takes requests matching its rules, and {weight}% of the rest."
+      },
+      "op": {
+        "equals": "=",
+        "not_equals": "≠",
+        "contains": "contains",
+        "not_contains": "doesn't contain",
+        "starts_with": "starts with",
+        "ends_with": "ends with",
+        "regex": "matches",
+        "in": "in"
+      },
+      "relation": {
+        "narrower": "wins under its longer path",
+        "broader": "this route wins under its longer path",
+        "separate": "separate path"
+      },
+      "d": {
+        "gateway": "Gateway",
+        "exploit": "Exploit protection",
+        "sameHost": "Same host",
+        "browsers": "Browsers",
+        "apiClients": "API clients",
+        "order": "Order",
+        "state": "State",
+        "type": "Type",
+        "answersEarly": "Answers early",
+        "paths": "Paths",
+        "release": "Release",
+        "rule": "Rule {n}",
+        "weight": "Everyone else",
+        "image": "Image",
+        "health": "Health",
+        "target": "Target"
+      },
+      "host": {
+        "external": "Generated host on the cluster's external domain",
+        "unregistered": "No workspace domain covers it",
+        "banned": "{domain} · suspended",
+        "verified": "{domain} · verified",
+        "unverified": "{domain} · not verified"
+      },
+      "on": "on",
+      "off": "off",
+      "never": "never",
+      "allPaths": "all paths",
+      "expires": "expires {date}",
+      "mwMissing": "The workspace no longer has this middleware; the gateway skips it."
     }
   },
   "runners": {
