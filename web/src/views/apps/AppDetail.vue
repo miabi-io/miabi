@@ -2786,6 +2786,9 @@ async function detachDatabase(d: AppDatabase) {
               <span class="text-muted">{{ canaryModeHint }}</span>
             </div>
           </div>
+          <button v-if="canaryFlowRoute" type="button" class="btn btn-ghost btn-sm" :title="$t('appDetail.seeTrafficFlowHint')" @click="openRoute(canaryFlowRoute, 'flow')">
+            <span class="mdi mdi-transit-connection-variant"></span>{{ $t('appDetail.seeTrafficFlow') }}
+          </button>
           <div v-if="ws.canEdit" class="canary-actions">
             <button
               v-if="!canaryManual"
@@ -2804,9 +2807,6 @@ async function detachDatabase(d: AppDatabase) {
       </div>
       <div v-if="showCanaryPanel && app && wid" class="canary-panel-slot">
         <CanaryPanel :app="app" :ws-id="wid ?? 0" :can-edit="ws.canEdit" @changed="loadApp" />
-        <button v-if="canaryActive && canaryFlowRoute" type="button" class="canary-flow-link" @click="openRoute(canaryFlowRoute, 'flow')">
-          <span class="mdi mdi-transit-connection-variant"></span>{{ $t('appDetail.seeTrafficFlow') }}
-        </button>
       </div>
       <div class="card">
         <div class="card-header"><h2>{{ $t('appDetail.deployments') }}</h2></div>
@@ -4754,8 +4754,6 @@ tr.row-busy { opacity: 0.6; }
 /* Canary rollout + deployment strategy */
 .canary-card { border-color: var(--warning-500, #f59e0b); grid-column: 1 / -1; }
 .canary-panel-slot { grid-column: 1 / -1; }
-.canary-flow-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--primary-500); cursor: pointer; }
-.canary-flow-link:hover { text-decoration: underline; }
 .canary-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 12px 16px; }
 .canary-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .canary-meter { flex: 1; min-width: 220px; }

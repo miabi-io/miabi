@@ -152,6 +152,7 @@
   --warning-50: #2d1f0a;
   --danger-50: #2d0f0f;
   --primary-50: #1e0d30;
+  --info-50: #0b2233;
 
   --checkmark-color: var(--primary-300)
 }
