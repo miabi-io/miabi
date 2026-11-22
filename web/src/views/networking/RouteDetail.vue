@@ -67,6 +67,7 @@ const flowRevision = computed(() => JSON.stringify([
   item.value?.updated_at, item.value?.status, item.value?.enabled, item.value?.maintenance?.enabled,
   app.value?.current_release_id, app.value?.canary_release_id, app.value?.canary_weight,
   app.value?.canary_exclusive, app.value?.canary_match, app.value?.status,
+  app.value?.canary_mode, app.value?.canary_paused_at, app.value?.canary_pause_reason, app.value?.canary_next_step_at,
 ]))
 const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
 const stableWeight = computed(() => (canaryActive.value ? 100 - canaryWeight.value : 100))

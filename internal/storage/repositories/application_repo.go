@@ -313,13 +313,33 @@ func (r *ApplicationRepository) SetCanary(id uint, releaseID *uint, weight int) 
 		fields["canary_priority"] = 0
 		fields["canary_match"] = nil
 		fields["canary_paused_at"] = nil
+		fields["canary_pause_reason"] = ""
+		fields["canary_guard_off"] = false
+		fields["canary_next_step_at"] = nil
 	}
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(fields).Error
 }
 
+// SetCanaryPaused is a person pausing or resuming; resuming past an error pause turns the guard off for this rollout.
 func (r *ApplicationRepository) SetCanaryPaused(id uint, at *time.Time) error {
+	fields := map[string]any{"canary_paused_at": at, "canary_pause_reason": ""}
+	if at == nil {
+		var app models.Application
+		if err := r.db.Select("canary_pause_reason").First(&app, id).Error; err == nil && app.CanaryPauseReason == models.CanaryPauseErrors {
+			fields["canary_guard_off"] = true
+		}
+	}
+	return r.db.Model(&models.Application{}).Where("id = ?", id).Updates(fields).Error
+}
+
+// SetCanaryAutoPaused is the ramp stopping itself.
+func (r *ApplicationRepository) SetCanaryAutoPaused(id uint, at time.Time, reason string) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).
-		Update("canary_paused_at", at).Error
+		Updates(map[string]any{"canary_paused_at": at, "canary_pause_reason": reason, "canary_next_step_at": nil}).Error
+}
+
+func (r *ApplicationRepository) SetCanaryNextStep(id uint, at *time.Time) error {
+	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("canary_next_step_at", at).Error
 }
 
 // Weight moves only through SetCanary, so saving rules never shifts traffic as a side effect.

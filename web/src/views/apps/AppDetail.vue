@@ -815,6 +815,7 @@ const canaryPausedFor = computed(() => {
 })
 
 const canaryModeHint = computed(() => {
+  if (canaryPaused.value && app.value?.canary_pause_reason === 'errors') return t('appDetail.canary.autoPausedHint', { for: canaryPausedFor.value })
   if (canaryPaused.value) return `· paused ${canaryPausedFor.value}`
   if (!canaryManual.value) return '· shifting automatically, promotes at 100%'
   const rules = app.value?.canary_match?.length ?? 0

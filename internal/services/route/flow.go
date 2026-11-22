@@ -38,6 +38,22 @@ type Flow struct {
 	Chain    []FlowMiddleware `json:"chain"`
 	Siblings []FlowSibling    `json:"siblings"`
 	Backends []FlowBackend    `json:"backends"`
+	Canary   *FlowCanary      `json:"canary,omitempty"`
+}
+
+// FlowCanary is where the rollout stands and what it does next.
+type FlowCanary struct {
+	Mode            string     `json:"mode"`
+	Weight          int        `json:"weight"`
+	Paused          bool       `json:"paused"`
+	PauseReason     string     `json:"pause_reason,omitempty"`
+	GuardOff        bool       `json:"guard_off"`
+	StepWeight      int        `json:"step_weight"`
+	IntervalSeconds int        `json:"interval_seconds"`
+	NextStepAt      *time.Time `json:"next_step_at,omitempty"`
+	NextWeight      int        `json:"next_weight"`
+	// PromotesNext says the next automatic step reaches 100% and promotes the canary to stable.
+	PromotesNext bool `json:"promotes_next"`
 }
 
 type FlowRoute struct {
@@ -251,6 +267,7 @@ func buildFlow(in flowInput) *Flow {
 		Siblings: flowSiblings(rt, in.routes, in.appNames),
 		Backends: flowBackends(app, port, in.releases, in.health),
 	}
+	f.Canary = flowCanary(app)
 	if f.Route.Maintenance.Enabled && f.Route.Maintenance.StatusCode == 0 {
 		f.Route.Maintenance.StatusCode = 503
 	}
@@ -281,6 +298,34 @@ func buildFlow(in flowInput) *Flow {
 		f.Hosts = append(f.Hosts, fh)
 	}
 	return f
+}
+
+// Same fallbacks as the worker's ramp, which tolerates zero values on older rows.
+func flowCanary(app *models.Application) *FlowCanary {
+	if app.CanaryReleaseID == nil {
+		return nil
+	}
+	step := app.CanaryStepWeight
+	if step < 1 || step > 99 {
+		step = 20
+	}
+	interval := app.CanaryStepIntervalSeconds
+	if interval < 10 {
+		interval = 60
+	}
+	next := app.CanaryWeight + step
+	if next > 100 {
+		next = 100
+	}
+	mode := string(app.CanaryMode)
+	if mode == "" {
+		mode = string(models.CanaryModeAuto)
+	}
+	return &FlowCanary{
+		Mode: mode, Weight: app.CanaryWeight, Paused: app.CanaryPausedAt != nil, PauseReason: app.CanaryPauseReason,
+		GuardOff: app.CanaryGuardOff, StepWeight: step, IntervalSeconds: interval,
+		NextStepAt: app.CanaryNextStepAt, NextWeight: next, PromotesNext: next >= 100,
+	}
 }
 
 func nonNil(v []string) []string {

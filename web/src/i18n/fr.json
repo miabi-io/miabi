@@ -326,7 +326,8 @@
     "byName": "par {name}",
     "canary": {
       "pauseHint": "Maintenir le trafic à la répartition actuelle",
-      "resumeHint": "Rendre le déploiement à la montée automatique"
+      "resumeHint": "Rendre le déploiement à la montée automatique",
+      "autoPausedHint": "· mis en pause automatiquement {for} : erreurs du canary"
     },
     "canaryInProgress": "Déploiement canari en cours — cliquez pour le gérer",
     "canaryRollout": "Déploiement canari",
@@ -3772,7 +3773,8 @@
         "noReplica": "Aucune réplique ne tourne : la passerelle répond 502 jusqu’au retour de l’application.",
         "canary": "La version canary v{version} reçoit {weight} % du trafic.",
         "canaryRules": "La version canary v{version} reçoit les requêtes qui correspondent à ses règles, et {weight} % du reste.",
-        "canaryWorse": "La version canary v{version} répond 5xx à {canary} des requêtes, contre {stable} pour la stable."
+        "canaryWorse": "La version canary v{version} répond 5xx à {canary} des requêtes, contre {stable} pour la stable.",
+        "canaryAutoPaused": "La progression s’est mise en pause à {weight} % : le canary v{version} a répondu 5xx nettement plus souvent que la stable. Reprenez pour continuer malgré tout, ou annulez."
       },
       "op": {
         "equals": "=",
@@ -3897,6 +3899,22 @@
         "maintCount": "{n} × {code} ces 15 dernières min",
         "actualSplit": "Mesuré : {stable} % stable, {canary} % canary",
         "releaseLine": "{requests} req · p95 {p95} · 5xx {errors}"
+      },
+      "rollout": {
+        "autoPaused": "Mis en pause automatiquement à {weight} % : le canary échoue plus que la stable",
+        "paused": "En pause à {weight} %",
+        "held": "Maintenu à {weight} % : ne bouge que si vous le déplacez",
+        "nextWithin": "Prochaine étape : {weight} % sous {s} s",
+        "nextIn": "Prochaine étape : {weight} % dans {time}",
+        "promotesIn": "Promotion en stable dans {time}",
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "done": {
+          "pause": "Déploiement canary mis en pause",
+          "resume": "Déploiement canary repris",
+          "promote": "Promotion du canary en stable",
+          "abort": "Canary annulé : tout le trafic revient sur la stable"
+        }
       }
     }
   },

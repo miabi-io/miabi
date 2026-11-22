@@ -225,6 +225,9 @@ func runWorker() error {
 	poolPlacement := placement.NewService(repositories.NewClusterRepository(db), repositories.NewServerRepository(db), nil)
 	poolPlacement.SetPolicy(securityQuota)
 	deployHandler.SetPoolPolicy(poolPlacement)
+	if cfg.AnalyticsEnabled {
+		deployHandler.SetCanaryGuard(analytics.NewCanaryGuard(repositories.NewAnalyticsRepository(db)))
+	}
 	deployHandler.SetStorageClasses(repositories.NewStorageClassRepository(db))
 	gpuScheduler := gpu.NewService(
 		repositories.NewGPUDeviceRepository(db),

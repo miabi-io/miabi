@@ -231,3 +231,17 @@ func TestEarlyStatusOf(t *testing.T) {
 		}
 	}
 }
+
+func TestFlowCanaryState(t *testing.T) {
+	in := flowFixture()
+	if buildFlow(in).Canary != nil {
+		t.Fatal("no canary should give no canary block")
+	}
+	in.app.CanaryReleaseID = uintp(2)
+	in.app.CanaryWeight = 90
+	in.app.CanaryStepWeight = 20
+	f := buildFlow(in)
+	if c := f.Canary; c == nil || c.Mode != "auto" || c.NextWeight != 100 || !c.PromotesNext || c.IntervalSeconds != 60 {
+		t.Errorf("canary = %+v", f.Canary)
+	}
+}

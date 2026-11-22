@@ -121,3 +121,22 @@ func TestAggregatorKeepsVariantsApart(t *testing.T) {
 		t.Errorf("rows by variant = %v", got)
 	}
 }
+
+func TestCompareVariants(t *testing.T) {
+	rows := func(cr, c5, sr, s5 int64) []models.AnalyticsRollup {
+		return []models.AnalyticsRollup{
+			{Variant: VariantCanary, Requests: cr, Status5xx: c5},
+			{Variant: VariantStable, Requests: sr, Status5xx: s5},
+			{Requests: 1000, Status5xx: 1000},
+		}
+	}
+	if c := CompareVariants(rows(100, 3, 900, 1)); !c.Regressed {
+		t.Errorf("3%% vs 0.1%% should regress: %+v", c)
+	}
+	if c := CompareVariants(rows(40, 20, 900, 0)); c.Regressed {
+		t.Errorf("too few canary requests: %+v", c)
+	}
+	if c := CompareVariants(rows(100, 1, 900, 1)); c.Regressed {
+		t.Errorf("under a point apart: %+v", c)
+	}
+}

@@ -1471,6 +1471,9 @@ export interface Application {
   canary_release_id?: number | null
   canary_weight?: number
   canary_paused_at?: string | null
+  canary_pause_reason?: '' | 'errors'
+  canary_guard_off?: boolean
+  canary_next_step_at?: string | null
   // Enterprise: `manual` lets the rules steer traffic and clears on promote/abort; the mode itself persists.
   canary_mode?: CanaryMode
   canary_exclusive?: boolean
@@ -1820,6 +1823,18 @@ export interface RouteFlow {
     release?: { id: number; version: number; image: string; image_tag?: string; digest?: string; created_at: string }
     health?: ReleaseHealth
   }[]
+  canary?: {
+    mode: 'auto' | 'manual'
+    weight: number
+    paused: boolean
+    pause_reason?: '' | 'errors'
+    guard_off: boolean
+    step_weight: number
+    interval_seconds: number
+    next_step_at?: string
+    next_weight: number
+    promotes_next: boolean
+  }
 }
 
 export interface RouteStats {

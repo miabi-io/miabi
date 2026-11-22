@@ -109,6 +109,8 @@ func ValidCanaryMode(m CanaryMode) bool {
 	}
 }
 
+const CanaryPauseErrors = "errors"
+
 // CanaryAliasSuffix turns an app's upstream alias into its canary's; analytics reads it back off the backend a request went to.
 const CanaryAliasSuffix = "-canary"
 
@@ -464,6 +466,12 @@ type Application struct {
 
 	// CanaryPausedAt holds the ramp where it stands; nil means it is advancing.
 	CanaryPausedAt *time.Time `json:"canary_paused_at,omitempty"`
+	// CanaryPauseReason is CanaryPauseErrors when the ramp paused itself, "" when someone paused it.
+	CanaryPauseReason string `json:"canary_pause_reason,omitempty"`
+	// CanaryGuardOff is set when someone resumes past an error pause, so the guard does not stop the same rollout again.
+	CanaryGuardOff bool `json:"canary_guard_off" gorm:"not null;default:false"`
+	// CanaryNextStepAt is when an automatic ramp next moves; nil while it holds.
+	CanaryNextStepAt *time.Time `json:"canary_next_step_at,omitempty"`
 
 	CanaryExclusive bool              `json:"canary_exclusive" gorm:"not null;default:false"`
 	CanaryPriority  int               `json:"canary_priority" gorm:"not null;default:0"`
