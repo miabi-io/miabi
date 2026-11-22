@@ -140,11 +140,11 @@ func TestTraceStates(t *testing.T) {
 }
 
 func TestTraceIPPolicy(t *testing.T) {
-	in, mws := traceFixture()
+	in, _ := traceFixture()
 	in.rt.Middlewares = []string{"office"}
 	office := &models.Middleware{Name: "office", Type: "accessPolicy", Rule: map[string]any{"action": "ALLOW", "sourceRanges": []any{"10.0.0.0/8"}}}
 	in.middlewares = []models.Middleware{*office}
-	mws = map[string]*models.Middleware{"office": office}
+	mws := map[string]*models.Middleware{"office": office}
 	runTrace(t, "inside", traceCase{in: in, mws: mws, req: TraceRequest{Path: "/api", IP: "10.1.2.3"}, kind: "app"})
 	runTrace(t, "outside", traceCase{in: in, mws: mws, req: TraceRequest{Path: "/api", IP: "203.0.113.9"}, kind: "early_answer", status: 403})
 	runTrace(t, "unknown", traceCase{in: in, mws: mws, req: TraceRequest{Path: "/api"}, kind: "app"})
