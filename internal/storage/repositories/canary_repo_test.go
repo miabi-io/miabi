@@ -39,8 +39,12 @@ type canaryRow struct {
 	CanaryPriority  int
 	CanaryMatch     string
 	CanaryPausedAt  *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// Defaults mirror the model's; without them SQLite leaves a fresh row's columns NULL and a scan into the string fails.
+	CanaryPauseReason string `gorm:"not null;default:''"`
+	CanaryGuardOff    bool   `gorm:"not null;default:false"`
+	CanaryNextStepAt  *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 func (canaryRow) TableName() string { return "applications" }
@@ -161,5 +165,32 @@ func TestSetCanaryWeightChangeKeepsRules(t *testing.T) {
 	}
 	if len(got.CanaryMatch) != 1 || !got.CanaryExclusive || got.CanaryPriority != 7 {
 		t.Errorf("a weight change dropped the rules: %+v", got)
+	}
+}
+
+func TestResumeAfterErrorPauseTurnsGuardOff(t *testing.T) {
+	repo, db := newCanaryDB(t)
+	now := time.Now()
+	if err := repo.SetCanaryAutoPaused(1, now, models.CanaryPauseErrors); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetCanaryPaused(1, nil); err != nil {
+		t.Fatal(err)
+	}
+	var row canaryRow
+	db.First(&row, 1)
+	if row.CanaryPausedAt != nil || row.CanaryPauseReason != "" || !row.CanaryGuardOff {
+		t.Errorf("after resume: paused=%v reason=%q guardOff=%v", row.CanaryPausedAt, row.CanaryPauseReason, row.CanaryGuardOff)
+	}
+
+	if err := repo.SetCanaryPaused(1, &now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetCanary(1, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	db.First(&row, 1)
+	if row.CanaryGuardOff || row.CanaryNextStepAt != nil {
+		t.Errorf("ending the canary must reset the guard: %+v", row)
 	}
 }

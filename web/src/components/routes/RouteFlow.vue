@@ -2,6 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { routeApi } from '@/api/routes'
+import { appApi } from '@/api/apps'
+import { useWorkspaceStore } from '@/stores/workspace'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { RouteFlow, RouteStats, RouteTrace, RouteTraceStep } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { relativeTime } from '@/utils/time'
@@ -14,6 +17,7 @@ const props = defineProps<{ wsId: number; routeId: number; revision?: string }>(
 const emit = defineEmits<{ openSettings: [] }>()
 const { t, te } = useI18n()
 const notify = useNotificationStore()
+const ws = useWorkspaceStore()
 
 const flow = ref<RouteFlow | null>(null)
 const loading = ref(false)
@@ -89,7 +93,14 @@ const banners = computed<Banner[]>(() => {
     out.push({ kind: 'danger', text: t('routes.flow.state.noReplica'), to: appLink.value, action: t('routes.flow.openApp') })
   }
   const worse = liveStats.value ? canaryWorse(liveStats.value) : null
-  if (canary.value?.release && worse) {
+  if (canary.value?.release && f.canary?.pause_reason === 'errors') {
+    out.push({
+      kind: 'danger',
+      text: t('routes.flow.state.canaryAutoPaused', { version: canary.value.release.version, weight: f.canary.weight }),
+      to: { path: appLink.value, query: { tab: 'deployments' } },
+      action: t('routes.flow.canaryControls'),
+    })
+  } else if (canary.value?.release && worse) {
     out.push({
       kind: 'danger',
       text: t('routes.flow.state.canaryWorse', { version: canary.value.release.version, canary: formatPercent(worse.canaryRate), stable: formatPercent(worse.stableRate) }),
@@ -110,6 +121,50 @@ const banners = computed<Banner[]>(() => {
 })
 
 const canaryRules = computed(() => canary.value?.match ?? [])
+
+// Ticks only while an automatic ramp counts down, so a held or absent canary costs nothing.
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | undefined
+watch(() => flow.value?.canary, (c) => {
+  const counting = !!c && c.mode === 'auto' && !c.paused && !!c.next_step_at
+  if (counting && !clock) clock = setInterval(() => { now.value = Date.now() }, 1000)
+  if (!counting && clock) { clearInterval(clock); clock = undefined }
+}, { immediate: true })
+function countdown(iso: string): string {
+  const s = Math.max(0, Math.round((new Date(iso).getTime() - now.value) / 1000))
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s}s`
+}
+const canaryStatus = computed(() => {
+  const c = flow.value?.canary
+  if (!c) return ''
+  if (c.paused && c.pause_reason === 'errors') return t('routes.flow.rollout.autoPaused', { weight: c.weight })
+  if (c.paused) return t('routes.flow.rollout.paused', { weight: c.weight })
+  if (c.mode === 'manual') return t('routes.flow.rollout.held', { weight: c.weight })
+  if (!c.next_step_at) return t('routes.flow.rollout.nextWithin', { weight: c.next_weight, s: c.interval_seconds })
+  // A step that is due shows as "now" until the next poll brings the new weight.
+  return c.promotes_next
+    ? t('routes.flow.rollout.promotesIn', { time: countdown(c.next_step_at) })
+    : t('routes.flow.rollout.nextIn', { weight: c.next_weight, time: countdown(c.next_step_at) })
+})
+
+const canaryBusy = ref(false)
+const confirmCanary = ref<'promote' | 'abort' | null>(null)
+async function canaryAction(action: 'pause' | 'resume' | 'promote' | 'abort') {
+  const f = flow.value
+  if (!f) return
+  canaryBusy.value = true
+  try {
+    const call = { pause: appApi.pauseCanary, resume: appApi.resumeCanary, promote: appApi.promoteCanary, abort: appApi.abortCanary }[action]
+    await call(props.wsId, f.app.id)
+    notify.success(t(`routes.flow.rollout.done.${action}`))
+    await load(true)
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    canaryBusy.value = false
+    confirmCanary.value = null
+  }
+}
 function ruleText(r: { source: string; name: string; operator: string; value: string }): string {
   const op = t(`routes.flow.op.${r.operator}`)
   return r.source === 'ip' ? `IP ${op} ${r.value}` : `${r.source} ${r.name} ${op} ${r.value}`
@@ -326,6 +381,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   observer?.disconnect()
+  if (clock) clearInterval(clock)
   stopPolling()
   document.removeEventListener('visibilitychange', onVisibility)
 })
@@ -613,6 +669,23 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <i class="s" :style="{ width: `${stable?.weight ?? 0}%` }"></i><i class="c" :style="{ width: `${canary.weight}%` }"></i>
               </div>
               <div class="split-legend"><span>{{ $t('routes.flow.role.stable') }} {{ stable?.weight ?? 0 }}%</span><span>{{ $t('routes.flow.role.canary') }} {{ canary.weight }}%</span></div>
+              <div v-if="flow.canary" class="split-status" :class="{ 'is-bad': flow.canary.pause_reason === 'errors' }">
+                <span class="mdi" :class="flow.canary.paused ? 'mdi-pause-circle-outline' : flow.canary.mode === 'manual' ? 'mdi-hand-back-right-outline' : 'mdi-timer-sand'"></span>
+                {{ canaryStatus }}
+              </div>
+              <div v-if="ws.canEdit && flow.canary" class="split-actions" @click.stop @keydown.stop>
+                <button
+                  v-if="flow.canary.mode === 'auto'"
+                  type="button"
+                  class="btn btn-secondary btn-xs"
+                  :disabled="canaryBusy"
+                  @click="canaryAction(flow.canary.paused ? 'resume' : 'pause')"
+                >
+                  <span class="mdi" :class="flow.canary.paused ? 'mdi-play' : 'mdi-pause'"></span>{{ flow.canary.paused ? $t('routes.flow.rollout.resume') : $t('routes.flow.rollout.pause') }}
+                </button>
+                <button type="button" class="btn btn-primary btn-xs" :disabled="canaryBusy" @click="confirmCanary = 'promote'">{{ $t('appDetail.promote') }}</button>
+                <button type="button" class="btn btn-secondary btn-xs" :disabled="canaryBusy" @click="confirmCanary = 'abort'">{{ $t('appDetail.abort') }}</button>
+              </div>
               <div v-if="liveStats && liveStats.variants" class="live-stat">
                 {{ $t('routes.flow.live.actualSplit', { stable: Math.round((liveStats.variants.stable?.share ?? 0) * 100), canary: Math.round((liveStats.variants.canary?.share ?? 0) * 100) }) }}
               </div>
@@ -668,6 +741,27 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        :open="confirmCanary === 'promote'"
+        :title="$t('confirm.title.appDetail.promoteCanaryToStable')"
+        :message="$t('confirm.message.appDetail.theCanaryReleaseWill', { name: flow.app.name })"
+        :confirm-label="$t('confirm.label.appDetail.promoteNow')"
+        :cancel-label="$t('action.cancel')"
+        variant="primary"
+        @confirm="canaryAction('promote')"
+        @cancel="confirmCanary = null"
+      />
+      <ConfirmDialog
+        :open="confirmCanary === 'abort'"
+        :title="$t('confirm.title.appDetail.abortCanaryRollout')"
+        :message="$t('confirm.message.appDetail.theCanaryContainerIs', { name: flow.app.name })"
+        :confirm-label="$t('confirm.label.appDetail.abortCanary')"
+        :cancel-label="$t('confirm.label.appDetail.keepRollingOut')"
+        variant="danger"
+        @confirm="canaryAction('abort')"
+        @cancel="confirmCanary = null"
+      />
 
       <div class="flow-panels">
       <section class="flow-details" aria-live="polite">
@@ -808,6 +902,10 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 .split-bar i { display: block; height: 100%; }
 .split-bar .s { background: var(--success-500); }
 .split-bar .c { background: var(--info-500); }
+.split-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.split-status.is-bad { color: var(--danger-600); font-weight: 600; }
+.split-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn-xs { padding: 3px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .split-legend { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 .backend.is-stable { border-left: 3px solid var(--success-500); }

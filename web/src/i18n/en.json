@@ -326,7 +326,8 @@
     "byName": "by {name}",
     "canary": {
       "pauseHint": "Hold traffic at the current split",
-      "resumeHint": "Hand the rollout back to the ramp"
+      "resumeHint": "Hand the rollout back to the ramp",
+      "autoPausedHint": "· paused automatically {for}: canary errors"
     },
     "canaryInProgress": "Canary rollout in progress — click to manage",
     "canaryRollout": "Canary rollout",
@@ -3772,7 +3773,8 @@
         "noReplica": "No replica is running: the gateway answers 502 until the app is back.",
         "canary": "Canary release v{version} takes {weight}% of traffic.",
         "canaryRules": "Canary release v{version} takes requests matching its rules, and {weight}% of the rest.",
-        "canaryWorse": "Canary v{version} answers 5xx on {canary} of requests, against {stable} for stable."
+        "canaryWorse": "Canary v{version} answers 5xx on {canary} of requests, against {stable} for stable.",
+        "canaryAutoPaused": "The ramp paused itself at {weight}%: canary v{version} answered 5xx clearly more often than stable. Resume to continue anyway, or abort."
       },
       "op": {
         "equals": "=",
@@ -3897,6 +3899,22 @@
         "maintCount": "{n} × {code} in the last 15 min",
         "actualSplit": "Measured: {stable}% stable, {canary}% canary",
         "releaseLine": "{requests} req · p95 {p95} · 5xx {errors}"
+      },
+      "rollout": {
+        "autoPaused": "Paused itself at {weight}%: the canary failed more than stable",
+        "paused": "Paused at {weight}%",
+        "held": "Held at {weight}%: moves only when you move it",
+        "nextWithin": "Next: {weight}% within {s}s",
+        "nextIn": "Next: {weight}% in {time}",
+        "promotesIn": "Promotes to stable in {time}",
+        "pause": "Pause",
+        "resume": "Resume",
+        "done": {
+          "pause": "Canary rollout paused",
+          "resume": "Canary rollout resumed",
+          "promote": "Promoting the canary to stable",
+          "abort": "Canary aborted: all traffic back on stable"
+        }
       }
     }
   },

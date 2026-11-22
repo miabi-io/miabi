@@ -39,6 +39,7 @@ import (
 	"github.com/miabi-io/miabi/internal/managedenv"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/runners"
+	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
@@ -77,6 +78,7 @@ type DeployHandler struct {
 	clients       NodeDocker
 	bus           *eventbus.Bus
 	routes        RouteSyncer
+	canaryGuard   CanaryRegressionChecker
 	events        events.Recorder
 	producer      *Producer
 	build         buildConfig
@@ -108,6 +110,14 @@ type GPUScheduler interface {
 
 // Without it a GPU request is ignored at deploy; the request-time capability gate still applies.
 func (h *DeployHandler) SetGPU(g GPUScheduler) { h.gpu = g }
+
+// CanaryRegressionChecker compares a canary's 5xx rate with stable's since the rollout began. Implemented by analytics.CanaryGuard.
+type CanaryRegressionChecker interface {
+	CanaryRegression(app *models.Application, since time.Time) (analytics.VariantComparison, error)
+}
+
+// SetCanaryGuard lets an automatic ramp pause itself on a clear error regression (nil-safe; nil = never).
+func (h *DeployHandler) SetCanaryGuard(g CanaryRegressionChecker) { h.canaryGuard = g }
 
 type PortPublishPolicy interface {
 	CheckPortPublish(p secpolicy.PortPublish) secpolicy.PublishDecision
@@ -1106,8 +1116,8 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 	logger.Info("canary release live", "app", app.ID, "deployment", dep.ID, "release", version, "weight", weight)
 
 	// Schedule the first auto-progression step, unless already at full traffic.
-	if weight < 100 && h.producer != nil {
-		_ = h.producer.EnqueueCanaryStep(dep.ID, canaryInterval(app), app.ServerID)
+	if weight < 100 {
+		h.scheduleCanaryStep(app, dep.ID)
 	}
 }
 
@@ -1213,6 +1223,10 @@ func (h *DeployHandler) ProcessCanaryStep(ctx context.Context, task *asynq.Task)
 	}
 
 	action, next := nextCanaryRamp(app)
+	if action != canaryRampHold && h.canaryRegressed(app, rel) {
+		h.scheduleCanaryStep(app, p.DeploymentID)
+		return nil
+	}
 	if action == canaryRampPromote {
 		h.autoPromoteCanary(app, rel)
 		return nil
@@ -1226,10 +1240,49 @@ func (h *DeployHandler) ProcessCanaryStep(ctx context.Context, task *asynq.Task)
 		logger.Info("canary advanced", "app", app.ID, "weight", next)
 	}
 	// Reschedule even when holding, so a manual canary keeps its health gate and switching back resumes the ramp.
-	if h.producer != nil {
-		_ = h.producer.EnqueueCanaryStep(p.DeploymentID, canaryInterval(app), app.ServerID)
+	if action == canaryRampAdvance {
+		app.CanaryWeight = next
 	}
+	h.scheduleCanaryStep(app, p.DeploymentID)
 	return nil
+}
+
+// scheduleCanaryStep queues the next tick and records when an automatic ramp will move, for the console's countdown.
+func (h *DeployHandler) scheduleCanaryStep(app *models.Application, deploymentID uint) {
+	if h.producer != nil {
+		_ = h.producer.EnqueueCanaryStep(deploymentID, canaryInterval(app), app.ServerID)
+	}
+	var at *time.Time
+	if action, _ := nextCanaryRamp(app); action != canaryRampHold {
+		t := time.Now().UTC().Add(time.Duration(canaryInterval(app)) * time.Second)
+		at = &t
+	}
+	_ = h.apps.SetCanaryNextStep(app.ID, at)
+}
+
+// canaryRegressed pauses an automatic ramp whose canary fails clearly more than stable; it never aborts, the user decides.
+func (h *DeployHandler) canaryRegressed(app *models.Application, rel *models.Release) bool {
+	if h.canaryGuard == nil || app.CanaryGuardOff {
+		return false
+	}
+	since := rel.CreatedAt
+	if floor := time.Now().Add(-time.Hour); since.Before(floor) {
+		since = floor
+	}
+	cmp, err := h.canaryGuard.CanaryRegression(app, since)
+	if err != nil || !cmp.Regressed {
+		return false
+	}
+	now := time.Now()
+	if err := h.apps.SetCanaryAutoPaused(app.ID, now, models.CanaryPauseErrors); err != nil {
+		return false
+	}
+	app.CanaryPausedAt, app.CanaryPauseReason = &now, models.CanaryPauseErrors
+	h.recordCanary(app, rel.DeploymentID, models.SeverityWarning, fmt.Sprintf(
+		"Canary paused at %d%%: it answered 5xx on %.1f%% of %d requests, against %.1f%% for stable. Resume to continue anyway, or abort.",
+		app.CanaryWeight, cmp.CanaryRate*100, cmp.CanaryRequests, cmp.StableRate*100))
+	logger.Warn("canary auto-paused on errors", "app", app.ID, "canary_rate", cmp.CanaryRate, "stable_rate", cmp.StableRate)
+	return true
 }
 
 // canaryRampAction is what the rollout timer should do on a tick.
