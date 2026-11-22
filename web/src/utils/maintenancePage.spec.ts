@@ -1,18 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { htmlBytes, maintenancePageTemplate } from './maintenancePage'
+import { MAINTENANCE_HTML_MAX, htmlBytes, maintenancePageTemplate } from './maintenancePage'
+
+const labels = { badge: 'Scheduled maintenance', checkAgain: 'Check again', refreshHint: 'Refreshes every minute.', hostedOn: 'Hosted on' }
 
 describe('maintenancePageTemplate', () => {
   it('escapes what it fills in', () => {
-    const page = maintenancePageTemplate({ title: 'a<b', heading: 'Back soon', message: '<script>x</script> & more' })
-    expect(page).toContain('<title>a&lt;b</title>')
+    const page = maintenancePageTemplate({ app: 'a<b', heading: 'Back soon', message: '<script>x</script> & more', labels })
+    expect(page).toContain('<title>a&lt;b · Scheduled maintenance</title>')
     expect(page).toContain('&lt;script&gt;x&lt;/script&gt; &amp; more')
     expect(page).not.toContain('<script>')
   })
 
   it('needs nothing from the network', () => {
-    const page = maintenancePageTemplate({ title: 't', heading: 'h', message: 'm' })
-    expect(page).not.toMatch(/(src|href)=/)
-    expect(page).not.toMatch(/@import|url\(/)
+    const page = maintenancePageTemplate({ app: 'a', heading: 'h', message: 'm', labels })
+    expect(page).not.toMatch(/(src|href|action)=/)
+    expect(page).not.toMatch(/@import|url\((?!#)/)
+  })
+
+  it('stays far below the size cap', () => {
+    const page = maintenancePageTemplate({ app: 'a', heading: 'h', message: 'm', labels })
+    expect(htmlBytes(page)).toBeLessThan(MAINTENANCE_HTML_MAX / 8)
   })
 })
 

@@ -3684,7 +3684,11 @@
     "htmlPreviewTitle": "Maintenance page preview",
     "htmlPreviewHint": "Rendered in a sandbox with scripts off. On your hosts the page runs as written, scripts included.",
     "htmlTemplateHeading": "We'll be right back",
-    "htmlTemplateMessage": "We're doing some maintenance. Please check back in a few minutes."
+    "htmlTemplateMessage": "We're doing some maintenance. Please check back in a few minutes.",
+    "htmlTemplateBadge": "Scheduled maintenance",
+    "htmlTemplateCheckAgain": "Check again",
+    "htmlTemplateRefresh": "This page checks again every minute.",
+    "htmlTemplateHostedOn": "Hosted on"
   },
   "runners": {
     "addARunner": "Add a runner",

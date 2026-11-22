@@ -3684,7 +3684,11 @@
     "htmlPreviewTitle": "Aperçu de la page de maintenance",
     "htmlPreviewHint": "Affichée dans un bac à sable, scripts désactivés. Sur vos hôtes, la page s’exécute telle quelle, scripts compris.",
     "htmlTemplateHeading": "Nous revenons très vite",
-    "htmlTemplateMessage": "Une maintenance est en cours. Merci de revenir dans quelques minutes."
+    "htmlTemplateMessage": "Une maintenance est en cours. Merci de revenir dans quelques minutes.",
+    "htmlTemplateBadge": "Maintenance programmée",
+    "htmlTemplateCheckAgain": "Réessayer",
+    "htmlTemplateRefresh": "Cette page se recharge toutes les minutes.",
+    "htmlTemplateHostedOn": "Hébergé sur"
   },
   "runners": {
     "addARunner": "Ajouter un runner",

@@ -154,10 +154,16 @@ const htmlTooLarge = computed(() => htmlSize.value > MAINTENANCE_HTML_MAX)
 const hasHtml = computed(() => mtHtml.value.trim() !== '')
 function insertTemplate() {
   mtHtml.value = maintenancePageTemplate({
-    title: item.value?.display_name || item.value?.name || t('routes.htmlTemplateHeading'),
+    app: item.value?.display_name || app.value?.name || item.value?.name || '',
     heading: t('routes.htmlTemplateHeading'),
     message: mtMessage.value.trim() && !messageIsJson.value ? mtMessage.value.trim() : t('routes.htmlTemplateMessage'),
     lang: locale.value,
+    labels: {
+      badge: t('routes.htmlTemplateBadge'),
+      checkAgain: t('routes.htmlTemplateCheckAgain'),
+      refreshHint: t('routes.htmlTemplateRefresh'),
+      hostedOn: t('routes.htmlTemplateHostedOn'),
+    },
   })
   htmlSource.value = false
   previewAs.value = 'text'
@@ -802,8 +808,8 @@ Content-Type: {{ previewContentType }}
 .mt-field-html { flex-basis: 100%; }
 .mt-html-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mt-preview-page-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
-.mt-preview-frame { display: block; width: 100%; height: 360px; border: 1px solid var(--border-primary); border-radius: 8px; background: #fff; }
-.mt-preview-source { max-height: 360px; overflow: auto; }
+.mt-preview-frame { display: block; width: 100%; height: 460px; border: 1px solid var(--border-primary); border-radius: 8px; background: #fff; }
+.mt-preview-source { max-height: 460px; overflow: auto; }
 .mt-message { font-family: var(--font-mono, monospace); font-size: 12px; resize: vertical; }
 .form-input.is-invalid { border-color: var(--danger-500, #ef4444); }
 
