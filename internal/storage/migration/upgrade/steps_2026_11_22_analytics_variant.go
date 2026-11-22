@@ -48,7 +48,7 @@ func analyticsVariantKeyStep(ctx context.Context, db *gorm.DB) error {
 func init() {
 	steps = append(steps, Step{
 		Name:    "analytics_rollup_variant_key",
-		Version: "1.10.32",
+		Version: "1.10.31",
 		Run:     analyticsVariantKeyStep,
 	})
 }
