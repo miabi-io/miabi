@@ -349,6 +349,9 @@ func sumBlobs(m map[string]int64) int64 {
 	return total
 }
 
+// QuotaMB is the per-workspace registry quota; 0 means none.
+func (s *Service) QuotaMB() int { return s.quotaMB() }
+
 // Cached briefly so the hot path avoids a DB read per request.
 func (s *Service) quotaMB() int {
 	if s.usage == nil {

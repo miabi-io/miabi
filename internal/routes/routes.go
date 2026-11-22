@@ -273,7 +273,7 @@ type routerHandlers struct {
 }
 
 // Returns the port-forward service so the caller can release live sessions on shutdown.
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store, removals *events.RemovalHook, sharedEvents *events.Service) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, dockerClient docker.Client, nodeService *node.Service, nodeManager *nodes.Manager, nodeGateway *edgegateway.Service, clusterService *cluster.Service, bus *eventbus.Bus, proxyMgr proxy.Manager, cronManager *cronpkg.Manager, logStore *logstore.Store, removals *events.RemovalHook, sharedEvents *events.Service) (*portforward.Service, *runners.Dispatcher, *runners.Manager, *wsbackup.Service, *locationmigration.Service, *registryserver.Service) {
 	metrics.SetBuildInfo(config.Version, config.CommitID)
 
 	userRepo := repositories.NewUserRepository(db)
@@ -1870,7 +1870,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 
 	// Returned so the embedded worker runs bundle tasks against this fully wired service graph.
-	return forwardService, runnerDispatcher, runnerManager, wsBundleService, migrationService
+	return forwardService, runnerDispatcher, runnerManager, wsBundleService, migrationService, registryServerService
 }
 
 // Must be called before RunServer: Okapi binds these during applyCommon at startup.
