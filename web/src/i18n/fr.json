@@ -3636,7 +3636,6 @@
     "removeHost": "Supprimer l’hôte",
     "responseWhileParked": "Réponse pendant la mise en pause",
     "rewrite": "Réécriture",
-    "rootDomainHint": "Laissez le sous-domaine vide pour servir le domaine à sa racine. Routes : {host}",
     "saveOrderFirst": "Enregistrez ou abandonnez d’abord le changement d’ordre",
     "selectAStoredCertificate": "Sélectionner un certificat enregistré…",
     "settings": "Paramètres",
@@ -3688,7 +3687,21 @@
     "htmlTemplateBadge": "Maintenance programmée",
     "htmlTemplateCheckAgain": "Réessayer",
     "htmlTemplateRefresh": "Cette page se recharge toutes les minutes.",
-    "htmlTemplateHostedOn": "Hébergé sur"
+    "htmlTemplateHostedOn": "Hébergé sur",
+    "rootDomainTip": "Laissez le sous-domaine vide pour servir le domaine à sa racine.",
+    "answersAt": "Répond sur",
+    "hostIssue": {
+      "scheme": "{host} : saisissez seulement l’hôte, sans http:// ni https://.",
+      "path": "{host} : saisissez seulement l’hôte ; le chemin va dans le champ Chemin.",
+      "port": "{host} : un hôte ne peut pas porter de port ; la passerelle écoute sur 80 et 443.",
+      "invalid": "{host} n’est pas un nom d’hôte valide.",
+      "duplicate": "{host} apparaît deux fois ; il n’est enregistré qu’une fois.",
+      "unregistered": "{host} n’appartient à aucun domaine de cet espace de travail. Ajoutez d’abord le domaine.",
+      "banned": "{host} appartient à {domain}, qui est suspendu.",
+      "unverified": "{domain} n’est pas encore vérifié ; {host} sera en ligne dès qu’il le sera.",
+      "openDomains": "Domaines",
+      "fixFirst": "Corrigez d’abord les hôtes signalés en rouge."
+    }
   },
   "runners": {
     "addARunner": "Ajouter un runner",
