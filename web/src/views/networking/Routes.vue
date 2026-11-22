@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -10,6 +10,15 @@ import { appApi } from '@/api/apps'
 import type { Route, Application } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
+import { routeStatusBadge, routeStatusLabel } from '@/utils/routes'
+import {
+  ROUTES_PAGE_SIZE,
+  filterRoutes,
+  parseRouteFilters,
+  routeFiltersToQuery,
+  type RouteFilters,
+  type RouteSort,
+} from '@/utils/routeFilters'
 
 const ws = useWorkspaceStore()
 const { t } = useI18n()
@@ -29,16 +38,40 @@ const toDelete = ref<Route | null>(null)
 const deleting = ref(false)
 
 // Not upstream health.
-function statusBadge(r: Route): string {
-  const s = r.status ?? 'pending'
-  if (s === 'live') return 'badge-success'
-  if (s === 'error') return 'badge-danger'
-  if (s === 'offline') return 'badge-warning'
-  return 'badge-neutral'
+const statusBadge = routeStatusBadge
+const statusLabel = routeStatusLabel
+
+// The URL holds the filters, so a filtered list can be shared and Back from a route restores it.
+const filters = computed(() => parseRouteFilters(route.query))
+function setFilters(patch: Partial<RouteFilters>) {
+  const next = { ...filters.value, page: 0, ...patch }
+  router.replace({ query: routeFiltersToQuery(next) })
 }
-function statusLabel(r: Route): string {
-  const s = r.status ?? 'pending'
-  return s === 'live' ? 'live' : s === 'offline' ? 'offline' : s
+const search = ref(filters.value.q)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function onSearch() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => setFilters({ q: search.value.trim() }), 250)
+}
+watch(() => filters.value.q, (q) => { if (q !== search.value.trim()) search.value = q })
+
+const filtered = computed(() => filterRoutes(items.value, filters.value, appName))
+const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / ROUTES_PAGE_SIZE)))
+const page = computed(() => Math.min(filters.value.page, pageCount.value - 1))
+const visible = computed(() => filtered.value.slice(page.value * ROUTES_PAGE_SIZE, (page.value + 1) * ROUTES_PAGE_SIZE))
+const filtering = computed(() => !!(filters.value.q || filters.value.app || filters.value.status || filters.value.kind))
+const failingCount = computed(() => items.value.filter((r) => r.status === 'error' || r.status === 'offline').length)
+
+function sortBy(col: RouteSort) {
+  setFilters({ sort: col, desc: filters.value.sort === col ? !filters.value.desc : false, page: filters.value.page })
+}
+function sortIcon(col: RouteSort) {
+  if (filters.value.sort !== col) return 'mdi-unfold-more-horizontal'
+  return filters.value.desc ? 'mdi-chevron-down' : 'mdi-chevron-up'
+}
+function clearFilters() {
+  search.value = ''
+  router.replace({ query: {} })
 }
 
 async function load(id: number | null) {
@@ -66,7 +99,8 @@ watch(
 function openFromQuery() {
   if (route.query.new !== '1') return
   const wanted = Number(route.query.app)
-  router.replace({ path: route.path })
+  // Only `new` is consumed: `app` stays as the list's filter.
+  router.replace({ path: route.path, query: { ...route.query, new: undefined } })
 
   if (!ws.canEdit || !apps.value.length) return
   // Usually a workspace switch mid-click; opening the form on another app would be worse than not opening it.
@@ -128,6 +162,34 @@ async function confirmRemove() {
       </button>
     </div>
 
+    <div v-if="items.length > 0" class="routes-toolbar">
+      <div class="search">
+        <span class="mdi mdi-magnify"></span>
+        <input v-model="search" class="form-input" type="search" :placeholder="$t('routes.searchPlaceholder')" :aria-label="$t('routes.searchPlaceholder')" @input="onSearch" />
+      </div>
+      <select class="form-select" :value="filters.app ?? ''" :aria-label="$t('dashboard.col.application')" @change="setFilters({ app: Number(($event.target as HTMLSelectElement).value) || null })">
+        <option value="">{{ $t('routes.filter.allApps') }}</option>
+        <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }}</option>
+      </select>
+      <select class="form-select" :value="filters.status" :aria-label="$t('dashboard.col.status')" @change="setFilters({ status: ($event.target as HTMLSelectElement).value as RouteFilters['status'] })">
+        <option value="">{{ $t('routes.filter.anyStatus') }}</option>
+        <option value="live">{{ $t('routes.filter.live') }}</option>
+        <option value="failing">{{ $t('routes.filter.failing') }}{{ failingCount ? ` (${failingCount})` : '' }}</option>
+        <option value="pending">{{ $t('routes.filter.pending') }}</option>
+        <option value="disabled">{{ $t('routes.filter.disabled') }}</option>
+        <option value="maintenance">{{ $t('routes.filter.maintenance') }}</option>
+      </select>
+      <select class="form-select" :value="filters.kind" :aria-label="$t('routes.filter.kind')" @change="setFilters({ kind: ($event.target as HTMLSelectElement).value as RouteFilters['kind'] })">
+        <option value="">{{ $t('routes.filter.anyKind') }}</option>
+        <option value="custom">{{ $t('routes.filter.custom') }}</option>
+        <option value="generated">{{ $t('routes.filter.generated') }}</option>
+      </select>
+      <span class="text-muted text-sm toolbar-count">
+        {{ filtering ? $t('routes.filter.countOf', { n: filtered.length, total: items.length }) : $t('routes.filter.count', { n: items.length }, items.length) }}
+        <button v-if="filtering" class="link-btn" @click="clearFilters">{{ $t('routes.filter.clear') }}</button>
+      </span>
+    </div>
+
     <div class="card">
       <div v-if="loading && items.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="items.length === 0" class="empty-state">
@@ -136,14 +198,28 @@ async function confirmRemove() {
         <p>{{ apps.length === 0 ? 'Create an application first, then expose it with a route.' : 'Expose an application on a hostname and path.' }}</p>
         <button v-if="ws.canEdit && apps.length" class="btn btn-primary mt-4" @click="openCreate()">{{ $t('routes.create') }}</button>
       </div>
+      <div v-else-if="filtered.length === 0" class="empty-state">
+        <span class="mdi mdi-filter-off-outline" style="font-size: 36px; color: var(--text-muted)"></span>
+        <p>{{ $t('routes.filter.none') }}</p>
+        <button class="btn btn-secondary btn-sm mt-4" @click="clearFilters">{{ $t('routes.filter.clear') }}</button>
+      </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('routes.col.route') }}</th><th>{{ $t('dashboard.col.application') }}</th><th>{{ $t('routes.col.hosts') }}</th><th>Status</th><th>TLS</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th><button class="sort-btn" @click="sortBy('name')">{{ $t('routes.col.route') }} <span class="mdi" :class="sortIcon('name')"></span></button></th>
+              <th><button class="sort-btn" @click="sortBy('app')">{{ $t('dashboard.col.application') }} <span class="mdi" :class="sortIcon('app')"></span></button></th>
+              <th>{{ $t('routes.col.hosts') }}</th>
+              <th><button class="sort-btn" @click="sortBy('status')">{{ $t('dashboard.col.status') }} <span class="mdi" :class="sortIcon('status')"></span></button></th>
+              <th>TLS</th>
+              <th></th>
+            </tr>
+          </thead>
           <tbody>
-            <tr v-for="r in items" :key="r.id" class="row-clickable" @click="router.push(`/routes/${r.id}`)">
+            <tr v-for="r in visible" :key="r.id" class="row-clickable" @click="router.push(`/routes/${r.id}`)">
               <td>
                 <span class="cell-title">
-                  {{ r.name }}
+                  <router-link :to="`/routes/${r.id}`" class="route-link" @click.stop>{{ r.display_name || r.name }}</router-link>
                   <span v-if="r.generated" class="badge badge-info" style="margin-left: 8px" :title="$t('routes.generatedHint')">auto</span>
                   <span v-if="!r.enabled" class="badge badge-neutral" style="margin-left: 8px">disabled</span>
                   <span v-if="r.maintenance?.enabled" class="badge badge-warning" style="margin-left: 8px" :title="$t('routes.maintenanceHint')">maintenance</span>
@@ -163,6 +239,13 @@ async function confirmRemove() {
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="pageCount > 1" class="card-footer pager">
+        <button class="btn btn-ghost btn-sm" :disabled="page === 0" @click="setFilters({ page: page - 1 })">
+          <span class="mdi mdi-chevron-left"></span></button>
+        <span class="text-sm text-muted">{{ $t('routes.filter.page', { n: page + 1, total: pageCount }) }}</span>
+        <button class="btn btn-ghost btn-sm" :disabled="page >= pageCount - 1" @click="setFilters({ page: page + 1 })">
+          <span class="mdi mdi-chevron-right"></span></button>
       </div>
     </div>
 
@@ -190,6 +273,18 @@ async function confirmRemove() {
 </template>
 
 <style scoped>
+.routes-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.routes-toolbar .form-select { width: auto; }
+.search { position: relative; }
+.search .mdi { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.search .form-input { padding-left: 32px; width: 260px; max-width: 100%; }
+.toolbar-count { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--primary-500); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.sort-btn { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; }
+.route-link { color: var(--text-primary); text-decoration: none; }
+.route-link:hover { color: var(--primary-500); text-decoration: underline; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px; }
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .text-muted { color: var(--text-muted); font-weight: 400; }
 .form-row { display: flex; gap: 12px; }
