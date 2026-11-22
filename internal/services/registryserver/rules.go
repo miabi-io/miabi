@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -49,6 +50,8 @@ type Selection struct {
 	Truncated bool `json:"truncated"`
 	// InUse are tags the rule matched but a live or pinned release holds, so they stay.
 	InUse []string `json:"in_use"`
+	// Kept are tags retention protects: a recent release's image, or a protected tag pattern.
+	Kept []string `json:"kept,omitempty"`
 	// UnknownAge are tags on images with no creation time, which no rule ever picks.
 	UnknownAge []string `json:"unknown_age"`
 }
@@ -67,6 +70,21 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 	if rule.KeepNewest == 0 && rule.OlderThanDays == 0 {
 		return nil, ErrNoRule
 	}
+	return s.pick(ctx, workspaceID, image, pickOptions{keepNewest: rule.KeepNewest, olderThanDays: rule.OlderThanDays}, now)
+}
+
+// pickOptions is a rule plus what retention protects beyond live and pinned releases.
+type pickOptions struct {
+	keepNewest    int
+	olderThanDays int
+	// keepDigests and keepRefs are a rollback window: images recent releases ran.
+	keepDigests map[string]bool
+	keepRefs    map[string]bool
+	// keepPatterns protect a whole image when any of its tags matches one.
+	keepPatterns []string
+}
+
+func (s *Service) pick(ctx context.Context, workspaceID uint, image string, opt pickOptions, now time.Time) (*Selection, error) {
 	repo, err := repoPath(workspaceID, image)
 	if err != nil {
 		return nil, err
@@ -89,6 +107,7 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 	if err != nil {
 		return nil, err
 	}
+	kept := refsIn(repo, digests, opt.keepDigests, opt.keepRefs)
 
 	byDigest := map[string]*ruleImage{}
 	for _, t := range all {
@@ -100,6 +119,9 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 			byDigest[d] = &ruleImage{digest: d}
 		}
 		byDigest[d].tags = append(byDigest[d].tags, t)
+		if matchesAny(opt.keepPatterns, t) {
+			kept[d] = true
+		}
 	}
 	images := make([]*ruleImage, 0, len(byDigest))
 	for _, img := range byDigest {
@@ -108,7 +130,7 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 	}
 	s.imageTimes(ctx, workspaceID, repo, images)
 
-	out := &Selection{Tags: []string{}, InUse: []string{}, UnknownAge: []string{}}
+	out := &Selection{Tags: []string{}, InUse: []string{}, Kept: []string{}, UnknownAge: []string{}}
 	var known []*ruleImage
 	for _, img := range images {
 		if img.created.IsZero() {
@@ -119,20 +141,23 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 	}
 	sort.Slice(known, func(i, j int) bool { return known[i].created.After(known[j].created) })
 
-	cutoff := now.AddDate(0, 0, -rule.OlderThanDays)
+	cutoff := now.AddDate(0, 0, -opt.olderThanDays)
 	var picked []*ruleImage
 	for rank, img := range known {
-		if rule.KeepNewest > 0 && rank < rule.KeepNewest {
+		if opt.keepNewest > 0 && rank < opt.keepNewest {
 			continue
 		}
-		if rule.OlderThanDays > 0 && !img.created.Before(cutoff) {
+		if opt.olderThanDays > 0 && !img.created.Before(cutoff) {
 			continue
 		}
-		if protected[img.digest] {
+		switch {
+		case protected[img.digest]:
 			out.InUse = append(out.InUse, img.tags...)
-			continue
+		case kept[img.digest]:
+			out.Kept = append(out.Kept, img.tags...)
+		default:
+			picked = append(picked, img)
 		}
-		picked = append(picked, img)
 	}
 	// Oldest first, so a capped selection deletes the oldest and a second run continues from there.
 	sort.Slice(picked, func(i, j int) bool { return picked[i].created.Before(picked[j].created) })
@@ -146,8 +171,38 @@ func (s *Service) SelectTags(ctx context.Context, workspaceID uint, image string
 		out.Images++
 	}
 	SortTags(out.InUse)
+	SortTags(out.Kept)
 	SortTags(out.UnknownAge)
 	return out, nil
+}
+
+// refsIn maps refs recorded by tag onto this repository's digests, as protectedIn does for live releases.
+func refsIn(repo string, digestOf map[string]string, digests, refs map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for d := range digests {
+		out[d] = true
+	}
+	for ref := range refs {
+		path, tag, digest := splitImageRef(ref)
+		if path != repo {
+			continue
+		}
+		if digest != "" {
+			out[digest] = true
+		} else if d := digestOf[tag]; d != "" {
+			out[d] = true
+		}
+	}
+	return out
+}
+
+func matchesAny(patterns []string, tag string) bool {
+	for _, p := range patterns {
+		if ok, err := path.Match(p, tag); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Miabi's own build record is cheaper and truer than the config, which a reproducible build may zero.

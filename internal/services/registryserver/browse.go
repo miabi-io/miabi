@@ -256,5 +256,7 @@ type Catalog interface {
 	ProtectedDigests() (map[string]bool, error)
 	// ProtectedRefs are the image references releases run by tag, which name no digest.
 	ProtectedRefs() (map[string]bool, error)
+	// RecentReleaseRefs are the images of each app's last window releases, kept for rollbacks.
+	RecentReleaseRefs(window int) (digests, refs map[string]bool, err error)
 	ByDigests(workspaceID uint, digests []string) (map[string]models.Image, error)
 }

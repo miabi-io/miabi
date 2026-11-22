@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,10 +39,23 @@ var ruleNow = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
 // agedRegistry serves ws_7/web, whose images carry a creation time in their config; a zero time means none.
 func agedRegistry(t *testing.T, tags map[string]string, created map[string]time.Time) *Service {
 	t.Helper()
+	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		const prefix = "/v2/ws_7/web/"
 		path := r.URL.Path
+		mu.Lock()
+		defer mu.Unlock()
 		switch {
+		case path == "/v2/_catalog":
+			_ = json.NewEncoder(w).Encode(map[string]any{"repositories": []string{"ws_7/web"}})
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, prefix+"manifests/sha256:"):
+			img := strings.TrimPrefix(path, prefix+"manifests/sha256:")
+			for tag, i := range tags {
+				if i == img {
+					delete(tags, tag)
+				}
+			}
+			w.WriteHeader(http.StatusAccepted)
 		case path == prefix+"tags/list":
 			list := []string{}
 			for tag := range tags {

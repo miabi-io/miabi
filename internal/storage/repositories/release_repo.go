@@ -85,6 +85,15 @@ func (r *ReleaseRepository) ListProtected() ([]models.Release, error) {
 	return out, err
 }
 
+// ListRecentPerApp returns each app's newest releases, at most window per app.
+func (r *ReleaseRepository) ListRecentPerApp(window int) ([]models.Release, error) {
+	var out []models.Release
+	err := r.db.Raw(`SELECT * FROM (
+		SELECT releases.*, ROW_NUMBER() OVER (PARTITION BY application_id ORDER BY version DESC) AS rn FROM releases
+	) recent WHERE rn <= ?`, window).Scan(&out).Error
+	return out, err
+}
+
 // FindByContainerID lets import detect an already-adopted container, keeping re-import idempotent.
 func (r *ReleaseRepository) FindByContainerID(containerID string) (*models.Release, error) {
 	var rel models.Release

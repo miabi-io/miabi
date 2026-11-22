@@ -187,6 +187,43 @@ export interface AdminRegistryUsage {
   }[]
 }
 
+export interface RetentionPolicy {
+  enabled: boolean
+  keep_images: number
+  min_age_days: number
+  release_window: number
+  protected_tags: string[]
+  updated_at?: string
+}
+
+export interface RetentionOverride {
+  workspace_id: number
+  disabled: boolean
+  /** 0 follows the platform; a smaller number than the platform's has no effect. */
+  keep_images: number
+}
+
+export interface RetentionRun {
+  id: number
+  dry_run: boolean
+  trigger: 'schedule' | 'manual'
+  status: 'running' | 'succeeded' | 'failed'
+  tags: number
+  freed_bytes: number
+  error?: string
+  started_at: string
+  finished_at?: string
+}
+
+export interface RetentionWorkspaceReport {
+  workspace_id: number
+  keep: number
+  skipped?: boolean
+  count: number
+  freed_bytes: number
+  repositories: { repository: string; tags: string[]; count: number; freed_bytes: number; error?: string }[]
+}
+
 export const registryApi = {
   // Admin
   getSettings: () => api.get<ApiResponse<RegistrySettings>>('/admin/registry/settings'),
@@ -195,6 +232,15 @@ export const registryApi = {
   runtime: () => api.get<ApiResponse<RegistryRuntime>>('/admin/registry/runtime'),
   runGc: () => api.post<ApiResponse<{ message: string }>>('/admin/registry/gc'),
   adminUsage: () => api.get<ApiResponse<AdminRegistryUsage>>('/admin/registry/usage'),
+  retentionPolicy: () => api.get<ApiResponse<RetentionPolicy>>('/admin/registry/retention'),
+  saveRetentionPolicy: (p: Omit<RetentionPolicy, 'updated_at'>) =>
+    api.put<ApiResponse<RetentionPolicy>>('/admin/registry/retention', p),
+  /** Answers at once; poll the run for its report. */
+  startRetention: (dryRun: boolean) =>
+    api.post<ApiResponse<RetentionRun>>('/admin/registry/retention/runs', { dry_run: dryRun }),
+  retentionRuns: () => api.get<ApiResponse<RetentionRun[]>>('/admin/registry/retention/runs'),
+  retentionRun: (id: number) =>
+    api.get<ApiResponse<RetentionRun & { workspaces: RetentionWorkspaceReport[] }>>(`/admin/registry/retention/runs/${id}`),
 
   // Workspace
   info: (workspaceId: number) =>
@@ -229,6 +275,10 @@ export const registryApi = {
     api.delete<ApiResponse<TagDeleteResponse>>(`/workspaces/${workspaceId}/registry/repository`, {
       params: { name: repo },
     }),
+  workspaceRetention: (workspaceId: number) =>
+    api.get<ApiResponse<{ platform: RetentionPolicy; override: RetentionOverride }>>(`/workspaces/${workspaceId}/registry/retention`),
+  saveWorkspaceRetention: (workspaceId: number, o: { disabled: boolean; keep_images: number }) =>
+    api.put<ApiResponse<RetentionOverride>>(`/workspaces/${workspaceId}/registry/retention`, o),
   usage: (workspaceId: number) =>
     api.get<ApiResponse<RegistryUsage>>(`/workspaces/${workspaceId}/registry/usage`),
 }

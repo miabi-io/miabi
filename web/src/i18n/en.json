@@ -3468,7 +3468,15 @@
     "deleteRepository": "Delete repository",
     "deleteRepositoryHint": "Deletes every tag in it. Refused while any of its images is in use.",
     "deleteRepositoryConfirm": "Every tag in {repo} will be deleted. Type the repository name to confirm.",
-    "typeRepositoryName": "Repository name"
+    "typeRepositoryName": "Repository name",
+    "retentionRule": "Each repository keeps its newest {n} images; older ones are deleted nightly. Images younger than {days} days, in use, or from an app's recent releases are always kept.",
+    "retentionOptedOut": "This workspace is opted out of the platform's nightly registry cleanup.",
+    "retentionChoice": "Cleanup for this workspace",
+    "retentionFollow": "Follow the platform (keep {n})",
+    "retentionMore": "Keep more images",
+    "retentionOff": "Never clean this workspace",
+    "retentionKeepLabel": "Images to keep per repository",
+    "retentionSaved": "Cleanup setting saved"
   },
   "releases": {
     "active": "active",
