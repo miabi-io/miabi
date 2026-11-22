@@ -1751,6 +1751,77 @@ export type RouteTLSMode = 'none' | 'acme' | 'custom'
 // offline means disabled or a host's domain is unverified.
 export type RouteStatus = 'pending' | 'live' | 'offline' | 'error'
 
+export interface ReleaseHealth {
+  status: string
+  running: number
+  desired: number
+}
+
+// GET …/routes/{id}/flow: the route as a request travels it.
+export interface RouteFlow {
+  route: {
+    id: number
+    name: string
+    display_name?: string
+    status: RouteStatus
+    status_reason?: string
+    enabled: boolean
+    generated: boolean
+    path: string
+    rewrite?: string
+    methods: string[]
+    exploit_protection: boolean
+    has_advanced_config: boolean
+    serving: boolean
+    serving_reason?: string
+    suspended: boolean
+    maintenance: { enabled: boolean; status_code: number; has_message: boolean; has_html: boolean }
+  }
+  app: { id: number; name: string; status: string; runtime_kind: string; port: number; scheme: string; deployed: boolean }
+  hosts: {
+    host: string
+    domain?: string
+    domain_id?: number
+    registered: boolean
+    verified: boolean
+    banned: boolean
+    external?: boolean
+    cert_covers?: boolean
+  }[]
+  tls: { mode: 'acme' | 'custom' | 'external' | 'none'; provider?: string; certificate_id?: number; certificate_name?: string; not_after?: string }
+  gateway: { kind: 'platform' | 'cluster' | 'edge'; server_id?: number; server_name?: string; cluster?: string }
+  chain: {
+    id?: number
+    name: string
+    type?: string
+    display_name?: string
+    category?: string
+    early_status: number[]
+    paths: string[]
+    missing?: boolean
+  }[]
+  siblings: {
+    route_id: number
+    name: string
+    display_name?: string
+    path: string
+    app_id: number
+    app_name?: string
+    shared_hosts: string[]
+    relation: 'narrower' | 'broader' | 'separate'
+  }[]
+  backends: {
+    role: 'stable' | 'canary'
+    endpoint: string
+    weight: number
+    match?: CanaryMatchRule[]
+    exclusive?: boolean
+    priority?: number
+    release?: { id: number; version: number; image: string; image_tag?: string; digest?: string; created_at: string }
+    health?: ReleaseHealth
+  }[]
+}
+
 export interface RouteMaintenance {
   enabled: boolean
   status_code?: number

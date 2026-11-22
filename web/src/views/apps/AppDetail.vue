@@ -380,9 +380,11 @@ async function onRouteSaved() {
   await reloadRoutes()
 }
 // from= lets the route page's Back return to this tab.
-function openRoute(r: Route) {
-  router.push({ path: `/routes/${r.id}`, query: { from: `app:${appId.value}` } })
+function openRoute(r: Route, tabKey?: 'flow') {
+  router.push({ path: `/routes/${r.id}`, query: { from: `app:${appId.value}`, tab: tabKey } })
 }
+// Every route of the app carries the canary; a user route is the one people recognise.
+const canaryFlowRoute = computed(() => appRoutes.value.find((r) => !r.generated && r.enabled) ?? appRoutes.value[0] ?? null)
 const routeBusy = ref<number | null>(null)
 async function toggleRouteEnabled(r: Route) {
   if (!wid.value) return
@@ -1095,6 +1097,8 @@ async function loadTab() {
     else if (tab.value === 'events') await startEventsStream()
     else if (tab.value === 'logs') startRuntimeLogs()
     else if (tab.value === 'deployments') {
+      // For the canary panel's flow link; the app may not be loaded yet to tell whether it shows.
+      reloadRoutes()
       deployments.value = (await appApi.deployments(wid.value, appId.value)).data.data ?? []
       if (deployments.value.length && streamingId.value === null) {
         // ?deployment= is how a pipeline run links to the deploy it started.
@@ -2800,6 +2804,9 @@ async function detachDatabase(d: AppDatabase) {
       </div>
       <div v-if="showCanaryPanel && app && wid" class="canary-panel-slot">
         <CanaryPanel :app="app" :ws-id="wid ?? 0" :can-edit="ws.canEdit" @changed="loadApp" />
+        <button v-if="canaryActive && canaryFlowRoute" type="button" class="canary-flow-link" @click="openRoute(canaryFlowRoute, 'flow')">
+          <span class="mdi mdi-transit-connection-variant"></span>{{ $t('appDetail.seeTrafficFlow') }}
+        </button>
       </div>
       <div class="card">
         <div class="card-header"><h2>{{ $t('appDetail.deployments') }}</h2></div>
@@ -3027,6 +3034,8 @@ async function detachDatabase(d: AppDatabase) {
                   <button class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="editRoute(r)">
                     <span class="mdi mdi-pencil-outline"></span></button>
                 </template>
+                <button class="btn-icon btn-icon-muted" :title="$t('appDetail.routeFlow')" :aria-label="$t('appDetail.routeFlow')" @click="openRoute(r, 'flow')">
+                  <span class="mdi mdi-transit-connection-variant"></span></button>
                 <button class="btn-icon btn-icon-muted" :title="$t('appDetail.openRoute')" :aria-label="$t('appDetail.openRoute')" @click="openRoute(r)">
                   <span class="mdi mdi-chevron-right"></span></button>
               </td>
@@ -4538,7 +4547,7 @@ async function detachDatabase(d: AppDatabase) {
 .btn-icon-xs { width: 22px; height: 22px; font-size: 13px; }
 tr.row-busy { opacity: 0.6; }
 /* Fixed so a badge appearing in the row never moves the buttons under the pointer. */
-.route-actions { width: 120px; white-space: nowrap; }
+.route-actions { width: 156px; white-space: nowrap; }
 .port-primary-badge { margin-left: 8px; }
 .image-tag {
   margin-left: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
@@ -4745,6 +4754,8 @@ tr.row-busy { opacity: 0.6; }
 /* Canary rollout + deployment strategy */
 .canary-card { border-color: var(--warning-500, #f59e0b); grid-column: 1 / -1; }
 .canary-panel-slot { grid-column: 1 / -1; }
+.canary-flow-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--primary-500); cursor: pointer; }
+.canary-flow-link:hover { text-decoration: underline; }
 .canary-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 12px 16px; }
 .canary-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .canary-meter { flex: 1; min-width: 220px; }
