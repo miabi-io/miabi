@@ -217,7 +217,7 @@ More than 50 official, versioned templates: databases (PostgreSQL, MySQL, MongoD
 <table>
   <tr>
     <td width="50%" align="center"><strong>Deploy an application</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/deploy-new-app.png" alt="Deploy a new application from Git, image, or template" width="420"/></td>
-    <td width="50%" align="center"><strong>Canary deployment</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/canary-deployment.png" alt="Canary strategy with weighted traffic split between stable and canary releases" width="420"/></td>
+    <td width="50%" align="center"><strong>Route flow &amp; canary</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/route-flow.png" alt="A route's request flow: gateway, middlewares, canary traffic split and live traffic per release" width="420"/></td>
   </tr>
   <tr>
     <td width="50%" align="center"><strong>GitOps</strong><br/><img src="https://raw.githubusercontent.com/miabi-io/miabi/main/docs/screenshots/gitops-deployment.png" alt="Declarative, pull-based reconciliation from miabi.io/v1 manifests" width="420"/></td>
