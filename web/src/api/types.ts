@@ -1834,6 +1834,17 @@ export interface RouteStats {
   avg_ms: number
   avg_gateway_ms: number
   series: { t: string; requests: number; errors: number }[]
+  variants?: Partial<Record<'stable' | 'canary', VariantStats>>
+}
+
+export interface VariantStats {
+  requests: number
+  share: number
+  s4xx: number
+  s5xx: number
+  error_rate: number
+  p95_ms: number
+  avg_ms: number
 }
 
 export interface RouteTraceRequest {

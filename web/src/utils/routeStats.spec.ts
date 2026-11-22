@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RouteStats } from '@/api/types'
-import { earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from './routeStats'
+import { canaryWorse, earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from './routeStats'
 
 const stats = (over: Partial<RouteStats> = {}): RouteStats => ({
   enabled: true, range: { since: '', until: '' }, requests: 1000, per_minute: 66.7, visitors: 10,
@@ -11,6 +11,18 @@ const stats = (over: Partial<RouteStats> = {}): RouteStats => ({
 describe('earlyAnswers', () => {
   it("keeps only codes the chain can answer, largest first", () => {
     expect(earlyAnswers(stats(), [401, 429, 301])).toEqual([{ code: 401, count: 38 }, { code: 429, count: 12 }])
+  })
+})
+
+describe('canaryWorse', () => {
+  const v = (requests: number, rate: number) => ({ requests, share: 0, s4xx: 0, s5xx: Math.round(requests * rate), error_rate: rate, p95_ms: 0, avg_ms: 0 })
+  it('flags a canary clearly worse than stable', () => {
+    expect(canaryWorse(stats({ variants: { stable: v(900, 0.001), canary: v(100, 0.03) } }))).toEqual({ canaryRate: 0.03, stableRate: 0.001 })
+  })
+  it('stays quiet on little traffic or a small gap', () => {
+    expect(canaryWorse(stats({ variants: { stable: v(900, 0), canary: v(10, 0.5) } }))).toBeNull()
+    expect(canaryWorse(stats({ variants: { stable: v(900, 0.01), canary: v(100, 0.015) } }))).toBeNull()
+    expect(canaryWorse(stats())).toBeNull()
   })
 })
 

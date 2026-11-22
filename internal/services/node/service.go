@@ -78,7 +78,7 @@ func AppAlias(app *models.Application) string {
 
 // CanaryAlias differs from AppAlias so the proxy can split weighted traffic between stable and canary.
 func CanaryAlias(app *models.Application) string {
-	return AppAlias(app) + "-canary"
+	return AppAlias(app) + models.CanaryAliasSuffix
 }
 
 // NewAppAlias builds a fresh stable alias for a newly created app.

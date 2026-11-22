@@ -9,6 +9,17 @@ export function earlyAnswers(stats: RouteStats, chainCodes: number[]): { code: n
     .sort((a, b) => b.count - a.count)
 }
 
+export interface CanaryComparison { canaryRate: number; stableRate: number }
+
+// Needs enough requests on both sides, and a full point of difference, so a single 500 on a quiet canary doesn't alarm.
+export function canaryWorse(stats: RouteStats, minRequests = 50, margin = 0.01): CanaryComparison | null {
+  const c = stats.variants?.canary
+  const s = stats.variants?.stable
+  if (!c || !s || c.requests < minRequests || s.requests < minRequests) return null
+  if (c.error_rate - s.error_rate < margin) return null
+  return { canaryRate: c.error_rate, stableRate: s.error_rate }
+}
+
 export function errorShare(stats: RouteStats): number {
   return stats.requests > 0 ? stats.status.s5xx / stats.requests : 0
 }
