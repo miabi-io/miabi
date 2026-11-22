@@ -436,7 +436,8 @@
       "convertRedeploy": "Changer et redéployer",
       "switching": "Bascule…",
       "check": "Vérifier",
-      "changed": "Runtime changé en {runtime}"
+      "changed": "Runtime changé en {runtime}",
+      "currentBadge": "actuel"
     },
     "deployments": "Déploiements",
     "detach": "Détacher",

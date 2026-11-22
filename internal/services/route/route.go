@@ -998,13 +998,9 @@ func (s *Service) inDefaultCluster(clusterID uint) bool {
 	return s.cluster != nil && s.cluster.IsDefaultCluster(clusterID)
 }
 
-// gatewayBackends are the upstreams a gateway dials by alias: a service's VIP, or the app's containers.
+// gatewayBackends are the upstreams a gateway dials by alias; a canary, container or service, answers its own alias.
 func gatewayBackends(app *models.Application, port int) []proxy.Backend {
-	scheme := portScheme(app, port)
-	if app.RuntimeKind == models.RuntimeService {
-		return []proxy.Backend{{Endpoint: fmt.Sprintf("%s://%s:%d", scheme, node.AppAlias(app), port)}}
-	}
-	return aliasBackends(app, port, scheme)
+	return aliasBackends(app, port, portScheme(app, port))
 }
 
 func (s *Service) reconcileAppDNS(ctx context.Context, app *models.Application, routes []models.Route) {

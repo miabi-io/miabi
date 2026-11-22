@@ -2765,7 +2765,13 @@ func (s *Service) AbortCanary(ctx context.Context, app *models.Application) erro
 		return ErrNoCanary
 	}
 	if rel, err := s.releases.FindByID(*app.CanaryReleaseID); err == nil {
-		if rel.ContainerID != "" {
+		switch {
+		case rel.ContainerID == "":
+		case rel.RuntimeKind == models.RuntimeService:
+			if mgr, err := s.swarmManager(ctx, app); err == nil {
+				_ = mgr.ServiceRemove(ctx, rel.ContainerID)
+			}
+		default:
 			_ = s.eng(app).StopContainer(ctx, rel.ContainerID, 10)
 			_ = s.eng(app).RemoveContainer(ctx, rel.ContainerID, true)
 		}

@@ -95,3 +95,12 @@ func TestAliasBackendsPlainCanaryUnchanged(t *testing.T) {
 		t.Errorf("plain canary picked up advanced fields: %+v", b[1])
 	}
 }
+
+func TestServiceCanarySplitsLikeAContainer(t *testing.T) {
+	rel := uint(9)
+	app := &models.Application{ID: 105, Alias: "mb-app-x1-105", RuntimeKind: models.RuntimeService, CanaryReleaseID: &rel, CanaryWeight: 25}
+	got := gatewayBackends(app, 80)
+	if len(got) != 2 || got[0].Endpoint != "http://mb-app-x1-105:80" || got[1].Endpoint != "http://mb-app-x1-105-canary:80" || got[1].Weight != 25 {
+		t.Fatalf("backends = %+v", got)
+	}
+}

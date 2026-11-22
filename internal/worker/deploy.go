@@ -680,7 +680,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	}
 
 	if canary {
-		h.releaseCanary(app, dep, image, containerID)
+		h.releaseCanary(app, dep, image, containerID, models.RuntimeContainer)
 		return
 	}
 	h.swapAndRelease(app, dep, image, containerID)
@@ -833,6 +833,14 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	}
 	// A stable service name lets redeploys update the same service in place.
 	alias := node.AppAlias(app)
+	aliases := []string{alias, app.Name}
+	canary := dep.Strategy == models.DeployCanary
+	if canary {
+		// Its own service under the canary alias only: the app's name would hand east-west callers to the canary too.
+		alias = node.CanaryAlias(app)
+		aliases = []string{alias}
+		replicas = 1
+	}
 	sec, secErr := h.workloadSecurity(app, app.RunAsUser)
 	if secErr == nil && len(sec.Devices) > 0 {
 		secErr = models.ErrDevicesOnService
@@ -848,7 +856,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		Cmd:             cmd,
 		Replicas:        replicas,
 		Networks:        svcNets,
-		NetworkAliases:  []string{alias, app.Name},
+		NetworkAliases:  aliases,
 		IngressNetwork:  ingressNet,
 		IngressAlias:    alias,
 		EndpointMode:    h.endpointMode(app),
@@ -925,6 +933,10 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	} else if err != nil {
 		h.log(dep, fmt.Sprintf("warning: could not inspect service %s (%v); recording by name", alias, err))
 	}
+	if canary {
+		h.releaseCanary(app, dep, image, serviceID, models.RuntimeService)
+		return
+	}
 	h.releaseService(app, dep, image, serviceID)
 }
 
@@ -1000,9 +1012,10 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 	return fmt.Errorf("service did not reach %d running task(s) in time", desired)
 }
 
-// A previous release is retired only when the app just switched from the container runtime.
+// A previous release is retired only when the app just switched from the container runtime; a promoted canary's service is retired too.
 func (h *DeployHandler) releaseService(app *models.Application, dep *models.Deployment, image, serviceID string) {
 	prev, _ := h.releases.FindActive(app.ID)
+	canary := h.detachCanary(app)
 	version := h.releaseVersion(app.ID, dep)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, RuntimeKind: models.RuntimeService,
@@ -1011,6 +1024,9 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		PipelineRunID: dep.PipelineRunID,
 	}
 	if err := h.releases.Create(rel); err != nil {
+		if canary != nil {
+			h.retireCanaryRelease(app, dep, canary)
+		}
 		_ = h.fail(dep, fmt.Errorf("create release: %w", err))
 		return
 	}
@@ -1037,9 +1053,15 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		}
 	}
 
-	if prev != nil && prev.RuntimeKind == models.RuntimeContainer && prev.ContainerID != "" {
-		h.log(dep, fmt.Sprintf("draining previous container release for %s", routeDrainDelay))
+	retirePrev := prev != nil && prev.RuntimeKind == models.RuntimeContainer && prev.ContainerID != ""
+	if retirePrev || canary != nil {
+		h.log(dep, fmt.Sprintf("draining previous release for %s", routeDrainDelay))
 		time.Sleep(routeDrainDelay)
+	}
+	if canary != nil {
+		h.retireCanaryRelease(app, dep, canary)
+	}
+	if retirePrev {
 		h.log(dep, "retiring previous container release v"+fmt.Sprint(prev.Version))
 		h.retireRelease(context.Background(), app, prev)
 	}
@@ -1062,13 +1084,13 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 // defaultCanaryWeight is the initial share of traffic sent to a new canary.
 const defaultCanaryWeight = 10
 
-func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deployment, image, containerID string) {
-	// Replace any previous canary container (re-running canary supersedes it).
+// containerID is the canary's container, or its service for the service runtime.
+func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deployment, image, containerID string, kind models.RuntimeKind) {
+	// Replace any previous canary (re-running canary supersedes it); a canary service updated in place keeps its ID.
 	if cur, err := h.apps.FindByID(app.ID); err == nil && cur.CanaryReleaseID != nil {
 		if prev, err := h.releases.FindByID(*cur.CanaryReleaseID); err == nil {
 			if prev.ContainerID != "" && prev.ContainerID != containerID {
-				_ = h.eng(app).StopContainer(context.Background(), prev.ContainerID, 10)
-				_ = h.eng(app).RemoveContainer(context.Background(), prev.ContainerID, true)
+				h.retireRelease(context.Background(), app, prev)
 			}
 			h.finalizeCanary(prev.DeploymentID, models.DeploymentSucceeded, "superseded by a newer canary")
 		}
@@ -1078,7 +1100,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 	version := h.releaseVersion(app.ID, dep)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
-		Image: image, ContainerID: containerID, Active: false, RuntimeKind: models.RuntimeContainer,
+		Image: image, ContainerID: containerID, Active: false, RuntimeKind: kind,
 		Commit: dep.Commit, ImageID: dep.ImageID, ImageTag: h.releaseImageTag(app.ID, dep, image),
 		PipelineRunID: dep.PipelineRunID,
 	}
@@ -1187,8 +1209,7 @@ func (h *DeployHandler) detachCanary(app *models.Application) *models.Release {
 func (h *DeployHandler) retireCanaryRelease(app *models.Application, dep *models.Deployment, rel *models.Release) {
 	h.log(dep, "retiring canary release v"+fmt.Sprint(rel.Version))
 	if rel.ContainerID != "" {
-		_ = h.eng(app).StopContainer(context.Background(), rel.ContainerID, 10)
-		_ = h.eng(app).RemoveContainer(context.Background(), rel.ContainerID, true)
+		h.retireRelease(context.Background(), app, rel)
 	}
 	h.finalizeCanary(rel.DeploymentID, models.DeploymentSucceeded, fmt.Sprintf("canary superseded by deployment #%d", dep.Number))
 	_ = h.releases.Delete(rel.ID)
@@ -1212,8 +1233,14 @@ func (h *DeployHandler) ProcessCanaryStep(ctx context.Context, task *asynq.Task)
 		return nil
 	}
 
-	// Health gate: if the canary container died, roll back automatically.
-	if rel.ContainerID != "" {
+	// Health gate: if the canary container died, or its service's tasks keep crashing, roll back automatically.
+	if rel.ContainerID != "" && rel.RuntimeKind == models.RuntimeService {
+		if st, err := h.manager(ctx, app).ServiceInspect(ctx, rel.ContainerID); err == nil && st.RunningTasks == 0 &&
+			taskCrashLoop(st.Failures, rel.CreatedAt, h.nodeName) != nil {
+			h.autoAbortCanary(app, rel)
+			return nil
+		}
+	} else if rel.ContainerID != "" {
 		if c, err := h.eng(app).InspectContainer(ctx, rel.ContainerID); err == nil {
 			if c.State == "exited" || c.State == "dead" {
 				h.autoAbortCanary(app, rel)
@@ -1339,9 +1366,12 @@ func (h *DeployHandler) autoPromoteCanary(app *models.Application, rel *models.R
 
 func (h *DeployHandler) autoAbortCanary(app *models.Application, rel *models.Release) {
 	if rel.ContainerID != "" {
-		h.logContainerOutput(app, rel.DeploymentID, rel.ContainerID)
-		_ = h.eng(app).StopContainer(context.Background(), rel.ContainerID, 10)
-		_ = h.eng(app).RemoveContainer(context.Background(), rel.ContainerID, true)
+		if rel.RuntimeKind == models.RuntimeService {
+			h.logServiceOutput(h.manager(context.Background(), app), rel.DeploymentID, node.CanaryAlias(app))
+		} else {
+			h.logContainerOutput(app, rel.DeploymentID, rel.ContainerID)
+		}
+		h.retireRelease(context.Background(), app, rel)
 	}
 	_ = h.releases.Delete(rel.ID)
 	_ = h.apps.SetCanary(app.ID, nil, 0)
