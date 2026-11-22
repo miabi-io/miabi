@@ -801,7 +801,8 @@
     "enableRoute": "Activer la route",
     "disableRoute": "Désactiver la route",
     "routeFlow": "Flux des requêtes",
-    "seeTrafficFlow": "Voir le flux du trafic"
+    "seeTrafficFlow": "Voir le flux du trafic",
+    "seeTrafficFlowHint": "Ouvrir le flux des requêtes de la route : la répartition en direct entre stable et canary"
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",

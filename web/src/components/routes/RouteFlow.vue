@@ -9,7 +9,8 @@ import { relativeBox, wirePath } from '@/utils/flowWires'
 import { parseHeaders, tracePath } from '@/utils/routeTrace'
 import { canaryWorse, earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from '@/utils/routeStats'
 
-const props = defineProps<{ wsId: number; routeId: number }>()
+// revision changes whenever the page's own poll sees the route or its app change (a canary step, a promote).
+const props = defineProps<{ wsId: number; routeId: number; revision?: string }>()
 const emit = defineEmits<{ openSettings: [] }>()
 const { t, te } = useI18n()
 const notify = useNotificationStore()
@@ -21,22 +22,33 @@ type NodeKey = 'visitors' | 'gateway' | 'maint' | 'chain' | 'split' | 'stable' |
 type Selection = { kind: 'visitors' | 'gateway' | 'maint' | 'split' | 'stable' | 'canary' | 'app' } | { kind: 'mw'; index: number }
 const selected = ref<Selection | null>(null)
 
-async function load() {
-  loading.value = true
-  trace.value = null
+// quiet keeps the trace and skips error toasts: a background refresh must not interrupt what the user is doing.
+async function load(quiet = false) {
+  if (!quiet) {
+    loading.value = true
+    trace.value = null
+  }
+  let changed = true
   try {
-    flow.value = (await routeApi.flow(props.wsId, props.routeId)).data.data
+    const next = (await routeApi.flow(props.wsId, props.routeId)).data.data
+    changed = JSON.stringify(next) !== JSON.stringify(flow.value)
+    if (changed) flow.value = next
     if (!traceForm.value.path) traceForm.value.path = flow.value?.route.path || '/'
     if (!traceForm.value.host) traceForm.value.host = flow.value?.hosts[0]?.host || ''
   } catch (e) {
-    notify.apiError(e)
+    if (!quiet) notify.apiError(e)
   } finally {
     loading.value = false
   }
+  if (quiet && !changed) return
   await nextTick()
   draw()
+  if (quiet && trace.value) runTrace()
 }
-watch(() => props.routeId, load)
+watch(() => props.routeId, () => load())
+watch(() => props.revision, (now, before) => {
+  if (before !== undefined && now !== before) load(true)
+})
 
 const stable = computed(() => flow.value?.backends.find((b) => b.role === 'stable'))
 const canary = computed(() => flow.value?.backends.find((b) => b.role === 'canary'))
@@ -261,6 +273,8 @@ const statsAvailable = computed(() => !!stats.value?.enabled)
 const liveStats = computed(() => (live.value && statsAvailable.value ? stats.value : null))
 async function loadStats() {
   if (document.hidden) return
+  // Replica health is not in the page's poll, so the live tick refreshes the drawing too.
+  if (flow.value) load(true)
   try {
     stats.value = (await routeApi.flowStats(props.wsId, props.routeId)).data.data
   } catch {

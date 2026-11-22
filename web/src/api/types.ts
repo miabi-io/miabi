@@ -1924,6 +1924,7 @@ export interface Route {
   // Actual upstream endpoints the gateway uses. Populated on read.
   backends?: string[]
   created_at?: string
+  updated_at?: string
 }
 
 export interface Certificate {

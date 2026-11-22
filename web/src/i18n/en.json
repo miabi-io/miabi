@@ -801,7 +801,8 @@
     "enableRoute": "Enable route",
     "disableRoute": "Disable route",
     "routeFlow": "Request flow",
-    "seeTrafficFlow": "See traffic flow"
+    "seeTrafficFlow": "See traffic flow",
+    "seeTrafficFlowHint": "Open the route’s request flow: the live split between stable and canary"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",

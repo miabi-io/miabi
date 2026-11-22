@@ -62,6 +62,12 @@ const tabs = [
 
 // Canary state (read-only; rollout is managed from the application's settings).
 const canaryActive = computed(() => !!app.value?.canary_release_id)
+// What the 5s poll can see change that the Flow tab draws; the tab refetches its model when this moves.
+const flowRevision = computed(() => JSON.stringify([
+  item.value?.updated_at, item.value?.status, item.value?.enabled, item.value?.maintenance?.enabled,
+  app.value?.current_release_id, app.value?.canary_release_id, app.value?.canary_weight,
+  app.value?.canary_exclusive, app.value?.canary_match, app.value?.status,
+]))
 const canaryWeight = computed(() => app.value?.canary_weight ?? 0)
 const stableWeight = computed(() => (canaryActive.value ? 100 - canaryWeight.value : 100))
 let poll: ReturnType<typeof setInterval> | null = null
@@ -503,7 +509,7 @@ async function removeRoute() {
       </div>
     </div>
 
-    <RouteFlow v-else-if="tab === 'flow' && currentWorkspaceId" :ws-id="currentWorkspaceId" :route-id="item.id" @open-settings="tab = 'settings'" />
+    <RouteFlow v-else-if="tab === 'flow' && currentWorkspaceId" :ws-id="currentWorkspaceId" :route-id="item.id" :revision="flowRevision" @open-settings="tab = 'settings'" />
 
     <!-- Settings -->
     <div v-else-if="tab === 'settings'">
