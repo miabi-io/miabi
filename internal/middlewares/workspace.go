@@ -85,7 +85,7 @@ func WorkspaceScope(repo *repositories.WorkspaceRepository, customRoles *reposit
 			}
 			c.Set(CtxAppID, int(id))
 		}
-		if !safeMethod(c.Request().Method) && !restrictionExempt(c.Request().Method, c.Request().URL.Path) {
+		if !safeMethod(c.Request().Method) && !ReadOnlyPost(c.Request().Method, c.Request().URL.Path) && !restrictionExempt(c.Request().Method, c.Request().URL.Path) {
 			if err := gate.Allowed(uint(wsID), restriction.ActionWrite); err != nil {
 				status := http.StatusForbidden
 				var re *restriction.Error

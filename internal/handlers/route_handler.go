@@ -22,6 +22,7 @@ package handlers
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
@@ -133,6 +134,26 @@ func (h *RouteHandler) Flow(c *okapi.Context) error {
 		return h.mapErr(c, err)
 	}
 	return ok(c, f)
+}
+
+// The body may carry real credentials, so it is never logged, stored or audited.
+type TraceRouteRequest struct {
+	Body route.TraceRequest `json:"body"`
+}
+
+func (h *RouteHandler) Trace(c *okapi.Context, req *TraceRouteRequest) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	if strings.TrimSpace(req.Body.Path) == "" {
+		return c.AbortBadRequest("path is required")
+	}
+	t, err := h.svc.Trace(c.Request().Context(), middlewares.WorkspaceID(c), id, req.Body)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return ok(c, t)
 }
 
 func (h *RouteHandler) Update(c *okapi.Context, req *UpdateRouteRequest) error {
