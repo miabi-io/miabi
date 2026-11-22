@@ -436,7 +436,8 @@
       "convertRedeploy": "Switch & redeploy",
       "switching": "Switching…",
       "check": "Check",
-      "changed": "Runtime switched to {runtime}"
+      "changed": "Runtime switched to {runtime}",
+      "currentBadge": "current"
     },
     "deployments": "Deployments",
     "detach": "Detach",

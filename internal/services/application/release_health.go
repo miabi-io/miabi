@@ -34,7 +34,11 @@ func (s *Service) ReleaseHealth(ctx context.Context, app *models.Application, re
 		if err != nil {
 			return h
 		}
-		st, err := mgr.ServiceInspect(ctx, node.AppAlias(app))
+		target := node.AppAlias(app)
+		if rel != nil && rel.ContainerID != "" {
+			target = rel.ContainerID
+		}
+		st, err := mgr.ServiceInspect(ctx, target)
 		if err != nil {
 			h.Status = "no_container"
 			return h

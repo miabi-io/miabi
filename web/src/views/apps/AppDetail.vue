@@ -2013,13 +2013,14 @@ const planResourcesHint = computed(() => {
 
 // Runtime switch (Settings → Runtime): a dry run on every change, then a redeploy that hands over.
 const serviceRuntimeAllowed = ref(false)
-const runtimeTarget = ref<RuntimeKind>('service')
+const runtimeTarget = ref<RuntimeKind>('container')
 const runtimeReplicas = ref(1)
 const runtimePreflight = ref<RuntimePreflight | null>(null)
 const runtimeBusy = ref(false)
 const runtimeManaged = computed(() => ['gitops', 'apply'].includes(app.value?.metadata?.['miabi.io/managed-by'] ?? ''))
+// Starts on the current runtime; choosing the other one is what asks for a switch.
 watch(() => app.value?.runtime_kind, (kind) => {
-  runtimeTarget.value = kind === 'service' ? 'container' : 'service'
+  runtimeTarget.value = kind === 'service' ? 'service' : 'container'
   runtimeReplicas.value = Math.max(1, app.value?.replicas ?? 1)
   runtimePreflight.value = null
 }, { immediate: true })
@@ -3661,14 +3662,14 @@ async function detachDatabase(d: AppDatabase) {
                 <label class="strategy-option" :class="{ active: runtimeTarget === 'container' }">
                   <input v-model="runtimeTarget" type="radio" value="container" :disabled="!ws.canEdit" @change="checkRuntime" />
                   <span>
-                    <span class="strategy-name">{{ $t('appDetail.runtime.container') }}</span>
+                    <span class="strategy-name">{{ $t('appDetail.runtime.container') }} <span v-if="!isService" class="badge badge-success">{{ $t('appDetail.runtime.currentBadge') }}</span></span>
                     <span class="strategy-hint">{{ $t('appDetail.runtime.containerHint') }}</span>
                   </span>
                 </label>
                 <label class="strategy-option" :class="{ active: runtimeTarget === 'service', unavailable: !isService && !serviceRuntimeAllowed }">
                   <input v-model="runtimeTarget" type="radio" value="service" :disabled="!ws.canEdit || (!isService && !serviceRuntimeAllowed)" @change="checkRuntime" />
                   <span>
-                    <span class="strategy-name">{{ $t('appDetail.runtime.service') }}</span>
+                    <span class="strategy-name">{{ $t('appDetail.runtime.service') }} <span v-if="isService" class="badge badge-success">{{ $t('appDetail.runtime.currentBadge') }}</span></span>
                     <span class="strategy-hint">{{ !isService && !serviceRuntimeAllowed ? $t('appDetail.runtime.serviceUnavailable') : $t('appDetail.runtime.serviceHint') }}</span>
                   </span>
                 </label>

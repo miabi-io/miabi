@@ -98,10 +98,16 @@ func (r *ProxyNetworkReconciler) applyAttachment(ctx context.Context, eng docker
 func (r *ProxyNetworkReconciler) reconcileServiceIngress(ctx context.Context, app *models.Application, attached bool) error {
 	if r.cluster != nil {
 		if mgr, err := r.cluster.Manager(ctx, app.ClusterID); err == nil {
-			alias := node.AppAlias(app)
-			if err := mgr.ServiceSetIngressNetwork(ctx, alias, node.IngressOverlay, alias, attached); err != nil {
-				logger.Warn("failed to reconcile service ingress attachment",
-					"app", app.ID, "service", alias, "attached", attached, "error", err)
+			aliases := []string{node.AppAlias(app)}
+			// A route added mid-rollout must reach the canary's own service too, or its share of traffic fails.
+			if app.CanaryReleaseID != nil {
+				aliases = append(aliases, node.CanaryAlias(app))
+			}
+			for _, alias := range aliases {
+				if err := mgr.ServiceSetIngressNetwork(ctx, alias, node.IngressOverlay, alias, attached); err != nil {
+					logger.Warn("failed to reconcile service ingress attachment",
+						"app", app.ID, "service", alias, "attached", attached, "error", err)
+				}
 			}
 		}
 	}
