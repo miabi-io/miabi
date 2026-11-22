@@ -2,11 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { routeApi } from '@/api/routes'
-import type { RouteFlow, RouteTrace, RouteTraceStep } from '@/api/types'
+import type { RouteFlow, RouteStats, RouteTrace, RouteTraceStep } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { relativeTime } from '@/utils/time'
 import { relativeBox, wirePath } from '@/utils/flowWires'
 import { parseHeaders, tracePath } from '@/utils/routeTrace'
+import { earlyAnswers, errorShare, formatMs, formatPercent, formatRate } from '@/utils/routeStats'
 
 const props = defineProps<{ wsId: number; routeId: number }>()
 const emit = defineEmits<{ openSettings: [] }>()
@@ -199,7 +200,8 @@ const plannedWires = computed<[NodeKey, NodeKey, WireKind, string?][]>(() => {
   // The empty-chain placeholder is a stop too, so the wire never runs across its text.
   const hasChain = f.chain.length > 0 || !parked.value
   const target: NodeKey = !f.app.deployed ? 'app' : canary.value ? 'split' : 'stable'
-  out.push(['visitors', 'gateway', serving.value ? 'ok' : 'bad', serving.value ? undefined : t('routes.flow.notServed')])
+  const rate = liveStats.value ? t('routes.flow.live.perMinute', { n: formatRate(liveStats.value.per_minute) }) : undefined
+  out.push(['visitors', 'gateway', serving.value ? 'ok' : 'bad', serving.value ? rate : t('routes.flow.notServed')])
   if (parked.value) out.push(['gateway', 'maint', 'warn', String(f.route.maintenance.status_code || 503)])
   const live: WireKind = downstreamOff.value ? 'off' : 'ok'
   if (hasChain) {
@@ -231,16 +233,77 @@ function draw() {
   wires.value = out
 }
 
+const LIVE_KEY = 'miabi.routeFlow.live'
+const LIVE_POLL_MS = 30_000
+const live = ref(readLivePref())
+const stats = ref<RouteStats | null>(null)
+let pollTimer: ReturnType<typeof setInterval> | undefined
+function readLivePref(): boolean {
+  try {
+    return localStorage.getItem(LIVE_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+const statsAvailable = computed(() => !!stats.value?.enabled)
+// Null while off or unavailable, so every live number in the template hides with one check.
+const liveStats = computed(() => (live.value && statsAvailable.value ? stats.value : null))
+async function loadStats() {
+  if (document.hidden) return
+  try {
+    stats.value = (await routeApi.flowStats(props.wsId, props.routeId)).data.data
+  } catch {
+    stats.value = null
+  }
+}
+function startPolling() {
+  stopPolling()
+  if (!live.value) return
+  loadStats()
+  pollTimer = setInterval(loadStats, LIVE_POLL_MS)
+}
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  pollTimer = undefined
+}
+function onVisibility() {
+  if (!document.hidden && live.value) loadStats()
+}
+watch(live, (on) => {
+  try { localStorage.setItem(LIVE_KEY, on ? 'on' : 'off') } catch { /* private window: not remembered */ }
+  if (on) startPolling()
+  else stopPolling()
+})
+watch(liveStats, () => nextTick(draw))
+watch(() => props.routeId, () => { stats.value = null; startPolling() })
+const earlyCounts = computed(() => {
+  if (!liveStats.value || !flow.value) return []
+  return earlyAnswers(liveStats.value, flow.value.chain.flatMap((m) => m.early_status))
+})
+const maintCount = computed(() => {
+  const code = String(flow.value?.route.maintenance.status_code || 503)
+  return liveStats.value?.codes[code] ?? 0
+})
+const sparkMax = computed(() => Math.max(1, ...(liveStats.value?.series.map((p) => p.requests) ?? [0])))
+
 let observer: ResizeObserver | null = null
 onMounted(() => {
   load()
+  // First load even with live off, so the toggle only shows when analytics is on.
+  if (live.value) startPolling()
+  else loadStats()
+  document.addEventListener('visibilitychange', onVisibility)
   observer = new ResizeObserver(() => draw())
   watch(canvas, (el) => {
     observer?.disconnect()
     if (el) observer?.observe(el)
   }, { immediate: true })
 })
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  stopPolling()
+  document.removeEventListener('visibilitychange', onVisibility)
+})
 
 function select(s: Selection) {
   const same = selected.value && selected.value.kind === s.kind && (s.kind !== 'mw' || (selected.value.kind === 'mw' && selected.value.index === s.index))
@@ -366,6 +429,26 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
         <router-link v-else-if="b.to" :to="b.to" class="flow-banner-link">{{ b.action }} →</router-link>
       </div>
 
+      <div v-if="statsAvailable" class="live-strip">
+        <label class="live-toggle">
+          <input id="flow-live" v-model="live" type="checkbox" role="switch" />
+          <span>{{ $t('routes.flow.live.toggle') }}</span>
+        </label>
+        <template v-if="liveStats">
+          <span class="live-figure"><b>{{ liveStats.requests.toLocaleString() }}</b> {{ $t('routes.flow.live.requests', liveStats.requests) }}</span>
+          <span class="live-figure"><b>{{ liveStats.visitors.toLocaleString() }}</b> {{ $t('routes.flow.live.visitors', liveStats.visitors) }}</span>
+          <span class="live-figure"><b>{{ formatMs(liveStats.p95_ms) }}</b> p95</span>
+          <span class="live-figure" :class="{ 'is-bad': errorShare(liveStats) >= 0.01 }"><b>{{ formatPercent(errorShare(liveStats)) }}</b> 5xx</span>
+          <svg class="spark" viewBox="0 0 150 28" preserveAspectRatio="none" role="img" :aria-label="$t('routes.flow.live.sparkLabel')">
+            <g v-for="(p, i) in liveStats.series" :key="i">
+              <rect :x="i * (150 / liveStats.series.length) + 1" :width="Math.max(1, 150 / liveStats.series.length - 2)" :y="28 - (p.requests / sparkMax) * 26" :height="(p.requests / sparkMax) * 26" class="spark-bar" />
+              <rect v-if="p.errors" :x="i * (150 / liveStats.series.length) + 1" :width="Math.max(1, 150 / liveStats.series.length - 2)" :y="28 - (p.errors / sparkMax) * 26" :height="Math.max(1.5, (p.errors / sparkMax) * 26)" class="spark-err" />
+            </g>
+          </svg>
+          <span v-if="!liveStats.requests" class="text-muted text-sm">{{ $t('routes.flow.live.quiet') }}</span>
+        </template>
+      </div>
+
       <div class="flow-scroll">
         <div ref="canvas" class="flow-canvas" :class="{ 'has-split': !!canary }">
           <svg class="flow-wires" aria-hidden="true">
@@ -402,6 +485,9 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <span class="mono">{{ h.host }}</span>
               </div>
               <span v-if="!flow.hosts.length" class="node-sub">{{ $t('routes.flow.noHosts') }}</span>
+              <div v-if="liveStats" class="live-stat">
+                {{ liveStats.requests.toLocaleString() }} {{ $t('routes.flow.live.requests', liveStats.requests) }} · {{ liveStats.visitors.toLocaleString() }} {{ $t('routes.flow.live.visitors', liveStats.visitors) }}
+              </div>
             </div>
           </div>
 
@@ -435,6 +521,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
               <div v-if="flow.route.has_advanced_config" class="node-note">
                 <span class="mdi mdi-code-braces"></span>{{ $t('routes.flow.advancedNote') }}
               </div>
+              <div v-if="liveStats && liveStats.requests" class="live-stat">{{ $t('routes.flow.live.gatewayTime', { ms: formatMs(liveStats.avg_gateway_ms) }) }}</div>
             </div>
           </div>
 
@@ -454,6 +541,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
               <div class="node-top"><span class="node-icon"><span class="mdi mdi-pause-octagon-outline"></span></span>
                 <div class="node-heading"><span class="node-name">{{ flow.route.suspended ? $t('routes.flow.suspendedNotice') : $t('routes.flow.maintTitle') }}</span>
                   <span class="node-sub">{{ flow.route.maintenance.status_code || 503 }} · {{ flow.route.maintenance.has_html ? $t('routes.flow.maintPage') : $t('routes.flow.maintMessage') }}</span></div></div>
+              <div v-if="liveStats" class="live-stat">{{ $t('routes.flow.live.maintCount', { n: maintCount.toLocaleString(), code: flow.route.maintenance.status_code || 503 }) }}</div>
             </div>
             <div v-if="flow.chain.length" :ref="setNode('chain')" class="flow-node chain" :class="{ bypassed: downstreamOff }">
               <div
@@ -470,6 +558,9 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <span class="mw-n">{{ i + 1 }}</span>
                 <span class="mw-body"><span class="mw-name mono">{{ m.name }}</span><span class="mw-type">{{ m.missing ? $t('routes.flow.mwMissingShort') : m.display_name || m.type }}</span></span>
                 <span v-if="m.early_status.length" class="mw-stop" :title="$t('routes.flow.canAnswer', { codes: m.early_status.join(', ') })">{{ m.early_status.join(' ') }}</span>
+              </div>
+              <div v-if="liveStats && earlyCounts.length" class="live-stat">
+                {{ $t('routes.flow.live.earlyAnswers') }} {{ earlyCounts.map((c) => `${c.count.toLocaleString()} × ${c.code}`).join(' · ') }}
               </div>
             </div>
             <div v-else-if="!parked" :ref="setNode('chain')" class="flow-empty-col" :class="[{ bypassed: downstreamOff }, tclass('chain')]">{{ $t('routes.flow.noMiddlewares') }}</div>
@@ -497,6 +588,7 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                 <i class="s" :style="{ width: `${stable?.weight ?? 0}%` }"></i><i class="c" :style="{ width: `${canary.weight}%` }"></i>
               </div>
               <div class="split-legend"><span>{{ $t('routes.flow.role.stable') }} {{ stable?.weight ?? 0 }}%</span><span>{{ $t('routes.flow.role.canary') }} {{ canary.weight }}%</span></div>
+              <div v-if="liveStats" class="live-stat">{{ $t('routes.flow.live.splitNote') }}</div>
             </div>
           </div>
 
@@ -537,6 +629,9 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
                   <span>{{ healthText(b.health) }}</span>
                 </div>
                 <span class="target mono">{{ b.endpoint }}</span>
+                <div v-if="liveStats && liveStats.requests && flow.backends.length === 1" class="live-stat">
+                  {{ $t('routes.flow.live.backendLine', { p95: formatMs(liveStats.p95_ms), errors: formatPercent(errorShare(liveStats)) }) }}
+                </div>
               </div>
             </template>
           </div>
@@ -619,6 +714,15 @@ const details = computed<{ title: string; rows: DetailRow[]; link?: { label: str
 .flow-banner-link { margin-left: auto; font-weight: 600; color: var(--primary-500); background: none; border: 0; padding: 0; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
 .flow-banner-link:hover { text-decoration: underline; }
 
+.live-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 13px; color: var(--text-muted); }
+.live-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
+.live-toggle input { width: 16px; height: 16px; accent-color: var(--primary-500); }
+.live-figure b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.live-figure.is-bad b { color: var(--danger-600); }
+.spark { width: 150px; height: 28px; }
+.spark-bar { fill: color-mix(in srgb, var(--primary-500) 45%, transparent); }
+.spark-err { fill: var(--danger-500); }
+.live-stat { font-size: 12px; color: var(--text-secondary); padding-top: 6px; border-top: 1px dashed var(--border-primary); font-variant-numeric: tabular-nums; }
 .flow-scroll { overflow-x: auto; border: 1px solid var(--border-primary); border-radius: 12px; background: radial-gradient(circle, var(--border-primary) 1px, transparent 1.2px) 0 0 / 18px 18px, var(--bg-secondary); }
 .flow-canvas { position: relative; min-width: 960px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 84px; align-items: center; padding: 28px 24px; }
 .flow-canvas.has-split { min-width: 1180px; grid-template-columns: 1fr 1.05fr 1fr .95fr 1.05fr; column-gap: 72px; }

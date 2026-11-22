@@ -1430,7 +1430,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			app:             handlers.NewApplicationHandler(appService, bus, auditLogger, ee),
 			network:         handlers.NewNetworkHandler(networkService, auditLogger),
 			stack:           handlers.NewStackHandler(stackService, auditLogger),
-			route:           handlers.NewRouteHandler(routeService, auditLogger),
+			route:           handlers.NewRouteHandler(routeService, auditLogger).WithStats(repositories.NewAnalyticsRepository(db), cfg.AnalyticsEnabled),
 			domain:          handlers.NewDomainHandler(domainService, routeRepo, auditLogger),
 			dnsProvider:     handlers.NewDNSProviderHandler(dnsProviderService, auditLogger),
 			middleware:      handlers.NewMiddlewareHandler(middlewareService, auditLogger),

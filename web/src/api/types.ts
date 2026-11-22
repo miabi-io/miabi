@@ -1822,6 +1822,20 @@ export interface RouteFlow {
   }[]
 }
 
+export interface RouteStats {
+  enabled: boolean
+  range: { since: string; until: string }
+  requests: number
+  per_minute: number
+  visitors: number
+  status: { s2xx: number; s3xx: number; s4xx: number; s5xx: number }
+  codes: Record<string, number>
+  p95_ms: number
+  avg_ms: number
+  avg_gateway_ms: number
+  series: { t: string; requests: number; errors: number }[]
+}
+
 export interface RouteTraceRequest {
   scheme?: 'http' | 'https'
   method?: string

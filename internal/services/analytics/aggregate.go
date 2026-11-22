@@ -279,6 +279,7 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 				TopCountries: map[string]int64{}, TopUAFamilies: map[string]int64{},
 				TopUserAgents: map[string]int64{},
 				TopOS:         map[string]int64{}, TopDevice: map[string]int64{}, TopMethods: map[string]int64{},
+				StatusCodes: map[string]int64{},
 			},
 			hll: hyperloglog.New(),
 		}
@@ -297,6 +298,9 @@ func (a *Aggregator) Ingest(e *Event, ws, app uint) {
 		r.Status3xx++
 	default:
 		r.Status2xx++
+	}
+	if e.Status >= 300 && e.Status <= 599 {
+		topKAdd(r.StatusCodes, strconv.Itoa(e.Status), 1)
 	}
 	r.DurationHist[bucketIndex(e.DurationMs)]++
 	r.UpstreamHist[bucketIndex(e.UpstreamMs)]++
@@ -372,6 +376,7 @@ func Merge(dst, src *models.AnalyticsRollup) {
 	dst.TopOS = ensureMap(dst.TopOS)
 	dst.TopDevice = ensureMap(dst.TopDevice)
 	dst.TopMethods = ensureMap(dst.TopMethods)
+	dst.StatusCodes = ensureMap(dst.StatusCodes)
 	mergeTopK(dst.TopPaths, src.TopPaths)
 	mergeTopK(dst.TopReferrers, src.TopReferrers)
 	mergeTopK(dst.TopCountries, src.TopCountries)
@@ -380,6 +385,7 @@ func Merge(dst, src *models.AnalyticsRollup) {
 	mergeTopK(dst.TopOS, src.TopOS)
 	mergeTopK(dst.TopDevice, src.TopDevice)
 	mergeTopK(dst.TopMethods, src.TopMethods)
+	mergeTopK(dst.StatusCodes, src.StatusCodes)
 	dst.VisitorsHLL = mergeHLL(dst.VisitorsHLL, src.VisitorsHLL)
 }
 

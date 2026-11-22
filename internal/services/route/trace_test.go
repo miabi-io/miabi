@@ -133,7 +133,9 @@ func TestTraceStates(t *testing.T) {
 	runTrace(t, "unverified", traceCase{in: in, mws: mws, req: TraceRequest{Path: "/api"}, kind: "not_served", status: 404})
 
 	in, mws = traceFixture()
-	in.health = func(*models.Release) *models.ReleaseHealth { return &models.ReleaseHealth{Status: "exited", Desired: 1} }
+	in.health = func(*models.Release) *models.ReleaseHealth {
+		return &models.ReleaseHealth{Status: "exited", Desired: 1}
+	}
 	runTrace(t, "no replica", traceCase{in: in, mws: mws, req: TraceRequest{Path: "/api", Headers: bearer}, kind: "no_replica", status: 502})
 }
 

@@ -115,6 +115,15 @@ func (r *Router) routeRoutes() []okapi.RouteDefinition {
 			Description: "The route as a request travels it: hosts and their domains, TLS, the serving gateway, the middleware chain with the statuses each can answer early, other routes on the same hosts, and the stable and canary backends with their releases and replica health.",
 		},
 		{
+			Method:      http.MethodGet,
+			Path:        base + "/{routeID}/flow/stats",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.route.Stats,
+			Summary:     "Get a route's recent traffic",
+			Description: "Requests, visitors, status classes, exact 3xx–5xx codes, p95 and mean latency, mean time spent in the gateway, and a per-minute series for one route over `range` (default 15m, at most 24h), ending at the last complete minute. `enabled` is false when Workspace Analytics is off.",
+		},
+		{
 			Method:      http.MethodPost,
 			Path:        base + "/{routeID}/flow/trace",
 			Group:       g,

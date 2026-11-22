@@ -3880,6 +3880,19 @@
           "no_replica": "No {role} replica is running.",
           "forwarded": "Forwarded to {endpoint} as {path}."
         }
+      },
+      "live": {
+        "toggle": "Live traffic · last 15 min",
+        "perMinute": "{n}/min",
+        "requests": "request | requests",
+        "visitors": "visitor | visitors",
+        "sparkLabel": "Requests per minute over the last 15 minutes, errors in red",
+        "quiet": "No traffic in the last 15 minutes.",
+        "gatewayTime": "{ms} on average in the gateway",
+        "earlyAnswers": "Answered early:",
+        "splitNote": "Live numbers are for both releases together; per-release numbers need gateway support.",
+        "backendLine": "p95 {p95} · 5xx {errors}",
+        "maintCount": "{n} × {code} in the last 15 min"
       }
     }
   },

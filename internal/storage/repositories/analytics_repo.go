@@ -101,6 +101,19 @@ func (r *AnalyticsRepository) RangeSummary(workspaceID uint, appID *uint, since,
 	return rows, err
 }
 
+var routeColumns = []string{
+	"id", "bucket", "requests", "status2xx", "status3xx", "status4xx", "status5xx",
+	"duration_hist", "duration_sum", "upstream_sum", "visitors_hll", "status_codes",
+}
+
+func (r *AnalyticsRepository) RouteRange(workspaceID uint, routeName string, since, until time.Time) ([]models.AnalyticsRollup, error) {
+	var rows []models.AnalyticsRollup
+	err := r.db.Model(&models.AnalyticsRollup{}).Select(routeColumns).
+		Where("workspace_id = ? AND route_name = ? AND bucket >= ? AND bucket < ?", workspaceID, routeName, since, until).
+		Order("bucket ASC").Find(&rows).Error
+	return rows, err
+}
+
 func (r *AnalyticsRepository) AppIDs(workspaceID uint, since, until time.Time) ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&models.AnalyticsRollup{}).

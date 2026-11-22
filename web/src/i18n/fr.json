@@ -3880,6 +3880,19 @@
           "no_replica": "Aucune réplique {role} ne tourne.",
           "forwarded": "Transmise à {endpoint} en {path}."
         }
+      },
+      "live": {
+        "toggle": "Trafic en direct · 15 dernières min",
+        "perMinute": "{n}/min",
+        "requests": "requête | requêtes",
+        "visitors": "visiteur | visiteurs",
+        "sparkLabel": "Requêtes par minute sur les 15 dernières minutes, erreurs en rouge",
+        "quiet": "Aucun trafic ces 15 dernières minutes.",
+        "gatewayTime": "{ms} en moyenne dans la passerelle",
+        "earlyAnswers": "Réponses anticipées :",
+        "splitNote": "Chiffres en direct pour les deux versions ensemble ; le détail par version demande le support de la passerelle.",
+        "backendLine": "p95 {p95} · 5xx {errors}",
+        "maintCount": "{n} × {code} ces 15 dernières min"
       }
     }
   },
