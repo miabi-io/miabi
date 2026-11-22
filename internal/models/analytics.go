@@ -55,6 +55,8 @@ type AnalyticsRollup struct {
 	TopOS         map[string]int64 `gorm:"serializer:json" json:"-"`
 	TopDevice     map[string]int64 `gorm:"serializer:json" json:"-"` // desktop | mobile | tablet | bot
 	TopMethods    map[string]int64 `gorm:"serializer:json" json:"-"`
+	// StatusCodes counts 3xx–5xx by exact code, so an early answer (301, 401, 429) can be told from the app's own.
+	StatusCodes map[string]int64 `gorm:"serializer:json" json:"-"`
 
 	BotRequests int64 `json:"-"`
 }

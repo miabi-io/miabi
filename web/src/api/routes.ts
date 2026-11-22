@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Route, RouteFlow, RouteTLSMode, RouteTrace, RouteTraceRequest } from './types'
+import type { ApiResponse, Route, RouteFlow, RouteStats, RouteTLSMode, RouteTrace, RouteTraceRequest } from './types'
 
 export interface RouteInput {
   name: string
@@ -29,6 +29,7 @@ export const routeApi = {
   setSecurity: (ws: number, id: number, body: { exploit_protection?: boolean }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/security`, body),
   flow: (ws: number, id: number) => api.get<ApiResponse<RouteFlow>>(`${base(ws)}/${id}/flow`),
+  flowStats: (ws: number, id: number, range = '15m') => api.get<ApiResponse<RouteStats>>(`${base(ws)}/${id}/flow/stats`, { params: { range } }),
   trace: (ws: number, id: number, body: RouteTraceRequest) => api.post<ApiResponse<RouteTrace>>(`${base(ws)}/${id}/flow/trace`, body),
   setMaintenance: (ws: number, id: number, body: { enabled: boolean; status_code?: number; message?: string; html?: string }) =>
     api.patch<ApiResponse<Route>>(`${base(ws)}/${id}/maintenance`, body),

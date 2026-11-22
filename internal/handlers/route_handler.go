@@ -23,17 +23,61 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/proxy"
+	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/route"
 )
 
 type RouteHandler struct {
-	svc   *route.Service
-	audit *audit.Logger
+	svc          *route.Service
+	audit        *audit.Logger
+	stats        RouteStatsReader
+	statsEnabled bool
+}
+
+type RouteStatsReader interface {
+	RouteRange(workspaceID uint, routeName string, since, until time.Time) ([]models.AnalyticsRollup, error)
+}
+
+// WithStats wires the Flow tab's live overlay; without it, or with analytics off, stats report enabled: false.
+func (h *RouteHandler) WithStats(r RouteStatsReader, enabled bool) *RouteHandler {
+	h.stats, h.statsEnabled = r, enabled
+	return h
+}
+
+const maxRouteStatsWindow = 24 * time.Hour
+
+func (h *RouteHandler) Stats(c *okapi.Context) error {
+	id, err := h.id(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid route id")
+	}
+	wsID := middlewares.WorkspaceID(c)
+	rt, err := h.svc.Get(wsID, id)
+	if err != nil {
+		return c.AbortNotFound("route not found")
+	}
+	window := parseRange(c.Query("range"), 15*time.Minute)
+	if window > maxRouteStatsWindow {
+		window = maxRouteStatsWindow
+	}
+	// The minute in progress is not flushed yet; ending before it keeps the last point from reading as a drop.
+	until := time.Now().UTC().Truncate(time.Minute)
+	since := until.Add(-window)
+	if h.stats == nil || !h.statsEnabled {
+		return ok(c, analytics.RouteStats{Range: analytics.Window{Since: since, Until: until}})
+	}
+	rows, err := h.stats.RouteRange(wsID, proxy.GomaName(wsID, rt.Name), since, until)
+	if err != nil {
+		return c.AbortInternalServerError("failed to read route traffic", err)
+	}
+	return ok(c, analytics.BuildRouteStats(rows, since, until))
 }
 
 func NewRouteHandler(svc *route.Service, auditLog *audit.Logger) *RouteHandler {
