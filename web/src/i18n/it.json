@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "quando cambia la sua spec",
       "once": "una volta",
-      "onRelease": "a ogni release"
+      "onRelease": "a ogni release",
+      "beforeRelease": "prima di ogni release"
     },
     "attempt": "tentativo {n}",
     "applyHint": "Applicato da un manifest: il prossimo miabi apply sovrascrive le modifiche fatte qui.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "Certificato",
     "gitRepository": "Repository Git",
     "registryImage": "Immagine"
+  },
+  "preRelease": {
+    "title": "Comando pre-release",
+    "subtitle": "Viene eseguito nella nuova immagine prima che ogni release parta, ad esempio per le migrazioni del database.",
+    "lastRun": "ultima esecuzione: {status}",
+    "locked": "I Job di questa app provengono dalla sua sorgente. Dichiara lì un Job con runPolicy beforeRelease.",
+    "command": "Comando",
+    "commandHint": "Viene eseguito una volta per deployment, mai per replica né al riavvio. Rollback e promozioni canary lo saltano.",
+    "timeout": "Timeout (secondi)",
+    "retries": "Tentativi aggiuntivi",
+    "overBudget": "Timeout × (tentativi + 1) non deve superare {max} secondi, il tempo che un deployment può attendere.",
+    "failHint": "Se il comando fallisce, il deployment fallisce e la release attuale continua a servire.",
+    "save": "Salva comando pre-release",
+    "remove": "Rimuovi",
+    "saved": "Comando pre-release salvato; il prossimo deployment lo eseguirà.",
+    "removed": "Comando pre-release rimosso.",
+    "stepTitle": "Pre-release",
+    "stepHint": "Job eseguiti nell'immagine di questo deployment prima del suo avvio.",
+    "job": "Job",
+    "attempt": "Tentativo",
+    "duration": "Durata"
   }
 }

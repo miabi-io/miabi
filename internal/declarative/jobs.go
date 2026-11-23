@@ -40,6 +40,8 @@ const defaultJobHistory = 20
 // maxBackoffLimit caps retries, so a broken migration can't loop for hours.
 const maxBackoffLimit = 10
 
+var runPolicies = []string{RunOnChange, RunOnce, RunOnRelease, RunBeforeRelease}
+
 var concurrencyPolicies = []string{models.ConcurrencyAllow, models.ConcurrencyForbid, models.ConcurrencyReplace}
 
 func (r *Resource) validateCronJob() error {
@@ -75,13 +77,23 @@ func (r *Resource) validateJob() error {
 	if strings.TrimSpace(j.App) == "" {
 		return fmt.Errorf("job %q: app is required", name)
 	}
-	switch j.Policy() {
-	case RunOnChange, RunOnce, RunOnRelease:
-	default:
-		return fmt.Errorf("job %q: runPolicy must be one of %s, %s, %s", name, RunOnChange, RunOnce, RunOnRelease)
+	if !contains(runPolicies, j.Policy()) {
+		return fmt.Errorf("job %q: runPolicy must be one of %s", name, strings.Join(runPolicies, ", "))
 	}
 	if j.WaitForDeploy != nil && j.Policy() != RunOnChange {
 		return fmt.Errorf("job %q: waitForDeploy only applies to runPolicy %s", name, RunOnChange)
+	}
+	if j.Policy() == RunBeforeRelease {
+		if j.TimeoutSeconds <= 0 {
+			return fmt.Errorf("job %q: runPolicy %s needs timeoutSeconds, since the deploy waits for it", name, RunBeforeRelease)
+		}
+		if j.TimeoutSeconds*(j.BackoffLimit+1) > models.BeforeReleaseBudgetSecs {
+			return fmt.Errorf("job %q: timeoutSeconds × (backoffLimit + 1) must not exceed %d seconds for runPolicy %s, the time a deploy can wait",
+				name, models.BeforeReleaseBudgetSecs, RunBeforeRelease)
+		}
+		if _, ok := r.Metadata.Annotations[AnnotationSkipInitialRun]; ok {
+			return fmt.Errorf("job %q: %s has no meaning for runPolicy %s, which never runs on apply", name, AnnotationSkipInitialRun, RunBeforeRelease)
+		}
 	}
 	if j.BackoffLimit < 0 || j.BackoffLimit > maxBackoffLimit {
 		return fmt.Errorf("job %q: backoffLimit must be between 0 and %d", name, maxBackoffLimit)

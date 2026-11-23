@@ -1,4 +1,4 @@
-# A sync never reruns a Job with the same fingerprint; onRelease runs after the release is live, so keep migrations additive.
+# beforeRelease runs in each deploy's new image before it starts and fails the deploy when it fails; onRelease runs after the release is live.
 ---
 apiVersion: miabi.io/v1
 kind: Application
@@ -15,8 +15,9 @@ metadata:
 spec:
   app: shop-api
   command: ["./shop-api", "migrate", "up"]
-  runPolicy: onRelease
+  runPolicy: beforeRelease
   timeoutSeconds: 600
+  backoffLimit: 1
 ---
 apiVersion: miabi.io/v1
 kind: Job

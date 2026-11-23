@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "规范变更时",
       "once": "一次",
-      "onRelease": "每个版本"
+      "onRelease": "每个版本",
+      "beforeRelease": "每个版本发布前"
     },
     "attempt": "第 {n} 次尝试",
     "applyHint": "通过清单应用：下次执行 miabi apply 会覆盖此处所做的更改。",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "证书",
     "gitRepository": "Git 仓库",
     "registryImage": "镜像"
+  },
+  "preRelease": {
+    "title": "发布前命令",
+    "subtitle": "在每个版本启动前于新镜像中运行，例如数据库迁移。",
+    "lastRun": "上次运行：{status}",
+    "locked": "此应用的 Job 来自其源。请在那里声明 runPolicy 为 beforeRelease 的 Job。",
+    "command": "命令",
+    "commandHint": "每次部署运行一次，不会按副本运行，也不会在重启时运行。回滚和金丝雀提升会跳过它。",
+    "timeout": "超时（秒）",
+    "retries": "重试次数",
+    "overBudget": "超时 × (重试次数 + 1) 不能超过 {max} 秒，即部署可等待的时间。",
+    "failHint": "命令失败时，部署失败，当前版本继续提供服务。",
+    "save": "保存发布前命令",
+    "remove": "移除",
+    "saved": "发布前命令已保存；下次部署将运行它。",
+    "removed": "发布前命令已移除。",
+    "stepTitle": "发布前",
+    "stepHint": "此部署启动前在其镜像中运行的 Job。",
+    "job": "Job",
+    "attempt": "尝试",
+    "duration": "耗时"
   }
 }

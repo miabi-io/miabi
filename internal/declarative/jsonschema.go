@@ -283,7 +283,7 @@ func enumFor(typeName, field string) []string {
 	case "ReconcileSpec.Policy":
 		return reconcilePolicies
 	case "JobSpec.RunPolicy":
-		return []string{RunOnChange, RunOnce, RunOnRelease}
+		return runPolicies
 	case "CronJobSpec.ConcurrencyPolicy":
 		return concurrencyPolicies
 	case "DatabaseSpec.Engine":

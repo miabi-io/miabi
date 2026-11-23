@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "quando a especificação muda",
       "once": "uma vez",
-      "onRelease": "a cada versão"
+      "onRelease": "a cada versão",
+      "beforeRelease": "antes de cada versão"
     },
     "attempt": "tentativa {n}",
     "applyHint": "Aplicado a partir de um manifesto: o próximo miabi apply sobrescreve as alterações feitas aqui.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "Certificado",
     "gitRepository": "Repositório Git",
     "registryImage": "Imagem"
+  },
+  "preRelease": {
+    "title": "Comando pré-versão",
+    "subtitle": "Roda na nova imagem antes de cada versão iniciar, como migrações de banco de dados.",
+    "lastRun": "última execução: {status}",
+    "locked": "Os Jobs deste app vêm da sua origem. Declare lá um Job com runPolicy beforeRelease.",
+    "command": "Comando",
+    "commandHint": "Roda uma vez por deploy, nunca por réplica nem em reinício. Rollbacks e promoções canary o pulam.",
+    "timeout": "Tempo limite (segundos)",
+    "retries": "Novas tentativas",
+    "overBudget": "Tempo limite × (tentativas + 1) não pode passar de {max} segundos, o tempo que um deploy pode esperar.",
+    "failHint": "Se o comando falhar, o deploy falha e a versão atual continua no ar.",
+    "save": "Salvar comando pré-versão",
+    "remove": "Remover",
+    "saved": "Comando pré-versão salvo; o próximo deploy vai executá-lo.",
+    "removed": "Comando pré-versão removido.",
+    "stepTitle": "Pré-versão",
+    "stepHint": "Jobs que rodaram na imagem deste deploy antes de ele iniciar.",
+    "job": "Job",
+    "attempt": "Tentativa",
+    "duration": "Duração"
   }
 }

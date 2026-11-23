@@ -101,8 +101,15 @@ func (h *JobHandler) Run(c *okapi.Context, req *RunJobRequest) error {
 	return created(c, j)
 }
 
-// List returns the workspace's job history, optionally filtered to ?app_id.
+// List returns the workspace's job history, filtered to ?app_id, or to the runs that gated ?deployment_id.
 func (h *JobHandler) List(c *okapi.Context) error {
+	if dep := queryUint(c, "deployment_id"); dep > 0 {
+		jobs, err := h.svc.ListForDeployment(middlewares.WorkspaceID(c), dep)
+		if err != nil {
+			return c.AbortInternalServerError("failed to list jobs", err)
+		}
+		return ok(c, jobs)
+	}
 	jobs, err := h.svc.List(middlewares.WorkspaceID(c), queryUint(c, "app_id"), 200)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list jobs", err)
@@ -275,6 +282,70 @@ func (h *JobHandler) RunJobDefinition(c *okapi.Context) error {
 	return created(c, j)
 }
 
+type PreReleaseRequest struct {
+	Body job.PreReleaseCommand `json:"body"`
+}
+
+// GetPreRelease returns the app's console pre-release command, or null.
+func (h *JobHandler) GetPreRelease(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	app, abort := h.preReleaseApp(c, wsID, false)
+	if app == nil {
+		return abort
+	}
+	def, err := h.svc.GetPreReleaseCommand(wsID, app)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return ok(c, def)
+}
+
+// PutPreRelease stores the command as a beforeRelease Job; the next deploy runs it.
+func (h *JobHandler) PutPreRelease(c *okapi.Context, req *PreReleaseRequest) error {
+	wsID := middlewares.WorkspaceID(c)
+	app, abort := h.preReleaseApp(c, wsID, true)
+	if app == nil {
+		return abort
+	}
+	def, err := h.svc.SetPreReleaseCommand(c.Request().Context(), wsID, app, req.Body)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "job_definition.pre_release.update", def.ID)
+	return ok(c, def)
+}
+
+func (h *JobHandler) DeletePreRelease(c *okapi.Context) error {
+	wsID := middlewares.WorkspaceID(c)
+	app, abort := h.preReleaseApp(c, wsID, true)
+	if app == nil {
+		return abort
+	}
+	if err := h.svc.DeletePreReleaseCommand(c.Request().Context(), wsID, app); err != nil {
+		return h.mapErr(c, err)
+	}
+	h.record(c, wsID, "job_definition.pre_release.delete", app.ID)
+	return message(c, "pre-release command removed")
+}
+
+// preReleaseApp returns a nil app with the abort result; a GitOps or marketplace app takes its Jobs from its source.
+func (h *JobHandler) preReleaseApp(c *okapi.Context, wsID uint, write bool) (*models.Application, error) {
+	id, err := appIDParam(c)
+	if err != nil {
+		return nil, c.AbortBadRequest(err.Error())
+	}
+	app, err := h.svc.App(wsID, id)
+	if err != nil {
+		return nil, h.mapErr(c, err)
+	}
+	if write {
+		if owner, owned := models.SourceOwnedElsewhere(app.Metadata); owned {
+			return nil, c.AbortWithError(http.StatusConflict, ownedErr("application", owner))
+		}
+	}
+	return app, nil
+}
+
 func (h *JobHandler) definitionID(c *okapi.Context) uint {
 	id, _ := strconv.Atoi(c.Param("definitionID"))
 	return uint(id)
@@ -318,6 +389,10 @@ func (h *JobHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, job.ErrCronNotFound):
 		return c.AbortNotFound("cronjob not found")
 	case errors.Is(err, job.ErrCronNameTaken):
+		return c.AbortWithError(409, err)
+	case errors.Is(err, job.ErrPreReleaseInvalid):
+		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, job.ErrPreReleaseNameTaken):
 		return c.AbortWithError(409, err)
 	case errors.Is(err, job.ErrDefinitionNotFound):
 		return c.AbortNotFound("job definition not found")

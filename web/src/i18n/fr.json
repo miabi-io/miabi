@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "quand sa spec change",
       "once": "une fois",
-      "onRelease": "à chaque version"
+      "onRelease": "à chaque version",
+      "beforeRelease": "avant chaque version"
     },
     "attempt": "tentative {n}",
     "applyHint": "Appliqué depuis un manifeste : le prochain miabi apply écrase les modifications faites ici.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "Certificat",
     "gitRepository": "Dépôt Git",
     "registryImage": "Image"
+  },
+  "preRelease": {
+    "title": "Commande de pré-release",
+    "subtitle": "S'exécute dans la nouvelle image avant le démarrage de chaque version, par exemple pour les migrations de base de données.",
+    "lastRun": "dernière exécution : {status}",
+    "locked": "Les Jobs de cette application viennent de sa source. Déclarez-y un Job avec runPolicy beforeRelease.",
+    "command": "Commande",
+    "commandHint": "S'exécute une fois par déploiement, jamais par réplique ni au redémarrage. Les rollbacks et les promotions canari l'ignorent.",
+    "timeout": "Délai maximal (secondes)",
+    "retries": "Nouvelles tentatives",
+    "overBudget": "Délai × (tentatives + 1) ne doit pas dépasser {max} secondes, le temps qu'un déploiement peut attendre.",
+    "failHint": "Si la commande échoue, le déploiement échoue et la version actuelle continue de servir.",
+    "save": "Enregistrer la commande de pré-release",
+    "remove": "Supprimer",
+    "saved": "Commande de pré-release enregistrée ; le prochain déploiement l'exécutera.",
+    "removed": "Commande de pré-release supprimée.",
+    "stepTitle": "Pré-release",
+    "stepHint": "Jobs exécutés dans l'image de ce déploiement avant son démarrage.",
+    "job": "Job",
+    "attempt": "Tentative",
+    "duration": "Durée"
   }
 }

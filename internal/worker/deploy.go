@@ -100,6 +100,9 @@ type DeployHandler struct {
 
 	// Optional; nil deploys ignore GPUs.
 	gpu GPUScheduler
+
+	preJobs preReleaseRunner
+	preDefs PreReleaseSource
 }
 
 type GPUScheduler interface {
@@ -502,6 +505,11 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 				return
 			}
 		}
+	}
+
+	// Nothing has started or stopped yet, so a failed migration leaves the current release serving.
+	if !h.runPreRelease(ctx, app, dep, image) {
+		return
 	}
 
 	if app.RuntimeKind == models.RuntimeService {
@@ -1350,7 +1358,7 @@ func (h *DeployHandler) autoPromoteCanary(app *models.Application, rel *models.R
 		image = rel.Image
 	}
 	dep := &models.Deployment{
-		ApplicationID: app.ID, Image: image, Trigger: "auto",
+		ApplicationID: app.ID, Image: image, Trigger: "promote",
 		Strategy: models.DeployRolling, RegistryID: app.RegistryID, Status: models.DeploymentPending,
 	}
 	if err := h.deployments.Create(dep); err != nil {
@@ -2053,14 +2061,23 @@ func effectiveStrategy(requested models.DeployStrategy, publishedHostPorts int) 
 	return requested
 }
 
-func failedAppStatus(hasCurrentRelease bool, strategy models.DeployStrategy) models.AppStatus {
-	if hasCurrentRelease && strategy != models.DeployRecreate {
+func failedAppStatus(hasCurrentRelease, stoppedCurrent bool) models.AppStatus {
+	if hasCurrentRelease && !stoppedCurrent {
 		return models.AppStatusRunning
 	}
 	return models.AppStatusFailed
 }
 
 func (h *DeployHandler) fail(dep *models.Deployment, cause error) error {
+	return h.failDeploy(dep, cause, dep.Strategy == models.DeployRecreate)
+}
+
+// failBeforeSwap fails a deploy that stopped nothing, so even a recreate leaves the current release serving.
+func (h *DeployHandler) failBeforeSwap(dep *models.Deployment, cause error) error {
+	return h.failDeploy(dep, cause, false)
+}
+
+func (h *DeployHandler) failDeploy(dep *models.Deployment, cause error, stoppedCurrent bool) error {
 	finished := time.Now()
 	dep.Status = models.DeploymentFailed
 	dep.Error = cause.Error()
@@ -2070,9 +2087,9 @@ func (h *DeployHandler) fail(dep *models.Deployment, cause error) error {
 	app, _ := h.apps.FindByID(dep.ApplicationID)
 	hasCurrentRelease := app != nil && app.CurrentReleaseID != nil
 	if app == nil || app.Status != models.AppStatusDeleting {
-		_ = h.apps.SetStatus(dep.ApplicationID, failedAppStatus(hasCurrentRelease, dep.Strategy))
+		_ = h.apps.SetStatus(dep.ApplicationID, failedAppStatus(hasCurrentRelease, stoppedCurrent))
 	}
-	if app != nil && dep.Strategy != models.DeployRecreate {
+	if app != nil && !stoppedCurrent {
 		h.revertRuntimeSwitch(app, dep)
 	}
 

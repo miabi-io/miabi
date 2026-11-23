@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "其規格變更時",
       "once": "一次",
-      "onRelease": "每次發布版本時"
+      "onRelease": "每次發布版本時",
+      "beforeRelease": "每次發布版本前"
     },
     "attempt": "第 {n} 次嘗試",
     "applyHint": "從資訊清單套用：下次 miabi apply 會覆寫在此所做的變更。",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "憑證",
     "gitRepository": "Git 儲存庫",
     "registryImage": "映像檔"
+  },
+  "preRelease": {
+    "title": "發布前指令",
+    "subtitle": "在每個版本啟動前於新映像中執行，例如資料庫遷移。",
+    "lastRun": "上次執行：{status}",
+    "locked": "此應用程式的 Job 來自其來源。請在那裡宣告 runPolicy 為 beforeRelease 的 Job。",
+    "command": "指令",
+    "commandHint": "每次部署執行一次，不會依副本執行，也不會在重新啟動時執行。回復與金絲雀升級會略過它。",
+    "timeout": "逾時（秒）",
+    "retries": "重試次數",
+    "overBudget": "逾時 × (重試次數 + 1) 不得超過 {max} 秒，即部署可等待的時間。",
+    "failHint": "指令失敗時，部署會失敗，目前版本繼續提供服務。",
+    "save": "儲存發布前指令",
+    "remove": "移除",
+    "saved": "發布前指令已儲存；下次部署會執行它。",
+    "removed": "發布前指令已移除。",
+    "stepTitle": "發布前",
+    "stepHint": "此部署啟動前在其映像中執行的 Job。",
+    "job": "Job",
+    "attempt": "嘗試",
+    "duration": "耗時"
   }
 }

@@ -41,7 +41,7 @@ func TestFailedAppStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := failedAppStatus(tc.hasCurrent, tc.strategy); got != tc.want {
+			if got := failedAppStatus(tc.hasCurrent, tc.strategy == models.DeployRecreate); got != tc.want {
 				t.Errorf("failedAppStatus(%v, %q) = %q, want %q", tc.hasCurrent, tc.strategy, got, tc.want)
 			}
 		})

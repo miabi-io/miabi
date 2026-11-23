@@ -530,6 +530,8 @@ const (
 	RunOnce = "once"
 	// RunOnRelease fires however the deploy started (GitOps, console, pipeline, rollback).
 	RunOnRelease = "onRelease"
+	// RunBeforeRelease runs in each deploy's new image before it starts; a failure fails the deploy.
+	RunBeforeRelease = "beforeRelease"
 )
 
 // JobSpec never runs twice for the same commit; a failed run is not retried by the next sync.
@@ -544,7 +546,7 @@ type JobSpec struct {
 	Image string `yaml:"image,omitempty" json:"image,omitempty"`
 	// Registry names the Registry credential that pulls Image. Only valid with image.
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
+	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default. Required for beforeRelease.
 	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
 	// RunPolicy omitted means onChange.
 	RunPolicy string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`

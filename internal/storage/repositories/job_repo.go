@@ -227,6 +227,33 @@ func (r *JobRepository) ListOnReleaseDefinitions(appID uint) ([]models.JobDefini
 	return out, err
 }
 
+func (r *JobRepository) ListBeforeReleaseDefinitions(appID uint) ([]models.JobDefinition, error) {
+	var out []models.JobDefinition
+	err := r.db.Where("application_id = ? AND run_policy = ?", appID, models.JobRunBeforeRelease).Order("name ASC").Find(&out).Error
+	return out, err
+}
+
+func (r *JobRepository) SucceededForDeployment(defID, deploymentID uint) (bool, error) {
+	var n int64
+	err := r.db.Model(&models.Job{}).
+		Where("job_definition_id = ? AND deployment_id = ? AND status = ?", defID, deploymentID, models.JobSucceeded).
+		Count(&n).Error
+	return n > 0, err
+}
+
+func (r *JobRepository) ListByDeployment(workspaceID, deploymentID uint) ([]models.Job, error) {
+	var out []models.Job
+	err := r.db.Where("workspace_id = ? AND deployment_id = ?", workspaceID, deploymentID).Order("id ASC").Find(&out).Error
+	return out, err
+}
+
+func (r *JobRepository) ActiveForDeployment(defID, deploymentID uint) ([]models.Job, error) {
+	var jobs []models.Job
+	err := r.db.Where("job_definition_id = ? AND deployment_id = ? AND status IN ?", defID, deploymentID,
+		[]models.JobStatus{models.JobPending, models.JobRunning}).Find(&jobs).Error
+	return jobs, err
+}
+
 // DeleteJobDefinition removes a definition and detaches its runs, which stay as history.
 func (r *JobRepository) DeleteJobDefinition(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {

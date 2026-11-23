@@ -53,6 +53,8 @@ const (
 	JobSourceApply = "apply"
 	// JobSourceRelease is a run of an onRelease Job started by a release becoming active.
 	JobSourceRelease = "release"
+	// JobSourceBeforeRelease is a run of a beforeRelease Job inside a deploy, before the release starts.
+	JobSourceBeforeRelease = "beforeRelease"
 )
 
 // Job runs in an app's runtime context; secrets are resolved into the container env and never persisted on the row.
@@ -71,6 +73,8 @@ type Job struct {
 	JobDefinitionID *uint `json:"job_definition_id,omitempty" gorm:"index"`
 	// Runs on the release the deploy activates, or is skipped when the deploy fails.
 	WaitDeploymentID *uint `json:"wait_deployment_id,omitempty"`
+	// DeploymentID is the deploy a beforeRelease run gates.
+	DeploymentID *uint `json:"deployment_id,omitempty" gorm:"index"`
 	// Attempt numbers a declared Job's retries of one run, from 1.
 	Attempt int    `json:"attempt,omitempty" gorm:"not null;default:1"`
 	AppName string `json:"app_name,omitempty" gorm:"-"`
@@ -154,10 +158,14 @@ type CronJob struct {
 
 // Job definition run policies (see declarative.JobSpec).
 const (
-	JobRunOnChange  = "onChange"
-	JobRunOnce      = "once"
-	JobRunOnRelease = "onRelease"
+	JobRunOnChange      = "onChange"
+	JobRunOnce          = "once"
+	JobRunOnRelease     = "onRelease"
+	JobRunBeforeRelease = "beforeRelease"
 )
+
+// BeforeReleaseBudgetSecs keeps every attempt of a beforeRelease run inside the deploy task's 30-minute asynq deadline.
+const BeforeReleaseBudgetSecs = 30 * 60
 
 // JobDefinition is a declared Job template; each run is an ordinary Job pointing back via JobDefinitionID.
 type JobDefinition struct {

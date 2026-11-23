@@ -2,7 +2,7 @@ import api, { sseUrl } from './client'
 import type {
   ApiResponse, DatabaseInstance, DatabaseSizeOffer, DBLiveStatus, LogicalDatabase, ConnectionInfo, ForwardSession, DBEngine, EngineDefault, UpgradeOptions, UpgradePlan,
   Volume, VolumeDetail, VolumeFile, VolumeBackup, VolumeBackupStatus, VolumeBackupSchedule, WorkspaceStorage, StorageClassOption, Backup, BackupSchedule, DatabaseBackupSet, DatabaseBackupSetSchedule, BackupSetsResponse, DiscoveredSet, AdoptResult, Restore, VerifyResult, AccentCode, AccentPolicy, MetricSample, StatsSample, ApiKey, ApiKeyCreated, CreateApiKeyInput, CreateServiceAccountKeyInput, User,
-  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, JobEnvVar, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
+  Member, Invitation, AuditLog, AuditLogDetail, RecentEvent, PageableResponse, Job, CronJob, JobDefinition, JobEnvVar, PreReleaseCommand, WorkspaceUsage, WorkspaceLiveSample, WorkspaceHistoryPoint,
   SecurityStatus, SecurityOverview, SecurityPolicy, SavePolicyInput, SecurityEvent, ApprovedBinding,
 } from './types'
 
@@ -49,6 +49,16 @@ export const jobApi = {
   definitions: (ws: number, appId?: number) =>
     api.get<ApiResponse<JobDefinition[]>>(`${w(ws)}/job-definitions${appId ? `?app_id=${appId}` : ''}`),
   runDefinition: (ws: number, defId: number) => api.post<ApiResponse<Job>>(`${w(ws)}/job-definitions/${defId}/run`),
+
+  // The beforeRelease runs that gated one deployment.
+  forDeployment: (ws: number, deploymentId: number) =>
+    api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs?deployment_id=${deploymentId}`),
+  preRelease: (ws: number, appId: number) =>
+    api.get<ApiResponse<JobDefinition | null>>(`${w(ws)}/apps/${appId}/pre-release`),
+  setPreRelease: (ws: number, appId: number, body: PreReleaseCommand) =>
+    api.put<ApiResponse<JobDefinition>>(`${w(ws)}/apps/${appId}/pre-release`, body),
+  removePreRelease: (ws: number, appId: number) =>
+    api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/apps/${appId}/pre-release`),
 }
 
 export const databaseApi = {

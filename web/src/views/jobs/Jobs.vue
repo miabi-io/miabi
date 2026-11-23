@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { jobApi, usageApi, type CronJobInput } from '@/api/resources'
@@ -46,6 +47,8 @@ function runAsUserError(v: string): string {
 const runUserError = computed(() => runAsUserError(runForm.value.run_as_user))
 const cronUserError = computed(() => runAsUserError(cronForm.value.run_as_user))
 
+let linkedJob = Number(useRoute().query.job) || 0
+
 async function load() {
   const id = currentWorkspaceId.value
   if (!id) { jobs.value = []; cronJobs.value = []; definitions.value = []; return }
@@ -67,6 +70,11 @@ async function load() {
     if (logModal.value) {
       const fresh = jobs.value.find((x) => x.id === logModal.value?.id)
       if (fresh) logModal.value = fresh
+    } else if (linkedJob) {
+      // A deployment's pre-release step links here; the run may be older than the list's window.
+      const jobId = linkedJob
+      linkedJob = 0
+      logModal.value = jobs.value.find((x) => x.id === jobId) ?? (await jobApi.get(id, jobId)).data.data
     }
   } catch (e) { notify.apiError(e) }
 }
