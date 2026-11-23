@@ -29,6 +29,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/miabi-io/miabi/internal/models"
 )
 
 // Embedded so the generator can read doc comments reflection cannot see; editors show them as hovers.
@@ -280,8 +282,35 @@ func enumFor(typeName, field string) []string {
 		return []string{"http", "https"}
 	case "ReconcileSpec.Policy":
 		return reconcilePolicies
+	case "JobSpec.RunPolicy":
+		return []string{RunOnChange, RunOnce, RunOnRelease}
+	case "CronJobSpec.ConcurrencyPolicy":
+		return concurrencyPolicies
+	case "DatabaseSpec.Engine":
+		return engineEnum(func(models.DBEngine) bool { return true })
+	case "DatabaseInstanceSpec.Engine":
+		return engineEnum(models.EngineSupportsLogicalDatabases)
+	case "GitRepositorySpec.Auth":
+		return sortedKeys(validGitAuth)
+	case "GitSourceSpec.SyncPolicy":
+		return sortedKeys(validSync)
+	case "GitSourceSpec.DeletePolicy":
+		return sortedKeys(validDelete)
+	case "SourceSpec.BuildMethod":
+		return sortedKeys(validBuildMethod)
 	}
 	return nil
+}
+
+func engineEnum(keep func(models.DBEngine) bool) []string {
+	out := []string{}
+	for e := range validEngines {
+		if keep(e) {
+			out = append(out, string(e))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func sortedKeys(m map[string]bool) []string {

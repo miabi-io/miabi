@@ -545,8 +545,9 @@ type JobSpec struct {
 	// Registry names the Registry credential that pulls Image. Only valid with image.
 	Registry string `yaml:"registry,omitempty" json:"registry,omitempty"`
 	// TimeoutSeconds stops a run that takes longer; 0 uses the platform default.
-	TimeoutSeconds int    `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
-	RunPolicy      string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`
+	TimeoutSeconds int `yaml:"timeoutSeconds,omitempty" json:"timeoutSeconds,omitempty"`
+	// RunPolicy omitted means onChange.
+	RunPolicy string `yaml:"runPolicy,omitempty" json:"runPolicy,omitempty"`
 	// WaitForDeploy (onChange only) runs on the new release; a failed deploy marks the run skipped.
 	WaitForDeploy *bool `yaml:"waitForDeploy,omitempty" json:"waitForDeploy,omitempty"`
 	// HistoryLimit is how many finished runs to keep; 0 keeps the default 20.

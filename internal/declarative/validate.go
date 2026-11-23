@@ -56,6 +56,9 @@ var (
 	validTLS       = map[string]bool{"acme": true, "custom": true, "off": true}
 	validDomainTLS = map[string]bool{"acme": true, "custom": true}
 	placements     = map[string]bool{"auto": true, "dedicated": true, "shared": true}
+	validGitAuth   = map[string]bool{"public": true, "token": true, "ssh": true}
+	validSync      = map[string]bool{"manual": true, "auto": true}
+	validDelete    = map[string]bool{DeletePolicyOrphan: true, DeletePolicyCascade: true}
 )
 
 func (r *Resource) normalize() {
@@ -393,7 +396,7 @@ func (r *Resource) validateGitRepository() error {
 	switch {
 	case g.URL == "":
 		return fmt.Errorf("gitrepository %q: url is required", r.Metadata.Name)
-	case g.Auth != "public" && g.Auth != "token" && g.Auth != "ssh":
+	case !validGitAuth[g.Auth]:
 		return fmt.Errorf("gitrepository %q: auth %q must be public, token or ssh", r.Metadata.Name, g.Auth)
 	case g.Auth == "public" && g.SecretRef != "":
 		return fmt.Errorf("gitrepository %q: a public repository takes no secretRef", r.Metadata.Name)
@@ -415,9 +418,9 @@ func (r *Resource) validateGitSource() error {
 		return fmt.Errorf("gitsource %q: set exactly one of repo (a URL) and repository (a stored Git credential)", r.Metadata.Name)
 	case g.Repository != "" && !nameRe.MatchString(g.Repository):
 		return fmt.Errorf("gitsource %q: repository %q must be a resource name matching %s", r.Metadata.Name, g.Repository, nameRe)
-	case g.SyncPolicy != "manual" && g.SyncPolicy != "auto":
+	case !validSync[g.SyncPolicy]:
 		return fmt.Errorf("gitsource %q: syncPolicy %q must be manual or auto", r.Metadata.Name, g.SyncPolicy)
-	case g.DeletePolicy != DeletePolicyOrphan && g.DeletePolicy != DeletePolicyCascade:
+	case !validDelete[g.DeletePolicy]:
 		return fmt.Errorf("gitsource %q: deletePolicy %q must be orphan or cascade", r.Metadata.Name, g.DeletePolicy)
 	case strings.HasPrefix(g.Path, "/") || slices.Contains(strings.Split(g.Path, "/"), ".."):
 		return fmt.Errorf("gitsource %q: path %q must be relative to the repository root", r.Metadata.Name, g.Path)
