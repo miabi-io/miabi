@@ -618,6 +618,14 @@ type Deployment struct {
 type DeploymentWithActor struct {
 	Deployment
 	TriggeredByName string `json:"triggered_by_name,omitempty"`
+	// PreRelease is nil when the deployment ran no beforeRelease Job.
+	PreRelease *PreReleaseSummary `json:"pre_release,omitempty" gorm:"-"`
+}
+
+// PreReleaseSummary's Status is the latest run's, which is the one that decided the deploy.
+type PreReleaseSummary struct {
+	Runs   int       `json:"runs"`
+	Status JobStatus `json:"status"`
 }
 
 func (d *Deployment) BeforeCreate(tx *gorm.DB) error {

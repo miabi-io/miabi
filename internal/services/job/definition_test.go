@@ -314,3 +314,37 @@ func TestPreReleaseCommandRefusesForeignDefinition(t *testing.T) {
 		t.Errorf("err = %v, want name taken", err)
 	}
 }
+
+func TestPreReleaseSummariesAndFilters(t *testing.T) {
+	s, db, _ := newDefinitionSvc(t)
+	dep := func(id uint) *uint { return &id }
+	for _, j := range []models.Job{
+		{WorkspaceID: 1, ApplicationID: 1, Name: "migrate", Status: models.JobFailed, Source: models.JobSourceBeforeRelease, DeploymentID: dep(5)},
+		{WorkspaceID: 1, ApplicationID: 1, Name: "migrate", Status: models.JobSucceeded, Source: models.JobSourceBeforeRelease, DeploymentID: dep(5)},
+		{WorkspaceID: 1, ApplicationID: 1, Name: "migrate", Status: models.JobFailed, Source: models.JobSourceBeforeRelease, DeploymentID: dep(6)},
+		{WorkspaceID: 1, ApplicationID: 2, Name: "fix", Status: models.JobFailed, Source: models.JobSourceManual},
+	} {
+		if err := db.Create(&j).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	sums, err := repositories.NewDeploymentRepository(db).PreReleaseSummaries(1, []uint{5, 6, 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sums[5]; got.Runs != 2 || got.Status != models.JobSucceeded {
+		t.Errorf("deployment 5 = %+v, want 2 runs ending succeeded", got)
+	}
+	if got := sums[6]; got.Runs != 1 || got.Status != models.JobFailed {
+		t.Errorf("deployment 6 = %+v, want 1 failed run", got)
+	}
+	if _, ok := sums[7]; ok {
+		t.Error("a deployment without runs has no summary")
+	}
+	failed, _ := s.List(1, repositories.JobFilter{Status: models.JobFailed}, 0)
+	pre, _ := s.List(1, repositories.JobFilter{Status: models.JobFailed, Source: models.JobSourceBeforeRelease}, 0)
+	app2, _ := s.List(1, repositories.JobFilter{AppID: 2}, 0)
+	if len(failed) != 3 || len(pre) != 2 || len(app2) != 1 {
+		t.Errorf("failed = %d, failed pre-release = %d, app 2 = %d; want 3, 2, 1", len(failed), len(pre), len(app2))
+	}
+}

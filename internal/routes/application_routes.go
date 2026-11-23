@@ -656,7 +656,7 @@ func (r *Router) jobRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.job.List,
-			Summary:     "List job runs (optionally ?app_id= or ?deployment_id=)",
+			Summary:     "List job runs (optionally ?app_id=, ?status=, ?source= or ?deployment_id=)",
 		},
 		{
 			Method:      http.MethodPost,

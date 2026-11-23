@@ -57,6 +57,45 @@ func (r *DeploymentRepository) ListByApp(appID uint, limit int) ([]models.Deploy
 	return deployments, err
 }
 
+// PreReleaseSummaries maps each deployment that ran beforeRelease Jobs to its run count and latest status.
+func (r *DeploymentRepository) PreReleaseSummaries(appID uint, deploymentIDs []uint) (map[uint]models.PreReleaseSummary, error) {
+	out := map[uint]models.PreReleaseSummary{}
+	if len(deploymentIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		DeploymentID uint
+		Runs         int
+		LastID       uint
+	}
+	if err := r.db.Model(&models.Job{}).Select("deployment_id, COUNT(*) AS runs, MAX(id) AS last_id").
+		Where("application_id = ? AND deployment_id IN ?", appID, deploymentIDs).
+		Group("deployment_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	last := make([]uint, 0, len(rows))
+	for _, row := range rows {
+		last = append(last, row.LastID)
+	}
+	var statuses []struct {
+		ID     uint
+		Status models.JobStatus
+	}
+	if len(last) > 0 {
+		if err := r.db.Model(&models.Job{}).Select("id, status").Where("id IN ?", last).Scan(&statuses).Error; err != nil {
+			return nil, err
+		}
+	}
+	byID := make(map[uint]models.JobStatus, len(statuses))
+	for _, s := range statuses {
+		byID[s.ID] = s.Status
+	}
+	for _, row := range rows {
+		out[row.DeploymentID] = models.PreReleaseSummary{Runs: row.Runs, Status: byID[row.LastID]}
+	}
+	return out, nil
+}
+
 // A LEFT join, so a machine trigger or deleted user yields an empty name rather than dropping the row.
 func (r *DeploymentRepository) ListByAppWithActor(appID uint, limit int) ([]models.DeploymentWithActor, error) {
 	var out []models.DeploymentWithActor

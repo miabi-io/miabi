@@ -2608,7 +2608,6 @@
     "runs": "Läufe",
     "scheduleLabel": "Zeitplan (Cron, UTC)",
     "scheduled": "Geplant",
-    "scheduledTag": "geplant",
     "started": "Gestartet",
     "state": "Status",
     "subtitle": "Einmalige Befehle und Zeitpläne in den Laufzeitumgebungen Ihrer Anwendungen ausführen.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "Ausführung",
     "runAgain": "Erneut ausführen",
     "runAgainHint": "Jetzt ausführen; der nächste Sync führt ihn nur erneut aus, wenn sich sein Manifest ändert.",
-    "gitopsTag": "deklarierter Job {name}",
-    "releaseTag": "{name}, bei Release",
     "waitingForDeploy": "wartet auf das Deployment der Anwendung",
     "managedHint": "Von GitOps verwaltet: Ändern Sie ihn in seinem Manifest. Jetzt ausführen, Pausieren und Fortsetzen bleiben verfügbar.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "Job #{id}",
     "waitingToStart": "Warten auf Start…",
     "noOutput": "(keine Ausgabe)",
-    "enabledState": "aktiviert"
+    "enabledState": "aktiviert",
+    "filter": {
+      "allApps": "Alle Anwendungen",
+      "any": "Alle",
+      "source": "Quelle",
+      "search": "Name oder Befehl suchen",
+      "clear": "Filter zurücksetzen",
+      "noMatch": "Keine Jobs entsprechen diesen Filtern",
+      "openDeployment": "Das Deployment öffnen, das dieser Lauf freigegeben hat"
+    },
+    "source": {
+      "manual": "manuell",
+      "api": "API",
+      "scheduled": "Cronjob",
+      "beforeRelease": "Pre-Release",
+      "release": "bei Release",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "Verbindung testen"
@@ -6118,6 +6133,12 @@
     "stepHint": "Jobs, die vor dem Start im Image dieses Deployments liefen.",
     "job": "Job",
     "attempt": "Versuch",
-    "duration": "Dauer"
+    "duration": "Dauer",
+    "iconTitle": "Pre-Release: {n} Lauf/Läufe, {status}",
+    "noRuns": "Noch keine Pre-Release-Läufe für dieses Deployment.",
+    "attemptN": "Versuch {n}",
+    "exit": "Exit {code}",
+    "openInJobs": "In Jobs öffnen",
+    "viewRuns": "Läufe anzeigen"
   }
 }

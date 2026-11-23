@@ -6,6 +6,9 @@ import type { Job } from '@/api/types'
 const props = defineProps<{ wsId: number; deploymentId: number | null; active: boolean }>()
 
 const runs = ref<Job[]>([])
+const loaded = ref(false)
+const open = ref<Record<number, boolean>>({})
+const output = ref<Record<number, string>>({})
 let poll: ReturnType<typeof setInterval> | null = null
 
 async function load() {
@@ -15,15 +18,41 @@ async function load() {
   }
   try {
     runs.value = (await jobApi.forDeployment(props.wsId, props.deploymentId)).data.data ?? []
+    // Newest attempt first, and opened, since it is the one that decided the deploy.
+    runs.value.reverse()
+    const latest = runs.value[0]
+    if (latest && !Object.keys(open.value).length) toggle(latest.id)
+    for (const id of Object.keys(open.value).map(Number)) if (open.value[id]) fetchOutput(id)
   } catch {
     runs.value = []
+  } finally {
+    loaded.value = true
   }
+}
+
+async function fetchOutput(id: number) {
+  try {
+    output.value[id] = (await jobApi.get(props.wsId, id)).data.data?.logs ?? ''
+  } catch {
+    output.value[id] = ''
+  }
+}
+
+function toggle(id: number) {
+  open.value[id] = !open.value[id]
+  if (open.value[id]) fetchOutput(id)
 }
 
 function stopPoll() {
   if (poll) clearInterval(poll)
   poll = null
 }
+
+watch(() => [props.wsId, props.deploymentId], () => {
+  open.value = {}
+  output.value = {}
+  loaded.value = false
+}, { immediate: true })
 
 watch(() => [props.wsId, props.deploymentId, props.active], () => {
   load()
@@ -45,35 +74,37 @@ function duration(j: Job): string {
 </script>
 
 <template>
-  <div v-if="runs.length" class="card">
-    <div class="card-header">
-      <div>
-        <h2>{{ $t('preRelease.stepTitle') }}</h2>
-        <p class="card-subtitle">{{ $t('preRelease.stepHint') }}</p>
+  <div class="pre-runs">
+    <p class="form-hint">{{ $t('preRelease.stepHint') }}</p>
+    <p v-if="loaded && !runs.length" class="text-muted">{{ $t('preRelease.noRuns') }}</p>
+    <div v-for="j in runs" :key="j.id" class="pre-run" :class="{ open: open[j.id] }">
+      <div class="pre-run-head" role="button" tabindex="0" :aria-expanded="!!open[j.id]" @click="toggle(j.id)" @keydown.enter.prevent="toggle(j.id)">
+        <span class="mdi" :class="open[j.id] ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+        <span class="pre-run-name">{{ j.name }}</span>
+        <span class="cell-sub">{{ $t('preRelease.attemptN', { n: j.attempt ?? 1 }) }}</span>
+        <span class="cell-sub">{{ duration(j) }}</span>
+        <span v-if="j.exit_code != null" class="cell-sub">{{ $t('preRelease.exit', { code: j.exit_code }) }}</span>
+        <span class="badge badge-dot" :class="badge(j.status)">{{ j.status }}</span>
+        <router-link :to="{ name: 'jobs', query: { job: j.id } }" class="pre-run-link" @click.stop>
+          {{ $t('preRelease.openInJobs') }} <span class="mdi mdi-open-in-new"></span>
+        </router-link>
       </div>
-    </div>
-    <div class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th>{{ $t('preRelease.job') }}</th>
-            <th>{{ $t('preRelease.attempt') }}</th>
-            <th>{{ $t('preRelease.duration') }}</th>
-            <th class="text-right">{{ $t('dashboard.col.status') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="j in runs" :key="j.id">
-            <td>
-              <router-link :to="{ name: 'jobs', query: { job: j.id } }" class="cell-title">{{ j.name }}</router-link>
-              <div v-if="j.error" class="cell-sub dep-err" :title="j.error"><span class="mdi mdi-alert-circle-outline"></span> {{ j.error }}</div>
-            </td>
-            <td class="cell-sub">{{ j.attempt ?? 1 }}</td>
-            <td class="cell-sub">{{ duration(j) }}</td>
-            <td class="text-right"><span class="badge badge-dot" :class="badge(j.status)">{{ j.status }}</span></td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="open[j.id]" class="pre-run-body">
+        <p v-if="j.error" class="pre-run-error"><span class="mdi mdi-alert-circle-outline"></span> {{ j.error }}</p>
+        <pre class="pre-run-output">{{ output[j.id] ?? '…' }}</pre>
+      </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.pre-runs { display: flex; flex-direction: column; gap: 8px; }
+.pre-run { border: 1px solid var(--border-primary); border-radius: 8px; overflow: hidden; }
+.pre-run-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; }
+.pre-run-head:hover { background: var(--bg-hover); }
+.pre-run-name { font-weight: 600; }
+.pre-run-link { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.pre-run-body { padding: 0 12px 12px; }
+.pre-run-error { margin: 0 0 8px; font-size: 12px; color: var(--danger-600); }
+.pre-run-output { margin: 0; max-height: 320px; overflow: auto; padding: 10px; border-radius: 6px; background: var(--bg-code); color: #d4d4f8; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+</style>

@@ -2608,7 +2608,6 @@
     "runs": "실행",
     "scheduleLabel": "일정(cron, UTC)",
     "scheduled": "예약됨",
-    "scheduledTag": "예약됨",
     "started": "시작 시간",
     "state": "상태",
     "subtitle": "앱의 런타임 환경에서 일회성 명령과 일정을 실행합니다.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "실행",
     "runAgain": "다시 실행",
     "runAgainHint": "지금 실행합니다. 매니페스트가 변경되지 않는 한 다음 동기화에서 다시 실행되지 않습니다.",
-    "gitopsTag": "선언된 작업 {name}",
-    "releaseTag": "{name}, 릴리스 시",
     "waitingForDeploy": "앱 배포를 기다리는 중",
     "managedHint": "GitOps에서 관리합니다. 매니페스트에서 변경하세요. 지금 실행, 일시 중지, 재개는 계속 사용할 수 있습니다.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "작업 #{id}",
     "waitingToStart": "시작을 기다리는 중…",
     "noOutput": "(출력 없음)",
-    "enabledState": "활성화됨"
+    "enabledState": "활성화됨",
+    "filter": {
+      "allApps": "모든 애플리케이션",
+      "any": "전체",
+      "source": "출처",
+      "search": "이름 또는 명령 검색",
+      "clear": "필터 지우기",
+      "noMatch": "이 필터와 일치하는 Job이 없습니다",
+      "openDeployment": "이 실행이 관문 역할을 한 배포 열기"
+    },
+    "source": {
+      "manual": "수동",
+      "api": "API",
+      "scheduled": "크론잡",
+      "beforeRelease": "릴리스 전",
+      "release": "릴리스 시",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "연결 테스트"
@@ -6118,6 +6133,12 @@
     "stepHint": "이 배포가 시작되기 전에 해당 이미지에서 실행된 Job입니다.",
     "job": "Job",
     "attempt": "시도",
-    "duration": "소요 시간"
+    "duration": "소요 시간",
+    "iconTitle": "릴리스 전: {n}회 실행, {status}",
+    "noRuns": "이 배포에는 아직 릴리스 전 실행이 없습니다.",
+    "attemptN": "시도 {n}",
+    "exit": "종료 코드 {code}",
+    "openInJobs": "Jobs에서 열기",
+    "viewRuns": "실행 보기"
   }
 }

@@ -2608,7 +2608,6 @@
     "runs": "Runs",
     "scheduleLabel": "Schedule (cron, UTC)",
     "scheduled": "Scheduled",
-    "scheduledTag": "scheduled",
     "started": "Started",
     "state": "State",
     "subtitle": "Run one-off commands and schedules in your apps' runtime environments.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "Runs",
     "runAgain": "Run again",
     "runAgainHint": "Run now; the next sync won’t run it again unless its manifest changes.",
-    "gitopsTag": "declared job {name}",
-    "releaseTag": "{name}, on release",
     "waitingForDeploy": "waiting for the app’s deploy",
     "managedHint": "Managed by GitOps: change it in its manifest. Run now, pause and resume stay available.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "Job #{id}",
     "waitingToStart": "Waiting to start…",
     "noOutput": "(no output)",
-    "enabledState": "enabled"
+    "enabledState": "enabled",
+    "filter": {
+      "allApps": "All applications",
+      "any": "Any",
+      "source": "Source",
+      "search": "Search name or command",
+      "clear": "Clear filters",
+      "noMatch": "No jobs match these filters",
+      "openDeployment": "Open the deployment this run gated"
+    },
+    "source": {
+      "manual": "manual",
+      "api": "API",
+      "scheduled": "cronjob",
+      "beforeRelease": "pre-release",
+      "release": "on release",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "Test connection"
@@ -6118,6 +6133,12 @@
     "stepHint": "Jobs that ran in this deployment's image before it started.",
     "job": "Job",
     "attempt": "Attempt",
-    "duration": "Duration"
+    "duration": "Duration",
+    "iconTitle": "Pre-release: {n} run(s), {status}",
+    "noRuns": "No pre-release runs for this deployment yet.",
+    "attemptN": "attempt {n}",
+    "exit": "exit {code}",
+    "openInJobs": "Open in Jobs",
+    "viewRuns": "View runs"
   }
 }

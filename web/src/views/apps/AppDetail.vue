@@ -308,6 +308,20 @@ let es: EventSource | null = null
 const streamingNumber = computed(() =>
   deployments.value.find((d) => d.id === streamingId.value)?.number ?? null,
 )
+const selectedDeployment = computed(() => deployments.value.find((d) => d.id === streamingId.value) ?? null)
+type DeployPane = 'logs' | 'prerelease'
+const deployPane = ref<DeployPane>('logs')
+// The list only learns about pre-release runs on reload, so a live deploy is read from its log.
+const showPreReleasePane = computed(() =>
+  !!selectedDeployment.value?.pre_release || logs.value.some((l) => l.startsWith('pre-release: running')),
+)
+function preReleaseBadge(s?: string) {
+  return s === 'succeeded' ? 'badge-success' : s === 'failed' ? 'badge-danger' : s === 'canceled' || s === 'skipped' ? 'badge-warning' : 'badge-info'
+}
+function openPreRelease(id: number) {
+  streamLogs(id)
+  deployPane.value = 'prerelease'
+}
 
 // depStatusClass maps a deployment status to a badge variant for the log toolbar.
 function depStatusClass(s: string): string {
@@ -1108,6 +1122,7 @@ async function loadTab() {
         const target = deployments.value.find((d) => d.id === Number(route.query.deployment))
           ?? deployments.value.find((d) => d.current) ?? deployments.value[0]
         streamLogs(target.id)
+        if (route.query.pane === 'pre-release' && target.pre_release) deployPane.value = 'prerelease'
       }
     }
     else if (tab.value === 'environment') { envVars.value = (await appApi.envVars(wid.value, appId.value)).data.data ?? []; hideAllEnv(); loadManagedEnv() }
@@ -1477,6 +1492,9 @@ async function streamLogs(id: number) {
   es?.close()
   logs.value = []
   streamingId.value = id
+  const picked = deployments.value.find((d) => d.id === id)
+  // A deploy stopped by its pre-release step is explained there, not in the log tail.
+  deployPane.value = picked?.pre_release && picked.status === 'failed' && picked.error?.startsWith('pre-release') ? 'prerelease' : 'logs'
   deployStreaming.value = true
   deployStatus.value = 'streaming'
   deployLogsTrimmed.value = false
@@ -2825,6 +2843,14 @@ async function detachDatabase(d: AppDatabase) {
               <tr v-for="d in deployments" :key="d.id" class="row-clickable" :class="{ 'row-selected': streamingId === d.id }" @click="streamLogs(d.id)">
                 <td>
                   <span class="cell-title">#{{ d.number }}</span><code v-if="d.image_tag" class="image-tag" :title="$t('versioning.imageTagTitle')">{{ d.image_tag }}</code>
+                  <button
+                    v-if="d.pre_release"
+                    type="button"
+                    class="pre-release-icon"
+                    :class="'pre-release-' + d.pre_release.status"
+                    :title="$t('preRelease.iconTitle', { n: d.pre_release.runs, status: d.pre_release.status })"
+                    @click.stop="openPreRelease(d.id)"
+                  ><span class="mdi mdi-cog-outline"></span></button>
                   <div v-if="d.error" class="dep-err" :class="{ 'dep-err-full': streamingId === d.id }" :title="d.error"><span class="mdi mdi-alert-circle-outline"></span> {{ d.error }}</div>
                 </td>
                 <td class="cell-sub mono trunc" :title="d.image">{{ d.image || '—' }}</td>
@@ -2844,10 +2870,30 @@ async function detachDatabase(d: AppDatabase) {
           </table>
         </div>
       </div>
-      <PreReleaseRuns :ws-id="wid ?? 0" :deployment-id="streamingId" :active="deployStreaming" />
-      <div class="card">
-        <div class="card-header"><h2>{{ $t('appDetail.tab.logs') }} <span v-if="streamingNumber" class="cell-sub">#{{ streamingNumber }}</span></h2></div>
-        <div class="card-body">
+      <div class="card deploy-detail">
+        <div class="card-header deploy-detail-head">
+          <div>
+            <h2>{{ $t('appDetail.deployment') }} <span v-if="streamingNumber" class="cell-sub">#{{ streamingNumber }}</span></h2>
+            <p v-if="selectedDeployment" class="card-subtitle deploy-detail-meta">
+              <span class="badge badge-dot" :class="depBadge(selectedDeployment.status)">{{ selectedDeployment.status }}</span>
+              <span v-if="selectedDeployment.strategy">{{ selectedDeployment.strategy }}</span>
+              <span>{{ selectedDeployment.triggered_by_name || selectedDeployment.trigger }}</span>
+              <span :title="fmtDateTime(selectedDeployment.created_at)">{{ relTime(selectedDeployment.created_at) }}</span>
+              <code class="trunc" :title="selectedDeployment.image">{{ selectedDeployment.image }}</code>
+            </p>
+          </div>
+        </div>
+        <div v-if="showPreReleasePane" class="tabs deploy-panes">
+          <button type="button" class="tab" :class="{ active: deployPane === 'logs' }" @click="deployPane = 'logs'">{{ $t('appDetail.tab.logs') }}</button>
+          <button type="button" class="tab" :class="{ active: deployPane === 'prerelease' }" @click="deployPane = 'prerelease'">
+            {{ $t('preRelease.stepTitle') }}
+            <span v-if="selectedDeployment?.pre_release" class="badge badge-dot" :class="preReleaseBadge(selectedDeployment.pre_release.status)">{{ selectedDeployment.pre_release.runs }}</span>
+          </button>
+        </div>
+        <div v-if="deployPane === 'prerelease' && showPreReleasePane" class="card-body">
+          <PreReleaseRuns :ws-id="wid ?? 0" :deployment-id="streamingId" :active="deployStreaming" />
+        </div>
+        <div v-else class="card-body">
           <LogViewer
             :lines="logs"
             :streaming="deployStreaming"
@@ -4769,6 +4815,15 @@ tr.row-busy { opacity: 0.6; }
 .canary-legend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
 .dot-stable { background: var(--success-500, #22c55e); }
 .dot-canary { background: var(--warning-500, #f59e0b); }
+.pre-release-icon { margin-left: 6px; padding: 0 3px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; font-size: 14px; line-height: 1; vertical-align: middle; color: var(--text-muted); }
+.pre-release-icon:hover { background: var(--bg-hover); }
+.pre-release-succeeded { color: var(--success-600); }
+.pre-release-failed { color: var(--danger-600); }
+.pre-release-running, .pre-release-pending { color: var(--primary-600); }
+.pre-release-canceled, .pre-release-skipped { color: var(--warning-600, #d97706); }
+.deploy-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.deploy-detail-meta code { max-width: 100%; }
+.deploy-panes { margin: 0 20px; }
 .dep-err { margin-top: 3px; font-size: 12px; color: var(--danger-600); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* The deployment whose log is open shows its whole error next to it. */
 .dep-err-full { display: block; -webkit-line-clamp: unset; overflow: visible; }

@@ -2,7 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { jobApi, usageApi, type CronJobInput } from '@/api/resources'
@@ -18,7 +18,46 @@ const { t } = useI18n()
 const notify = useNotificationStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 
-const tab = ref<'runs' | 'scheduled' | 'declared'>('runs')
+type JobsTab = 'runs' | 'scheduled' | 'declared'
+const route = useRoute()
+const router = useRouter()
+const TABS: JobsTab[] = ['runs', 'scheduled', 'declared']
+const tab = ref<JobsTab>(TABS.includes(route.query.tab as JobsTab) ? (route.query.tab as JobsTab) : 'runs')
+
+const SOURCES = ['manual', 'api', 'scheduled', 'beforeRelease', 'release', 'gitops', 'apply'] as const
+const STATUSES = ['pending', 'running', 'succeeded', 'failed', 'canceled', 'skipped'] as const
+const qs = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '')
+// ?app= takes an id or a name, resolved once the apps load, so links can use either.
+const appQuery = ref(qs('app'))
+const filter = ref({ app: 0, status: qs('status'), source: qs('source'), q: qs('q') })
+const filtered = computed(() => !!(filter.value.app || filter.value.status || filter.value.source || filter.value.q))
+function clearFilters() { filter.value = { app: 0, status: '', source: '', q: '' } }
+function matchesText(...parts: (string | undefined)[]) {
+  const q = filter.value.q.trim().toLowerCase()
+  return !q || parts.some((p) => (p || '').toLowerCase().includes(q))
+}
+function matchesApp(appId: number) { return !filter.value.app || appId === filter.value.app }
+const shownJobs = computed(() => jobs.value.filter((j) => matchesText(j.name, cmd(j.command), j.app_name)))
+const shownCron = computed(() => cronJobs.value.filter((c) => matchesApp(c.application_id) && matchesText(c.name, c.display_name, cmd(c.command), c.app_name)))
+const shownDefs = computed(() => definitions.value.filter((d) => matchesApp(d.application_id) && matchesText(d.name, cmd(d.command), d.app_name)))
+function resolveAppQuery() {
+  const v = appQuery.value.replace(/^#/, '').trim()
+  if (!v) return
+  const byId = Number(v)
+  const hit = apps.value.find((a) => (byId && a.id === byId) || a.name === v)
+  appQuery.value = ''
+  if (hit && filter.value.app !== hit.id) filter.value.app = hit.id
+}
+watch([tab, filter], () => {
+  const f = filter.value
+  const query: Record<string, string> = {}
+  if (tab.value !== 'runs') query.tab = tab.value
+  if (f.app) query.app = String(f.app)
+  if (f.status) query.status = f.status
+  if (f.source) query.source = f.source
+  if (f.q) query.q = f.q
+  router.replace({ query })
+}, { deep: true })
 const jobs = ref<Job[]>([])
 const cronJobs = ref<CronJob[]>([])
 const definitions = ref<JobDefinition[]>([])
@@ -54,7 +93,7 @@ async function load() {
   if (!id) { jobs.value = []; cronJobs.value = []; definitions.value = []; return }
   try {
     const [j, c, d, a, r] = await Promise.all([
-      jobApi.list(id),
+      jobApi.list(id, { appId: filter.value.app, status: filter.value.status, source: filter.value.source }),
       jobApi.cronJobs(id),
       jobApi.definitions(id),
       appApi.list(id),
@@ -65,6 +104,7 @@ async function load() {
     definitions.value = d.data.data ?? []
     apps.value = a.data.data ?? []
     registries.value = r.data.data ?? []
+    if (appQuery.value) resolveAppQuery()
     // Separate + best-effort: a usage error must not blank the jobs list.
     try { requireNonRoot.value = (await usageApi.get(id)).data.data?.capabilities?.require_non_root === true } catch { requireNonRoot.value = false }
     if (logModal.value) {
@@ -80,6 +120,7 @@ async function load() {
 }
 
 watch(currentWorkspaceId, load, { immediate: true })
+watch(() => [filter.value.app, filter.value.status, filter.value.source], load)
 poll = setInterval(() => { if (hasActive.value || logModal.value) load() }, 4000)
 onBeforeUnmount(() => { if (poll) clearInterval(poll) })
 
@@ -250,6 +291,12 @@ async function runConfirm() {
 }
 
 function cmd(c: string[]) { return (c || []).join(' ') }
+const SOURCE_ICONS: Record<string, string> = {
+  manual: 'mdi-hand-back-right-outline', api: 'mdi-api', scheduled: 'mdi-clock-outline', beforeRelease: 'mdi-cog-outline',
+  release: 'mdi-rocket-launch-outline', gitops: 'mdi-source-branch', apply: 'mdi-console',
+}
+function sourceIcon(src: string) { return SOURCE_ICONS[src] || 'mdi-help-circle-outline' }
+function sourceLabel(src: string) { return (SOURCES as readonly string[]).includes(src) ? t('jobs.source.' + src) : src }
 function badge(s: string) {
   return s === 'succeeded' ? 'badge-success' : s === 'failed' ? 'badge-danger' : s === 'canceled' || s === 'skipped' ? 'badge-warning' : 'badge-info'
 }
@@ -276,9 +323,45 @@ const noApps = computed(() => apps.value.length === 0)
       <button class="tab" :class="{ active: tab === 'declared' }" @click="tab = 'declared'">{{ $t('jobs.declared') }}</button>
     </div>
 
+    <div class="job-filters">
+      <label class="job-filter">
+        <span class="job-filter-label">{{ $t('jobs.app') }}</span>
+        <select v-model.number="filter.app" class="form-input form-input-sm">
+          <option :value="0">{{ $t('jobs.filter.allApps') }}</option>
+          <option v-for="a in apps" :key="a.id" :value="a.id">{{ a.name }} · #{{ a.id }}</option>
+        </select>
+      </label>
+      <template v-if="tab === 'runs'">
+        <label class="job-filter">
+          <span class="job-filter-label">{{ $t('dashboard.col.status') }}</span>
+          <select v-model="filter.status" class="form-input form-input-sm">
+            <option value="">{{ $t('jobs.filter.any') }}</option>
+            <option v-for="st in STATUSES" :key="st" :value="st">{{ st }}</option>
+          </select>
+        </label>
+        <label class="job-filter">
+          <span class="job-filter-label">{{ $t('jobs.filter.source') }}</span>
+          <select v-model="filter.source" class="form-input form-input-sm">
+            <option value="">{{ $t('jobs.filter.any') }}</option>
+            <option v-for="src in SOURCES" :key="src" :value="src">{{ $t('jobs.source.' + src) }}</option>
+          </select>
+        </label>
+      </template>
+      <label class="job-filter job-filter-search">
+        <span class="mdi mdi-magnify"></span>
+        <input v-model.trim="filter.q" class="form-input form-input-sm" :placeholder="$t('jobs.filter.search')" />
+      </label>
+      <button v-if="filtered" type="button" class="btn btn-ghost btn-sm" @click="clearFilters">{{ $t('jobs.filter.clear') }}</button>
+    </div>
+
     <!-- Runs -->
     <div v-if="tab === 'runs'" class="card">
-      <div v-if="jobs.length === 0" class="empty-state">
+      <div v-if="shownJobs.length === 0 && filtered" class="empty-state">
+        <span class="mdi mdi-filter-off-outline" style="font-size: 44px; color: var(--text-muted)"></span>
+        <h3>{{ $t('jobs.filter.noMatch') }}</h3>
+        <button type="button" class="btn btn-secondary mt-4" @click="clearFilters">{{ $t('jobs.filter.clear') }}</button>
+      </div>
+      <div v-else-if="jobs.length === 0" class="empty-state">
         <span class="mdi mdi-console-line" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('jobs.noRuns') }}</h3>
         <p>{{ $t('jobs.runJobHint') }}</p>
@@ -286,20 +369,26 @@ const noApps = computed(() => apps.value.length === 0)
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('jobs.exit') }}</th><th>{{ $t('jobs.started') }}</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('jobs.filter.source') }}</th><th>{{ $t('dashboard.col.status') }}</th><th>{{ $t('jobs.exit') }}</th><th>{{ $t('jobs.started') }}</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="j in jobs" :key="j.id">
+            <tr v-for="j in shownJobs" :key="j.id">
               <td class="cell-sub">{{ j.app_name || appName(j.application_id) }}<div v-if="j.node" class="cell-sub"><span class="mdi mdi-server-network"></span> {{ j.node }}</div></td>
               <td>
                 <span class="cell-title" style="font-family: monospace">{{ j.name || cmd(j.command) }}</span>
                 <div v-if="j.name" class="cell-sub" style="font-family: monospace">{{ cmd(j.command) }}</div>
-                <div v-if="j.source === 'scheduled'" class="cell-sub"><span class="mdi mdi-clock-outline"></span>{{ $t('jobs.scheduledTag') }}</div>
-                <div v-else-if="j.source === 'gitops' || j.source === 'apply' || j.source === 'release'" class="cell-sub">
-                  <span class="mdi" :class="j.source === 'apply' ? 'mdi-console' : 'mdi-source-branch'"></span>{{ $t(j.source === 'release' ? 'jobs.releaseTag' : 'jobs.gitopsTag', { name: definitionName(j.job_definition_id) || j.name }) }}
-                </div>
                 <div v-if="j.status === 'pending' && j.wait_deployment_id" class="cell-sub">{{ $t('jobs.waitingForDeploy') }}</div>
                 <div v-if="(j.attempt ?? 1) > 1" class="cell-sub">{{ $t('jobs.attempt', { n: j.attempt }) }}</div>
                 <div v-if="j.status === 'skipped' && j.error" class="cell-sub">{{ j.error }}</div>
+              </td>
+              <td class="cell-sub source-cell">
+                <span class="mdi" :class="sourceIcon(j.source)"></span>
+                <router-link
+                  v-if="j.source === 'beforeRelease' && j.deployment_id"
+                  :to="{ name: 'app-detail', params: { id: j.application_id }, query: { tab: 'deployments', deployment: j.deployment_id, pane: 'pre-release' } }"
+                  :title="$t('jobs.filter.openDeployment')"
+                >{{ $t('jobs.source.beforeRelease') }} <span class="mdi mdi-open-in-new"></span></router-link>
+                <span v-else>{{ sourceLabel(j.source) }}</span>
+                <div v-if="j.job_definition_id && definitionName(j.job_definition_id) && definitionName(j.job_definition_id) !== j.name" class="cell-sub">{{ definitionName(j.job_definition_id) }}</div>
               </td>
               <td><span class="badge badge-dot" :class="badge(j.status)">{{ j.status }}</span></td>
               <td class="cell-sub">{{ j.exit_code ?? '—' }}</td>
@@ -317,7 +406,11 @@ const noApps = computed(() => apps.value.length === 0)
 
     <!-- Declared (kind: Job) -->
     <div v-else-if="tab === 'declared'" class="card">
-      <div v-if="definitions.length === 0" class="empty-state">
+      <div v-if="shownDefs.length === 0 && filtered && definitions.length" class="empty-state">
+        <h3>{{ $t('jobs.filter.noMatch') }}</h3>
+        <button type="button" class="btn btn-secondary mt-4" @click="clearFilters">{{ $t('jobs.filter.clear') }}</button>
+      </div>
+      <div v-else-if="definitions.length === 0" class="empty-state">
         <span class="mdi mdi-source-branch" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('jobs.noDeclared') }}</h3>
         <p>{{ $t('jobs.declaredHint') }}</p>
@@ -326,7 +419,7 @@ const noApps = computed(() => apps.value.length === 0)
         <table>
           <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('apps.form.name') }}</th><th>{{ $t('jobs.runPolicy') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('jobs.lastRun') }}</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="d in definitions" :key="d.id">
+            <tr v-for="d in shownDefs" :key="d.id">
               <td class="cell-sub">{{ d.app_name || appName(d.application_id) }}</td>
               <td class="cell-title" style="font-family: monospace">{{ d.name }}</td>
               <td class="cell-sub">{{ $t('jobs.policy.' + d.run_policy) }}</td>
@@ -346,7 +439,11 @@ const noApps = computed(() => apps.value.length === 0)
 
     <!-- Scheduled -->
     <div v-else class="card">
-      <div v-if="cronJobs.length === 0" class="empty-state">
+      <div v-if="shownCron.length === 0 && filtered && cronJobs.length" class="empty-state">
+        <h3>{{ $t('jobs.filter.noMatch') }}</h3>
+        <button type="button" class="btn btn-secondary mt-4" @click="clearFilters">{{ $t('jobs.filter.clear') }}</button>
+      </div>
+      <div v-else-if="cronJobs.length === 0" class="empty-state">
         <span class="mdi mdi-calendar-clock" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('jobs.noSchedules') }}</h3>
         <p>{{ $t('jobs.cronHint') }}</p>
@@ -356,7 +453,7 @@ const noApps = computed(() => apps.value.length === 0)
         <table>
           <thead><tr><th>{{ $t('jobs.app') }}</th><th>{{ $t('apps.form.name') }}</th><th>{{ $t('db.schedule') }}</th><th>{{ $t('jobs.command') }}</th><th>{{ $t('jobs.lastRun') }}</th><th>{{ $t('jobs.state') }}</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="c in cronJobs" :key="c.id">
+            <tr v-for="c in shownCron" :key="c.id">
               <td class="cell-sub">{{ c.app_name || appName(c.application_id) }}</td>
               <td>
                 <span class="cell-title">{{ c.display_name || c.name }}</span>
@@ -552,6 +649,15 @@ const noApps = computed(() => apps.value.length === 0)
 
 <style scoped>
 .text-muted { color: var(--text-muted); }
+.job-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.job-filter { display: flex; align-items: center; gap: 6px; }
+.job-filter-label { font-size: 12px; color: var(--text-muted); }
+.form-input-sm { padding: 6px 10px; font-size: 13px; }
+.job-filter select { min-width: 140px; }
+.job-filter-search { flex: 1; min-width: 180px; max-width: 320px; }
+.job-filter-search input { width: 100%; }
+.source-cell { white-space: nowrap; }
+.source-cell .mdi { margin-right: 4px; }
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border-primary); }
 .tab {
   padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent;

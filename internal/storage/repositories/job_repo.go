@@ -68,11 +68,24 @@ func (r *JobRepository) ListByApp(workspaceID, appID uint, limit int) ([]models.
 	return jobs, err
 }
 
-func (r *JobRepository) ListByWorkspace(workspaceID, appID uint, limit int) ([]models.Job, error) {
+// JobFilter narrows a job listing; zero fields match everything.
+type JobFilter struct {
+	AppID  uint
+	Status models.JobStatus
+	Source string
+}
+
+func (r *JobRepository) ListByWorkspace(workspaceID uint, f JobFilter, limit int) ([]models.Job, error) {
 	var jobs []models.Job
 	q := r.db.Where("workspace_id = ?", workspaceID).Order("created_at DESC")
-	if appID > 0 {
-		q = q.Where("application_id = ?", appID)
+	if f.AppID > 0 {
+		q = q.Where("application_id = ?", f.AppID)
+	}
+	if f.Status != "" {
+		q = q.Where("status = ?", f.Status)
+	}
+	if f.Source != "" {
+		q = q.Where("source = ?", f.Source)
 	}
 	if limit > 0 {
 		q = q.Limit(limit)

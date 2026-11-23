@@ -2843,6 +2843,18 @@ func (s *Service) ListDeployments(appID uint, limit int) ([]models.DeploymentWit
 			}
 		}
 	}
+	ids := make([]uint, len(deps))
+	for i := range deps {
+		ids[i] = deps[i].ID
+	}
+	// Best effort: the list stays usable without the pre-release badges.
+	if sums, err := s.deployments.PreReleaseSummaries(appID, ids); err == nil {
+		for i := range deps {
+			if sum, ok := sums[deps[i].ID]; ok {
+				deps[i].PreRelease = &sum
+			}
+		}
+	}
 	return deps, nil
 }
 

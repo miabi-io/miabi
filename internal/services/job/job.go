@@ -352,8 +352,9 @@ func (s *Service) pinName(serverID uint) string {
 	return s.nodeName(serverID)
 }
 
-func (s *Service) List(workspaceID, appID uint, limit int) ([]models.Job, error) {
-	jobs, err := s.repo.ListByWorkspace(workspaceID, appID, limit)
+// Filtering here rather than in the console keeps the limit from hiding older matches.
+func (s *Service) List(workspaceID uint, f repositories.JobFilter, limit int) ([]models.Job, error) {
+	jobs, err := s.repo.ListByWorkspace(workspaceID, f, limit)
 	if err != nil {
 		return nil, err
 	}
