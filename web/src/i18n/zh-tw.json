@@ -2608,7 +2608,6 @@
     "runs": "執行",
     "scheduleLabel": "排程（cron，UTC）",
     "scheduled": "已排程",
-    "scheduledTag": "排程",
     "started": "開始時間",
     "state": "狀態",
     "subtitle": "在應用程式的執行階段環境中執行一次性指令與排程。",
@@ -2622,8 +2621,6 @@
     "runPolicy": "執行時機",
     "runAgain": "再次執行",
     "runAgainHint": "立即執行；除非其資訊清單有變更，否則下次同步不會再次執行。",
-    "gitopsTag": "已宣告的工作 {name}",
-    "releaseTag": "{name}，隨版本執行",
     "waitingForDeploy": "等待應用程式部署",
     "managedHint": "由 GitOps 管理：請在其資訊清單中變更。仍可立即執行、暫停與繼續。",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "工作 #{id}",
     "waitingToStart": "等待啟動中…",
     "noOutput": "（沒有輸出）",
-    "enabledState": "已啟用"
+    "enabledState": "已啟用",
+    "filter": {
+      "allApps": "所有應用程式",
+      "any": "全部",
+      "source": "來源",
+      "search": "搜尋名稱或指令",
+      "clear": "清除篩選",
+      "noMatch": "沒有符合這些篩選條件的 Job",
+      "openDeployment": "開啟此執行所把關的部署"
+    },
+    "source": {
+      "manual": "手動",
+      "api": "API",
+      "scheduled": "排程工作",
+      "beforeRelease": "發布前",
+      "release": "發布時",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "測試連線"
@@ -6118,6 +6133,12 @@
     "stepHint": "此部署啟動前在其映像中執行的 Job。",
     "job": "Job",
     "attempt": "嘗試",
-    "duration": "耗時"
+    "duration": "耗時",
+    "iconTitle": "發布前：{n} 次執行，{status}",
+    "noRuns": "此部署尚無發布前執行。",
+    "attemptN": "第 {n} 次嘗試",
+    "exit": "結束代碼 {code}",
+    "openInJobs": "在 Jobs 中開啟",
+    "viewRuns": "檢視執行"
   }
 }

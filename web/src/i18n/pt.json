@@ -2608,7 +2608,6 @@
     "runs": "Execuções",
     "scheduleLabel": "Agendamento (cron, UTC)",
     "scheduled": "Agendados",
-    "scheduledTag": "agendado",
     "started": "Início",
     "state": "Estado",
     "subtitle": "Execute comandos avulsos e agendamentos nos ambientes de execução das suas aplicações.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "Execuções",
     "runAgain": "Executar novamente",
     "runAgainHint": "Executar agora; a próxima sincronização não o executará novamente, a menos que o manifesto mude.",
-    "gitopsTag": "job declarado {name}",
-    "releaseTag": "{name}, na versão",
     "waitingForDeploy": "aguardando a implantação da aplicação",
     "managedHint": "Gerenciado pelo GitOps: altere-o no manifesto. Executar agora, pausar e retomar continuam disponíveis.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "Job #{id}",
     "waitingToStart": "Aguardando o início…",
     "noOutput": "(sem saída)",
-    "enabledState": "ativado"
+    "enabledState": "ativado",
+    "filter": {
+      "allApps": "Todos os apps",
+      "any": "Qualquer",
+      "source": "Origem",
+      "search": "Buscar nome ou comando",
+      "clear": "Limpar filtros",
+      "noMatch": "Nenhum job corresponde a esses filtros",
+      "openDeployment": "Abrir o deploy que esta execução liberou"
+    },
+    "source": {
+      "manual": "manual",
+      "api": "API",
+      "scheduled": "cronjob",
+      "beforeRelease": "pré-versão",
+      "release": "na versão",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "Testar conexão"
@@ -6118,6 +6133,12 @@
     "stepHint": "Jobs que rodaram na imagem deste deploy antes de ele iniciar.",
     "job": "Job",
     "attempt": "Tentativa",
-    "duration": "Duração"
+    "duration": "Duração",
+    "iconTitle": "Pré-versão: {n} execução(ões), {status}",
+    "noRuns": "Ainda não há execuções pré-versão para este deploy.",
+    "attemptN": "tentativa {n}",
+    "exit": "saída {code}",
+    "openInJobs": "Abrir em Jobs",
+    "viewRuns": "Ver execuções"
   }
 }

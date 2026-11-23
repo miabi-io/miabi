@@ -31,6 +31,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/job"
+	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
 // JobHandler exposes one-off Jobs and CronJobs scoped to an app.
@@ -101,7 +102,7 @@ func (h *JobHandler) Run(c *okapi.Context, req *RunJobRequest) error {
 	return created(c, j)
 }
 
-// List returns the workspace's job history, filtered to ?app_id, or to the runs that gated ?deployment_id.
+// List returns the workspace's job history, filtered by ?app_id, ?status and ?source, or the runs that gated ?deployment_id.
 func (h *JobHandler) List(c *okapi.Context) error {
 	if dep := queryUint(c, "deployment_id"); dep > 0 {
 		jobs, err := h.svc.ListForDeployment(middlewares.WorkspaceID(c), dep)
@@ -110,7 +111,9 @@ func (h *JobHandler) List(c *okapi.Context) error {
 		}
 		return ok(c, jobs)
 	}
-	jobs, err := h.svc.List(middlewares.WorkspaceID(c), queryUint(c, "app_id"), 200)
+	jobs, err := h.svc.List(middlewares.WorkspaceID(c), repositories.JobFilter{
+		AppID: queryUint(c, "app_id"), Status: models.JobStatus(c.Query("status")), Source: c.Query("source"),
+	}, 200)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list jobs", err)
 	}

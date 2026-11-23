@@ -2608,7 +2608,6 @@
     "runs": "Ejecuciones",
     "scheduleLabel": "Programación (cron, UTC)",
     "scheduled": "Programados",
-    "scheduledTag": "programado",
     "started": "Inicio",
     "state": "Estado",
     "subtitle": "Ejecuta comandos puntuales y programaciones en los entornos de ejecución de tus aplicaciones.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "Ejecución",
     "runAgain": "Volver a ejecutar",
     "runAgainHint": "Ejecútalo ahora; la próxima sincronización no lo volverá a ejecutar salvo que cambie su manifiesto.",
-    "gitopsTag": "job declarado {name}",
-    "releaseTag": "{name}, en cada versión",
     "waitingForDeploy": "esperando el despliegue de la aplicación",
     "managedHint": "Gestionado por GitOps: modifícalo en su manifiesto. Ejecutar ahora, pausar y reanudar siguen disponibles.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "Job n.º {id}",
     "waitingToStart": "Esperando para iniciar…",
     "noOutput": "(sin salida)",
-    "enabledState": "activado"
+    "enabledState": "activado",
+    "filter": {
+      "allApps": "Todas las aplicaciones",
+      "any": "Cualquiera",
+      "source": "Origen",
+      "search": "Buscar nombre o comando",
+      "clear": "Quitar filtros",
+      "noMatch": "Ningún job coincide con estos filtros",
+      "openDeployment": "Abrir el despliegue que condicionó esta ejecución"
+    },
+    "source": {
+      "manual": "manual",
+      "api": "API",
+      "scheduled": "cronjob",
+      "beforeRelease": "previo a la versión",
+      "release": "en cada versión",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "Probar conexión"
@@ -6118,6 +6133,12 @@
     "stepHint": "Jobs que se ejecutaron en la imagen de este despliegue antes de arrancar.",
     "job": "Job",
     "attempt": "Intento",
-    "duration": "Duración"
+    "duration": "Duración",
+    "iconTitle": "Previo a la versión: {n} ejecución(es), {status}",
+    "noRuns": "Aún no hay ejecuciones previas para este despliegue.",
+    "attemptN": "intento {n}",
+    "exit": "salida {code}",
+    "openInJobs": "Abrir en Jobs",
+    "viewRuns": "Ver ejecuciones"
   }
 }

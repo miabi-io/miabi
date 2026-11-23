@@ -1630,6 +1630,9 @@ export interface Deployment {
   triggered_by_id?: number
   /** Resolved by a join; empty for a machine trigger or a deleted user. */
   triggered_by_name?: string
+  strategy?: string
+  /** Absent when the deployment ran no pre-release Job; status is the latest run's. */
+  pre_release?: { runs: number; status: JobRunStatus }
 }
 
 export interface Release {

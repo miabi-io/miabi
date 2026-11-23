@@ -2608,7 +2608,6 @@
     "runs": "実行",
     "scheduleLabel": "スケジュール（cron、UTC）",
     "scheduled": "スケジュール済み",
-    "scheduledTag": "スケジュール",
     "started": "開始",
     "state": "状態",
     "subtitle": "アプリのランタイム環境で、単発のコマンドやスケジュールを実行します。",
@@ -2622,8 +2621,6 @@
     "runPolicy": "実行タイミング",
     "runAgain": "再実行",
     "runAgainHint": "今すぐ実行します。マニフェストが変更されない限り、次回の同期で再実行されることはありません。",
-    "gitopsTag": "宣言済みジョブ {name}",
-    "releaseTag": "{name}（リリース時）",
     "waitingForDeploy": "アプリのデプロイを待機中",
     "managedHint": "GitOps で管理されています: マニフェストで変更してください。今すぐ実行、一時停止、再開は引き続き利用できます。",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "ジョブ #{id}",
     "waitingToStart": "開始を待機中…",
     "noOutput": "（出力なし）",
-    "enabledState": "有効"
+    "enabledState": "有効",
+    "filter": {
+      "allApps": "すべてのアプリ",
+      "any": "すべて",
+      "source": "実行元",
+      "search": "名前またはコマンドで検索",
+      "clear": "フィルターをクリア",
+      "noMatch": "条件に一致する Job はありません",
+      "openDeployment": "この実行が判定したデプロイを開く"
+    },
+    "source": {
+      "manual": "手動",
+      "api": "API",
+      "scheduled": "cronjob",
+      "beforeRelease": "リリース前",
+      "release": "リリース時",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "接続をテスト"
@@ -6118,6 +6133,12 @@
     "stepHint": "このデプロイの起動前にそのイメージで実行された Job です。",
     "job": "Job",
     "attempt": "試行",
-    "duration": "所要時間"
+    "duration": "所要時間",
+    "iconTitle": "リリース前: {n} 回実行、{status}",
+    "noRuns": "このデプロイにはまだリリース前の実行がありません。",
+    "attemptN": "試行 {n}",
+    "exit": "終了コード {code}",
+    "openInJobs": "Jobs で開く",
+    "viewRuns": "実行を表示"
   }
 }

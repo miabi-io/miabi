@@ -2608,7 +2608,6 @@
     "runs": "Exécutions",
     "scheduleLabel": "Planification (cron, UTC)",
     "scheduled": "Planifiés",
-    "scheduledTag": "planifié",
     "started": "Début",
     "state": "État",
     "subtitle": "Exécutez des commandes ponctuelles et des planifications dans l’environnement d’exécution de vos applications.",
@@ -2622,8 +2621,6 @@
     "runPolicy": "Exécution",
     "runAgain": "Relancer",
     "runAgainHint": "Lance maintenant ; la prochaine synchro ne le relancera pas sauf si son manifeste change.",
-    "gitopsTag": "job déclaré {name}",
-    "releaseTag": "{name}, à chaque version",
     "waitingForDeploy": "en attente du déploiement de l’application",
     "managedHint": "Géré par GitOps : modifiez-le dans son manifeste. Exécuter, suspendre et reprendre restent disponibles.",
     "policy": {
@@ -2653,7 +2650,25 @@
     "jobNumber": "Job n°{id}",
     "waitingToStart": "En attente de démarrage…",
     "noOutput": "(aucune sortie)",
-    "enabledState": "activé"
+    "enabledState": "activé",
+    "filter": {
+      "allApps": "Toutes les applications",
+      "any": "Tous",
+      "source": "Origine",
+      "search": "Rechercher un nom ou une commande",
+      "clear": "Effacer les filtres",
+      "noMatch": "Aucun job ne correspond à ces filtres",
+      "openDeployment": "Ouvrir le déploiement conditionné par cette exécution"
+    },
+    "source": {
+      "manual": "manuel",
+      "api": "API",
+      "scheduled": "cronjob",
+      "beforeRelease": "pré-release",
+      "release": "à la version",
+      "gitops": "GitOps",
+      "apply": "apply"
+    }
   },
   "ldap": {
     "testConnection": "Tester la connexion"
@@ -6118,6 +6133,12 @@
     "stepHint": "Jobs exécutés dans l'image de ce déploiement avant son démarrage.",
     "job": "Job",
     "attempt": "Tentative",
-    "duration": "Durée"
+    "duration": "Durée",
+    "iconTitle": "Pré-release : {n} exécution(s), {status}",
+    "noRuns": "Aucune exécution de pré-release pour ce déploiement.",
+    "attemptN": "tentative {n}",
+    "exit": "code {code}",
+    "openInJobs": "Ouvrir dans Jobs",
+    "viewRuns": "Voir les exécutions"
   }
 }

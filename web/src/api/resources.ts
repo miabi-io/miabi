@@ -31,8 +31,10 @@ export interface CronJobInput {
 
 // Each job targets an application but is managed at the workspace level.
 export const jobApi = {
-  list: (ws: number, appId?: number) =>
-    api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs${appId ? `?app_id=${appId}` : ''}`),
+  list: (ws: number, filter: { appId?: number; status?: string; source?: string } = {}) =>
+    api.get<ApiResponse<Job[]>>(`${w(ws)}/jobs`, {
+      params: { app_id: filter.appId || undefined, status: filter.status || undefined, source: filter.source || undefined },
+    }),
   run: (ws: number, body: { application_id: number; name?: string; command: string[]; entrypoint?: string[]; image?: string; registry_id?: number | null; run_as_user?: string; timeout_secs?: number; env?: JobEnvVar[]; inherit_env?: boolean }) =>
     api.post<ApiResponse<Job>>(`${w(ws)}/jobs`, body),
   get: (ws: number, jobId: number) => api.get<ApiResponse<Job>>(`${w(ws)}/jobs/${jobId}`),

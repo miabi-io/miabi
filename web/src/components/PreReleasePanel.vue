@@ -79,9 +79,12 @@ async function remove() {
         <h2>{{ $t('preRelease.title') }}</h2>
         <p class="card-subtitle">{{ $t('preRelease.subtitle') }}</p>
       </div>
-      <span v-if="current?.last_status" class="badge badge-dot" :class="current.last_status === 'succeeded' ? 'badge-success' : current.last_status === 'failed' ? 'badge-danger' : 'badge-info'">
-        {{ $t('preRelease.lastRun', { status: current.last_status }) }}
-      </span>
+      <div v-if="current" class="pre-head-side">
+        <span v-if="current.last_status" class="badge badge-dot" :class="current.last_status === 'succeeded' ? 'badge-success' : current.last_status === 'failed' ? 'badge-danger' : 'badge-info'">
+          {{ $t('preRelease.lastRun', { status: current.last_status }) }}
+        </span>
+        <router-link :to="{ name: 'jobs', query: { app: String(appId), source: 'beforeRelease' } }" class="text-sm">{{ $t('preRelease.viewRuns') }}</router-link>
+      </div>
     </div>
     <div class="card-body" style="max-width: 560px">
       <p v-if="locked" class="form-hint"><span class="mdi mdi-lock-outline"></span> {{ $t('preRelease.locked') }}</p>
@@ -115,4 +118,5 @@ async function remove() {
 
 <style scoped>
 .btn-row { display: flex; gap: 8px; }
+.pre-head-side { display: flex; align-items: center; gap: 10px; }
 </style>
