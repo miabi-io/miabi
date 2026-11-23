@@ -146,6 +146,9 @@ type RunRequest struct {
 	ServerID uint
 	// Attempt numbers a retry of a declared Job's run; 0 means the first.
 	Attempt int
+	// ReleaseImage is the image of the deploy a beforeRelease run gates; it replaces the active release's.
+	ReleaseImage string
+	DeploymentID *uint
 }
 
 // A service app's ServerID is only the manager it was created through; its node-local volumes are on the node its tasks run on.
@@ -215,6 +218,18 @@ func (s *Service) volumeNodes(vols []*models.Volume) string {
 
 // Run snapshots the image from the active release so history shows exactly what ran.
 func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest) (*models.Job, error) {
+	j, err := s.newRun(workspaceID, appID, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.enqueuer.EnqueueRunJob(j.ID, j.ServerID); err != nil {
+		return nil, err
+	}
+	return j, nil
+}
+
+// newRun stores a pending run without enqueuing it.
+func (s *Service) newRun(workspaceID, appID uint, req RunRequest) (*models.Job, error) {
 	if len(req.Command) == 0 {
 		return nil, ErrNoCommand
 	}
@@ -235,6 +250,8 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		if registryID == nil {
 			registryID = app.RegistryID
 		}
+	} else if req.ReleaseImage != "" {
+		image = req.ReleaseImage
 	} else if image, err = s.resolveImage(app); err != nil && req.WaitDeploymentID == nil {
 		// A run waiting on a deploy takes its image from the release that deploy activates.
 		return nil, err
@@ -263,6 +280,7 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		CronJobID:        req.CronJobID,
 		JobDefinitionID:  req.JobDefinitionID,
 		WaitDeploymentID: req.WaitDeploymentID,
+		DeploymentID:     req.DeploymentID,
 		Attempt:          max(req.Attempt, 1),
 		Name:             req.Name,
 		Command:          req.Command,
@@ -279,9 +297,6 @@ func (s *Service) Run(_ context.Context, workspaceID, appID uint, req RunRequest
 		TriggeredByID:    req.TriggeredBy,
 	}
 	if err := s.repo.Create(j); err != nil {
-		return nil, err
-	}
-	if err := s.enqueuer.EnqueueRunJob(j.ID, j.ServerID); err != nil {
 		return nil, err
 	}
 	return j, nil
@@ -381,7 +396,7 @@ func (s *Service) cancelJob(ctx context.Context, j *models.Job) error {
 	if err := s.repo.Update(j); err != nil {
 		return err
 	}
-	if j.ContainerID != "" {
+	if j.ContainerID != "" && s.clients != nil {
 		if dc, derr := s.clients.For(j.ServerID); derr == nil {
 			_ = dc.RemoveContainer(ctx, j.ContainerID, true)
 		}

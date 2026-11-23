@@ -200,3 +200,117 @@ func TestRunFailedRetries(t *testing.T) {
 		t.Errorf("an exhausted or superseded run should not retry, enqueued %d", len(enq.ids))
 	}
 }
+
+func TestBeforeReleaseNeverRunsOnSave(t *testing.T) {
+	s, db, enq := newDefinitionSvc(t)
+	db.Exec(`INSERT INTO releases (id, application_id, image, active) VALUES (5, 1, 'ghcr.io/org/api:v1', 1)`)
+	in := definitionInput(1, models.JobRunBeforeRelease)
+	in.TimeoutSecs = 60
+	def, j, err := s.SaveDefinition(context.Background(), 1, in, true)
+	if err != nil || j != nil || len(enq.ids) != 0 {
+		t.Fatalf("save ran something: run = %v, enqueued = %v, err = %v", j, enq.ids, err)
+	}
+	if def.RunPolicy != models.JobRunBeforeRelease {
+		t.Errorf("policy = %q", def.RunPolicy)
+	}
+}
+
+func TestBeforeReleaseRunIsNotQueued(t *testing.T) {
+	s, _, enq := newDefinitionSvc(t)
+	in := definitionInput(2, models.JobRunBeforeRelease)
+	in.TimeoutSecs = 60
+	def, _, err := s.SaveDefinition(context.Background(), 1, in, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A Git app with no release yet: the run takes the deploy's freshly built image.
+	j, err := s.NewBeforeReleaseRun(def, 9, "registry.local/ws_1/web:9", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(enq.ids) != 0 || j.Status != models.JobPending || j.Pull || j.Image != "registry.local/ws_1/web:9" ||
+		j.Source != models.JobSourceBeforeRelease || j.DeploymentID == nil || *j.DeploymentID != 9 || j.TimeoutSecs != 60 {
+		t.Fatalf("run = %+v, enqueued = %v", j, enq.ids)
+	}
+	if s.SucceededForDeployment(def.ID, 9) {
+		t.Error("a pending run is not a success")
+	}
+	// A retried deploy ends the run the worker restart cut off.
+	j.Status = models.JobRunning
+	if err := s.repo.Update(j); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := s.NewBeforeReleaseRun(def, 9, "registry.local/ws_1/web:9", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old, _ := s.repo.FindByID(j.ID); old.Status != models.JobCanceled || old.Error == "" {
+		t.Errorf("interrupted run = %s %q, want canceled with a reason", old.Status, old.Error)
+	}
+	j = retry
+	j.Status = models.JobSucceeded
+	if err := s.repo.Update(j); err != nil {
+		t.Fatal(err)
+	}
+	if !s.SucceededForDeployment(def.ID, 9) || s.SucceededForDeployment(def.ID, 10) {
+		t.Error("success should count for its own deployment only")
+	}
+	defs, _ := s.BeforeReleaseDefinitions(2)
+	if len(defs) != 1 || defs[0].ID != def.ID {
+		t.Errorf("definitions = %+v", defs)
+	}
+}
+
+func TestPreReleaseCommand(t *testing.T) {
+	s, _, enq := newDefinitionSvc(t)
+	ctx := context.Background()
+	app, err := s.App(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def, err := s.GetPreReleaseCommand(1, app); err != nil || def != nil {
+		t.Fatalf("unset: def = %v, err = %v", def, err)
+	}
+	for name, in := range map[string]PreReleaseCommand{
+		"no timeout":  {Command: []string{"x"}},
+		"over budget": {Command: []string{"x"}, TimeoutSecs: 1000, BackoffLimit: 1},
+		"no command":  {TimeoutSecs: 60},
+	} {
+		if _, err := s.SetPreReleaseCommand(ctx, 1, app, in); err == nil {
+			t.Errorf("%s: expected a refusal", name)
+		}
+	}
+	def, err := s.SetPreReleaseCommand(ctx, 1, app, PreReleaseCommand{Command: []string{"./api", "migrate"}, TimeoutSecs: 300, BackoffLimit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Name != "api-pre-release" || def.RunPolicy != models.JobRunBeforeRelease || len(enq.ids) != 0 {
+		t.Fatalf("def = %+v, enqueued = %v", def, enq.ids)
+	}
+	got, err := s.GetPreReleaseCommand(1, app)
+	if err != nil || got == nil || got.TimeoutSecs != 300 || got.BackoffLimit != 1 {
+		t.Fatalf("get = %+v, err = %v", got, err)
+	}
+	if err := s.DeletePreReleaseCommand(ctx, 1, app); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetPreReleaseCommand(1, app); got != nil {
+		t.Error("the command should be gone")
+	}
+}
+
+// A declared Job that happens to use the name isn't the console's to overwrite.
+func TestPreReleaseCommandRefusesForeignDefinition(t *testing.T) {
+	s, _, _ := newDefinitionSvc(t)
+	ctx := context.Background()
+	in := definitionInput(1, models.JobRunOnChange)
+	in.Name = "api-pre-release"
+	if _, _, err := s.SaveDefinition(ctx, 1, in, false); err != nil {
+		t.Fatal(err)
+	}
+	app, _ := s.App(1, 1)
+	_, err := s.SetPreReleaseCommand(ctx, 1, app, PreReleaseCommand{Command: []string{"x"}, TimeoutSecs: 60})
+	if !errors.Is(err, ErrPreReleaseNameTaken) {
+		t.Errorf("err = %v, want name taken", err)
+	}
+}

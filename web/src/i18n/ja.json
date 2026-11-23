@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "仕様の変更時",
       "once": "1 回のみ",
-      "onRelease": "リリースごと"
+      "onRelease": "リリースごと",
+      "beforeRelease": "各リリースの前"
     },
     "attempt": "試行 {n} 回目",
     "applyHint": "マニフェストから適用されています: 次回の miabi apply でここでの変更は上書きされます。",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "証明書",
     "gitRepository": "Git リポジトリ",
     "registryImage": "イメージ"
+  },
+  "preRelease": {
+    "title": "リリース前コマンド",
+    "subtitle": "各リリースの起動前に新しいイメージで実行します。データベースのマイグレーションなどに使います。",
+    "lastRun": "前回の実行: {status}",
+    "locked": "このアプリの Job はソースから管理されています。そこで runPolicy が beforeRelease の Job を宣言してください。",
+    "command": "コマンド",
+    "commandHint": "デプロイごとに 1 回実行され、レプリカごとや再起動時には実行されません。ロールバックとカナリアの昇格ではスキップされます。",
+    "timeout": "タイムアウト（秒）",
+    "retries": "再試行回数",
+    "overBudget": "タイムアウト × (再試行回数 + 1) は、デプロイが待てる {max} 秒以内にしてください。",
+    "failHint": "コマンドが失敗するとデプロイは失敗し、現在のリリースが引き続き稼働します。",
+    "save": "リリース前コマンドを保存",
+    "remove": "削除",
+    "saved": "リリース前コマンドを保存しました。次のデプロイで実行されます。",
+    "removed": "リリース前コマンドを削除しました。",
+    "stepTitle": "リリース前",
+    "stepHint": "このデプロイの起動前にそのイメージで実行された Job です。",
+    "job": "Job",
+    "attempt": "試行",
+    "duration": "所要時間"
   }
 }

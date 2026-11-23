@@ -36,6 +36,8 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
+import PreReleasePanel from '@/components/PreReleasePanel.vue'
+import PreReleaseRuns from '@/components/PreReleaseRuns.vue'
 import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, WorkspacePortPolicy, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog, RuntimeKind, RuntimePreflight } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
@@ -2842,6 +2844,7 @@ async function detachDatabase(d: AppDatabase) {
           </table>
         </div>
       </div>
+      <PreReleaseRuns :ws-id="wid ?? 0" :deployment-id="streamingId" :active="deployStreaming" />
       <div class="card">
         <div class="card-header"><h2>{{ $t('appDetail.tab.logs') }} <span v-if="streamingNumber" class="cell-sub">#{{ streamingNumber }}</span></h2></div>
         <div class="card-body">
@@ -3778,6 +3781,8 @@ async function detachDatabase(d: AppDatabase) {
           </button>
         </div>
       </div>
+
+      <PreReleasePanel :ws-id="wid ?? 0" :app-id="appId" :can-edit="ws.canEdit" :managed-by="managedBy" />
 
       <div class="card mb-4">
         <div class="card-header"><h2>{{ $t('appDetail.resources') }}</h2></div>

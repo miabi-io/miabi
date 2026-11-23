@@ -2170,6 +2170,8 @@ export interface Job {
   cronjob_id?: number
   job_definition_id?: number
   wait_deployment_id?: number
+  // The deployment a beforeRelease run gated.
+  deployment_id?: number
   attempt?: number
   app_name?: string
   name: string
@@ -2242,7 +2244,7 @@ export interface JobDefinition {
   // false runs without the app's and stack's variables.
   inherit_env?: boolean
   timeout_secs: number
-  run_policy: 'onChange' | 'once' | 'onRelease'
+  run_policy: 'onChange' | 'once' | 'onRelease' | 'beforeRelease'
   wait_for_deploy: boolean
   history_limit: number
   backoff_limit: number
@@ -2251,6 +2253,12 @@ export interface JobDefinition {
   metadata?: Record<string, string>
   created_at: string
   updated_at: string
+}
+
+export interface PreReleaseCommand {
+  command: string[]
+  timeout_secs: number
+  backoff_limit: number
 }
 
 export interface Secret {

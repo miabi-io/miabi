@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "wenn sich die Spezifikation ändert",
       "once": "einmalig",
-      "onRelease": "bei jedem Release"
+      "onRelease": "bei jedem Release",
+      "beforeRelease": "vor jedem Release"
     },
     "attempt": "Versuch {n}",
     "applyHint": "Aus einem Manifest angewendet: Das nächste miabi apply überschreibt hier vorgenommene Änderungen.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "Zertifikat",
     "gitRepository": "Git-Repository",
     "registryImage": "Image"
+  },
+  "preRelease": {
+    "title": "Pre-Release-Befehl",
+    "subtitle": "Läuft im neuen Image, bevor ein Release startet, etwa für Datenbankmigrationen.",
+    "lastRun": "letzter Lauf: {status}",
+    "locked": "Die Jobs dieser App stammen aus ihrer Quelle. Deklariere dort einen Job mit runPolicy beforeRelease.",
+    "command": "Befehl",
+    "commandHint": "Läuft einmal pro Deployment, nie pro Replikat oder bei einem Neustart. Rollbacks und Canary-Promotions überspringen ihn.",
+    "timeout": "Timeout (Sekunden)",
+    "retries": "Wiederholungen",
+    "overBudget": "Timeout × (Wiederholungen + 1) darf {max} Sekunden nicht überschreiten, so lange kann ein Deployment warten.",
+    "failHint": "Schlägt der Befehl fehl, schlägt das Deployment fehl und das aktuelle Release bleibt aktiv.",
+    "save": "Pre-Release-Befehl speichern",
+    "remove": "Entfernen",
+    "saved": "Pre-Release-Befehl gespeichert; das nächste Deployment führt ihn aus.",
+    "removed": "Pre-Release-Befehl entfernt.",
+    "stepTitle": "Pre-Release",
+    "stepHint": "Jobs, die vor dem Start im Image dieses Deployments liefen.",
+    "job": "Job",
+    "attempt": "Versuch",
+    "duration": "Dauer"
   }
 }

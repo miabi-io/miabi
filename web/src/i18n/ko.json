@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "스펙이 변경될 때",
       "once": "한 번",
-      "onRelease": "릴리스할 때마다"
+      "onRelease": "릴리스할 때마다",
+      "beforeRelease": "각 릴리스 전"
     },
     "attempt": "{n}번째 시도",
     "applyHint": "매니페스트에서 적용되었습니다. 다음 miabi apply 시 여기서 변경한 내용을 덮어씁니다.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "인증서",
     "gitRepository": "Git 저장소",
     "registryImage": "이미지"
+  },
+  "preRelease": {
+    "title": "릴리스 전 명령",
+    "subtitle": "각 릴리스가 시작되기 전에 새 이미지에서 실행됩니다. 데이터베이스 마이그레이션 등에 사용합니다.",
+    "lastRun": "마지막 실행: {status}",
+    "locked": "이 앱의 Job은 소스에서 관리됩니다. 그곳에서 runPolicy가 beforeRelease인 Job을 선언하세요.",
+    "command": "명령",
+    "commandHint": "배포마다 한 번 실행되며, 레플리카별이나 재시작 시에는 실행되지 않습니다. 롤백과 카나리 승격은 이를 건너뜁니다.",
+    "timeout": "타임아웃(초)",
+    "retries": "재시도 횟수",
+    "overBudget": "타임아웃 × (재시도 횟수 + 1)은 배포가 기다릴 수 있는 {max}초를 넘을 수 없습니다.",
+    "failHint": "명령이 실패하면 배포가 실패하고 현재 릴리스가 계속 서비스됩니다.",
+    "save": "릴리스 전 명령 저장",
+    "remove": "제거",
+    "saved": "릴리스 전 명령을 저장했습니다. 다음 배포에서 실행됩니다.",
+    "removed": "릴리스 전 명령을 제거했습니다.",
+    "stepTitle": "릴리스 전",
+    "stepHint": "이 배포가 시작되기 전에 해당 이미지에서 실행된 Job입니다.",
+    "job": "Job",
+    "attempt": "시도",
+    "duration": "소요 시간"
   }
 }

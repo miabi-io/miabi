@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"sort"
@@ -632,6 +633,8 @@ type runState struct {
 	seq            int
 	deploySeq      map[uint]int
 	addressChanged map[uint]int
+	// deferred apps deploy after the Jobs rank, so a beforeRelease Job declared with them exists when their deploy runs.
+	deferred []*models.Application
 }
 
 func withRunState(ctx context.Context) (context.Context, *runState) {
@@ -651,6 +654,67 @@ func stackEnvChanged(ctx context.Context, stackID uint) {
 		st.changedStacks[stackID] = true
 		st.mu.Unlock()
 	}
+}
+
+// deployOrDefer holds back an app gated by a beforeRelease Job in this bundle, so its first deploy can't outrun the Job.
+func (s *Service) deployOrDefer(ctx context.Context, app *models.Application, set *declarative.ResourceSet) error {
+	if st := runStateOf(ctx); st != nil && len(beforeReleaseJobsOf(set, app.Name)) > 0 {
+		st.mu.Lock()
+		st.deferred = append(st.deferred, app)
+		st.deployedApps[app.ID] = true
+		// After every address change, since the deploy happens at the end of the run.
+		st.deploySeq[app.ID] = math.MaxInt
+		st.mu.Unlock()
+		return nil
+	}
+	_, err := s.apps.Deploy(app, nil, "", "")
+	if err == nil {
+		appDeployed(ctx, app.ID)
+	}
+	return err
+}
+
+func beforeReleaseJobsOf(set *declarative.ResourceSet, app string) []string {
+	if set == nil {
+		return nil
+	}
+	var out []string
+	for _, r := range set.ByKind(declarative.KindJob) {
+		if r.Job != nil && r.Job.App == app && r.Job.Policy() == declarative.RunBeforeRelease {
+			out = append(out, r.Metadata.Name)
+		}
+	}
+	return out
+}
+
+// deployDeferred skips an app whose beforeRelease Job failed to apply, rather than release it unmigrated.
+func (s *Service) deployDeferred(run *runState, set *declarative.ResourceSet, failures []Failure) []Failure {
+	failedJobs := map[string]bool{}
+	for _, f := range failures {
+		if f.Kind == string(declarative.KindJob) {
+			failedJobs[f.Name] = true
+		}
+	}
+	var out []Failure
+	for _, app := range run.deferred {
+		var blocked []string
+		for _, name := range beforeReleaseJobsOf(set, app.Name) {
+			if failedJobs[name] {
+				blocked = append(blocked, name)
+			}
+		}
+		if len(blocked) > 0 {
+			out = append(out, Failure{
+				Kind: string(declarative.KindApplication), Name: app.Name, Action: "deploy",
+				Error: fmt.Sprintf("not deployed: its beforeRelease job %s failed to apply", strings.Join(blocked, ", ")),
+			})
+			continue
+		}
+		if _, err := s.apps.Deploy(app, nil, "", ""); err != nil {
+			out = append(out, Failure{Kind: string(declarative.KindApplication), Name: app.Name, Action: "deploy", Error: err.Error()})
+		}
+	}
+	return out
 }
 
 func appDeployed(ctx context.Context, appID uint) {
@@ -833,6 +897,7 @@ func (s *Service) Apply(ctx context.Context, workspaceID uint, manifests []byte,
 		}
 		res.Applied++
 	}
+	res.Failures = append(res.Failures, s.deployDeferred(run, desired, res.Failures)...)
 	res.Failures = append(res.Failures, s.redeployChanged(workspaceID, run)...)
 	// Derived from the raw manifest because the change loop has already resolved env templates.
 	if raw, perr := declarative.Parse(manifests); perr == nil {
@@ -865,6 +930,7 @@ func (s *Service) ApplyResource(ctx context.Context, workspaceID uint, manifests
 			return res, nil
 		}
 		res.Applied++
+		res.Failures = append(res.Failures, s.deployDeferred(run, desired, nil)...)
 		res.Failures = append(res.Failures, s.redeployChanged(workspaceID, run)...)
 		// Keep database↔app links in sync when the applied resource is an app/db.
 		if raw, perr := declarative.Parse(manifests); perr == nil {
@@ -3037,10 +3103,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
-		if _, err = s.apps.Deploy(app, nil, "", ""); err == nil {
-			appDeployed(ctx, app.ID)
-		}
-		return err
+		return s.deployOrDefer(ctx, app, set)
 	case declarative.ActionUpdate:
 		if err := refuseMove(ch); err != nil {
 			return err
@@ -3141,10 +3204,7 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		if err := s.reconcileMounts(workspaceID, app, spec); err != nil {
 			return err
 		}
-		if _, err = s.apps.Deploy(app, nil, "", ""); err == nil {
-			appDeployed(ctx, app.ID)
-		}
-		return err
+		return s.deployOrDefer(ctx, app, set)
 	case declarative.ActionDelete:
 		app, err := s.findApp(workspaceID, ch.Name)
 		if err != nil {

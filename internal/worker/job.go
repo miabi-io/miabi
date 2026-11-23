@@ -50,7 +50,11 @@ type JobHandler struct {
 	// onFailed hears about a declared Job's failed run, to retry it.
 	onFailed func(jobID uint)
 	gpu      GPUScheduler
+	// distributor authenticates pulls of internal build refs onto a node that lacks them.
+	distributor Distributor
 }
+
+func (h *JobHandler) SetDistributor(d Distributor) { h.distributor = d }
 
 // Jobs inherit the app's GPU request like its CPU and memory; nil runs them without GPUs, as deploys do.
 func (h *JobHandler) SetGPU(g GPUScheduler) { h.gpu = g }
@@ -111,6 +115,18 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 			return
 		}
 	}
+	h.execute(ctx, j, h.jobRun(j))
+}
+
+// runBeforeRelease gives the run the MIABI_* of the release the deploy is about to activate.
+func (h *JobHandler) runBeforeRelease(ctx context.Context, j *models.Job, release managedRun) {
+	run := h.jobRun(j)
+	run.deploymentID, run.release = release.deploymentID, release.release
+	run.imageTag, run.commit, run.digest = release.imageTag, release.commit, release.digest
+	h.execute(ctx, j, run)
+}
+
+func (h *JobHandler) execute(ctx context.Context, j *models.Job, managed managedRun) {
 	app, err := h.apps.FindByID(j.ApplicationID)
 	if err != nil {
 		h.fail(j, fmt.Errorf("application %d not found: %w", j.ApplicationID, err))
@@ -122,7 +138,7 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		return
 	}
 
-	rc, err := h.buildRuntimeContext(ctx, dc, app, h.jobRun(j))
+	rc, err := h.buildRuntimeContext(ctx, dc, app, managed)
 	if err != nil {
 		h.fail(j, fmt.Errorf("prepare runtime: %w", err))
 		return
@@ -144,6 +160,9 @@ func (h *JobHandler) run(ctx context.Context, j *models.Job) {
 		if aerr != nil {
 			h.fail(j, aerr)
 			return
+		}
+		if h.distributor != nil && h.distributor.IsBuildRef(j.Image) {
+			auth = h.distributor.PushAuth()
 		}
 		if perr := dc.PullImage(ctx, j.Image, auth); perr != nil {
 			h.fail(j, fmt.Errorf("image %s is not on the job's node and could not be pulled: %w", j.Image, perr))
@@ -276,7 +295,8 @@ func (h *JobHandler) finish(j *models.Job, status models.JobStatus, exit *int, e
 		logger.Error("failed to record job result", "job", j.ID, "error", err)
 	}
 	h.externalizeLog(j)
-	if status == models.JobFailed && j.JobDefinitionID != nil && h.onFailed != nil {
+	// The deploy retries its own beforeRelease runs inline.
+	if status == models.JobFailed && j.JobDefinitionID != nil && h.onFailed != nil && j.Source != models.JobSourceBeforeRelease {
 		h.onFailed(j.ID)
 	}
 }

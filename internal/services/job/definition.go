@@ -22,6 +22,7 @@ package job
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/models"
@@ -112,6 +113,9 @@ func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in Defin
 	}
 	if err != nil {
 		return nil, nil, err
+	}
+	if def.RunPolicy == models.JobRunBeforeRelease {
+		return def, nil, nil
 	}
 	if def.RunPolicy == models.JobRunOnRelease {
 		if created && run {
@@ -228,6 +232,54 @@ func (s *Service) runAttempt(ctx context.Context, def *models.JobDefinition, sou
 	return j, nil
 }
 
+// BeforeReleaseDefinitions returns an app's beforeRelease definitions in name order, the order a deploy runs them.
+func (s *Service) BeforeReleaseDefinitions(appID uint) ([]models.JobDefinition, error) {
+	return s.repo.ListBeforeReleaseDefinitions(appID)
+}
+
+// SucceededForDeployment reports whether a retried deploy already ran this definition to success.
+func (s *Service) SucceededForDeployment(defID, deploymentID uint) bool {
+	ok, err := s.repo.SucceededForDeployment(defID, deploymentID)
+	return err == nil && ok
+}
+
+// NewBeforeReleaseRun stores a pending run in the deploy's image; the deploy worker runs it inline, never the queue.
+func (s *Service) NewBeforeReleaseRun(def *models.JobDefinition, deploymentID uint, image string, attempt int) (*models.Job, error) {
+	s.endInterruptedRuns(def.ID, deploymentID)
+	j, err := s.newRun(def.WorkspaceID, def.ApplicationID, RunRequest{
+		Attempt: attempt, Name: def.Name, Command: def.Command, Entrypoint: def.Entrypoint,
+		Image: def.Image, RegistryID: def.RegistryID, RunAsUser: def.RunAsUser,
+		Env: def.Env, InheritEnv: def.InheritEnv, ServerID: def.PinnedServerID,
+		TimeoutSecs: def.TimeoutSecs, Source: models.JobSourceBeforeRelease,
+		JobDefinitionID: &def.ID, ReleaseImage: image, DeploymentID: &deploymentID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_ = s.repo.SetDefinitionLastJob(def.ID, j.ID)
+	keep := def.HistoryLimit
+	if keep <= 0 {
+		keep = defaultHistoryLimit
+	}
+	_ = s.repo.PruneDefinitionHistory(def.ID, keep)
+	return j, nil
+}
+
+// The deploy lock lets only one worker run a deployment, so an unfinished run of it was cut off by a worker restart.
+func (s *Service) endInterruptedRuns(defID, deploymentID uint) {
+	stale, err := s.repo.ActiveForDeployment(defID, deploymentID)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for i := range stale {
+		j := &stale[i]
+		j.Error = "interrupted: the worker restarted and the deploy ran it again"
+		j.FinishedAt = &now
+		_ = s.cancelJob(context.Background(), j)
+	}
+}
+
 // RunDefinitionNow leaves the fingerprint unchanged so the next sync doesn't run it again.
 func (s *Service) RunDefinitionNow(ctx context.Context, workspaceID, id uint, triggeredBy *uint) (*models.Job, error) {
 	def, err := s.repo.FindJobDefinitionInWorkspace(workspaceID, id)
@@ -294,7 +346,7 @@ func (s *Service) DeleteDefinition(ctx context.Context, workspaceID, id uint) er
 
 func runPolicy(p string) string {
 	switch p {
-	case models.JobRunOnce, models.JobRunOnRelease:
+	case models.JobRunOnce, models.JobRunOnRelease, models.JobRunBeforeRelease:
 		return p
 	default:
 		return models.JobRunOnChange

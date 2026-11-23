@@ -2629,7 +2629,8 @@
     "policy": {
       "onChange": "cuando cambia su especificación",
       "once": "una vez",
-      "onRelease": "en cada versión"
+      "onRelease": "en cada versión",
+      "beforeRelease": "antes de cada versión"
     },
     "attempt": "intento {n}",
     "applyHint": "Aplicado desde un manifiesto: el próximo miabi apply sobrescribe los cambios hechos aquí.",
@@ -6097,5 +6098,26 @@
     "certificateDetail": "Certificado",
     "gitRepository": "Repositorio Git",
     "registryImage": "Imagen"
+  },
+  "preRelease": {
+    "title": "Comando previo a la versión",
+    "subtitle": "Se ejecuta en la nueva imagen antes de que arranque cada versión, por ejemplo para migraciones de base de datos.",
+    "lastRun": "última ejecución: {status}",
+    "locked": "Los Jobs de esta aplicación vienen de su origen. Declara allí un Job con runPolicy beforeRelease.",
+    "command": "Comando",
+    "commandHint": "Se ejecuta una vez por despliegue, nunca por réplica ni al reiniciar. Los rollbacks y las promociones canary lo omiten.",
+    "timeout": "Tiempo límite (segundos)",
+    "retries": "Reintentos",
+    "overBudget": "Tiempo límite × (reintentos + 1) no debe superar {max} segundos, lo que un despliegue puede esperar.",
+    "failHint": "Si el comando falla, el despliegue falla y la versión actual sigue sirviendo.",
+    "save": "Guardar comando previo",
+    "remove": "Eliminar",
+    "saved": "Comando previo guardado; el próximo despliegue lo ejecutará.",
+    "removed": "Comando previo eliminado.",
+    "stepTitle": "Previo a la versión",
+    "stepHint": "Jobs que se ejecutaron en la imagen de este despliegue antes de arrancar.",
+    "job": "Job",
+    "attempt": "Intento",
+    "duration": "Duración"
   }
 }

@@ -226,8 +226,27 @@ func BuildPlan(desired, actual *ResourceSet, opts PlanOptions) *Plan {
 		}
 	}
 
+	notePreRelease(plan, desired)
 	sortChanges(plan.Changes)
 	return plan
+}
+
+// A beforeRelease Job runs nothing when applied, which the plan would otherwise imply.
+func notePreRelease(plan *Plan, desired *ResourceSet) {
+	for i := range plan.Changes {
+		ch := &plan.Changes[i]
+		if ch.Kind != KindJob || ch.Action == ActionDelete {
+			continue
+		}
+		r, ok := desired.Get(string(KindJob) + "/" + ch.Name)
+		if !ok || r.Job == nil || r.Job.Policy() != RunBeforeRelease {
+			continue
+		}
+		ch.Reason = fmt.Sprintf("runs before each release of %s; applying it runs nothing", r.Job.App)
+		if strings.TrimSpace(r.Job.Image) != "" && ch.Action == ActionCreate {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("job %q runs image %s, not the release it gates, so it doesn't test the new code", ch.Name, r.Job.Image))
+		}
+	}
 }
 
 func sortChanges(cs []Change) {

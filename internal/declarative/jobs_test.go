@@ -80,15 +80,19 @@ func TestParseCronJobAndJob(t *testing.T) {
 
 func TestJobsValidation(t *testing.T) {
 	cases := map[string]string{
-		"bad schedule":    "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"61 * * * *\", command: [x]}",
-		"no schedule":     "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, command: [x]}",
-		"no command":      "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"@daily\"}",
-		"bad policy":      "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"@daily\", command: [x], concurrencyPolicy: never}",
-		"registry no img": "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], registry: ghcr}",
-		"no app":          "kind: Job\nmetadata: {name: j}\nspec: {command: [x]}",
-		"bad run policy":  "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: always}",
-		"wait with once":  "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: once, waitForDeploy: true}",
-		"bad runAsUser":   "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], security: {runAsUser: \"a:b:c\"}}",
+		"bad schedule":       "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"61 * * * *\", command: [x]}",
+		"no schedule":        "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, command: [x]}",
+		"no command":         "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"@daily\"}",
+		"bad policy":         "kind: CronJob\nmetadata: {name: c}\nspec: {app: api, schedule: \"@daily\", command: [x], concurrencyPolicy: never}",
+		"registry no img":    "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], registry: ghcr}",
+		"no app":             "kind: Job\nmetadata: {name: j}\nspec: {command: [x]}",
+		"bad run policy":     "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: always}",
+		"wait with once":     "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: once, waitForDeploy: true}",
+		"bad runAsUser":      "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], security: {runAsUser: \"a:b:c\"}}",
+		"before no timeout":  "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: beforeRelease}",
+		"before over budget": "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: beforeRelease, timeoutSeconds: 901, backoffLimit: 1}",
+		"before with wait":   "kind: Job\nmetadata: {name: j}\nspec: {app: api, command: [x], runPolicy: beforeRelease, timeoutSeconds: 60, waitForDeploy: true}",
+		"before skip run":    "kind: Job\nmetadata: {name: j, annotations: {miabi.io/skip-initial-run: \"true\"}}\nspec: {app: api, command: [x], runPolicy: beforeRelease, timeoutSeconds: 60}",
 	}
 	for name, doc := range cases {
 		if _, err := d.Parse([]byte("apiVersion: miabi.io/v1\n" + doc)); err == nil {
@@ -166,5 +170,24 @@ func TestJobAppIsAReference(t *testing.T) {
 	err := d.CheckReferences(set.References(), d.KnownNames{"applications": {"api": true}})
 	if err == nil || !strings.Contains(err.Error(), "ghost") {
 		t.Errorf("unknown app should be reported, got %v", err)
+	}
+}
+
+func TestBeforeReleaseJob(t *testing.T) {
+	set := parseOne(t, "kind: Job\nmetadata: {name: migrate}\nspec: {app: api, command: [x], runPolicy: beforeRelease, timeoutSeconds: 600, backoffLimit: 2}")
+	j, _ := set.Get("Job/migrate")
+	if j.Job.Policy() != d.RunBeforeRelease || j.Job.Waits() {
+		t.Fatalf("job = %+v, want beforeRelease that never waits", j.Job)
+	}
+}
+
+func TestPlanNotesBeforeReleaseJob(t *testing.T) {
+	desired := parseOne(t, "kind: Job\nmetadata: {name: migrate}\nspec: {app: api, command: [x], image: ghcr.io/org/tools, runPolicy: beforeRelease, timeoutSeconds: 60}")
+	plan := d.BuildPlan(desired, d.NewResourceSet(), d.PlanOptions{})
+	if len(plan.Changes) != 1 || !strings.Contains(plan.Changes[0].Reason, "runs before each release of api") {
+		t.Fatalf("changes = %+v", plan.Changes)
+	}
+	if len(plan.Warnings) != 1 || !strings.Contains(plan.Warnings[0], "doesn't test the new code") {
+		t.Errorf("warnings = %v, want the custom-image warning", plan.Warnings)
 	}
 }

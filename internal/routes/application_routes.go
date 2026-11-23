@@ -656,7 +656,7 @@ func (r *Router) jobRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),
 			Handler:     r.h.job.List,
-			Summary:     "List job runs (optionally ?app_id=)",
+			Summary:     "List job runs (optionally ?app_id= or ?deployment_id=)",
 		},
 		{
 			Method:      http.MethodPost,
@@ -767,6 +767,31 @@ func (r *Router) jobRoutes() []okapi.RouteDefinition {
 			Middlewares: scoped(models.WorkspaceRoleDeveloper),
 			Handler:     r.h.job.RunJobDefinition,
 			Summary:     "Run a declared job again",
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        base + "/apps/{appID}/pre-release",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.job.GetPreRelease,
+			Summary:     "Get an application's pre-release command",
+		},
+		{
+			Method:      http.MethodPut,
+			Path:        base + "/apps/{appID}/pre-release",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     okapi.H(r.h.job.PutPreRelease),
+			Summary:     "Set the command each deploy runs before its release starts",
+			Request:     &handlers.PreReleaseRequest{},
+		},
+		{
+			Method:      http.MethodDelete,
+			Path:        base + "/apps/{appID}/pre-release",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleDeveloper),
+			Handler:     r.h.job.DeletePreRelease,
+			Summary:     "Remove an application's pre-release command",
 		},
 	}
 }

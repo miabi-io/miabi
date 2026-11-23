@@ -386,6 +386,7 @@ func runServer(cli *okapicli.CLI) {
 			releaseJobs.SetDeployments(repositories.NewDeploymentRepository(res.db))
 			releaseJobs.SetVolumes(repositories.NewVolumeRepository(res.db), job.NodeNames(repositories.NewServerRepository(res.db)))
 			deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
+			deployHandler.SetPreRelease(jobHandler, releaseJobs)
 			jobHandler.SetFailureHook(releaseJobs.RunFailed)
 			// Restricted profile is Enterprise-only; without it every workspace is clamped to the image's user.
 			edition := enterprise.New(res.db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(res.db))
@@ -449,6 +450,7 @@ func runServer(cli *okapicli.CLI) {
 			registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 			registryDistributor.SetEntitlements(edition)
 			deployHandler.SetDistributor(registryDistributor)
+			jobHandler.SetDistributor(registryDistributor)
 			deployHandler.SetNodeNamer(func(swarmNodeID string) string {
 				if srv, err := repositories.NewServerRepository(res.db).FindBySwarmNodeID(swarmNodeID); err == nil {
 					return srv.Name

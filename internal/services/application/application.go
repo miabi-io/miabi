@@ -2757,7 +2757,7 @@ func (s *Service) PromoteCanary(app *models.Application, triggeredBy *uint) (*mo
 		image = rel.Image
 	}
 	s.emit(app, models.EventDeployStarted, "Promoting canary to stable")
-	return s.enqueue(app.ID, app.ServerID, image, "manual", app.RegistryID, models.DeployRolling, false, triggeredBy)
+	return s.enqueue(app.ID, app.ServerID, image, "promote", app.RegistryID, models.DeployRolling, false, triggeredBy)
 }
 
 func (s *Service) AbortCanary(ctx context.Context, app *models.Application) error {

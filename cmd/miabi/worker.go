@@ -209,6 +209,7 @@ func runWorker() error {
 	releaseJobs.SetDeployments(repositories.NewDeploymentRepository(db))
 	releaseJobs.SetVolumes(repositories.NewVolumeRepository(db), job.NodeNames(repositories.NewServerRepository(db)))
 	deployHandler.SetReleaseHook(releaseJobs.ReleaseActivated)
+	deployHandler.SetPreRelease(jobHandler, releaseJobs)
 	jobHandler.SetFailureHook(releaseJobs.RunFailed)
 	// Restricted profile is Enterprise-only; the same edition governs analytics retention below.
 	edition := enterprise.New(db, cfg.LicenseFile, cfg.DeploymentURL(), installIDOf(db))
@@ -274,6 +275,7 @@ func runWorker() error {
 	registryDistributor.SetInternalNetwork(cfg.InternalNetwork)
 	registryDistributor.SetEntitlements(edition)
 	deployHandler.SetDistributor(registryDistributor)
+	jobHandler.SetDistributor(registryDistributor)
 	deployHandler.SetNodeNamer(func(swarmNodeID string) string {
 		if srv, err := repositories.NewServerRepository(db).FindBySwarmNodeID(swarmNodeID); err == nil {
 			return srv.Name
