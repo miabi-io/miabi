@@ -209,7 +209,7 @@ func (s *Service) SetConnectivitySetter(fn func(ctx context.Context, serverID ui
 	s.setConnectivity = fn
 }
 
-// In a remote swarm only the gateway node serves routes, so its other members run no gateway of their own.
+// In a remote swarm the gateway node and any additional gateway an admin chose run a gateway; other members do not.
 func (s *Service) alignConnectivity(ctx context.Context, c *models.Cluster) {
 	if s.setConnectivity == nil || c == nil || c.IsDefault || c.Mode != models.ClusterModeSwarm {
 		return
@@ -239,10 +239,12 @@ func (s *Service) alignConnectivity(ctx context.Context, c *models.Cluster) {
 			continue
 		}
 		want := models.ConnectivityCluster
-		if srv.ID == c.IngressNode() {
+		if srv.ID == c.IngressNode() || srv.AdditionalGateway {
 			want = models.ConnectivityEdgeGateway
 		}
-		if srv.Connectivity == want {
+		// The gateway node was an additional gateway before: re-saving clears that, so a later move demotes it.
+		stale := srv.ID == c.IngressNode() && srv.AdditionalGateway
+		if srv.Connectivity == want && !stale {
 			continue
 		}
 		if err := s.setConnectivity(ctx, srv.ID, want); err != nil {

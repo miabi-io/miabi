@@ -89,6 +89,7 @@ type nameRow struct {
 	GatewayImage            string
 	GatewayContainer        string
 	GatewayImported         bool
+	AdditionalGateway       bool
 	GatewayRedisPasswordEnc string
 	GatewayDeployedAt       *time.Time
 	AgentVersion            string

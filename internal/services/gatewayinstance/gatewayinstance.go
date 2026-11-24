@@ -30,6 +30,7 @@ import (
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/proxy"
+	"github.com/miabi-io/miabi/internal/services/cluster"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -82,13 +83,36 @@ type ClusterLookup interface {
 	FindByID(id uint) (*models.Cluster, error)
 }
 
+type ServerLookup interface {
+	FindByID(id uint) (*models.Server, error)
+}
+
 // Service is nil-safe: without Redis nothing is recorded and every cluster lists no gateways.
 type Service struct {
 	rdb      *redis.Client
 	bundles  Bundles
 	keys     Keys
 	clusters ClusterLookup
+	servers  ServerLookup
 	now      func() time.Time
+}
+
+// SetServers lets an admin-chosen additional gateway count as serving its cluster.
+func (s *Service) SetServers(l ServerLookup) {
+	if s != nil {
+		s.servers = l
+	}
+}
+
+func (s *Service) serving(c *models.Cluster, nodeID uint) bool {
+	if nodeID == 0 || nodeID == c.IngressNode() {
+		return true
+	}
+	if s.servers == nil {
+		return false
+	}
+	srv, err := s.servers.FindByID(nodeID)
+	return err == nil && cluster.IsAdditionalGateway(c, srv)
 }
 
 func New(rdb *redis.Client, bundles Bundles, keys Keys, clusters ClusterLookup) *Service {
@@ -176,7 +200,7 @@ func (s *Service) Status(ctx context.Context, clusterID uint) ([]View, error) {
 		switch {
 		case s.now().Sub(in.SeenAt) > offlineAfter:
 			v.Status = StatusOffline
-		case in.NodeID != 0 && in.NodeID != c.IngressNode():
+		case !s.serving(c, in.NodeID):
 			v.Status = StatusNotServing
 		case sum != "" && in.Checksum == sum:
 			v.Status = StatusInSync

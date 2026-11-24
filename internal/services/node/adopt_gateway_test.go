@@ -98,7 +98,7 @@ func TestAdoptGatewayChecksConnectivity(t *testing.T) {
 	}
 }
 
-// In a remote swarm only the gateway node serves routes, so connectivity follows the cluster's gateway node.
+// The gateway node must keep its gateway; another member may run one as an admin-chosen additional gateway.
 func TestSwarmMemberConnectivityFollowsTheGatewayNode(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -129,13 +129,17 @@ func TestSwarmMemberConnectivityFollowsTheGatewayNode(t *testing.T) {
 	}
 	s.SetClusters(repositories.NewClusterRepository(db))
 
-	if _, err := s.SetConnectivity(member.ID, models.ConnectivityEdgeGateway); !errors.Is(err, ErrSwarmGatewayElsewhere) {
-		t.Errorf("edge gateway on a non-gateway member = %v, want ErrSwarmGatewayElsewhere", err)
+	extra, err := s.SetConnectivity(member.ID, models.ConnectivityEdgeGateway)
+	if err != nil || !extra.AdditionalGateway {
+		t.Fatalf("edge gateway on a non-gateway member = %+v, %v; want an additional gateway", extra, err)
+	}
+	if back, err := s.SetConnectivity(member.ID, models.ConnectivityCluster); err != nil || back.AdditionalGateway {
+		t.Errorf("back to cluster = %+v, %v; want the additional-gateway mark cleared", back, err)
 	}
 	if _, err := s.SetConnectivity(gateway.ID, models.ConnectivityCluster); !errors.Is(err, ErrSwarmGatewayNode) {
 		t.Errorf("cluster connectivity on the gateway node = %v, want ErrSwarmGatewayNode", err)
 	}
-	if _, err := s.SetConnectivity(joining.ID, models.ConnectivityEdgeGateway); err != nil {
-		t.Errorf("a node that has not joined the swarm yet was refused: %v", err)
+	if j, err := s.SetConnectivity(joining.ID, models.ConnectivityEdgeGateway); err != nil || j.AdditionalGateway {
+		t.Errorf("a node that has not joined the swarm = %+v, %v; want edge gateway without the additional mark", j, err)
 	}
 }

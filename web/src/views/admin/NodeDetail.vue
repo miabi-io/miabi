@@ -834,6 +834,9 @@ const connForm = ref<CreateNodePayload>({
 })
 const connEndpointPlaceholder = computed(() => connForm.value.access_mode === 'api' ? 'tcp://10.0.0.10:2376' : '')
 const connAccessModeDesc = computed(() => nodeOptionDescription(ACCESS_MODES, connForm.value.access_mode))
+const becomesAdditionalGateway = computed(() =>
+  !!node.value?.in_swarm && !node.value.is_local && node.value.connectivity === 'cluster' && connForm.value.connectivity === 'edge-gateway',
+)
 const connConnectivityDesc = computed(() => nodeOptionDescription(CONNECTIVITY_TYPES, connForm.value.connectivity))
 const connectivityOptions = computed(() =>
   CONNECTIVITY_TYPES.filter((o) => o.value !== 'cluster' || node.value?.is_local || node.value?.in_swarm || node.value?.connectivity === 'cluster'),
@@ -998,7 +1001,7 @@ const gwBadge = computed(() => {
               <DedicatedBadge :dedicated="node.dedicated" :organization="node.organization_name" :via="node.cluster_name" />
               <span class="chip"><span class="mdi mdi-shield-account-outline"></span> {{ roleLabel }}</span>
               <span class="chip"><span class="mdi mdi-transit-connection-variant"></span> {{ connectivityLabel() }}</span>
-              <span v-if="isEdge" class="chip chip-info" title="Runs its own Goma gateway, which terminates TLS and serves routes"><span class="mdi mdi-router-network"></span> gateway</span>
+              <span v-if="isEdge" class="chip chip-info" :title="node.additional_gateway ? 'An additional gateway for its location: serves the location\'s routes, but orders no certificates' : 'Runs its own Goma gateway, which terminates TLS and serves routes'"><span class="mdi mdi-router-network"></span> {{ node.additional_gateway ? 'additional gateway' : 'gateway' }}</span>
               <button type="button" class="chip" :title="pool ? 'Change the node pool' : 'Put the node in a pool'" @click="openPool">
                 <span class="mdi mdi-tag-outline"></span> {{ pool ? `pool: ${pool}` : 'no pool' }}
               </button>
@@ -1751,6 +1754,11 @@ const gwBadge = computed(() => {
                 <option v-for="o in connectivityOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
               <p class="form-hint">{{ connConnectivityDesc }}</p>
+              <p v-if="becomesAdditionalGateway" class="form-hint">
+                This swarm member becomes an <strong>additional gateway</strong> for its location: it serves the location's routes
+                alongside the gateway node, but orders no certificates, so only routes with a custom or DNS-01 certificate get valid TLS
+                here. DNS keeps pointing at the location's public address; send traffic to this node with a load balancer or your own records.
+              </p>
               <p v-if="node?.is_local" class="text-muted" style="font-size: 12px; margin-top: 4px">
                 As the manager, this node can run its own Goma gateway — install a fresh one or import an existing one.
               </p>

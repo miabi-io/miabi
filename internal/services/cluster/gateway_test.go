@@ -181,7 +181,8 @@ func TestAlignConnectivityMakesOnlyTheGatewayNodeAnEdgeGateway(t *testing.T) {
 	s := newGatewayService()
 	nodes := s.nodes.(*fakeNodes)
 	nodes.servers = append(nodes.servers,
-		models.Server{ID: 17, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n17", GatewayImported: true})
+		models.Server{ID: 17, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n17", GatewayImported: true},
+		models.Server{ID: 18, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n18", AdditionalGateway: true})
 	var calls []connectivityCall
 	s.SetConnectivitySetter(func(_ context.Context, id uint, c models.ServerConnectivity) error {
 		calls = append(calls, connectivityCall{id, c})
@@ -200,7 +201,7 @@ func TestAlignConnectivityMakesOnlyTheGatewayNodeAnEdgeGateway(t *testing.T) {
 		{16, models.ConnectivityCluster},
 	}
 	if !slices.Equal(calls, want) {
-		t.Errorf("calls = %v, want %v (node 15 has not joined the swarm, 17 runs an imported gateway)", calls, want)
+		t.Errorf("calls = %v, want %v (15 has not joined the swarm, 17 runs an imported gateway, 18 an additional one)", calls, want)
 	}
 
 	calls = nil
@@ -224,5 +225,43 @@ func TestMovingTheGatewayToAClusterMemberGivesItAGateway(t *testing.T) {
 	first := <-got
 	if first != (connectivityCall{12, models.ConnectivityEdgeGateway}) {
 		t.Errorf("first change = %v, want node 12 to edge-gateway", first)
+	}
+}
+
+// Once the gateway node moves away from a node that was an additional gateway, that node must be demotable.
+func TestAlignClearsTheAdditionalMarkOnTheGatewayNode(t *testing.T) {
+	s := newGatewayService()
+	nodes := s.nodes.(*fakeNodes)
+	nodes.servers[0].AdditionalGateway = true
+	var calls []connectivityCall
+	s.SetConnectivitySetter(func(_ context.Context, id uint, c models.ServerConnectivity) error {
+		calls = append(calls, connectivityCall{id, c})
+		return nil
+	})
+	s.alignConnectivity(context.Background(), &models.Cluster{ID: 5, Name: "eu-east", Mode: models.ClusterModeSwarm, ManagerServerID: 11})
+	if len(calls) == 0 || calls[0] != (connectivityCall{11, models.ConnectivityEdgeGateway}) {
+		t.Errorf("calls = %v, want node 11 re-saved as edge-gateway first", calls)
+	}
+}
+
+func TestServedClusterCountsAdditionalGateways(t *testing.T) {
+	s := newGatewayService()
+	c := &models.Cluster{ID: 5, Mode: models.ClusterModeSwarm, ManagerServerID: 11}
+	for _, tt := range []struct {
+		name string
+		srv  models.Server
+		want bool
+	}{
+		{"gateway node", models.Server{ID: 11, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway}, true},
+		{"additional gateway", models.Server{ID: 16, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, AdditionalGateway: true}, true},
+		{"mark left on a cluster member", models.Server{ID: 16, ClusterID: 5, Connectivity: models.ConnectivityCluster, AdditionalGateway: true}, false},
+		{"plain member", models.Server{ID: 12, ClusterID: 5, Connectivity: models.ConnectivityCluster}, false},
+	} {
+		if _, got := s.ServedCluster(&tt.srv); got != tt.want {
+			t.Errorf("%s: ServedCluster = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	if IsAdditionalGateway(c, &models.Server{ID: 11, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, AdditionalGateway: true}) {
+		t.Error("the gateway node itself counted as an additional gateway")
 	}
 }

@@ -590,6 +590,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		edgegateway.WarnMissingConfigKey(cfg.GomaConfigEncryptionKey, list)
 	}
 	gatewayInstances := gatewayinstance.New(redisClient, routeService, bundleKeys{servers: serverRepo}, clusterRepo)
+	gatewayInstances.SetServers(serverRepo)
 	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway, gatewayInstances))
 	// Canary traffic changes re-sync the proxy route without a redeploy.
 	appService.SetRouteSyncer(routeService)

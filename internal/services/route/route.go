@@ -1211,6 +1211,13 @@ func (s *Service) SyncCluster(ctx context.Context, clusterID uint) {
 
 // NodeBundle ships only referenced middlewares, since they render with decrypted secrets.
 func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
+	// An additional gateway serves its cluster's routes too, so its analytics and node-endpoint polls see them.
+	if srv, err := s.servers.FindByID(serverID); err == nil && srv.AdditionalGateway {
+		if c, ok := s.clusterGateway(srv.ClusterID); ok && c.IngressNode() != serverID &&
+			srv.Connectivity == models.ConnectivityEdgeGateway {
+			return s.ClusterBundle(c)
+		}
+	}
 	apps, err := s.bundleApps(serverID)
 	if err != nil {
 		return nil, nil, err

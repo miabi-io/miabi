@@ -279,7 +279,7 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 			srv.DisplayName = strings.TrimSpace(in.DisplayName)
 		}
 		if validConnectivity(in.Connectivity) {
-			srv.Connectivity = in.Connectivity
+			s.setConnectivity(srv, in.Connectivity)
 		}
 		if err := s.repo.Update(srv); err != nil {
 			return nil, err
@@ -292,8 +292,8 @@ func (s *Service) UpdateNode(id uint, in NodeInput) (*models.Server, error) {
 	if models.ValidAccessMode(in.AccessMode) {
 		srv.AccessMode = in.AccessMode
 	}
-	if validConnectivity(in.Connectivity) {
-		srv.Connectivity = in.Connectivity
+	if validConnectivity(in.Connectivity) && in.Connectivity != srv.Connectivity {
+		s.setConnectivity(srv, in.Connectivity)
 	}
 	srv.DockerEndpoint = strings.TrimSpace(in.DockerEndpoint)
 	srv.Address = deriveAddress(srv.AccessMode, in.DockerEndpoint, in.Address)
@@ -449,8 +449,6 @@ func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectiv
 		return ErrInvalidConnectivity
 	case cl.IsDefault || cl.Mode != models.ClusterModeSwarm || srv.SwarmNodeID == "":
 		return nil
-	case c == models.ConnectivityEdgeGateway && cl.IngressNode() != srv.ID:
-		return ErrSwarmGatewayElsewhere
 	case c == models.ConnectivityCluster && cl.IngressNode() == srv.ID:
 		return ErrSwarmGatewayNode
 	}
@@ -481,6 +479,19 @@ func (s *Service) SetPool(id uint, pool string) (*models.Server, error) {
 	return srv, nil
 }
 
+// Recorded so connectivity alignment keeps the gateway an admin chose besides the cluster's gateway node.
+func (s *Service) setConnectivity(srv *models.Server, c models.ServerConnectivity) {
+	srv.Connectivity = c
+	srv.AdditionalGateway = false
+	if c != models.ConnectivityEdgeGateway || srv.IsLocal || srv.SwarmNodeID == "" || s.clusters == nil {
+		return
+	}
+	if cl, err := s.clusters.FindByID(srv.ClusterID); err == nil && !cl.IsDefault &&
+		cl.Mode == models.ClusterModeSwarm && cl.IngressNode() != srv.ID {
+		srv.AdditionalGateway = true
+	}
+}
+
 // SetConnectivity changes only how a node's apps are served, leaving its other reachability settings alone.
 func (s *Service) SetConnectivity(id uint, c models.ServerConnectivity) (*models.Server, error) {
 	srv, err := s.repo.FindByID(id)
@@ -490,7 +501,7 @@ func (s *Service) SetConnectivity(id uint, c models.ServerConnectivity) (*models
 	if err := s.checkConnectivity(srv, c); err != nil {
 		return nil, err
 	}
-	srv.Connectivity = c
+	s.setConnectivity(srv, c)
 	if err := s.repo.Update(srv); err != nil {
 		return nil, err
 	}
@@ -692,7 +703,7 @@ func (s *Service) AdoptGateway(id uint, container, image, configYAML string) (*m
 	if err := s.checkConnectivity(srv, models.ConnectivityEdgeGateway); err != nil {
 		return nil, err
 	}
-	srv.Connectivity = models.ConnectivityEdgeGateway
+	s.setConnectivity(srv, models.ConnectivityEdgeGateway)
 	srv.GatewayContainer = strings.TrimSpace(container)
 	srv.GatewayImported = true
 	if img := strings.TrimSpace(image); img != "" {
