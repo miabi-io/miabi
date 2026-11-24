@@ -998,6 +998,7 @@ const gwBadge = computed(() => {
               <DedicatedBadge :dedicated="node.dedicated" :organization="node.organization_name" :via="node.cluster_name" />
               <span class="chip"><span class="mdi mdi-shield-account-outline"></span> {{ roleLabel }}</span>
               <span class="chip"><span class="mdi mdi-transit-connection-variant"></span> {{ connectivityLabel() }}</span>
+              <span v-if="isEdge" class="chip chip-info" title="Runs its own Goma gateway, which terminates TLS and serves routes"><span class="mdi mdi-router-network"></span> gateway</span>
               <button type="button" class="chip" :title="pool ? 'Change the node pool' : 'Put the node in a pool'" @click="openPool">
                 <span class="mdi mdi-tag-outline"></span> {{ pool ? `pool: ${pool}` : 'no pool' }}
               </button>
@@ -1993,6 +1994,7 @@ const gwBadge = computed(() => {
 }
 .chip .mdi { font-size: 13px; }
 .chip-ok { background: var(--success-50); color: var(--success-600); }
+.chip-info { background: var(--primary-50); color: var(--primary-600); }
 .chip-warn { background: var(--warning-50); color: var(--warning-600); }
 .hero-meta { display: flex; gap: 28px; flex-wrap: wrap; }
 .hero-stat { display: flex; flex-direction: column; }

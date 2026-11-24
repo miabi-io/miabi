@@ -270,7 +270,8 @@ func (h *ClusterHandler) mapClusterErr(c *okapi.Context, err error) error {
 		return c.AbortNotFound("cluster not found")
 	case errors.Is(err, cluster.ErrNameTooLong), errors.Is(err, cluster.ErrInvalidLocationCode),
 		errors.Is(err, cluster.ErrInvalidVisibility), errors.Is(err, cluster.ErrGatewayNeedsSwarm),
-		errors.Is(err, cluster.ErrGatewayNodeNotInCluster), errors.Is(err, cluster.ErrGatewayNodeNoGateway),
+		errors.Is(err, cluster.ErrGatewayNodeNotInCluster),
+		errors.Is(err, cluster.ErrGatewayNodeNotSwarmMember),
 		errors.Is(err, cluster.ErrInvalidIngressIP), errors.Is(err, cluster.ErrInvalidIngressIPv6),
 		errors.Is(err, cluster.ErrInvalidIngressHostname),
 		errors.Is(err, node.ErrInvalidConnectivity):

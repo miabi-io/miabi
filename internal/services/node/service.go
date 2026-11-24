@@ -422,6 +422,11 @@ func validConnectivity(c models.ServerConnectivity) bool {
 }
 
 // ErrEdgeGatewayInDefaultCluster is returned for a node of the default cluster set to run its own gateway.
+var (
+	ErrSwarmGatewayElsewhere = errors.New("in a swarm cluster only its gateway node runs a gateway; change the gateway node on the cluster's page instead")
+	ErrSwarmGatewayNode      = errors.New("this node is its swarm cluster's gateway node; pick another gateway node on the cluster's page first")
+)
+
 var ErrEdgeGatewayInDefaultCluster = errors.New("a node of the default cluster is served by the control-plane gateway and cannot run one of its own; remove it from the swarm to give it its own cluster")
 
 // Only the control plane or a swarm member can use its cluster's gateway; a default-cluster node cannot run its own.
@@ -442,6 +447,12 @@ func (s *Service) checkConnectivity(srv *models.Server, c models.ServerConnectiv
 		return ErrEdgeGatewayInDefaultCluster
 	case c == models.ConnectivityCluster && cl.Mode != models.ClusterModeSwarm:
 		return ErrInvalidConnectivity
+	case cl.IsDefault || cl.Mode != models.ClusterModeSwarm || srv.SwarmNodeID == "":
+		return nil
+	case c == models.ConnectivityEdgeGateway && cl.IngressNode() != srv.ID:
+		return ErrSwarmGatewayElsewhere
+	case c == models.ConnectivityCluster && cl.IngressNode() == srv.ID:
+		return ErrSwarmGatewayNode
 	}
 	return nil
 }

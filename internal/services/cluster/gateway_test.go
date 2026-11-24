@@ -24,9 +24,11 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/crypto"
 )
 
 func newGatewayService() *Service {
@@ -38,8 +40,10 @@ func newGatewayService() *Service {
 		},
 	}
 	nodes := &fakeNodes{servers: []models.Server{
-		{ID: 11, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway},
-		{ID: 12, ClusterID: 5, Connectivity: models.ConnectivityCluster},
+		{ID: 11, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n11"},
+		{ID: 12, ClusterID: 5, Connectivity: models.ConnectivityCluster, SwarmNodeID: "n12"},
+		{ID: 15, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway},
+		{ID: 16, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n16"},
 		{ID: 13, ClusterID: 1, Connectivity: models.ConnectivityEdgeGateway},
 		{ID: 14, ClusterID: 6, Connectivity: models.ConnectivityEdgeGateway},
 	}}
@@ -83,7 +87,7 @@ func TestSetGatewayRefusals(t *testing.T) {
 		{"default cluster", 1, GatewayPatch{ServerID: 13}, ErrGatewayNeedsSwarm},
 		{"standalone cluster", 6, GatewayPatch{ServerID: 14}, ErrGatewayNeedsSwarm},
 		{"node of another cluster", 5, GatewayPatch{ServerID: 13}, ErrGatewayNodeNotInCluster},
-		{"node without a gateway", 5, GatewayPatch{ServerID: 12}, ErrGatewayNodeNoGateway},
+		{"node that has not joined the swarm", 5, GatewayPatch{ServerID: 15}, ErrGatewayNodeNotSwarmMember},
 		{"bad ip", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv4: "10.0.0"}}, ErrInvalidIngressIP},
 		{"ipv6 as ipv4", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv4: "2001:db8::1"}}, ErrInvalidIngressIP},
 		{"ipv4 as ipv6", 5, GatewayPatch{ServerID: 11, Address: &models.PublicAddress{IPv6: "192.0.2.1"}}, ErrInvalidIngressIPv6},
@@ -123,5 +127,102 @@ func TestSetGatewayStoresTheIngress(t *testing.T) {
 	}
 	if got, ok := s.OwnGateway(5); !ok || got.IngressNode() != 11 {
 		t.Errorf("OwnGateway(5) = %+v, %v", got, ok)
+	}
+}
+
+// The old gateway may still hold the cluster token, so a move rotates it and redeploys both nodes.
+func TestMovingTheGatewayLocksOutTheOldNode(t *testing.T) {
+	crypto.Init("test-master-key-for-gateway-move")
+	t.Cleanup(func() { crypto.Init("") })
+	s := newGatewayService()
+	redeployed := make(chan uint, 4)
+	s.SetGatewayRedeployer(func(_ context.Context, id uint) { redeployed <- id })
+
+	old, _, err := s.GatewayToken(5)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	if _, err := s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 16}); err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if _, err := s.AuthenticateGateway("eu-east", old); !errors.Is(err, ErrBadGatewayToken) {
+		t.Error("the old gateway's token still authenticates after the move")
+	}
+	var got []uint
+	for len(got) < 2 {
+		select {
+		case id := <-redeployed:
+			got = append(got, id)
+		case <-time.After(time.Second):
+			t.Fatalf("redeployed %v, want the old node 11 and the new node 16", got)
+		}
+	}
+	if !slices.Equal(got, []uint{11, 16}) {
+		t.Errorf("redeployed %v, want [11 16]", got)
+	}
+
+	if _, err := s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 16}); err != nil {
+		t.Fatalf("re-save: %v", err)
+	}
+	select {
+	case id := <-redeployed:
+		t.Errorf("saving the same gateway node redeployed node %d", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+type connectivityCall struct {
+	id uint
+	c  models.ServerConnectivity
+}
+
+// Only the gateway node of a remote swarm runs a gateway; it is switched first so the cluster is never left without one.
+func TestAlignConnectivityMakesOnlyTheGatewayNodeAnEdgeGateway(t *testing.T) {
+	s := newGatewayService()
+	nodes := s.nodes.(*fakeNodes)
+	nodes.servers = append(nodes.servers,
+		models.Server{ID: 17, ClusterID: 5, Connectivity: models.ConnectivityEdgeGateway, SwarmNodeID: "n17", GatewayImported: true})
+	var calls []connectivityCall
+	s.SetConnectivitySetter(func(_ context.Context, id uint, c models.ServerConnectivity) error {
+		calls = append(calls, connectivityCall{id, c})
+		return nil
+	})
+
+	if err := s.store.UpdateColumns(5, map[string]any{"ingress_server_id": uint(12)}); err != nil {
+		t.Fatal(err)
+	}
+	// A stale caller copy must not decide which node keeps its gateway.
+	s.alignConnectivity(context.Background(), &models.Cluster{ID: 5, Name: "eu-east", Mode: models.ClusterModeSwarm, ManagerServerID: 11})
+
+	want := []connectivityCall{
+		{12, models.ConnectivityEdgeGateway},
+		{11, models.ConnectivityCluster},
+		{16, models.ConnectivityCluster},
+	}
+	if !slices.Equal(calls, want) {
+		t.Errorf("calls = %v, want %v (node 15 has not joined the swarm, 17 runs an imported gateway)", calls, want)
+	}
+
+	calls = nil
+	s.alignConnectivity(context.Background(), &models.Cluster{ID: 6, Name: "solo", Mode: models.ClusterModeStandalone, ManagerServerID: 14})
+	s.alignConnectivity(context.Background(), &models.Cluster{ID: 1, Name: "default", IsDefault: true, Mode: models.ClusterModeSwarm})
+	if len(calls) != 0 {
+		t.Errorf("standalone or default cluster changed connectivity: %v", calls)
+	}
+}
+
+func TestMovingTheGatewayToAClusterMemberGivesItAGateway(t *testing.T) {
+	s := newGatewayService()
+	got := make(chan connectivityCall, 4)
+	s.SetConnectivitySetter(func(_ context.Context, id uint, c models.ServerConnectivity) error {
+		got <- connectivityCall{id, c}
+		return nil
+	})
+	if _, err := s.SetGateway(context.Background(), 5, GatewayPatch{ServerID: 12}); err != nil {
+		t.Fatalf("move to node 12: %v", err)
+	}
+	first := <-got
+	if first != (connectivityCall{12, models.ConnectivityEdgeGateway}) {
+		t.Errorf("first change = %v, want node 12 to edge-gateway", first)
 	}
 }

@@ -650,10 +650,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Gateways are watched too
 	gatewayEnsurer := nodeGateway.Ensurer(nodeService, nodeClients)
 	controlManager.SetGateways(nodeService, gatewayEnsurer)
-	clusterService.SetGatewayTokenListener(func(ctx context.Context, c *models.Cluster) {
-		if err := gatewayEnsurer.EnsureGateway(ctx, c.IngressNode()); err != nil {
-			logger.Warn("cluster gateway not redeployed after its token rotated; it stops syncing until redeployed",
-				"cluster", c.Name, "node", c.IngressNode(), "error", err)
+	clusterService.SetGatewayRedeployer(func(ctx context.Context, serverID uint) {
+		if srv, err := nodeService.Get(serverID); err != nil || !edgegateway.AutoDeploy(srv) {
+			return
+		}
+		if err := gatewayEnsurer.EnsureGateway(ctx, serverID); err != nil {
+			logger.Warn("gateway not redeployed after its cluster role changed; it converges on its next agent reconnect",
+				"node", serverID, "error", err)
 		}
 	})
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
@@ -1789,6 +1792,18 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// A platform admin can operate containers but not read another workspace's container logs.
 	r.h.node.SetMembership(workspaceRepo)
 	r.h.cluster.SetConnectivityApplier(r.h.node.ApplyConnectivity)
+	clusterService.SetConnectivitySetter(func(ctx context.Context, serverID uint, c models.ServerConnectivity) error {
+		prev, err := nodeService.Get(serverID)
+		if err != nil {
+			return err
+		}
+		srv, err := nodeService.SetConnectivity(serverID, c)
+		if err != nil {
+			return err
+		}
+		r.h.node.ApplyConnectivity(ctx, prev, srv)
+		return nil
+	})
 	r.h.node.SetPoolLabeler(clusterService.SyncPoolLabel)
 	// Break-glass: only an explicit security-enforcement opt-out allows it.
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)

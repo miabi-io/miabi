@@ -712,7 +712,8 @@ func (h *NodeHandler) mapErr(c *okapi.Context, err error) error {
 		return c.AbortBadRequest("the local node cannot be modified this way")
 	case errors.Is(err, node.ErrConnectivityAckRequired):
 		return c.AbortWithError(409, err)
-	case errors.Is(err, node.ErrInvalidConnectivity), errors.Is(err, node.ErrEdgeGatewayInDefaultCluster):
+	case errors.Is(err, node.ErrInvalidConnectivity), errors.Is(err, node.ErrEdgeGatewayInDefaultCluster),
+		errors.Is(err, node.ErrSwarmGatewayElsewhere), errors.Is(err, node.ErrSwarmGatewayNode):
 		return c.AbortBadRequest(err.Error())
 	default:
 		return c.AbortInternalServerError("node operation failed", err)
