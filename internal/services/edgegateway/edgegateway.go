@@ -409,13 +409,8 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 		}
 	}
 	cfg := gomaConfig{
-		Version: 2,
-		CertManager: &certManager{
-			DefaultProvider: defaultCertProvider,
-			Providers: map[string]certProvider{
-				defaultCertProvider: {Type: "acme", Acme: &acmeBlock{Email: s.acmeEmail}},
-			},
-		},
+		Version:     2,
+		CertManager: s.certManagerFor(srv),
 		Gateway: gateway{
 			Log:        &logBlock{Level: defaultLogLevel},
 			TLS:        &tlsBlock{CertsDir: configPath + "/certs"},
@@ -446,6 +441,19 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 	}
 	header := "# Miabi node gateway config. Edit from the node's detail page.\n"
 	return header + string(body)
+}
+
+// An additional gateway orders no certificates: DNS points at the gateway node, so its HTTP-01 would only fail.
+func (s *Service) certManagerFor(srv *models.Server) *certManager {
+	if c, ok := s.servedCluster(srv); ok && c.IngressNode() != srv.ID {
+		return nil
+	}
+	return &certManager{
+		DefaultProvider: defaultCertProvider,
+		Providers: map[string]certProvider{
+			defaultCertProvider: {Type: "acme", Acme: &acmeBlock{Email: s.acmeEmail}},
+		},
+	}
 }
 
 func Validate(config string) error {

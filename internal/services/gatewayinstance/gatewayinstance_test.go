@@ -137,3 +137,33 @@ func TestGomaVersion(t *testing.T) {
 		t.Error("GomaVersion parsed the User-Agent wrong")
 	}
 }
+
+type fakeServers map[uint]models.Server
+
+func (f fakeServers) FindByID(id uint) (*models.Server, error) {
+	srv, ok := f[id]
+	if !ok {
+		return nil, context.Canceled
+	}
+	return &srv, nil
+}
+
+func TestAnAdditionalGatewayCountsAsServing(t *testing.T) {
+	s, _ := newService(t, &fakeBundles{host: "a.example.com"})
+	s.SetServers(fakeServers{
+		6: {ID: 6, ClusterID: 3, Connectivity: models.ConnectivityEdgeGateway, AdditionalGateway: true},
+		7: {ID: 7, ClusterID: 3, Connectivity: models.ConnectivityCluster},
+	})
+	ctx := context.Background()
+	current := proxy.BundleChecksum([]proxy.RenderedRoute{{Name: "web", Hosts: []string{"a.example.com"}}}, nil, "cluster-key")
+	s.Record(ctx, 3, Instance{Gateway: "extra", NodeID: 6, Endpoint: EndpointCluster, Checksum: current})
+	s.Record(ctx, 3, Instance{Gateway: "former", NodeID: 7, Endpoint: EndpointCluster, Checksum: current})
+	views, _ := s.Status(ctx, 3)
+	got := map[string]string{}
+	for _, v := range views {
+		got[v.Gateway] = v.Status
+	}
+	if got["extra"] != StatusInSync || got["former"] != StatusNotServing {
+		t.Errorf("statuses = %v, want extra in sync and former not serving", got)
+	}
+}

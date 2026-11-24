@@ -109,11 +109,13 @@ type Server struct {
 	TokenHash       string `json:"-" gorm:"index"`
 	GatewayTokenEnc string `json:"-"`
 	// GatewayDeployedAt is when the node's gateway was last deployed (display).
-	GatewayDeployedAt       *time.Time             `json:"gateway_deployed_at,omitempty"`
-	GatewayConfigYAML       string                 `json:"-" gorm:"type:text"`
-	GatewayImage            string                 `json:"gateway_image,omitempty"`
-	GatewayContainer        string                 `json:"gateway_container,omitempty"`
-	GatewayImported         bool                   `json:"gateway_imported" gorm:"not null;default:false"`
+	GatewayDeployedAt *time.Time `json:"gateway_deployed_at,omitempty"`
+	GatewayConfigYAML string     `json:"-" gorm:"type:text"`
+	GatewayImage      string     `json:"gateway_image,omitempty"`
+	GatewayContainer  string     `json:"gateway_container,omitempty"`
+	GatewayImported   bool       `json:"gateway_imported" gorm:"not null;default:false"`
+	// AdditionalGateway is an admin's choice to run a gateway on a swarm member besides the cluster's gateway node.
+	AdditionalGateway       bool                   `json:"additional_gateway" gorm:"not null;default:false"`
 	GatewayRedisPasswordEnc string                 `json:"-"`
 	GatewayUpdate           *GatewayUpdateProgress `json:"gateway_update,omitempty" gorm:"serializer:json"`
 	Dedicated               bool                   `json:"dedicated" gorm:"-"`

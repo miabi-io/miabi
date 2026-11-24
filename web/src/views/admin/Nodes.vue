@@ -318,7 +318,7 @@ function swarmClass(n: Server): string {
                   <span class="cell-text">
                     <span class="cell-title">
                       {{ n.display_name || n.name }}
-                      <span v-if="n.connectivity === 'edge-gateway'" class="badge badge-info" style="margin-left: 8px" title="Runs its own Goma gateway, which terminates TLS and serves routes"><span class="mdi mdi-router-network"></span> gateway</span>
+                      <span v-if="n.connectivity === 'edge-gateway'" class="badge badge-info" style="margin-left: 8px" :title="n.additional_gateway ? 'An additional gateway for its location: serves the location\'s routes, but orders no certificates' : 'Runs its own Goma gateway, which terminates TLS and serves routes'"><span class="mdi mdi-router-network"></span> {{ n.additional_gateway ? 'additional gateway' : 'gateway' }}</span>
                       <span v-if="n.cordoned" class="badge badge-warning" style="margin-left: 8px">cordoned</span>
                       <span
                         v-if="n.auto_joined"

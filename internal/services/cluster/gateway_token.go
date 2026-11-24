@@ -82,16 +82,25 @@ func (s *Service) redeployNow(ctx context.Context, serverIDs ...uint) {
 	}
 }
 
-// ServedCluster is the non-default cluster whose gateway runs on srv, i.e. srv is its ingress node.
+// ServedCluster is the non-default cluster whose routes srv's gateway serves: as its gateway node or an additional gateway.
 func (s *Service) ServedCluster(srv *models.Server) (*models.Cluster, bool) {
 	if srv == nil || srv.IsLocal || s.store == nil {
 		return nil, false
 	}
 	c, err := s.store.FindByID(srv.ClusterID)
-	if err != nil || c.IsDefault || c.IngressNode() != srv.ID {
+	if err != nil || c.IsDefault {
 		return nil, false
 	}
-	return c, true
+	if c.IngressNode() == srv.ID || IsAdditionalGateway(c, srv) {
+		return c, true
+	}
+	return nil, false
+}
+
+// IsAdditionalGateway is an admin-chosen gateway on a swarm member other than the cluster's gateway node.
+func IsAdditionalGateway(c *models.Cluster, srv *models.Server) bool {
+	return c != nil && srv != nil && srv.AdditionalGateway && srv.ClusterID == c.ID && c.Mode == models.ClusterModeSwarm &&
+		srv.Connectivity == models.ConnectivityEdgeGateway && c.IngressNode() != srv.ID
 }
 
 // AuthenticateGateway resolves the cluster by its stable name; every failure looks the same to the caller.

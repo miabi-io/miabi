@@ -2801,6 +2801,8 @@ export interface Server {
   swarm_availability?: 'active' | 'pause' | 'drain'
   swarm_state?: 'ready' | 'down' | 'unknown' | 'disconnected'
   in_swarm?: boolean
+  /** An admin chose to run a gateway on this swarm member besides its location's gateway node. */
+  additional_gateway?: boolean
   created_at?: string
   updated_at?: string
 }

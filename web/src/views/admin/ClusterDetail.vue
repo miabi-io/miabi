@@ -323,6 +323,7 @@ async function submitDedication() {
 const canSetGateway = computed(() => cluster.value?.mode === 'swarm' && !isDefault.value)
 // Backends are reached over the swarm's ingress overlay, which only a swarm member can join; the chosen node becomes an edge gateway.
 const gatewayCandidates = computed(() => members.value.filter((n) => !!n.swarm_node_id && !n.is_local))
+const additionalGateways = computed(() => members.value.filter((n) => n.additional_gateway && n.connectivity === 'edge-gateway'))
 const gatewayMoving = computed(() => !!ingressNode.value && gatewayForm.value.server_id !== ingressNode.value.id)
 const gatewayExplainer = computed(() => {
   if (isDefault.value) return "The control plane's gateway serves every app in this cluster, over the ingress overlay for swarm members."
@@ -947,6 +948,15 @@ function swarmClass(n: Server): string {
                 <span v-else class="text-muted">—</span>
                 <span v-if="ingressNode" class="badge" :class="statusClass(ingressNode)">{{ statusLabel(ingressNode) }}</span>
               </dd>
+              <template v-if="additionalGateways.length">
+                <dt>Additional gateways</dt>
+                <dd>
+                  <template v-for="(n, i) in additionalGateways" :key="n.id">
+                    <router-link :to="`/admin/nodes/${n.id}`">{{ nodeName(n) }}</router-link><span v-if="i < additionalGateways.length - 1">, </span>
+                  </template>
+                  <div class="cell-sub">They serve this location's routes but order no certificates: only routes with a custom or DNS-01 certificate get valid TLS there.</div>
+                </dd>
+              </template>
               <template v-if="swarmEnabled && status?.ingress_network">
                 <dt>Ingress overlay</dt>
                 <dd><code>{{ status.ingress_network }}</code></dd>
@@ -1124,7 +1134,7 @@ function swarmClass(n: Server): string {
               <tr v-for="n in members" :key="n.id" class="row-clickable" @click="router.push(`/admin/nodes/${n.id}`)">
                 <td>
                   <span class="cell-title">{{ nodeName(n) }}</span>
-                  <span v-if="n.connectivity === 'edge-gateway'" class="badge badge-info" style="margin-left: 6px" title="Runs its own Goma gateway, which terminates TLS and serves routes"><span class="mdi mdi-router-network"></span> gateway</span>
+                  <span v-if="n.connectivity === 'edge-gateway'" class="badge badge-info" style="margin-left: 6px" :title="n.additional_gateway ? 'An additional gateway for its location: serves the location\'s routes, but orders no certificates' : 'Runs its own Goma gateway, which terminates TLS and serves routes'"><span class="mdi mdi-router-network"></span> {{ n.additional_gateway ? 'additional gateway' : 'gateway' }}</span>
                   <div class="cell-sub mono">{{ n.address || (n.is_local ? 'local socket' : '—') }}</div>
                 </td>
                 <td>

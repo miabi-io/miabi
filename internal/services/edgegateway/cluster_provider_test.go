@@ -102,3 +102,19 @@ func TestNodeCredentialStaysWhereTheClusterEndpointIsNotPolled(t *testing.T) {
 		})
 	}
 }
+
+// An additional gateway shares the bundle but orders no certificates: its HTTP-01 could only fail.
+func TestAdditionalGatewayRunsWithoutACME(t *testing.T) {
+	s := NewService(nil, "https://miabi.example.com", "goma:latest", "miabi", "ops@example.com")
+	c := &models.Cluster{ID: 3, Name: "safari-01", IngressServerID: 7}
+	s.SetClusterGateways(fakeClusterGateways{cluster: c, token: "mbgw_cluster"})
+
+	gatewayNode := s.RenderConfig(&models.Server{ID: 7, Name: "edge-7", ClusterID: 3})
+	additional := s.RenderConfig(&models.Server{ID: 8, Name: "edge-8", ClusterID: 3})
+	if !strings.Contains(gatewayNode, "certManager") {
+		t.Errorf("the gateway node lost its ACME provider:\n%s", gatewayNode)
+	}
+	if strings.Contains(additional, "certManager") || !strings.Contains(additional, "/api/v1/providers/safari-01") {
+		t.Errorf("additional gateway config should poll the cluster without ACME:\n%s", additional)
+	}
+}
