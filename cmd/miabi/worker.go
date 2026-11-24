@@ -249,6 +249,8 @@ func runWorker() error {
 	deployHandler.SetAllocator(subnetAllocator)
 	deployHandler.SetClusterConcurrency(cfg.WorkerConcurrency / 2)
 	jobHandler.SetAllocator(subnetAllocator)
+	dbService.SetAllocator(subnetAllocator)
+	upgradeBackupService.SetAllocator(subnetAllocator)
 
 	clusterService := cluster.NewService(nodeClients, node.NewService(repositories.NewServerRepository(db), dockerClient))
 	clusterService.SetStore(repositories.NewClusterRepository(db))

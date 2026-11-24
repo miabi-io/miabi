@@ -194,3 +194,34 @@ func TestImportExistingReservesOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureNetworkReusesLedgerSubnetOnEveryNode(t *testing.T) {
+	s := newService(t, "10.42.0.0/16", 24)
+	control, remote := &fakeDocker{}, &fakeDocker{}
+	n := models.Network{DockerName: "mb-ws1-abc", Driver: "bridge"}
+	if err := s.EnsureNetwork(context.Background(), control, n, 0); err != nil {
+		t.Fatalf("control plane: %v", err)
+	}
+	if err := s.EnsureNetwork(context.Background(), remote, n, 3); err != nil {
+		t.Fatalf("remote node: %v", err)
+	}
+	if len(remote.created) != 1 || remote.created[0] != control.created[0] || remote.created[0] == "" {
+		t.Fatalf("remote subnet %v, control subnet %v, want the same pool subnet", remote.created, control.created)
+	}
+}
+
+func TestEnsureNetworkLeavesUnmanagedToDocker(t *testing.T) {
+	imported := &fakeDocker{overlapSubnet: "none"}
+	if err := newService(t, "10.42.0.0/16", 24).EnsureNetwork(context.Background(), imported,
+		models.Network{DockerName: "legacy", Imported: true}, 0); err != nil {
+		t.Fatalf("imported: %v", err)
+	}
+	var disabled *Service
+	noPool := &fakeDocker{overlapSubnet: "none"}
+	if err := disabled.EnsureNetwork(context.Background(), noPool, models.Network{DockerName: "mb-ws1-abc"}, 0); err != nil {
+		t.Fatalf("no allocator: %v", err)
+	}
+	if imported.created[0] != "" || noPool.created[0] != "" {
+		t.Fatalf("subnets %v %v, want Docker's own choice", imported.created, noPool.created)
+	}
+}

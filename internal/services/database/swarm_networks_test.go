@@ -33,9 +33,9 @@ type ensureRecorder struct {
 	ensured []string
 }
 
-func (r *ensureRecorder) EnsureNetwork(_ context.Context, name string) (string, error) {
-	r.ensured = append(r.ensured, name)
-	return name, nil
+func (r *ensureRecorder) EnsureNetworkSpec(_ context.Context, spec docker.NetworkSpec) (string, error) {
+	r.ensured = append(r.ensured, spec.Name)
+	return spec.Name, nil
 }
 
 type swarmRecorder struct{ ensured []string }

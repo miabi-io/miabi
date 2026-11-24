@@ -383,7 +383,7 @@ func (b *runtimeBuilder) buildRuntimeContext(ctx context.Context, eng docker.Cli
 	}
 	// The app's own alias is not registered here: a one-off Job must not impersonate the service.
 	if app.Stack != nil && app.Stack.DockerNetwork != "" {
-		if _, err := eng.EnsureNetwork(ctx, app.Stack.DockerNetwork); err == nil {
+		if err := b.alloc.EnsureNetwork(ctx, eng, models.Network{DockerName: app.Stack.DockerNetwork}, app.ServerID); err == nil {
 			networks = append(networks, app.Stack.DockerNetwork)
 		}
 	}
@@ -520,15 +520,7 @@ func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, ap
 		if n.Driver == network.DriverOverlay {
 			continue
 		}
-		spec := docker.NetworkSpec{Name: n.DockerName, Driver: n.Driver, Internal: n.Internal}
-		if b.alloc != nil {
-			// Reuse the network's pool subnet so it is identical on every node.
-			if _, _, err := b.alloc.EnsureManaged(ctx, eng, spec, app.ServerID, models.NetAllocKindWorkspace); err != nil {
-				return fmt.Errorf("create network %s: %w", n.DockerName, err)
-			}
-			continue
-		}
-		if _, err := eng.CreateNetworkSpec(ctx, spec); err != nil {
+		if err := b.alloc.EnsureNetwork(ctx, eng, n, app.ServerID); err != nil {
 			return fmt.Errorf("create network %s: %w", n.DockerName, err)
 		}
 	}

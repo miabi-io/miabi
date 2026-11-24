@@ -92,7 +92,7 @@ type ServerStore interface {
 }
 
 // NetworkEnsurer recreates a Docker network the ledger says should exist.
-type NetworkEnsurer func(ctx context.Context, name string) error
+type NetworkEnsurer func(ctx context.Context, n models.Network) error
 
 // AppRedeployer redeploys one application from its stored spec.
 type AppRedeployer func(app *models.Application) error
@@ -227,7 +227,7 @@ func (s *Service) ensureNetworks(ctx context.Context, rep *Report) {
 		if n.DockerName == "" {
 			continue
 		}
-		if err := s.ensureNetwork(ctx, n.DockerName); err != nil {
+		if err := s.ensureNetwork(ctx, n); err != nil {
 			rep.Failures = append(rep.Failures, fmt.Sprintf("ensure network %s: %v", n.DockerName, err))
 			continue
 		}

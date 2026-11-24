@@ -432,6 +432,8 @@ func runServer(cli *okapicli.CLI) {
 			subnetAllocator := newSubnetAllocator(cfg, res.db)
 			deployHandler.SetAllocator(subnetAllocator)
 			clusterService.SetAllocator(subnetAllocator)
+			dbService.SetAllocator(subnetAllocator)
+			upgradeBackupService.SetAllocator(subnetAllocator)
 			dbService.SetSwarmNetworks(clusterService)
 			deployHandler.SetClusterConcurrency(cfg.WorkerConcurrency / 2)
 			jobHandler.SetAllocator(subnetAllocator)
@@ -532,6 +534,7 @@ func runServer(cli *okapicli.CLI) {
 
 			backupRepo := repositories.NewBackupRepository(res.db)
 			backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
+			backupService.SetAllocator(subnetAllocator)
 			backupService.SetImageResolver(imageResolver)
 			backupService.SetLogStore(logStore)
 			backupService.SetAlerter(backupAlerter{alertEngine})
