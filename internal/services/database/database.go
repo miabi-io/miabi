@@ -37,6 +37,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
+	"github.com/miabi-io/miabi/internal/services/netalloc"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/services/quota"
@@ -195,6 +196,7 @@ type Service struct {
 	images   ImageResolver
 	networks NetworkProvider
 	swarm    SwarmNetworks
+	alloc    *netalloc.Service
 	quota    *quota.Service
 	sizes    SizeCatalog
 	ownerOf  OwnerExister
@@ -307,16 +309,20 @@ type SwarmNetworks interface {
 
 func (s *Service) SetSwarmNetworks(sw SwarmNetworks) { s.swarm = sw }
 
+func (s *Service) SetAllocator(a *netalloc.Service) { s.alloc = a }
+
 // Overlays in a remote swarm go through its manager; other overlays already exist; bridges are created on the node.
-func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID uint, n models.Network) error {
+func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance, n models.Network) error {
 	switch {
-	case s.swarm != nil && s.swarm.WorkspaceOverlay(clusterID, n):
-		return s.swarm.EnsureWorkspaceOverlay(ctx, clusterID, n)
+	case s.swarm != nil && s.swarm.WorkspaceOverlay(inst.ClusterID, n):
+		return s.swarm.EnsureWorkspaceOverlay(ctx, inst.ClusterID, n)
 	case n.SwarmScoped():
 		return nil
+	case n.DockerName == node.AppNetwork:
+		_, err := node.EnsureAppNetwork(ctx, dc)
+		return err
 	}
-	_, err := node.EnsureNetworkNamed(ctx, dc, n.DockerName)
-	return err
+	return s.alloc.EnsureNetwork(ctx, dc, n, inst.ServerID)
 }
 
 // Errors rather than falling back to the shared proxy network: the pin is permanent and would lose isolation.
@@ -350,7 +356,7 @@ func (s *Service) ensureInstanceNetworks(ctx context.Context, dc docker.Client, 
 				break
 			}
 		}
-		if err := s.ensureNetwork(ctx, dc, inst.ClusterID, n); err != nil {
+		if err := s.ensureNetwork(ctx, dc, inst, n); err != nil {
 			return nil, fmt.Errorf("ensure network %s: %w", name, err)
 		}
 	}
@@ -1054,7 +1060,7 @@ func (s *Service) AttachNetwork(ctx context.Context, workspaceID, instanceID, ne
 	// Best-effort: a stopped or missing container or offline node reconciles on the next bring-up.
 	if inst.ContainerID != "" {
 		if dc, derr := s.dockerFor(inst); derr == nil {
-			if eerr := s.ensureNetwork(ctx, dc, inst.ClusterID, *net); eerr == nil {
+			if eerr := s.ensureNetwork(ctx, dc, inst, *net); eerr == nil {
 				if cerr := dc.NetworkConnect(ctx, net.DockerName, inst.ContainerID, []string{inst.Host}); cerr != nil {
 					logger.Warn("attach network to running database", "instance", inst.ID, "network", net.DockerName, "error", cerr)
 				}

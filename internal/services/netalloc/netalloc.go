@@ -218,6 +218,25 @@ func (s *Service) EnsureIngressOverlay(ctx context.Context, mgr NetworkProvision
 	return err
 }
 
+// EnsureNetwork recreates a workspace or stack network on a node with its ledger subnet, so every node agrees on it.
+func (s *Service) EnsureNetwork(ctx context.Context, dc NetworkProvisioner, n models.Network, nodeID uint) error {
+	spec := docker.NetworkSpec{Name: n.DockerName, Driver: n.Driver, Internal: n.Internal}
+	kind := models.NetAllocKindWorkspace
+	switch {
+	case n.Driver == "overlay":
+		spec.Attachable, spec.Encrypted, kind = true, true, models.NetAllocKindOverlay
+	case strings.HasPrefix(n.DockerName, models.StackNetworkPrefix):
+		kind = models.NetAllocKindStack
+	}
+	// An imported network is the operator's: its addressing is not ours to choose.
+	if s == nil || n.Imported {
+		_, err := dc.EnsureNetworkSpec(ctx, spec)
+		return err
+	}
+	_, _, err := s.EnsureManaged(ctx, dc, spec, nodeID, kind)
+	return err
+}
+
 // ImportExisting reserves pool subnets already used by Docker networks on the node so none is handed out twice.
 func (s *Service) ImportExisting(ctx context.Context, dc NetworkProvisioner, nodeID uint) error {
 	nets, err := dc.ListNetworks(ctx)

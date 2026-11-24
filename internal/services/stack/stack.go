@@ -133,7 +133,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if err != nil {
 		return nil, err
 	}
-	dockerNetwork := "mb-stack-" + dockerName
+	dockerNetwork := models.StackNetworkPrefix + dockerName
 	if s.docker != nil {
 		spec := docker.NetworkSpec{Name: dockerNetwork}
 		var err error

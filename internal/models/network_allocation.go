@@ -21,6 +21,8 @@ package models
 
 import "time"
 
+const StackNetworkPrefix = "mb-stack-"
+
 const (
 	NetAllocKindWorkspace = "workspace" // a workspace's default/user network
 	NetAllocKindStack     = "stack"     // a per-stack network

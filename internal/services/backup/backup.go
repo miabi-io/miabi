@@ -39,6 +39,7 @@ import (
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
+	"github.com/miabi-io/miabi/internal/services/netalloc"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/services/restores"
@@ -133,11 +134,14 @@ type Service struct {
 	reporter BackupReporter
 	events   EventRecorder
 	sets     *repositories.DatabaseBackupSetRepository
+	alloc    *netalloc.Service
 }
 
 func NewService(repo *repositories.BackupRepository, dbs *repositories.DatabaseRepository, clients NodeDocker) *Service {
 	return &Service{repo: repo, dbs: dbs, clients: clients}
 }
+
+func (s *Service) SetAllocator(a *netalloc.Service) { s.alloc = a }
 
 // SetEventRecorder wires the instance timeline recorder (nil-safe: unset means no events).
 func (s *Service) SetEventRecorder(r EventRecorder) { s.events = r }
@@ -248,14 +252,27 @@ func s3Env(c *S3Config) []string {
 }
 
 // Attaching only the primary network risks one the instance is not on; legacy instances use the gateway network.
-func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
+func (s *Service) ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.DatabaseInstance) ([]string, error) {
 	names := inst.NetworkNames(node.AppNetwork)
-	for _, n := range names {
-		if inst.SwarmScoped(n) {
+	for _, name := range names {
+		if inst.SwarmScoped(name) {
 			continue
 		}
-		if _, err := node.EnsureNetworkNamed(ctx, dc, n); err != nil {
-			return nil, fmt.Errorf("ensure network %s: %w", n, err)
+		var err error
+		if name == node.AppNetwork {
+			_, err = node.EnsureAppNetwork(ctx, dc)
+		} else {
+			n := models.Network{DockerName: name}
+			for i := range inst.Networks {
+				if inst.Networks[i].DockerName == name {
+					n = inst.Networks[i]
+					break
+				}
+			}
+			err = s.alloc.EnsureNetwork(ctx, dc, n, inst.ServerID)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("ensure network %s: %w", name, err)
 		}
 	}
 	return names, nil
@@ -334,7 +351,7 @@ func (s *Service) Run(ctx context.Context, inst *models.DatabaseInstance, db *mo
 		return s.fail(b, fmt.Errorf("pull backup image: %w", err)), nil
 	}
 
-	nets, err := ensureDBNetworks(ctx, dc, inst)
+	nets, err := s.ensureDBNetworks(ctx, dc, inst)
 	if err != nil {
 		return s.fail(b, err), nil
 	}
@@ -725,7 +742,7 @@ func (s *Service) restore(ctx context.Context, inst *models.DatabaseInstance, db
 		return fmt.Errorf("pull backup image: %w", err)
 	}
 
-	nets, err := ensureDBNetworks(ctx, dc, inst)
+	nets, err := s.ensureDBNetworks(ctx, dc, inst)
 	if err != nil {
 		return err
 	}

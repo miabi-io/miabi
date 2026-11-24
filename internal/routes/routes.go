@@ -651,6 +651,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Error("failed to register the control manager sweep", "error", err)
 	}
 	databaseService := database.NewService(dbRepo, nodeClients, producer)
+	databaseService.SetAllocator(subnetAllocator)
 	databaseService.SetEventBus(bus) // live status SSE; shares the bus with the embedded worker
 	databaseService.SetEventRecorder(eventsService)
 	databaseService.SetNodeGuard(nodeService)
@@ -842,6 +843,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 	backupService := backup.NewService(backupRepo, dbRepo, nodeClients)
+	backupService.SetAllocator(subnetAllocator)
 	backupService.SetDDLRunner(databaseService) // force restore drops & recreates the DB
 
 	databaseService.SetAppController(dbupgrade.AppController(appService))
@@ -1663,9 +1665,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		appRepo,
 		repositories.NewNetworkRepository(db),
 	)
-	recoveryService.SetNetworkEnsurer(func(ctx context.Context, name string) error {
-		_, err := dockerClient.EnsureNetwork(ctx, name)
-		return err
+	recoveryService.SetNetworkEnsurer(func(ctx context.Context, n models.Network) error {
+		return subnetAllocator.EnsureNetwork(ctx, dockerClient, n, 0)
 	})
 	recoveryService.SetRedeployer(func(app *models.Application) error {
 		_, err := appService.Redeploy(app)
