@@ -87,6 +87,8 @@ type Cluster struct {
 	// ManagerServerID is the node Swarm and engine calls go through; 0 is the local socket.
 	ManagerServerID uint   `json:"manager_server_id"`
 	AgentTokenHash  string `json:"-"`
+	// GatewayTokenEnc is recoverable, unlike AgentTokenHash, so Miabi can hand it to a redeployed gateway.
+	GatewayTokenEnc string `json:"-"`
 	// IngressServerID is the node running the cluster gateway; 0 is the local node.
 	IngressServerID uint              `json:"ingress_server_id"`
 	IngressIP       string            `json:"ingress_ip,omitempty"`

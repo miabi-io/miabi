@@ -82,3 +82,26 @@ func TestConfigKeyOffWhenEncryptionIsOff(t *testing.T) {
 		t.Errorf("key = %q, want none when config encryption is off", got)
 	}
 }
+
+// Every gateway of a cluster decrypts the same bundle, so the key cannot be any one node's.
+func TestClusterConfigKeyIsPerClusterAndNotANodeKey(t *testing.T) {
+	paris := ClusterConfigKey(&models.Cluster{ID: 4, Name: "paris"}, central)
+	if paris == "" || paris == central {
+		t.Fatalf("cluster key = %q, want a derived key", paris)
+	}
+	if paris == ClusterConfigKey(&models.Cluster{ID: 5, Name: "lyon"}, central) {
+		t.Error("two clusters derived the same key")
+	}
+	if paris == ConfigKey(&models.Server{ID: 4, Name: "edge"}, central) {
+		t.Error("a cluster and a node with the same id derived the same key")
+	}
+	if ClusterConfigKey(&models.Cluster{ID: 4, Name: "renamed"}, central) != paris {
+		t.Error("renaming a cluster changed its key")
+	}
+	if got := ClusterConfigKey(&models.Cluster{ID: 1, IsDefault: true}, central); got != central {
+		t.Errorf("default cluster key = %q, want the central passphrase", got)
+	}
+	if got := ClusterConfigKey(&models.Cluster{ID: 4}, ""); got != "" {
+		t.Errorf("key with encryption off = %q, want empty", got)
+	}
+}

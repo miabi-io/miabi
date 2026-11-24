@@ -313,6 +313,38 @@ func (h *ClusterHandler) Members(c *okapi.Context) error {
 	return ok(c, members)
 }
 
+type ClusterGatewayTokenResponse struct {
+	Token    string `json:"token"`
+	Endpoint string `json:"endpoint"`
+}
+
+func (h *ClusterHandler) GatewayToken(c *okapi.Context) error {
+	return h.gatewayToken(c, false)
+}
+
+func (h *ClusterHandler) RotateGatewayToken(c *okapi.Context) error {
+	return h.gatewayToken(c, true)
+}
+
+func (h *ClusterHandler) gatewayToken(c *okapi.Context, rotate bool) error {
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	tok, name, action := "", "", "cluster.gateway_token_reveal"
+	if rotate {
+		tok, name, err = h.cluster.RotateGatewayToken(id)
+		action = "cluster.gateway_token_rotate"
+	} else {
+		tok, name, err = h.cluster.GatewayToken(id)
+	}
+	if err != nil {
+		return h.mapErr(c, err, "failed to get the cluster gateway token")
+	}
+	h.record(c, action, id)
+	return ok(c, ClusterGatewayTokenResponse{Token: tok, Endpoint: "/api/v1/providers/" + name})
+}
+
 // JoinToken returns the manual join command and worker token for a host not connected over a tunnel.
 func (h *ClusterHandler) JoinToken(c *okapi.Context) error {
 	id, err := h.clusterID(c)
@@ -366,6 +398,8 @@ func (h *ClusterHandler) mapErr(c *okapi.Context, err error, fallback string) er
 		return c.AbortBadRequest("cluster mode is not enabled")
 	case errors.Is(err, cluster.ErrManagerNode):
 		return c.AbortBadRequest("the manager node cannot be used for this operation")
+	case errors.Is(err, cluster.ErrDefaultClusterGateway):
+		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, cluster.ErrAdvertiseAddrRequired), errors.Is(err, cluster.ErrNameTooLong),
 		errors.Is(err, cluster.ErrInvalidAvailability), errors.Is(err, cluster.ErrControlURLRequired),
 		errors.Is(err, cluster.ErrAgentImageRequired):

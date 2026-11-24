@@ -101,6 +101,8 @@ func (m *memStore) UpdateColumns(id uint, cols map[string]any) error {
 			c.LocationCode = v.(string)
 		case "agent_token_hash":
 			c.AgentTokenHash = v.(string)
+		case "gateway_token_enc":
+			c.GatewayTokenEnc = v.(string)
 		case "mode":
 			c.Mode = v.(models.ClusterMode)
 		case "ingress_server_id":
