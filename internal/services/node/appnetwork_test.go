@@ -66,3 +66,45 @@ func TestResolveAppNetwork(t *testing.T) {
 		})
 	}
 }
+
+func TestAppNetworkSpecMirrorsLocalAddressing(t *testing.T) {
+	prevName, prevLocal, prevCIDR := AppNetwork, localAppNetwork, appNetworkCIDR
+	t.Cleanup(func() { AppNetwork, localAppNetwork, appNetworkCIDR = prevName, prevLocal, prevCIDR })
+
+	AppNetwork, localAppNetwork, appNetworkCIDR = "miabi", nil, ""
+	if spec := AppNetworkSpec(); spec.Subnet != "" || spec.EnableIPv6 != nil {
+		t.Fatalf("unadopted spec = %+v, want Docker defaults", spec)
+	}
+
+	AdoptAppNetworkAddressing(context.Background(), netLister{nets: []docker.Network{
+		{Name: "miabi-ingress", Driver: "overlay", Subnet: "10.0.1.0/24"},
+		{Name: "miabi", Driver: "bridge", Subnet: "10.63.0.0/16", Gateway: "10.63.0.1", EnableIPv6: true, IPv6Subnet: "fdbd::/64"},
+	}})
+	spec := AppNetworkSpec()
+	if spec.Name != "miabi" || spec.Driver != "bridge" || spec.Subnet != "10.63.0.0/16" || spec.Gateway != "10.63.0.1" {
+		t.Fatalf("spec = %+v, want the local bridge's IPv4 addressing", spec)
+	}
+	if spec.EnableIPv6 == nil || !*spec.EnableIPv6 || spec.IPv6Subnet != "fdbd::/64" {
+		t.Fatalf("spec IPv6 = %v %q, want enabled fdbd::/64", spec.EnableIPv6, spec.IPv6Subnet)
+	}
+	if role, _ := docker.LabelValue(spec.Labels, docker.LabelRole); role != docker.RoleProxyNetwork {
+		t.Fatalf("role label = %q, want %q", role, docker.RoleProxyNetwork)
+	}
+}
+
+func TestAppNetworkSpecPrefersConfiguredSubnet(t *testing.T) {
+	prevName, prevLocal, prevCIDR, prevV6 := AppNetwork, localAppNetwork, appNetworkCIDR, appNetworkIPv6
+	t.Cleanup(func() {
+		AppNetwork, localAppNetwork, appNetworkCIDR, appNetworkIPv6 = prevName, prevLocal, prevCIDR, prevV6
+	})
+
+	AppNetwork, localAppNetwork = "miabi-proxy", nil
+	SetAppNetworkAddressing("10.63.0.0/16", true)
+	AdoptAppNetworkAddressing(context.Background(), netLister{nets: []docker.Network{
+		{Name: "miabi-proxy", Driver: "bridge", Subnet: "172.18.0.0/16"},
+	}})
+	spec := AppNetworkSpec()
+	if spec.Subnet != "10.63.0.0/16" || spec.EnableIPv6 == nil || !*spec.EnableIPv6 {
+		t.Fatalf("spec = %+v, want the configured 10.63.0.0/16 with IPv6", spec)
+	}
+}

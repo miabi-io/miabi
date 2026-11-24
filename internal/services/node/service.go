@@ -160,7 +160,7 @@ func (s *Service) Bootstrap(ctx context.Context, endpoint string) {
 	}
 	s.refreshStatus(ctx, server)
 
-	if _, err := s.docker.EnsureNetwork(ctx, AppNetwork); err != nil {
+	if _, err := EnsureAppNetwork(ctx, s.docker); err != nil {
 		logger.Warn("failed to ensure docker network", "network", AppNetwork, "error", err)
 	} else {
 		logger.Info("docker network ready", "network", AppNetwork)

@@ -641,7 +641,7 @@ func (s *Service) enableDefault(ctx context.Context, advertiseAddr string) (Stat
 			return Status{}, errors.New("docker is in swarm mode but this engine is not a reachable manager")
 		}
 		labelDirect(ctx, local, info.NodeID)
-		ensureIngressOverlay(ctx, local)
+		s.ensureIngressOverlay(ctx, local)
 		s.migrateNetworks(ctx)
 		logger.Info("adopted existing docker swarm", "node_id", info.NodeID)
 		return s.Status(models.DefaultClusterID), nil
@@ -657,7 +657,7 @@ func (s *Service) enableDefault(ctx context.Context, advertiseAddr string) (Stat
 	logger.Info("initialized docker swarm", "node_id", nodeID, "advertise", addr)
 	s.Refresh(ctx)
 	labelDirect(ctx, local, nodeID)
-	ensureIngressOverlay(ctx, local)
+	s.ensureIngressOverlay(ctx, local)
 	// Refresh first: the migration refuses to run until CapCluster() is true.
 	s.migrateNetworks(ctx)
 	return s.Status(models.DefaultClusterID), nil
@@ -697,7 +697,7 @@ func (s *Service) enableRemote(ctx context.Context, c *models.Cluster, advertise
 	}
 	_ = s.nodes.SetSwarmNodeID(c.ManagerServerID, nodeID)
 	labelDirect(ctx, dc, nodeID)
-	ensureIngressOverlay(ctx, dc)
+	s.ensureIngressOverlay(ctx, dc)
 	if err := s.store.UpdateColumns(c.ID, map[string]any{
 		"mode":              models.ClusterModeSwarm,
 		"ingress_server_id": c.ManagerServerID,
@@ -709,8 +709,8 @@ func (s *Service) enableRemote(ctx context.Context, c *models.Cluster, advertise
 }
 
 // Best-effort: the deploy path creates it too.
-func ensureIngressOverlay(ctx context.Context, mgr docker.Client) {
-	if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
+func (s *Service) ensureIngressOverlay(ctx context.Context, mgr docker.Client) {
+	if err := s.alloc.EnsureIngressOverlay(ctx, mgr, node.IngressOverlay); err != nil {
 		logger.Warn("failed to ensure cluster ingress overlay", "network", node.IngressOverlay, "error", err)
 	}
 }

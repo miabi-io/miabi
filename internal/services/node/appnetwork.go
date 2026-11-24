@@ -52,6 +52,68 @@ func ResolveAppNetwork(ctx context.Context, dc docker.Client, configured string)
 	return name
 }
 
+var (
+	localAppNetwork *docker.Network
+	appNetworkCIDR  string
+	appNetworkIPv6  bool
+)
+
+// SetAppNetworkAddressing applies miabi.yaml's proxy subnet, which must win over whichever node creates the network first.
+func SetAppNetworkAddressing(subnet string, ipv6 bool) {
+	appNetworkCIDR, appNetworkIPv6 = subnet, ipv6
+}
+
+// AdoptAppNetworkAddressing is the fallback for installs whose manifest predates MIABI_PROXY_SUBNET.
+func AdoptAppNetworkAddressing(ctx context.Context, dc docker.Client) {
+	if appNetworkCIDR != "" {
+		return
+	}
+	nets, err := dc.ListNetworks(ctx)
+	if err != nil {
+		logger.Warn("cannot list docker networks; remote nodes will create the proxy network on Docker's default pool",
+			"network", AppNetwork, "error", err)
+		return
+	}
+	for i := range nets {
+		if nets[i].Name == AppNetwork && (nets[i].Driver == "" || nets[i].Driver == "bridge") {
+			n := nets[i]
+			localAppNetwork = &n
+			return
+		}
+	}
+}
+
+// AppNetworkSpec reuses one subnet everywhere: bridges are node-local, so every node can share it.
+func AppNetworkSpec() docker.NetworkSpec {
+	spec := docker.NetworkSpec{
+		Name:   AppNetwork,
+		Driver: "bridge",
+		Labels: docker.PlatformLabels(docker.RoleProxyNetwork, docker.ManagedByMiabi, nil),
+	}
+	switch n := localAppNetwork; {
+	case appNetworkCIDR != "":
+		ipv6 := appNetworkIPv6
+		spec.Subnet, spec.EnableIPv6 = appNetworkCIDR, &ipv6
+	case n != nil:
+		ipv6 := n.EnableIPv6
+		spec.Subnet, spec.Gateway = n.Subnet, n.Gateway
+		spec.EnableIPv6, spec.IPv6Subnet = &ipv6, n.IPv6Subnet
+	}
+	return spec
+}
+
+func EnsureAppNetwork(ctx context.Context, dc docker.Client) (string, error) {
+	return dc.EnsureNetworkSpec(ctx, AppNetworkSpec())
+}
+
+// EnsureNetworkNamed routes the proxy network through AppNetworkSpec so no caller creates it on Docker's pool.
+func EnsureNetworkNamed(ctx context.Context, dc docker.Client, name string) (string, error) {
+	if name == AppNetwork {
+		return EnsureAppNetwork(ctx, dc)
+	}
+	return dc.EnsureNetwork(ctx, name)
+}
+
 func discoverAppNetwork(nets []docker.Network) string {
 	var labelled []string
 	legacy := false

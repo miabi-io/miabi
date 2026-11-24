@@ -1081,7 +1081,8 @@ func (e *engineClient) NetworkConnect(ctx context.Context, name, containerID str
 		EndpointConfig: &network.EndpointSettings{Aliases: aliases},
 	})
 	// Already attached: treat as success so reconciles are idempotent.
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists") {
+	// Engine 29 says "is already attached to network" where older engines said "already exists".
+	if msg := strings.ToLower(fmt.Sprint(err)); err != nil && (strings.Contains(msg, "already exists") || strings.Contains(msg, "already attached")) {
 		return nil
 	}
 	return err

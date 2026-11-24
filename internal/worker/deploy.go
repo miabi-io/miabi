@@ -771,7 +771,7 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 	// Joined only while a route exposes the app; ProxyNetworkReconciler attaches it live when a route is added later.
 	ingressNet := ""
 	if h.appHasRoutes(app.ID) {
-		if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
+		if err := h.alloc.EnsureIngressOverlay(ctx, mgr, node.IngressOverlay); err != nil {
 			_ = h.fail(dep, fmt.Errorf("ensure ingress overlay network: %w", err))
 			return
 		}

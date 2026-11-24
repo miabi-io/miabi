@@ -315,7 +315,7 @@ func (s *Service) ensureNetwork(ctx context.Context, dc docker.Client, clusterID
 	case n.SwarmScoped():
 		return nil
 	}
-	_, err := dc.EnsureNetwork(ctx, n.DockerName)
+	_, err := node.EnsureNetworkNamed(ctx, dc, n.DockerName)
 	return err
 }
 

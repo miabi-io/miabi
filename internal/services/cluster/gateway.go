@@ -173,7 +173,7 @@ func (s *Service) AttachNodeGateway(ctx context.Context, dc docker.Client, srv *
 
 func (s *Service) attachGateway(ctx context.Context, c *models.Cluster, dc docker.Client, container string) {
 	if mgr, err := s.Manager(ctx, c.ID); err == nil {
-		ensureIngressOverlay(ctx, mgr)
+		s.ensureIngressOverlay(ctx, mgr)
 	}
 	// A gateway not deployed yet has nothing to attach; its deploy attaches it.
 	if err := dc.NetworkConnect(ctx, node.IngressOverlay, container, nil); err != nil && !cerrdefs.IsNotFound(err) {
