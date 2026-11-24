@@ -95,7 +95,7 @@ func TestDefaultClusterHasNoGatewayToken(t *testing.T) {
 func TestRotationRedeploysTheClusterGateway(t *testing.T) {
 	s := newGatewayTokenService(t)
 	got := make(chan uint, 1)
-	s.SetGatewayTokenListener(func(_ context.Context, c *models.Cluster) { got <- c.IngressNode() })
+	s.SetGatewayRedeployer(func(_ context.Context, serverID uint) { got <- serverID })
 	if _, _, err := s.RotateGatewayToken(4); err != nil {
 		t.Fatalf("rotate: %v", err)
 	}

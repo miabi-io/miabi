@@ -82,6 +82,7 @@ const GW_STATUS: Record<ClusterGatewayInstance['status'], { label: string; cls: 
   in_sync: { label: 'In sync', cls: 'badge-success badge-dot', title: 'Holds the config this location would serve it now.' },
   syncing: { label: 'Syncing', cls: 'badge-warning', title: 'Polling, but holds an older config; it picks up the change on its next poll.' },
   offline: { label: 'Offline', cls: 'badge-danger', title: 'Has not polled for over two minutes.' },
+  not_serving: { label: 'Not serving', cls: 'badge-neutral', title: "Still polling from a node that is no longer this location's gateway node." },
 }
 
 const saving = ref(false)
@@ -320,7 +321,9 @@ async function submitDedication() {
 
 // --- Gateway ---
 const canSetGateway = computed(() => cluster.value?.mode === 'swarm' && !isDefault.value)
-const gatewayCandidates = computed(() => members.value.filter((n) => n.connectivity === 'edge-gateway'))
+// Backends are reached over the swarm's ingress overlay, which only a swarm member can join.
+const gatewayCandidates = computed(() => members.value.filter((n) => n.connectivity === 'edge-gateway' && !!n.swarm_node_id))
+const gatewayMoving = computed(() => !!ingressNode.value && gatewayForm.value.server_id !== ingressNode.value.id)
 const gatewayExplainer = computed(() => {
   if (isDefault.value) return "The control plane's gateway serves every app in this cluster, over the ingress overlay for swarm members."
   if (cluster.value?.mode === 'swarm') return "The gateway on this swarm's ingress node serves every app here, over the swarm's overlay."
@@ -1393,7 +1396,10 @@ function swarmClass(n: Server): string {
               <select v-model.number="gatewayForm.server_id" class="form-select" required>
                 <option v-for="n in gatewayCandidates" :key="n.id" :value="n.id">{{ nodeName(n) }}</option>
               </select>
-              <p v-if="gatewayCandidates.length === 0" class="form-hint">No node of this cluster runs its own gateway yet: set one to edge-gateway connectivity.</p>
+              <p v-if="gatewayCandidates.length === 0" class="form-hint">No swarm member of this cluster runs its own gateway yet: set one to edge-gateway connectivity.</p>
+              <p v-if="gatewayMoving" class="form-hint">
+                Both gateways are redeployed and the location's gateway token is rotated, so {{ nodeName(ingressNode!) }} stops fetching this location's config.
+              </p>
               <p class="form-hint">
                 The public address stays as it is. If the new node has other public IPs, update it under Public address.
               </p>

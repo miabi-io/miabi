@@ -49,7 +49,7 @@ func (fakeKeys) NodeKey(uint) string               { return "node-key" }
 type fakeClusters struct{}
 
 func (fakeClusters) FindByID(id uint) (*models.Cluster, error) {
-	return &models.Cluster{ID: id, Name: "safari-01"}, nil
+	return &models.Cluster{ID: id, Name: "safari-01", Mode: models.ClusterModeSwarm, IngressServerID: 5}, nil
 }
 
 func newService(t *testing.T, bundles *fakeBundles) (*Service, *time.Time) {
@@ -72,6 +72,7 @@ func TestStatusJudgesEachGatewayAgainstTheConfigItWouldGetNow(t *testing.T) {
 	*now = now.Add(5 * time.Minute)
 	s.Record(ctx, 3, Instance{Gateway: "safari-03", NodeID: 5, Endpoint: EndpointCluster, Checksum: current})
 	s.Record(ctx, 3, Instance{Gateway: "ip:203.0.113.9", Endpoint: EndpointCluster, Checksum: "old"})
+	s.Record(ctx, 3, Instance{Gateway: "safari-04", NodeID: 6, Endpoint: EndpointNode, Checksum: current})
 
 	views, err := s.Status(ctx, 3)
 	if err != nil {
@@ -86,6 +87,7 @@ func TestStatusJudgesEachGatewayAgainstTheConfigItWouldGetNow(t *testing.T) {
 		"safari-02":      StatusOffline,
 		"safari-03":      StatusInSync,
 		"ip:203.0.113.9": StatusSyncing,
+		"safari-04":      StatusNotServing,
 	}
 	for g, st := range want {
 		if got[g] != st {

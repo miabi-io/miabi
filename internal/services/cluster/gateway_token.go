@@ -51,7 +51,7 @@ func (s *Service) GatewayToken(clusterID uint) (token, name string, err error) {
 	return token, c.Name, err
 }
 
-// RotateGatewayToken invalidates the previous token at once; the listener redeploys the gateway onto the new one.
+// RotateGatewayToken invalidates the previous token at once and redeploys the gateway onto the new one.
 func (s *Service) RotateGatewayToken(clusterID uint) (token, name string, err error) {
 	c, err := s.gatewayCluster(clusterID)
 	if err != nil {
@@ -60,14 +60,25 @@ func (s *Service) RotateGatewayToken(clusterID uint) (token, name string, err er
 	if token, err = s.storeGatewayToken(c.ID); err != nil {
 		return "", "", err
 	}
-	if fn := s.gatewayTokenRotated; fn != nil {
-		go fn(context.Background(), c)
-	}
+	s.redeployGateways(c.IngressNode())
 	return token, c.Name, nil
 }
 
-func (s *Service) SetGatewayTokenListener(fn func(context.Context, *models.Cluster)) {
-	s.gatewayTokenRotated = fn
+// SetGatewayRedeployer re-ensures a node's gateway, which then picks the credential its role now calls for.
+func (s *Service) SetGatewayRedeployer(fn func(ctx context.Context, serverID uint)) {
+	s.gatewayRedeployer = fn
+}
+
+func (s *Service) redeployGateways(serverIDs ...uint) {
+	fn := s.gatewayRedeployer
+	if fn == nil {
+		return
+	}
+	go func() {
+		for _, id := range serverIDs {
+			fn(context.Background(), id)
+		}
+	}()
 }
 
 // ServedCluster is the non-default cluster whose gateway runs on srv, i.e. srv is its ingress node.

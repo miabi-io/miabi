@@ -40,6 +40,8 @@ const (
 	StatusInSync  = "in_sync"
 	StatusSyncing = "syncing"
 	StatusOffline = "offline"
+	// StatusNotServing is a gateway still polling from a node that is no longer the cluster's gateway node.
+	StatusNotServing = "not_serving"
 
 	// Gateways poll every 30s, so two missed polls plus slack mean it stopped polling.
 	offlineAfter = 2 * time.Minute
@@ -174,6 +176,8 @@ func (s *Service) Status(ctx context.Context, clusterID uint) ([]View, error) {
 		switch {
 		case s.now().Sub(in.SeenAt) > offlineAfter:
 			v.Status = StatusOffline
+		case in.NodeID != 0 && in.NodeID != c.IngressNode():
+			v.Status = StatusNotServing
 		case sum != "" && in.Checksum == sum:
 			v.Status = StatusInSync
 		default:

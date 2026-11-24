@@ -59,7 +59,7 @@ export interface ClusterGatewayInstance {
   version?: string
   checksum: string
   seen_at: string
-  status: 'in_sync' | 'syncing' | 'offline'
+  status: 'in_sync' | 'syncing' | 'offline' | 'not_serving'
   current_checksum?: string
 }
 

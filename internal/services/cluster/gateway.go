@@ -40,9 +40,11 @@ var (
 	ErrGatewayNeedsSwarm       = errors.New("only a swarm cluster other than the default one has a gateway of its own")
 	ErrGatewayNodeNotInCluster = errors.New("the gateway node must belong to the cluster")
 	ErrGatewayNodeNoGateway    = errors.New("the gateway node must run its own gateway: set its connectivity to edge gateway")
-	ErrInvalidIngressIP        = errors.New("the public IPv4 address is not a valid IPv4 address")
-	ErrInvalidIngressIPv6      = errors.New("the public IPv6 address is not a valid, global IPv6 address")
-	ErrInvalidIngressHostname  = errors.New("the ingress hostname must be a DNS name such as lb.eu-central.example.com")
+	// Backends are reached over the swarm's ingress overlay, which only a swarm member can join.
+	ErrGatewayNodeNotSwarmMember = errors.New("the gateway node must have joined the cluster's swarm")
+	ErrInvalidIngressIP          = errors.New("the public IPv4 address is not a valid IPv4 address")
+	ErrInvalidIngressIPv6        = errors.New("the public IPv6 address is not a valid, global IPv6 address")
+	ErrInvalidIngressHostname    = errors.New("the ingress hostname must be a DNS name such as lb.eu-central.example.com")
 )
 
 var hostnamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$`)
@@ -85,6 +87,10 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	if srv.Connectivity != models.ConnectivityEdgeGateway {
 		return nil, ErrGatewayNodeNoGateway
 	}
+	if srv.SwarmNodeID == "" {
+		return nil, ErrGatewayNodeNotSwarmMember
+	}
+	prev := c.IngressNode()
 	cols := map[string]any{"ingress_server_id": srv.ID}
 	if p.Address != nil {
 		addr, err := normalizeIngress(*p.Address)
@@ -95,6 +101,15 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	}
 	if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 		return nil, err
+	}
+	if prev != srv.ID {
+		// The old gateway may hold the cluster token; a fresh one locks it out even while its node is offline.
+		if c.GatewayTokenEnc != "" {
+			if _, err := s.storeGatewayToken(c.ID); err != nil {
+				return nil, err
+			}
+		}
+		s.redeployGateways(prev, srv.ID)
 	}
 	s.AttachGateway(ctx, c.ID)
 	s.ResyncRoutes(ctx, c.ID)
