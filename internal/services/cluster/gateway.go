@@ -39,7 +39,6 @@ import (
 var (
 	ErrGatewayNeedsSwarm       = errors.New("only a swarm cluster other than the default one has a gateway of its own")
 	ErrGatewayNodeNotInCluster = errors.New("the gateway node must belong to the cluster")
-	ErrGatewayNodeNoGateway    = errors.New("the gateway node must run its own gateway: set its connectivity to edge gateway")
 	// Backends are reached over the swarm's ingress overlay, which only a swarm member can join.
 	ErrGatewayNodeNotSwarmMember = errors.New("the gateway node must have joined the cluster's swarm")
 	ErrInvalidIngressIP          = errors.New("the public IPv4 address is not a valid IPv4 address")
@@ -84,9 +83,6 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	if err != nil || srv.ClusterID != c.ID {
 		return nil, ErrGatewayNodeNotInCluster
 	}
-	if srv.Connectivity != models.ConnectivityEdgeGateway {
-		return nil, ErrGatewayNodeNoGateway
-	}
 	if srv.SwarmNodeID == "" {
 		return nil, ErrGatewayNodeNotSwarmMember
 	}
@@ -102,15 +98,27 @@ func (s *Service) SetGateway(ctx context.Context, clusterID uint, p GatewayPatch
 	if err := s.store.UpdateColumns(c.ID, cols); err != nil {
 		return nil, err
 	}
-	if prev != srv.ID {
-		// The old gateway may hold the cluster token; a fresh one locks it out even while its node is offline.
-		if c.GatewayTokenEnc != "" {
-			if _, err := s.storeGatewayToken(c.ID); err != nil {
-				return nil, err
-			}
+	moved := prev != srv.ID
+	// The old gateway may hold the cluster token; a fresh one locks it out even while its node is offline.
+	if moved && c.GatewayTokenEnc != "" {
+		if _, err := s.storeGatewayToken(c.ID); err != nil {
+			return nil, err
 		}
-		s.redeployGateways(prev, srv.ID)
 	}
+	if s.setConnectivity == nil && s.gatewayRedeployer == nil {
+		s.AttachGateway(ctx, c.ID)
+		s.ResyncRoutes(ctx, c.ID)
+		return s.Cluster(c.ID)
+	}
+	// One sequence, so the connectivity change and the redeploy never run Ensure on a node at once.
+	go func(ctx context.Context) {
+		if cur, err := s.Cluster(c.ID); err == nil {
+			s.alignConnectivity(ctx, cur)
+		}
+		if moved {
+			s.redeployNow(ctx, prev, srv.ID)
+		}
+	}(context.WithoutCancel(ctx))
 	s.AttachGateway(ctx, c.ID)
 	s.ResyncRoutes(ctx, c.ID)
 	return s.Cluster(c.ID)
@@ -193,5 +201,56 @@ func (s *Service) attachGateway(ctx context.Context, c *models.Cluster, dc docke
 	// A gateway not deployed yet has nothing to attach; its deploy attaches it.
 	if err := dc.NetworkConnect(ctx, node.IngressOverlay, container, nil); err != nil && !cerrdefs.IsNotFound(err) {
 		logger.Warn("could not join the cluster gateway to its ingress overlay", "cluster", c.Name, "container", container, "error", err)
+	}
+}
+
+// SetConnectivitySetter changes a node's connectivity and applies it: deploying or tearing down its gateway.
+func (s *Service) SetConnectivitySetter(fn func(ctx context.Context, serverID uint, c models.ServerConnectivity) error) {
+	s.setConnectivity = fn
+}
+
+// In a remote swarm only the gateway node serves routes, so its other members run no gateway of their own.
+func (s *Service) alignConnectivity(ctx context.Context, c *models.Cluster) {
+	if s.setConnectivity == nil || c == nil || c.IsDefault || c.Mode != models.ClusterModeSwarm {
+		return
+	}
+	// A gateway move and the refresh loop can align at once; serialised, the second sees the first's changes.
+	s.alignMu.Lock()
+	defer s.alignMu.Unlock()
+	if fresh, err := s.Cluster(c.ID); err == nil {
+		c = fresh
+	}
+	servers, err := s.nodes.List(ctx)
+	if err != nil {
+		return
+	}
+	// The gateway node goes first, so a member is never switched off before the cluster has a gateway.
+	order := make([]*models.Server, 0, len(servers))
+	for i := range servers {
+		if servers[i].ID == c.IngressNode() {
+			order = append([]*models.Server{&servers[i]}, order...)
+		} else {
+			order = append(order, &servers[i])
+		}
+	}
+	for _, srv := range order {
+		// Tearing down an imported gateway would remove a container Miabi did not install.
+		if srv.ClusterID != c.ID || srv.IsLocal || srv.SwarmNodeID == "" || srv.GatewayImported {
+			continue
+		}
+		want := models.ConnectivityCluster
+		if srv.ID == c.IngressNode() {
+			want = models.ConnectivityEdgeGateway
+		}
+		if srv.Connectivity == want {
+			continue
+		}
+		if err := s.setConnectivity(ctx, srv.ID, want); err != nil {
+			logger.Warn("could not align a swarm member's connectivity with its cluster's gateway node",
+				"node", srv.Name, "cluster", c.Name, "want", want, "error", err)
+			continue
+		}
+		logger.Info("aligned a swarm member's connectivity with its cluster's gateway node",
+			"node", srv.Name, "cluster", c.Name, "connectivity", want)
 	}
 }

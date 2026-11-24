@@ -1792,6 +1792,18 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// A platform admin can operate containers but not read another workspace's container logs.
 	r.h.node.SetMembership(workspaceRepo)
 	r.h.cluster.SetConnectivityApplier(r.h.node.ApplyConnectivity)
+	clusterService.SetConnectivitySetter(func(ctx context.Context, serverID uint, c models.ServerConnectivity) error {
+		prev, err := nodeService.Get(serverID)
+		if err != nil {
+			return err
+		}
+		srv, err := nodeService.SetConnectivity(serverID, c)
+		if err != nil {
+			return err
+		}
+		r.h.node.ApplyConnectivity(ctx, prev, srv)
+		return nil
+	})
 	r.h.node.SetPoolLabeler(clusterService.SyncPoolLabel)
 	// Break-glass: only an explicit security-enforcement opt-out allows it.
 	r.h.node.SetSecurityEnforcement(r.cfg.SecurityEnforcement)

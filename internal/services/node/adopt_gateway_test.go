@@ -31,11 +31,13 @@ import (
 
 // clusterRow stands in for models.Cluster under sqlite, whose uid default is Postgres-only.
 type clusterRow struct {
-	ID        uint `gorm:"primaryKey"`
-	UID       string
-	Name      string
-	Mode      string
-	IsDefault bool
+	ID              uint `gorm:"primaryKey"`
+	UID             string
+	Name            string
+	Mode            string
+	IsDefault       bool
+	ManagerServerID uint
+	IngressServerID uint
 }
 
 func (clusterRow) TableName() string { return "clusters" }
@@ -93,5 +95,47 @@ func TestAdoptGatewayChecksConnectivity(t *testing.T) {
 	if adopted.Connectivity != models.ConnectivityEdgeGateway || !adopted.GatewayImported || adopted.GatewayContainer != "goma" {
 		t.Errorf("adopt = connectivity %q, imported %v, container %q; want edge-gateway, imported, goma",
 			adopted.Connectivity, adopted.GatewayImported, adopted.GatewayContainer)
+	}
+}
+
+// In a remote swarm only the gateway node serves routes, so connectivity follows the cluster's gateway node.
+func TestSwarmMemberConnectivityFollowsTheGatewayNode(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&nameRow{}, &clusterRow{}); err != nil {
+		t.Fatal(err)
+	}
+	servers := repositories.NewServerRepository(db)
+	s := NewService(servers, nil)
+	node := func(name, swarmID string, c models.ServerConnectivity) *models.Server {
+		t.Helper()
+		srv, _, err := s.CreateNode(NodeInput{DisplayName: name})
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		srv.ClusterID, srv.SwarmNodeID, srv.Connectivity = 2, swarmID, c
+		if err := servers.Update(srv); err != nil {
+			t.Fatal(err)
+		}
+		return srv
+	}
+	gateway := node("Gateway", "n1", models.ConnectivityEdgeGateway)
+	member := node("Member", "n2", models.ConnectivityCluster)
+	joining := node("Joining", "", models.ConnectivityCluster)
+	if err := db.Create(&clusterRow{ID: 2, Name: "eu", Mode: string(models.ClusterModeSwarm), ManagerServerID: gateway.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.SetClusters(repositories.NewClusterRepository(db))
+
+	if _, err := s.SetConnectivity(member.ID, models.ConnectivityEdgeGateway); !errors.Is(err, ErrSwarmGatewayElsewhere) {
+		t.Errorf("edge gateway on a non-gateway member = %v, want ErrSwarmGatewayElsewhere", err)
+	}
+	if _, err := s.SetConnectivity(gateway.ID, models.ConnectivityCluster); !errors.Is(err, ErrSwarmGatewayNode) {
+		t.Errorf("cluster connectivity on the gateway node = %v, want ErrSwarmGatewayNode", err)
+	}
+	if _, err := s.SetConnectivity(joining.ID, models.ConnectivityEdgeGateway); err != nil {
+		t.Errorf("a node that has not joined the swarm yet was refused: %v", err)
 	}
 }

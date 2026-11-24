@@ -70,15 +70,16 @@ func (s *Service) SetGatewayRedeployer(fn func(ctx context.Context, serverID uin
 }
 
 func (s *Service) redeployGateways(serverIDs ...uint) {
-	fn := s.gatewayRedeployer
-	if fn == nil {
+	go s.redeployNow(context.Background(), serverIDs...)
+}
+
+func (s *Service) redeployNow(ctx context.Context, serverIDs ...uint) {
+	if s.gatewayRedeployer == nil {
 		return
 	}
-	go func() {
-		for _, id := range serverIDs {
-			fn(context.Background(), id)
-		}
-	}()
+	for _, id := range serverIDs {
+		s.gatewayRedeployer(ctx, id)
+	}
 }
 
 // ServedCluster is the non-default cluster whose gateway runs on srv, i.e. srv is its ingress node.

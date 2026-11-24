@@ -129,6 +129,8 @@ type Service struct {
 	rechecked        map[uint]time.Time
 
 	gatewayRedeployer func(context.Context, uint)
+	setConnectivity   func(context.Context, uint, models.ServerConnectivity) error
+	alignMu           sync.Mutex
 
 	// So a gateway recreate can't leave clustered apps dark longer than a refresh interval.
 	ingressReconciler func(context.Context) error
@@ -567,6 +569,15 @@ func (s *Service) reconcileMembership(ctx context.Context, states map[uint]swarm
 				}
 			}
 			break
+		}
+	}
+	clusters, err := s.store.List()
+	if err != nil {
+		return
+	}
+	for i := range clusters {
+		if !clusters[i].IsDefault && states[clusters[i].ID].active() {
+			s.alignConnectivity(ctx, &clusters[i])
 		}
 	}
 }
