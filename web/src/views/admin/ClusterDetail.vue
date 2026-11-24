@@ -5,7 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { useLicenseStore } from '@/stores/license'
-import { clustersApi, type ClusterUpdate, type DedicationImpact } from '@/api/clusters'
+import { clustersApi, type ClusterGatewayInstance, type ClusterUpdate, type DedicationImpact } from '@/api/clusters'
 import { clusterApi } from '@/api/cluster'
 import { nodesApi } from '@/api/nodes'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -13,6 +13,7 @@ import AppModal from '@/components/AppModal.vue'
 import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { copyText } from '@/utils/clipboard'
 import { fmtSize } from '@/utils/format'
+import { relativeTime } from '@/utils/time'
 import { addressRecords, isDnsName, isIPv4, isPublicIPv6, normalizeHost, type PublicAddress } from '@/utils/publicAddress'
 import type {
   AddressRecord, Cluster, Server, ClusterStatus, ClusterJoinInstructions,
@@ -62,6 +63,26 @@ async function load() {
   }
 }
 onMounted(load)
+
+const gatewayInstances = ref<ClusterGatewayInstance[] | null>(null)
+const gatewaysLoading = ref(false)
+async function loadGateways() {
+  if (!cluster.value || isDefault.value) return
+  gatewaysLoading.value = true
+  try {
+    gatewayInstances.value = (await clustersApi.gateways(cluster.value.id)).data.data.gateways ?? []
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    gatewaysLoading.value = false
+  }
+}
+watch([tab, cluster], ([t]) => { if (t === 'networking' && gatewayInstances.value === null) void loadGateways() })
+const GW_STATUS: Record<ClusterGatewayInstance['status'], { label: string; cls: string; title: string }> = {
+  in_sync: { label: 'In sync', cls: 'badge-success badge-dot', title: 'Holds the config this location would serve it now.' },
+  syncing: { label: 'Syncing', cls: 'badge-warning', title: 'Polling, but holds an older config; it picks up the change on its next poll.' },
+  offline: { label: 'Offline', cls: 'badge-danger', title: 'Has not polled for over two minutes.' },
+}
 
 const saving = ref(false)
 async function patch(body: ClusterUpdate, done: string): Promise<boolean> {
@@ -936,6 +957,33 @@ function swarmClass(n: Server): string {
                 <span class="mdi mdi-content-copy"></span>
               </button>
             </div>
+            <template v-if="!isDefault">
+              <div class="gw-instances-head">
+                <span class="gw-instances-title">Polling gateways</span>
+                <button type="button" class="btn-icon btn-icon-muted" aria-label="Refresh gateways" title="Refresh" :disabled="gatewaysLoading" @click="loadGateways">
+                  <span class="mdi mdi-refresh" :class="{ 'mdi-spin': gatewaysLoading }"></span>
+                </button>
+              </div>
+              <p v-if="gatewayInstances && !gatewayInstances.length" class="cell-sub">No gateway has fetched this location's config yet.</p>
+              <div v-else-if="gatewayInstances" class="table-wrapper">
+                <table>
+                  <thead><tr><th>Gateway</th><th>Endpoint</th><th>Goma</th><th>Last poll</th><th>Config</th></tr></thead>
+                  <tbody>
+                    <tr v-for="g in gatewayInstances" :key="g.gateway">
+                      <td class="cell-title">
+                        <router-link v-if="g.node_id" :to="`/admin/nodes/${g.node_id}`">{{ g.gateway }}</router-link>
+                        <span v-else title="Did not identify itself as a node of this location">{{ g.gateway }}</span>
+                        <div v-if="g.remote_ip" class="cell-sub mono">{{ g.remote_ip }}</div>
+                      </td>
+                      <td>{{ g.endpoint === 'cluster' ? 'Location' : 'Node (legacy)' }}</td>
+                      <td>{{ g.version || '—' }}</td>
+                      <td :title="new Date(g.seen_at).toLocaleString()">{{ relativeTime(g.seen_at) }}</td>
+                      <td><span class="badge" :class="GW_STATUS[g.status].cls" :title="GW_STATUS[g.status].title">{{ GW_STATUS[g.status].label }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
           </div>
         </div>
       </template>
@@ -1641,6 +1689,8 @@ function swarmClass(n: Server): string {
 </template>
 
 <style scoped>
+.gw-instances-head { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 6px; }
+.gw-instances-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 13px; text-decoration: none; margin-bottom: 4px; }
 .back-link:hover { color: var(--text-primary); }
 .page-header h1 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

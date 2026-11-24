@@ -58,6 +58,9 @@ func TestClusterIngressGatewayPollsTheClusterWithTheClusterCredential(t *testing
 	if !strings.Contains(cfg, "https://miabi.example.com/api/v1/providers/safari-01") {
 		t.Fatalf("rendered config does not poll the cluster endpoint:\n%s", cfg)
 	}
+	if !strings.Contains(cfg, GatewayIDHeader+": edge-7") {
+		t.Errorf("rendered config does not name the gateway's node:\n%s", cfg)
+	}
 	env := s.gatewayEnv(srv, "mbn_node", "")
 	if got := envValue(env, apiKeyEnv); got != "mbgw_cluster" {
 		t.Errorf("%s = %q, want the cluster token", apiKeyEnv, got)

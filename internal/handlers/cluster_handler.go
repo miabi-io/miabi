@@ -33,6 +33,7 @@ import (
 	"github.com/miabi-io/miabi/internal/nodes"
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/cluster"
+	"github.com/miabi-io/miabi/internal/services/gatewayinstance"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/organization"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -48,6 +49,26 @@ type ClusterHandler struct {
 	ee                enterprise.EE
 	orgs              *organization.Service
 	systemCerts       SystemCertificates
+	gateways          *gatewayinstance.Service
+}
+
+func (h *ClusterHandler) SetGatewayInstances(g *gatewayinstance.Service) { h.gateways = g }
+
+type ClusterGatewaysResponse struct {
+	Gateways []gatewayinstance.View `json:"gateways"`
+}
+
+// Gateways lists the gateways that polled the cluster's config and whether each holds the current one.
+func (h *ClusterHandler) Gateways(c *okapi.Context) error {
+	id, err := h.clusterID(c)
+	if err != nil {
+		return c.AbortBadRequest("invalid cluster id")
+	}
+	views, err := h.gateways.Status(c.Request().Context(), id)
+	if err != nil {
+		return h.mapErr(c, err, "failed to list the cluster's gateways")
+	}
+	return ok(c, ClusterGatewaysResponse{Gateways: views})
 }
 
 type SystemCertificates interface {

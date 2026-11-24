@@ -21,7 +21,10 @@ package proxy
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -415,6 +418,44 @@ func RenderRoute(route RenderedRoute) ([]byte, error) {
 
 // cfgKey is that node's own key, so a bundle escaping one host is unreadable on any other; empty writes plaintext.
 func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey string) ([]byte, error) {
+	doc, err := bundleDoc(routes, mws, cfgKey)
+	if err != nil {
+		return nil, err
+	}
+	body, err := yaml.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(fileHeader), body...), nil
+}
+
+// RenderProviderBundle adds the checksum Goma echoes back as If-None-Match, which is how Miabi learns what a gateway holds.
+func RenderProviderBundle(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey string) (body []byte, checksum string, err error) {
+	doc, err := bundleDoc(routes, mws, cfgKey)
+	if err != nil {
+		return nil, "", err
+	}
+	checksum = BundleChecksum(routes, mws, cfgKey)
+	doc["checksum"] = checksum
+	if body, err = yaml.Marshal(doc); err != nil {
+		return nil, "", err
+	}
+	return append([]byte(fileHeader), body...), checksum, nil
+}
+
+// BundleChecksum hashes the plaintext, since encryption is randomised and would change the bundle on every poll.
+func BundleChecksum(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey string) string {
+	keyID := sha256.Sum256([]byte(cfgKey))
+	raw, _ := json.Marshal(struct {
+		Routes      []RenderedRoute
+		Middlewares []RenderedMiddleware
+		Key         string
+	}{routes, mws, hex.EncodeToString(keyID[:8])})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:16])
+}
+
+func bundleDoc(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey string) (map[string]any, error) {
 	doc := map[string]any{}
 	routeList := make([]any, 0, len(routes))
 	for _, route := range routes {
@@ -438,11 +479,7 @@ func RenderBundle(routes []RenderedRoute, mws []RenderedMiddleware, cfgKey strin
 	if len(mwList) > 0 {
 		doc["middlewares"] = mwList
 	}
-	body, err := yaml.Marshal(doc)
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte(fileHeader), body...), nil
+	return doc, nil
 }
 
 func mwPaths(paths []string) []string {

@@ -405,7 +405,7 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 			Timeout:       "10s",
 			RetryAttempts: 3,
 			RetryDelay:    "2s",
-			Headers:       map[string]string{"Authorization": "${" + apiKeyEnv + "}"},
+			Headers:       map[string]string{"Authorization": "${" + apiKeyEnv + "}", GatewayIDHeader: srv.Name},
 		}
 	}
 	cfg := gomaConfig{

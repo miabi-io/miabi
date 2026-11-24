@@ -50,10 +50,25 @@ export interface ClusterGatewayInput {
 }
 
 // The admin cluster inventory: every node belongs to exactly one cluster.
+/** One gateway's latest poll of a location's config; status compares what it holds with what it would get now. */
+export interface ClusterGatewayInstance {
+  gateway: string
+  node_id?: number
+  endpoint: 'cluster' | 'node'
+  remote_ip?: string
+  version?: string
+  checksum: string
+  seen_at: string
+  status: 'in_sync' | 'syncing' | 'offline'
+  current_checksum?: string
+}
+
 export const clustersApi = {
   list: () => api.get<ApiResponse<Cluster[]>>('/admin/clusters'),
   get: (id: number | string) => api.get<ApiResponse<Cluster>>(`/admin/clusters/${id}`),
   update: (id: number, body: ClusterUpdate) => api.patch<ApiResponse<Cluster>>(`/admin/clusters/${id}`, body),
+  gateways: (id: number) =>
+    api.get<ApiResponse<{ gateways: ClusterGatewayInstance[] }>>(`/admin/clusters/${id}/gateways`),
   externalCertificates: (id: number) =>
     api.get<ApiResponse<ExternalCertificateOption[]>>(`/admin/clusters/${id}/external-certificates`),
   // What a change of owning organization would affect here. Read before asking for one.

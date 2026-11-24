@@ -30,6 +30,9 @@ import (
 
 const clusterProviderPath = "/api/v1/providers/"
 
+// GatewayIDHeader carries the node a gateway runs on; the provider checks it against the cluster before trusting it.
+const GatewayIDHeader = "X-Miabi-Gateway"
+
 // ClusterGateways resolves the cluster a node's gateway serves. Implemented by services/cluster.
 type ClusterGateways interface {
 	ServedCluster(srv *models.Server) (*models.Cluster, bool)

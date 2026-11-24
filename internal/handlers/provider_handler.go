@@ -22,6 +22,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/jkaninda/okapi"
@@ -29,6 +30,7 @@ import (
 	"github.com/miabi-io/miabi/internal/proxy"
 	"github.com/miabi-io/miabi/internal/services/analytics"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
+	"github.com/miabi-io/miabi/internal/services/gatewayinstance"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/route"
 )
@@ -41,6 +43,17 @@ type ProviderHandler struct {
 	metrics   AnalyticsIngestMetrics
 	forwarder func(*models.Server) AnalyticsForwarderConfig
 	clusters  ClusterGateways
+	instances *gatewayinstance.Service
+	gwNodes   GatewayNodes
+}
+
+// GatewayNodes resolves the node a gateway names itself after, so the claim is checked against the cluster.
+type GatewayNodes interface {
+	FindByName(name string) (*models.Server, error)
+}
+
+func (h *ProviderHandler) SetGatewayInstances(i *gatewayinstance.Service, nodes GatewayNodes) {
+	h.instances, h.gwNodes = i, nodes
 }
 
 type ClusterGateways interface {
@@ -84,8 +97,9 @@ func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bo
 	if err != nil {
 		return c.AbortInternalServerError("failed to render node config", err)
 	}
+	poll := gatewayinstance.Instance{Gateway: srv.Name, NodeID: srv.ID, Endpoint: gatewayinstance.EndpointNode}
 	// Under this node's key so no other node's gateway can read the bundle.
-	return writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()))
+	return h.writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()), srv.ClusterID, poll)
 }
 
 func (h *ProviderHandler) ClusterFull(c *okapi.Context) error { return h.serveCluster(c, true, true) }
@@ -110,19 +124,43 @@ func (h *ProviderHandler) serveCluster(c *okapi.Context, withRoutes, withMiddlew
 	if err != nil {
 		return c.AbortInternalServerError("failed to render cluster config", err)
 	}
-	return writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ClusterConfigKey(cl, proxy.CentralConfigKey()))
+	return h.writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ClusterConfigKey(cl, proxy.CentralConfigKey()), cl.ID, h.clusterPoll(c, cl))
 }
 
-func writeBundle(c *okapi.Context, routes []proxy.RenderedRoute, mws []proxy.RenderedMiddleware, withRoutes, withMiddlewares bool, key string) error {
+// The name is the gateway's own claim, kept only when it names a node of this cluster.
+func (h *ProviderHandler) clusterPoll(c *okapi.Context, cl *models.Cluster) gatewayinstance.Instance {
+	poll := gatewayinstance.Instance{Gateway: "ip:" + c.RealIP(), Endpoint: gatewayinstance.EndpointCluster}
+	name := strings.TrimSpace(c.Header(edgegateway.GatewayIDHeader))
+	if name == "" || h.gwNodes == nil {
+		return poll
+	}
+	if srv, err := h.gwNodes.FindByName(name); err == nil && srv.ClusterID == cl.ID {
+		poll.Gateway, poll.NodeID = srv.Name, srv.ID
+	}
+	return poll
+}
+
+func (h *ProviderHandler) writeBundle(c *okapi.Context, routes []proxy.RenderedRoute, mws []proxy.RenderedMiddleware,
+	withRoutes, withMiddlewares bool, key string, clusterID uint, poll gatewayinstance.Instance) error {
 	if !withRoutes {
 		routes = nil
 	}
 	if !withMiddlewares {
 		mws = nil
 	}
-	body, err := proxy.RenderBundle(routes, mws, key)
+	body, sum, err := proxy.RenderProviderBundle(routes, mws, key)
 	if err != nil {
 		return c.AbortInternalServerError("failed to render gateway config", err)
+	}
+	// Goma's provider fetches the full bundle; the partial endpoints are for people, not gateways.
+	if withRoutes && withMiddlewares {
+		poll.Checksum, poll.RemoteIP = sum, c.RealIP()
+		poll.Version = gatewayinstance.GomaVersion(c.Header("User-Agent"))
+		h.instances.Record(c.Request().Context(), clusterID, poll)
+	}
+	if c.Header("If-None-Match") == sum {
+		c.Response().WriteHeader(http.StatusNotModified)
+		return nil
 	}
 	c.SetHeader("Content-Type", "application/yaml")
 	w := c.Response()
