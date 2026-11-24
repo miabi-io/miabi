@@ -203,6 +203,7 @@ func runServer(cli *okapicli.CLI) {
 			nodeGateway.SetConfigEncryptionKey(cfg.GomaConfigEncryptionKey)
 			// A swarm cluster's ingress-node gateway reaches the cluster's apps over its ingress overlay.
 			nodeGateway.SetGatewayAttacher(clusterService.AttachNodeGateway)
+			nodeGateway.SetClusterGateways(clusterService)
 			nodeGateway.SetAgentContainer(nodeClients.SelfContainerID)
 			nodeManager.SetOnConnect(func(ctx context.Context, srv *models.Server, token string, dc docker.Client) {
 

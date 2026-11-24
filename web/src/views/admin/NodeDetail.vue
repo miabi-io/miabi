@@ -603,6 +603,9 @@ const configEncryptionTitle = computed(() => {
   if (gateway.value.config_key_scope === 'shared') {
     return 'Encrypted with the central passphrase, which every gateway sharing it can read. Gateways Miabi deploys get a key of their own instead; this one keeps the shared key because Miabi does not manage its environment.'
   }
+  if (gateway.value.config_key_scope === 'cluster') {
+    return `Encrypted with the ${gateway.value.provider_cluster} location's key. Only that location's gateways can read this config.`
+  }
   return "Encrypted with this node's own key, derived per node — no other gateway can read this config."
 })
 const GW_PHASE_LABELS: Record<string, string> = {
@@ -1410,12 +1413,24 @@ const gwBadge = computed(() => {
           </div>
           <div class="card-body">
             <p class="text-muted" style="margin-bottom: 8px">
-              This node terminates TLS and serves its own routes via a Goma Gateway.
+              <template v-if="gateway?.provider_cluster">
+                This node terminates TLS and serves the routes of the <strong>{{ gateway.provider_cluster }}</strong> location via a Goma Gateway.
+              </template>
+              <template v-else>This node terminates TLS and serves its own routes via a Goma Gateway.</template>
             </p>
+            <div v-if="gateway?.legacy_provider_cluster" class="gw-drift">
+              <span class="mdi mdi-alert-outline"></span>
+              <span>
+                The customised gateway config still polls this node's endpoint. It keeps working, but the
+                <strong>{{ gateway.legacy_provider_cluster }}</strong> location now publishes its config at
+                <code>/api/v1/providers/{{ gateway.legacy_provider_cluster }}</code>. Reset the config to default, or point
+                <code>providers.http.endpoint</code> there, then redeploy the gateway.
+              </span>
+            </div>
             <div v-if="gateway?.image || node.gateway_deployed_at || gateway?.imported || gateway?.redis_enabled || gateway" class="gw-meta">
               <span v-if="gateway?.imported" class="badge badge-info" title="Adopted from an existing container">imported</span>
               <span v-if="gateway?.config_encrypted" class="badge badge-success" :title="configEncryptionTitle">
-                <span class="mdi mdi-lock-outline"></span> encrypted{{ gateway.config_key_scope === 'shared' ? ' · shared key' : '' }}
+                <span class="mdi mdi-lock-outline"></span> encrypted{{ gateway.config_key_scope === 'shared' ? ' · shared key' : gateway.config_key_scope === 'cluster' ? ' · location key' : '' }}
               </span>
               <span v-else-if="gateway" class="badge badge-warning" :title="configEncryptionTitle">
                 <span class="mdi mdi-lock-open-variant-outline"></span> not encrypted
@@ -2042,6 +2057,8 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: va
 .gw-stat-sub { font-size: 11px; color: var(--text-muted); }
 
 /* Safe-update progression */
+.gw-drift { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; background: color-mix(in srgb, var(--warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); }
+.gw-drift .mdi { color: var(--warning); font-size: 16px; line-height: 1.3; }
 .gw-update { padding: 12px 14px; margin-bottom: 14px; background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 8px; }
 .upgrade-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .upgrade-step { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 14px; color: var(--text-muted); }

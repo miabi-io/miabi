@@ -646,7 +646,14 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		removals.Set(controlManager.Notify)
 	}
 	// Gateways are watched too
-	controlManager.SetGateways(nodeService, nodeGateway.Ensurer(nodeService, nodeClients))
+	gatewayEnsurer := nodeGateway.Ensurer(nodeService, nodeClients)
+	controlManager.SetGateways(nodeService, gatewayEnsurer)
+	clusterService.SetGatewayTokenListener(func(ctx context.Context, c *models.Cluster) {
+		if err := gatewayEnsurer.EnsureGateway(ctx, c.IngressNode()); err != nil {
+			logger.Warn("cluster gateway not redeployed after its token rotated; it stops syncing until redeployed",
+				"cluster", c.Name, "node", c.IngressNode(), "error", err)
+		}
+	})
 	if err := cronManager.RegisterTask("control-manager", 0, "Control manager sweep", "@every 1m", controlManager.Tick); err != nil {
 		logger.Error("failed to register the control manager sweep", "error", err)
 	}
