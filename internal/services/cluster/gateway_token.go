@@ -20,6 +20,7 @@
 package cluster
 
 import (
+	"context"
 	"crypto/subtle"
 	"errors"
 
@@ -50,14 +51,35 @@ func (s *Service) GatewayToken(clusterID uint) (token, name string, err error) {
 	return token, c.Name, err
 }
 
-// RotateGatewayToken invalidates the previous token at once: gateways still holding it fail until redeployed.
+// RotateGatewayToken invalidates the previous token at once; the listener redeploys the gateway onto the new one.
 func (s *Service) RotateGatewayToken(clusterID uint) (token, name string, err error) {
 	c, err := s.gatewayCluster(clusterID)
 	if err != nil {
 		return "", "", err
 	}
-	token, err = s.storeGatewayToken(c.ID)
-	return token, c.Name, err
+	if token, err = s.storeGatewayToken(c.ID); err != nil {
+		return "", "", err
+	}
+	if fn := s.gatewayTokenRotated; fn != nil {
+		go fn(context.Background(), c)
+	}
+	return token, c.Name, nil
+}
+
+func (s *Service) SetGatewayTokenListener(fn func(context.Context, *models.Cluster)) {
+	s.gatewayTokenRotated = fn
+}
+
+// ServedCluster is the non-default cluster whose gateway runs on srv, i.e. srv is its ingress node.
+func (s *Service) ServedCluster(srv *models.Server) (*models.Cluster, bool) {
+	if srv == nil || srv.IsLocal || s.store == nil {
+		return nil, false
+	}
+	c, err := s.store.FindByID(srv.ClusterID)
+	if err != nil || c.IsDefault || c.IngressNode() != srv.ID {
+		return nil, false
+	}
+	return c, true
 }
 
 // AuthenticateGateway resolves the cluster by its stable name; every failure looks the same to the caller.

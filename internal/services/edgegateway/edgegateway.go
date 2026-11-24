@@ -98,6 +98,7 @@ type ImageResolver interface {
 
 // Service deploys and tears down node gateways.
 type Service struct {
+	clusters      ClusterGateways
 	workspaces    *repositories.WorkspaceRepository
 	controlURL    string
 	image         string
@@ -399,7 +400,7 @@ func (s *Service) RenderConfig(srv *models.Server) string {
 	} else {
 		prov.HTTP = &httpProvider{
 			Enabled:       true,
-			Endpoint:      fmt.Sprintf("%s/api/v1/provider/%s", s.controlURL, srv.Name),
+			Endpoint:      s.providerEndpoint(srv),
 			Interval:      "30s",
 			Timeout:       "10s",
 			RetryAttempts: 3,
@@ -658,15 +659,16 @@ func (s *Service) gatewaySpec(srv *models.Server, token, redisPassword, name, im
 }
 
 // Secrets go in env so neither lives in the editable config.
-func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []string {
-	env := []string{apiKeyEnv + "=" + token}
+func (s *Service) gatewayEnv(srv *models.Server, nodeToken, redisPassword string) []string {
+	cred := s.credential(srv, nodeToken)
+	env := []string{apiKeyEnv + "=" + cred.token}
 	// Lets the manager tell which node served a request once edge events share the stream.
 	if s.analyticsEnabledFor(srv) && srv != nil && srv.Name != "" {
 		env = append(env, gatewayIDEnv+"="+srv.Name)
 	}
 	// Needed by any gateway that polls the HTTP provider, including a manager configured to poll.
 	if !s.effectiveFileProvider(srv) {
-		env = append(env, reloadTokenEnv+"="+ReloadToken(token))
+		env = append(env, reloadTokenEnv+"="+ReloadToken(cred.token))
 	}
 	if s.redisAddrFor(srv) != "" {
 		pw := redisPassword
@@ -675,8 +677,8 @@ func (s *Service) gatewayEnv(srv *models.Server, token, redisPassword string) []
 		}
 		env = append(env, gatewayRedisPasswordEnv+"="+pw)
 	}
-	// Must match the key the provider endpoint renders this node's bundle under; both derive it from the same inputs.
-	if k := ConfigKey(srv, s.configEncKey); k != "" {
+	// Must match the key the polled provider endpoint renders the bundle under; both derive it from the same inputs.
+	if k := cred.key; k != "" {
 		env = append(env, configEncryptionKeyEnv+"="+k)
 	}
 	return env

@@ -542,7 +542,11 @@ type GatewayStatus struct {
 	RedisShared  bool `json:"redis_shared"`
 	// "shared" is the central passphrase, which an imported gateway also falls back to since Miabi never redeploys it.
 	ConfigEncrypted bool   `json:"config_encrypted"`
-	ConfigKeyScope  string `json:"config_key_scope,omitempty"` // node | shared
+	ConfigKeyScope  string `json:"config_key_scope,omitempty"` // node | cluster | shared
+	// ProviderCluster is the cluster whose endpoint the gateway polls; empty means its own node endpoint.
+	ProviderCluster string `json:"provider_cluster,omitempty"`
+	// LegacyProviderCluster is set when a customised config still polls the node endpoint for a node serving that cluster.
+	LegacyProviderCluster string `json:"legacy_provider_cluster,omitempty"`
 	// Update is the in-flight safe-update progress, if any.
 	Update *models.GatewayUpdateProgress `json:"update,omitempty"`
 }
@@ -588,10 +592,16 @@ func (h *NodeHandler) GatewayState(c *okapi.Context) error {
 		RedisShared:    srv.IsLocal,
 		Update:         srv.GatewayUpdate,
 	}
-	if key := edgegateway.ConfigKey(srv, proxy.CentralConfigKey()); key != "" {
+	out.ProviderCluster = h.gateway.ProviderScope(srv)
+	out.LegacyProviderCluster = h.gateway.LegacyProviderCluster(srv)
+	if key := h.gateway.EffectiveConfigKey(srv, proxy.CentralConfigKey()); key != "" {
 		out.ConfigEncrypted = true
-		out.ConfigKeyScope = "shared"
-		if key != proxy.CentralConfigKey() {
+		switch {
+		case key == proxy.CentralConfigKey():
+			out.ConfigKeyScope = "shared"
+		case out.ProviderCluster != "":
+			out.ConfigKeyScope = "cluster"
+		default:
 			out.ConfigKeyScope = "node"
 		}
 	}
@@ -871,7 +881,7 @@ func (h *NodeHandler) GatewayConfig(c *okapi.Context) error {
 	if isDefault {
 		cfg = def
 	}
-	return ok(c, map[string]any{"config": cfg, "default": def, "is_default": isDefault})
+	return ok(c, map[string]any{"config": cfg, "default": def, "is_default": isDefault, "legacy_provider_cluster": h.gateway.LegacyProviderCluster(srv)})
 }
 
 // UpdateNodeGatewayConfigRequest is the body for saving a node's gateway config.

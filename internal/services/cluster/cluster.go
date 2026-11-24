@@ -128,6 +128,8 @@ type Service struct {
 	defaultClusterID uint
 	rechecked        map[uint]time.Time
 
+	gatewayTokenRotated func(context.Context, *models.Cluster)
+
 	// So a gateway recreate can't leave clustered apps dark longer than a refresh interval.
 	ingressReconciler func(context.Context) error
 	nodeJoined        func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)

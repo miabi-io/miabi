@@ -57,7 +57,7 @@ func (s *Service) Reload(ctx context.Context, srv *models.Server, token string) 
 		return err
 	}
 	baseURL := "http://" + net.JoinHostPort(host, strconv.Itoa(gatewayWebPort))
-	if err := postReload(ctx, reloadHTTPClient, baseURL, ReloadToken(token)); err != nil {
+	if err := postReload(ctx, reloadHTTPClient, baseURL, ReloadToken(s.credential(srv, token).token)); err != nil {
 		return fmt.Errorf("edgegateway: reload %q: %w", srv.Name, err)
 	}
 	return nil

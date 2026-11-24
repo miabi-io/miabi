@@ -20,9 +20,11 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/crypto"
@@ -35,7 +37,7 @@ func newGatewayTokenService(t *testing.T) *Service {
 	s := NewService(fakeClients{local: &fakeDocker{}}, &fakeNodes{})
 	s.SetStore(&memStore{
 		def:    models.Cluster{ID: 1, IsDefault: true, Name: "default"},
-		others: map[uint]models.Cluster{4: {ID: 4, Name: "paris", Mode: models.ClusterModeSwarm}},
+		others: map[uint]models.Cluster{4: {ID: 4, Name: "paris", Mode: models.ClusterModeSwarm, ManagerServerID: 7, IngressServerID: 8}},
 	})
 	return s
 }
@@ -87,5 +89,39 @@ func TestDefaultClusterHasNoGatewayToken(t *testing.T) {
 	}
 	if _, _, err := s.RotateGatewayToken(99); !errors.Is(err, ErrClusterNotFound) {
 		t.Errorf("RotateGatewayToken(unknown) = %v, want ErrClusterNotFound", err)
+	}
+}
+
+func TestRotationRedeploysTheClusterGateway(t *testing.T) {
+	s := newGatewayTokenService(t)
+	got := make(chan uint, 1)
+	s.SetGatewayTokenListener(func(_ context.Context, c *models.Cluster) { got <- c.IngressNode() })
+	if _, _, err := s.RotateGatewayToken(4); err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	select {
+	case node := <-got:
+		if node != 8 {
+			t.Errorf("redeployed node %d, want the ingress node 8", node)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("rotation did not notify the gateway listener")
+	}
+}
+
+func TestServedClusterIsOnlyTheIngressNodesCluster(t *testing.T) {
+	s := newGatewayTokenService(t)
+	if c, ok := s.ServedCluster(&models.Server{ID: 8, ClusterID: 4}); !ok || c.Name != "paris" {
+		t.Errorf("ingress node: ServedCluster = %v, %v; want paris", c, ok)
+	}
+	for _, srv := range []*models.Server{
+		{ID: 7, ClusterID: 4},
+		{ID: 1, ClusterID: 1},
+		{ID: 1, ClusterID: 1, IsLocal: true},
+		nil,
+	} {
+		if _, ok := s.ServedCluster(srv); ok {
+			t.Errorf("ServedCluster(%+v) = true, want false", srv)
+		}
 	}
 }

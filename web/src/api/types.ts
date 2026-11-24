@@ -3084,8 +3084,12 @@ export interface GatewayStatus {
   redis_shared?: boolean
   /** Middleware rules and inline TLS are encrypted rather than served in the clear. */
   config_encrypted?: boolean
-  /** Which key: 'node' = this node's own (derived), 'shared' = the central passphrase. */
-  config_key_scope?: 'node' | 'shared' 
+  /** Which key: 'node' = this node's own, 'cluster' = shared by the cluster's gateways, 'shared' = the central passphrase. */
+  config_key_scope?: 'node' | 'cluster' | 'shared'
+  /** Cluster whose provider endpoint the gateway polls; absent means the node's own endpoint. */
+  provider_cluster?: string
+  /** Set when a customised config still polls the node endpoint although the node serves this cluster. */
+  legacy_provider_cluster?: string
   // In-flight safe-update progress, if any.
   update?: GatewayUpdateProgress
 }
