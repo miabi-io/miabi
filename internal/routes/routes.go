@@ -77,6 +77,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/environment"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/events"
+	"github.com/miabi-io/miabi/internal/services/gatewayinstance"
 	"github.com/miabi-io/miabi/internal/services/gitops"
 	"github.com/miabi-io/miabi/internal/services/gitrepo"
 	"github.com/miabi-io/miabi/internal/services/gpu"
@@ -588,7 +589,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	if list, lerr := serverRepo.List(); lerr == nil {
 		edgegateway.WarnMissingConfigKey(cfg.GomaConfigEncryptionKey, list)
 	}
-	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway))
+	gatewayInstances := gatewayinstance.New(redisClient, routeService, bundleKeys{servers: serverRepo}, clusterRepo)
+	routeService.SetEdgeReloader(newEdgeReloader(nodeService, nodeGateway, gatewayInstances))
 	// Canary traffic changes re-sync the proxy route without a redeploy.
 	appService.SetRouteSyncer(routeService)
 	// Enforce platform CPU/memory caps on app create/update.
@@ -1551,6 +1553,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	nodeManager.AddStatusListener(r.h.node.PublishStatus)
 
 	r.h.provider.SetClusterGateways(clusterService)
+	r.h.provider.SetGatewayInstances(gatewayInstances, serverRepo)
+	r.h.cluster.SetGatewayInstances(gatewayInstances)
 	if cfg.AnalyticsEnabled && redisClient != nil {
 		r.h.provider.SetAnalyticsIngest(
 			analytics.NewIngester(redisClient, routeService, cfg.AnalyticsStream),

@@ -77,6 +77,15 @@ func (r *Router) clustersRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        "/{clusterID}/gateways",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.cluster.Gateways,
+			Summary:     "Gateways polling the cluster's config, with whether each holds the current one",
+			Response:    &dto.Response[handlers.ClusterGatewaysResponse]{},
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        "/{clusterID}/gateway-token",
 			Group:       g,
 			Middlewares: admin,
