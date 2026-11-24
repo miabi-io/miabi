@@ -126,6 +126,7 @@ type Service struct {
 	states           map[uint]swarmState // by cluster id; the default cluster is kept under 0
 	refreshedAt      time.Time
 	defaultClusterID uint
+	rechecked        map[uint]time.Time
 
 	// So a gateway recreate can't leave clustered apps dark longer than a refresh interval.
 	ingressReconciler func(context.Context) error
@@ -272,7 +273,58 @@ func (s *Service) CapCluster() bool {
 
 // IsSwarm reports whether a cluster runs a swarm the control plane can drive right now.
 func (s *Service) IsSwarm(clusterID uint) bool {
-	return s.state(clusterID).active()
+	if s.state(clusterID).active() {
+		return true
+	}
+	return s.recheck(clusterID)
+}
+
+const recheckInterval = 10 * time.Second
+
+// A boot refresh runs before agents reconnect, so a cached miss would hold until the next tick.
+func (s *Service) recheck(clusterID uint) bool {
+	if s.isDefault(clusterID) || s.store == nil {
+		return false
+	}
+	s.mu.Lock()
+	if last, ok := s.rechecked[clusterID]; ok && time.Since(last) < recheckInterval {
+		s.mu.Unlock()
+		return false
+	}
+	if s.rechecked == nil {
+		s.rechecked = map[uint]time.Time{}
+	}
+	s.rechecked[clusterID] = time.Now()
+	s.mu.Unlock()
+
+	c, err := s.find(clusterID)
+	if err != nil || c.Mode != models.ClusterModeSwarm {
+		return false
+	}
+	mgr, err := s.remoteManager(c)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	info, err := mgr.Swarm(ctx)
+	if err != nil {
+		return false
+	}
+	st := s.readSwarm(ctx, mgr, info)
+	if !st.active() {
+		return false
+	}
+	s.mu.Lock()
+	// Copy-on-write: readers iterate s.states after releasing the lock.
+	next := make(map[uint]swarmState, len(s.states)+1)
+	for id, v := range s.states {
+		next[id] = v
+	}
+	next[clusterID] = st
+	s.states = next
+	s.mu.Unlock()
+	return true
 }
 
 // AnySwarm reports whether any cluster runs a swarm, which is when the service runtime can be offered.
