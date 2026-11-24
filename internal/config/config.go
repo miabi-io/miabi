@@ -174,6 +174,8 @@ type Config struct {
 
 	// ProxyNetwork is empty until startup resolves it with node.ResolveAppNetwork when MIABI_PROXY_NETWORK is unset.
 	ProxyNetwork string
+	// ProxySubnet is miabi.yaml's networking.proxy.subnet; empty falls back to the local network's addressing.
+	ProxySubnet string
 
 	// InternalNetwork is empty on a Docker Compose install, leaving ProxyNetwork as the only fabric.
 	InternalNetwork string
@@ -543,6 +545,7 @@ func New() *Config {
 		AdminUnlock:                goutils.EnvBool("MIABI_ADMIN_UNLOCK", false),
 		KeyRotateMonths:            goutils.EnvInt("MIABI_KEY_ROTATE_MONTHS", 6),
 		ProxyNetwork:               goutils.Env("MIABI_PROXY_NETWORK", goutils.Env("MIABI_GOMA_NETWORK", "miabi-proxy")),
+		ProxySubnet:                goutils.Env("MIABI_PROXY_SUBNET", ""),
 		InternalNetwork:            goutils.Env("MIABI_INTERNAL_NETWORK", "miabi-internal"),
 		APIKeyScopeEnforcement:     goutils.Env("MIABI_API_KEY_SCOPE_ENFORCEMENT", ""),
 		ControlURL:                 goutils.Env("MIABI_CONTROL_URL", goutils.Env("MIABI_API_URL", "")),
@@ -695,6 +698,11 @@ func (c *Config) ValidateAdminSeed() error {
 }
 
 func (c *Config) validateNetworkPool() error {
+	if s := strings.TrimSpace(c.ProxySubnet); s != "" {
+		if _, _, err := net.ParseCIDR(s); err != nil {
+			return fmt.Errorf("MIABI_PROXY_SUBNET %q is not a valid CIDR: %w", c.ProxySubnet, err)
+		}
+	}
 	// Only a hand-built Config (tests) is empty; managed networks then fall back to Docker.
 	if strings.TrimSpace(c.NetworkPoolCIDR) == "" {
 		return nil

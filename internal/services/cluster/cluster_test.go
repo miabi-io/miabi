@@ -51,6 +51,10 @@ func (f *fakeDocker) NetworkConnect(_ context.Context, network, container string
 func (f *fakeDocker) Swarm(context.Context) (docker.SwarmInfo, error)        { return f.info, nil }
 func (f *fakeDocker) SwarmNodes(context.Context) ([]docker.SwarmNode, error) { return f.nodes, nil }
 func (f *fakeDocker) EnsureNetworkSpec(_ context.Context, spec docker.NetworkSpec) (string, error) {
+	if spec.Name == node.IngressOverlay {
+		f.overlaysMade = append(f.overlaysMade, spec.Name)
+		return spec.Name, nil
+	}
 	f.ensured = append(f.ensured, spec)
 	return spec.Name, nil
 }

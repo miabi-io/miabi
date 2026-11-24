@@ -207,6 +207,17 @@ func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec
 	return "", "", fmt.Errorf("could not allocate a non-overlapping subnet for %q after %d attempts", spec.Name, maxAttempts)
 }
 
+// EnsureIngressOverlay carves the cluster ingress overlay from the pool; a nil Service leaves it to Swarm's 10.0.0.0/8.
+func (s *Service) EnsureIngressOverlay(ctx context.Context, mgr NetworkProvisioner, name string) error {
+	spec := docker.NetworkSpec{Name: name, Driver: "overlay", Attachable: true, Encrypted: true}
+	if s == nil {
+		_, err := mgr.EnsureNetworkSpec(ctx, spec)
+		return err
+	}
+	_, _, err := s.EnsureManaged(ctx, mgr, spec, 0, models.NetAllocKindGateway)
+	return err
+}
+
 // ImportExisting reserves pool subnets already used by Docker networks on the node so none is handed out twice.
 func (s *Service) ImportExisting(ctx context.Context, dc NetworkProvisioner, nodeID uint) error {
 	nets, err := dc.ListNetworks(ctx)

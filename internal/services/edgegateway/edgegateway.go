@@ -31,6 +31,7 @@ import (
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
+	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/miabi/pkg/bundled"
@@ -559,7 +560,7 @@ func (s *Service) resolvedConfig(srv *models.Server) (string, error) {
 }
 
 func (s *Service) prepareWith(ctx context.Context, dc docker.Client, srv *models.Server, redisPassword, cfg string) error {
-	if _, err := dc.EnsureNetwork(ctx, s.network); err != nil {
+	if _, err := node.EnsureNetworkNamed(ctx, dc, s.network); err != nil {
 		return fmt.Errorf("ensure network %q: %w", s.network, err)
 	}
 

@@ -36,6 +36,7 @@ import (
 	"github.com/miabi-io/miabi/internal/logstore"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/backup"
+	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/platformimage"
 	"github.com/miabi-io/miabi/internal/storage/blob"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -272,7 +273,7 @@ func (s *Service) helperNetworks(ctx context.Context, dc docker.Client) ([]strin
 		if name == "" || slices.Contains(out, name) {
 			continue
 		}
-		if _, err := dc.EnsureNetwork(ctx, name); err != nil {
+		if _, err := node.EnsureNetworkNamed(ctx, dc, name); err != nil {
 			return nil, fmt.Errorf("attach the volume backup container to network %q (it reaches the object store there): %w", name, err)
 		}
 		out = append(out, name)

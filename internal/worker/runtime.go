@@ -492,7 +492,7 @@ func (b *runtimeBuilder) appHasRoutes(appID uint) bool {
 
 // Workspace networks are created on the control plane, so a remote node may lack them until recreated here.
 func (b *runtimeBuilder) syncNetworks(ctx context.Context, eng docker.Client, app *models.Application) error {
-	if _, err := eng.EnsureNetwork(ctx, node.AppNetwork); err != nil {
+	if _, err := node.EnsureAppNetwork(ctx, eng); err != nil {
 		return fmt.Errorf("ensure gateway network: %w", err)
 	}
 	if len(app.Networks) == 0 {

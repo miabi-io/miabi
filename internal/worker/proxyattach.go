@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/docker"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/edgegateway"
+	"github.com/miabi-io/miabi/internal/services/netalloc"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -37,6 +38,7 @@ type ProxyNetworkReconciler struct {
 	releases *repositories.ReleaseRepository
 	clients  NodeDocker
 	cluster  ClusterCap
+	alloc    *netalloc.Service
 }
 
 func NewProxyNetworkReconciler(apps *repositories.ApplicationRepository, releases *repositories.ReleaseRepository, clients NodeDocker) *ProxyNetworkReconciler {
@@ -44,6 +46,8 @@ func NewProxyNetworkReconciler(apps *repositories.ApplicationRepository, release
 }
 
 func (r *ProxyNetworkReconciler) SetCluster(c ClusterCap) { r.cluster = c }
+
+func (r *ProxyNetworkReconciler) SetAllocator(a *netalloc.Service) { r.alloc = a }
 
 // Idempotent and best-effort: a missing container or offline node is a no-op, so it never blocks a route change.
 func (r *ProxyNetworkReconciler) ReconcileProxyAttachment(ctx context.Context, appID uint, attached bool) error {
@@ -127,7 +131,7 @@ func (r *ProxyNetworkReconciler) ReconcileIngressGateway(ctx context.Context) er
 	if err != nil {
 		return nil
 	}
-	if _, err := mgr.CreateOverlayNetwork(ctx, node.IngressOverlay); err != nil {
+	if err := r.alloc.EnsureIngressOverlay(ctx, mgr, node.IngressOverlay); err != nil {
 		return nil // not a swarm manager yet, or overlay unavailable
 	}
 	gw, err := centralGatewayContainer(ctx, mgr)

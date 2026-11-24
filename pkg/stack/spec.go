@@ -116,6 +116,7 @@ func controlPlaneSpec(m *Manifest, name, image string) docker.RunSpec {
 			// Defaults to WebURL but a private-network node may reach the control plane at another address.
 			"MIABI_CONTROL_URL=" + m.ControlURL,
 			"MIABI_PROXY_NETWORK=" + m.Network.Name,
+			"MIABI_PROXY_SUBNET=" + m.Network.Subnet,
 			// Lets out-of-process helpers reach Postgres by name; empty on Compose means the proxy network is all there is.
 			"MIABI_INTERNAL_NETWORK=" + m.InternalNetwork.Name,
 			"MIABI_ACME_EMAIL=" + m.ACMEEmail,

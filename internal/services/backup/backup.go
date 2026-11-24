@@ -254,7 +254,7 @@ func ensureDBNetworks(ctx context.Context, dc docker.Client, inst *models.Databa
 		if inst.SwarmScoped(n) {
 			continue
 		}
-		if _, err := dc.EnsureNetwork(ctx, n); err != nil {
+		if _, err := node.EnsureNetworkNamed(ctx, dc, n); err != nil {
 			return nil, fmt.Errorf("ensure network %s: %w", n, err)
 		}
 	}

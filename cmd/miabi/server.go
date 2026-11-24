@@ -151,6 +151,8 @@ func runServer(cli *okapicli.CLI) {
 			res.docker = dockerClient
 			cfg.ProxyNetwork = node.ResolveAppNetwork(context.Background(), dockerClient, cfg.ProxyNetwork)
 			node.SetAppNetwork(cfg.ProxyNetwork)
+			node.SetAppNetworkAddressing(cfg.ProxySubnet, cfg.NetworkIPv6)
+			node.AdoptAppNetworkAddressing(context.Background(), dockerClient)
 			serverRepo := repositories.NewServerRepository(res.db)
 			nodeService := node.NewService(serverRepo, dockerClient)
 			nodeService.Bootstrap(context.Background(), cfg.DockerHost)

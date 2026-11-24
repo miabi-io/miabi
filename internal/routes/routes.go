@@ -576,6 +576,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	clusterService.SetGatewayListener(routeService.SyncCluster)
 	clusterService.SetEndpointModeListener(appService.ApplyServiceEndpointMode)
 	proxyReconciler.SetCluster(clusterService)
+	proxyReconciler.SetAllocator(subnetAllocator)
 	go func() { _ = proxyReconciler.ReconcileIngressGateway(context.Background()) }()
 	// A fresh install already ships a gateway on the manager (the one the Miabi stack installs).
 	go func() {

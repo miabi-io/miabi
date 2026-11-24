@@ -86,6 +86,8 @@ func runWorker() error {
 	defer func() { _ = dockerClient.Close() }()
 	cfg.ProxyNetwork = node.ResolveAppNetwork(context.Background(), dockerClient, cfg.ProxyNetwork)
 	node.SetAppNetwork(cfg.ProxyNetwork)
+	node.SetAppNetworkAddressing(cfg.ProxySubnet, cfg.NetworkIPv6)
+	node.AdoptAppNetworkAddressing(context.Background(), dockerClient)
 
 	var proxyMgr proxy.Manager = proxy.NewMemory()
 	if cfg.GomaProviderDir != "" {
