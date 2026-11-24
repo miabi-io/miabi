@@ -40,3 +40,11 @@ func ConfigKey(srv *models.Server, central string) string {
 	}
 	return crypto.DeriveToken(configKeyLabel + strconv.FormatUint(uint64(srv.ID), 10))
 }
+
+// ClusterConfigKey is shared by every gateway of a cluster, so any of them can decrypt the cluster bundle.
+func ClusterConfigKey(c *models.Cluster, central string) string {
+	if c == nil || c.IsDefault || central == "" {
+		return central
+	}
+	return crypto.DeriveToken(configKeyLabel + "cluster:" + strconv.FormatUint(uint64(c.ID), 10))
+}

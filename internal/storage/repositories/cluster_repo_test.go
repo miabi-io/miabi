@@ -39,6 +39,7 @@ type clusterTable struct {
 	IsDefault       bool
 	ManagerServerID uint
 	AgentTokenHash  string
+	GatewayTokenEnc string
 	IngressServerID uint
 	IngressIP       string
 	IngressIPv6     string `gorm:"column:ingress_ipv6"`

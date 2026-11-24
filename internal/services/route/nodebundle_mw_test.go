@@ -94,3 +94,12 @@ func TestReferencedMiddlewaresEmptyWhenNoRoutes(t *testing.T) {
 		t.Errorf("a node with no routes received %v", names(got))
 	}
 }
+
+func TestClusterBundleRefusesTheDefaultCluster(t *testing.T) {
+	s := &Service{}
+	for _, c := range []*models.Cluster{nil, {ID: 1, IsDefault: true}} {
+		if _, _, err := s.ClusterBundle(c); err != ErrDefaultClusterBundle {
+			t.Errorf("ClusterBundle(%v) = %v, want ErrDefaultClusterBundle", c, err)
+		}
+	}
+}

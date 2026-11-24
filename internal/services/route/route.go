@@ -39,24 +39,25 @@ import (
 )
 
 var (
-	ErrNameRequired        = errors.New("route name is required")
-	ErrInvalidName         = errors.New("name must be lowercase letters, digits and hyphens (e.g. my-api)")
-	ErrHostRequired        = errors.New("at least one host is required")
-	ErrMaintenanceStatus   = errors.New("maintenance status code must be between 400 and 599")
-	ErrMaintenanceMessage  = errors.New("maintenance message is too long (max 1024 characters)")
-	ErrMaintenanceHTML     = errors.New("maintenance HTML page is too large (max 64 KB)")
-	ErrNameTaken           = errors.New("a route with this name already exists")
-	ErrAppRequired         = errors.New("application not found in workspace")
-	ErrNotFound            = errors.New("route not found")
-	ErrCertRequired        = errors.New("custom TLS requires a stored certificate")
-	ErrInvalidYAML         = errors.New("advanced config is not valid YAML")
-	ErrDomainNotRegistered = errors.New("no matching domain is registered in this workspace; add the domain first")
-	ErrDomainBanned        = errors.New("this domain has been banned by a platform administrator")
-	ErrHostTaken           = errors.New("hostname is already used by another route")
-	ErrAdvancedTLSCert     = errors.New("set TLS via the route's TLS mode and a managed certificate, not an inline tls certificate in advanced config")
-	ErrMiddlewareRequired  = errors.New("middleware name is required")
-	ErrMiddlewareNotFound  = errors.New("middleware not found in this workspace")
-	ErrMiddlewareDuplicate = errors.New("the same middleware is listed twice")
+	ErrNameRequired         = errors.New("route name is required")
+	ErrDefaultClusterBundle = errors.New("the default cluster is served by the central gateway")
+	ErrInvalidName          = errors.New("name must be lowercase letters, digits and hyphens (e.g. my-api)")
+	ErrHostRequired         = errors.New("at least one host is required")
+	ErrMaintenanceStatus    = errors.New("maintenance status code must be between 400 and 599")
+	ErrMaintenanceMessage   = errors.New("maintenance message is too long (max 1024 characters)")
+	ErrMaintenanceHTML      = errors.New("maintenance HTML page is too large (max 64 KB)")
+	ErrNameTaken            = errors.New("a route with this name already exists")
+	ErrAppRequired          = errors.New("application not found in workspace")
+	ErrNotFound             = errors.New("route not found")
+	ErrCertRequired         = errors.New("custom TLS requires a stored certificate")
+	ErrInvalidYAML          = errors.New("advanced config is not valid YAML")
+	ErrDomainNotRegistered  = errors.New("no matching domain is registered in this workspace; add the domain first")
+	ErrDomainBanned         = errors.New("this domain has been banned by a platform administrator")
+	ErrHostTaken            = errors.New("hostname is already used by another route")
+	ErrAdvancedTLSCert      = errors.New("set TLS via the route's TLS mode and a managed certificate, not an inline tls certificate in advanced config")
+	ErrMiddlewareRequired   = errors.New("middleware name is required")
+	ErrMiddlewareNotFound   = errors.New("middleware not found in this workspace")
+	ErrMiddlewareDuplicate  = errors.New("the same middleware is listed twice")
 )
 
 const maintenanceMessageMax = 1024
@@ -1214,6 +1215,22 @@ func (s *Service) NodeBundle(serverID uint) ([]proxy.RenderedRoute, []proxy.Rend
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.renderBundle(apps, serverID)
+}
+
+// ClusterBundle is what the cluster's ingress node gateway serves, whichever gateway asks for it.
+func (s *Service) ClusterBundle(c *models.Cluster) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
+	if c == nil || c.IsDefault {
+		return nil, nil, ErrDefaultClusterBundle
+	}
+	apps, err := s.apps.ListByCluster(c.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.renderBundle(apps, c.IngressNode())
+}
+
+func (s *Service) renderBundle(apps []models.Application, serverID uint) ([]proxy.RenderedRoute, []proxy.RenderedMiddleware, error) {
 	// Apps on a node can span workspaces, so each workspace's domains and privilege are cached.
 	gate := s.domains != nil
 	domainCache := map[uint][]models.Domain{}

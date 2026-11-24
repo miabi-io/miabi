@@ -1543,6 +1543,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)
 	nodeManager.AddStatusListener(r.h.node.PublishStatus)
 
+	r.h.provider.SetClusterGateways(clusterService)
 	if cfg.AnalyticsEnabled && redisClient != nil {
 		r.h.provider.SetAnalyticsIngest(
 			analytics.NewIngester(redisClient, routeService, cfg.AnalyticsStream),

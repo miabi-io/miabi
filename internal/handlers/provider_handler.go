@@ -40,7 +40,14 @@ type ProviderHandler struct {
 	ingest    *analytics.Ingester
 	metrics   AnalyticsIngestMetrics
 	forwarder func(*models.Server) AnalyticsForwarderConfig
+	clusters  ClusterGateways
 }
+
+type ClusterGateways interface {
+	AuthenticateGateway(name, token string) (*models.Cluster, error)
+}
+
+func (h *ProviderHandler) SetClusterGateways(c ClusterGateways) { h.clusters = c }
 
 // AnalyticsIngestMetrics records ingest outcomes; nil-safe via noopIngestMetrics.
 type AnalyticsIngestMetrics interface {
@@ -77,16 +84,45 @@ func (h *ProviderHandler) serve(c *okapi.Context, withRoutes, withMiddlewares bo
 	if err != nil {
 		return c.AbortInternalServerError("failed to render node config", err)
 	}
+	// Under this node's key so no other node's gateway can read the bundle.
+	return writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()))
+}
+
+func (h *ProviderHandler) ClusterFull(c *okapi.Context) error { return h.serveCluster(c, true, true) }
+
+func (h *ProviderHandler) ClusterRoutes(c *okapi.Context) error {
+	return h.serveCluster(c, true, false)
+}
+
+func (h *ProviderHandler) ClusterMiddlewares(c *okapi.Context) error {
+	return h.serveCluster(c, false, true)
+}
+
+func (h *ProviderHandler) serveCluster(c *okapi.Context, withRoutes, withMiddlewares bool) error {
+	if h.clusters == nil {
+		return c.AbortUnauthorized("invalid cluster gateway token")
+	}
+	cl, err := h.clusters.AuthenticateGateway(c.Param("cluster"), bearer(c.Header("Authorization")))
+	if err != nil {
+		return c.AbortUnauthorized("invalid cluster gateway token")
+	}
+	routes, mws, err := h.routes.ClusterBundle(cl)
+	if err != nil {
+		return c.AbortInternalServerError("failed to render cluster config", err)
+	}
+	return writeBundle(c, routes, mws, withRoutes, withMiddlewares, edgegateway.ClusterConfigKey(cl, proxy.CentralConfigKey()))
+}
+
+func writeBundle(c *okapi.Context, routes []proxy.RenderedRoute, mws []proxy.RenderedMiddleware, withRoutes, withMiddlewares bool, key string) error {
 	if !withRoutes {
 		routes = nil
 	}
 	if !withMiddlewares {
 		mws = nil
 	}
-	// Under this node's key so no other node's gateway can read the bundle.
-	body, err := proxy.RenderBundle(routes, mws, edgegateway.ConfigKey(srv, proxy.CentralConfigKey()))
+	body, err := proxy.RenderBundle(routes, mws, key)
 	if err != nil {
-		return c.AbortInternalServerError("failed to render node config", err)
+		return c.AbortInternalServerError("failed to render gateway config", err)
 	}
 	c.SetHeader("Content-Type", "application/yaml")
 	w := c.Response()

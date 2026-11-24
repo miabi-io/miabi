@@ -497,6 +497,27 @@ func (r *Router) providerRoutes() []okapi.RouteDefinition {
 			Summary: "Node Goma middlewares",
 		},
 		{
+			Method:  http.MethodGet,
+			Path:    "/api/v1/providers/{cluster}",
+			Handler: r.h.provider.ClusterFull,
+			Tags:    []string{"Clusters"},
+			Summary: "Cluster Goma config (routes + middlewares), for the cluster's gateways",
+		},
+		{
+			Method:  http.MethodGet,
+			Path:    "/api/v1/providers/{cluster}/routes",
+			Handler: r.h.provider.ClusterRoutes,
+			Tags:    []string{"Clusters"},
+			Summary: "Cluster Goma routes",
+		},
+		{
+			Method:  http.MethodGet,
+			Path:    "/api/v1/providers/{cluster}/middlewares",
+			Handler: r.h.provider.ClusterMiddlewares,
+			Tags:    []string{"Clusters"},
+			Summary: "Cluster Goma middlewares",
+		},
+		{
 			Method:   http.MethodGet,
 			Path:     "/api/v1/agent/analytics-config",
 			Handler:  r.h.provider.AnalyticsConfig,
