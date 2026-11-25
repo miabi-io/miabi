@@ -3105,7 +3105,6 @@
   },
   "networks": {
     "anOverlayAppearsOnA": "오버레이 네트워크는 해당 네트워크의 컨테이너가 노드에 연결되면 그 노드에 나타납니다.",
-    "bridge": "bridge",
     "createANetwork": "네트워크 만들기",
     "createANetworkToGroup": "애플리케이션을 그룹화하고 격리하려면 네트워크를 만드세요.",
     "default": "기본값",

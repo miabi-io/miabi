@@ -87,6 +87,13 @@ func (r *NetworkRepository) FindByDockerName(dockerName string) (*models.Network
 	return &n, nil
 }
 
+// CountDatabasesUsing returns how many database instances are attached to a network.
+func (r *NetworkRepository) CountDatabasesUsing(networkID uint) (int64, error) {
+	var count int64
+	err := r.db.Table("database_instance_networks").Where("network_id = ?", networkID).Count(&count).Error
+	return count, err
+}
+
 // CountAppsUsing returns how many applications are attached to a network.
 func (r *NetworkRepository) CountAppsUsing(networkID uint) (int64, error) {
 	var count int64
