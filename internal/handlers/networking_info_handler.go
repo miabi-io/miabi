@@ -20,11 +20,14 @@
 package handlers
 
 import (
+	"errors"
+	"net/http"
 	"net/netip"
 	"sort"
 	"strings"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/services/netfabric"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
@@ -56,6 +59,7 @@ type PoolStats interface {
 }
 
 type NetworkingHandler struct {
+	fabric      *netfabric.Service
 	info        NetworkingInfo
 	pool        PoolStats
 	allocations *repositories.NetworkAllocationRepository
@@ -100,4 +104,18 @@ func subnetLess(a, b string) bool {
 		return a < b
 	}
 	return pa.Addr().Less(pb.Addr())
+}
+
+func (h *NetworkingHandler) SetFabric(f *netfabric.Service) { h.fabric = f }
+
+// Fabric asks every node's engine for its networks, so it runs on demand rather than with the page.
+func (h *NetworkingHandler) Fabric(c *okapi.Context) error {
+	if h.fabric == nil {
+		return c.AbortWithError(http.StatusServiceUnavailable, errors.New("the network check is not available in this process"))
+	}
+	rep, err := h.fabric.Check(c.Request().Context())
+	if err != nil {
+		return c.AbortInternalServerError("failed to check the nodes' networks", err)
+	}
+	return ok(c, rep)
 }

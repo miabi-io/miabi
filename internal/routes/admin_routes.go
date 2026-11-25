@@ -28,6 +28,7 @@ import (
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/billing"
 	"github.com/miabi-io/miabi/internal/services/controlmanager"
+	"github.com/miabi-io/miabi/internal/services/netfabric"
 )
 
 // adminRoutes registers platform-admin endpoints under /admin; every route requires a super-admin.
@@ -357,6 +358,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Handler:     r.networking.Allocations,
 			Summary:     "The subnet pool's ledger, with the workspace, network and node each subnet belongs to",
 			Response:    &dto.Response[handlers.NetworkAllocationsResponse]{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/networking/fabric",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.networking.Fabric,
+			Summary:     "Compare every node's networks with the configured subnets and the pool ledger; asks each engine, so it is slow",
+			Response:    &dto.Response[netfabric.Report]{},
 		},
 		{
 			Method:      http.MethodGet,

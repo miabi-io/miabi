@@ -172,6 +172,9 @@ func discoverAppNetwork(nets []docker.Network) string {
 	return stack.DefaultNetwork
 }
 
+// IsLegacyProxyNetwork reports the pre-rename proxy network Miabi created, as opposed to an unrelated network of that name.
+func IsLegacyProxyNetwork(n docker.Network) bool { return isLegacyProxyNetwork(n) }
+
 func isLegacyProxyNetwork(n docker.Network) bool {
 	role, _ := docker.LabelValue(n.Labels, docker.LabelRole)
 	return n.Name == stack.LegacyNetwork && role == docker.RoleProxyNetwork

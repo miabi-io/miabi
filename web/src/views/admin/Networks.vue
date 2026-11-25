@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
-import type { NetworkAllocation, NetworkingInfo } from '@/api/types'
+import type { NetworkAllocation, NetworkFabricReport, NetworkFinding, NetworkingInfo } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 
 const notify = useNotificationStore()
@@ -52,6 +52,60 @@ const usagePercent = computed(() => {
   const i = info.value
   if (!i?.pool_total) return 0
   return Math.min(100, Math.round((i.pool_used / i.pool_total) * 100))
+})
+
+const fabric = ref<NetworkFabricReport | null>(null)
+const checking = ref(false)
+async function runCheck() {
+  checking.value = true
+  try {
+    fabric.value = (await adminApi.checkNetworkFabric()).data.data
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    checking.value = false
+  }
+}
+
+// One group per location, so a location's ingress overlay sits with its nodes.
+const fabricGroups = computed(() => {
+  const r = fabric.value
+  if (!r) return []
+  const groups = new Map<string, { name: string; cluster: NetworkFinding[]; nodes: NetworkFabricReport['nodes'] }>()
+  for (const n of r.nodes) {
+    const key = String(n.cluster_id)
+    if (!groups.has(key)) groups.set(key, { name: n.cluster_name || `#${n.cluster_id}`, cluster: [], nodes: [] })
+    groups.get(key)!.nodes.push(n)
+  }
+  for (const c of r.clusters ?? []) {
+    const key = String(c.cluster_id)
+    if (!groups.has(key)) groups.set(key, { name: c.cluster_name, cluster: [], nodes: [] })
+    groups.get(key)!.cluster.push(...c.findings)
+  }
+  return [...groups.values()]
+})
+const fabricTotals = computed(() => {
+  const out = { error: 0, warning: 0, info: 0, unreachable: 0 }
+  for (const n of fabric.value?.nodes ?? []) {
+    if (!n.reachable) out.unreachable++
+    for (const f of n.findings) out[f.severity]++
+  }
+  for (const c of fabric.value?.clusters ?? []) for (const f of c.findings) out[f.severity]++
+  return out
+})
+const SEVERITY: Record<NetworkFinding['severity'], { icon: string; cls: string }> = {
+  error: { icon: 'mdi-close-circle-outline', cls: 'sev-error' },
+  warning: { icon: 'mdi-alert-outline', cls: 'sev-warning' },
+  info: { icon: 'mdi-information-outline', cls: 'sev-info' },
+}
+
+// Filled once a check has run: a reservation alone does not say which network holds the range.
+const reservedHolders = computed(() => {
+  const out: Record<string, string> = {}
+  for (const r of fabric.value?.reserved ?? []) {
+    out[r.subnet] = out[r.subnet] ? `${out[r.subnet]}, ${r.network} on ${r.node_name}` : `${r.network} on ${r.node_name}`
+  }
+  return out
 })
 
 const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
@@ -128,6 +182,55 @@ const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
       </div>
     </div>
 
+    <div class="card section-gap">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Node network check</h2>
+          <p class="card-sub">Compares the networks on every node with the configured subnets and the pool. Asks each node's engine, so it runs on demand.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" :disabled="checking" @click="runCheck">
+          <span class="mdi" :class="checking ? 'mdi-loading mdi-spin' : 'mdi-stethoscope'"></span> {{ fabric ? 'Check again' : 'Run check' }}
+        </button>
+      </div>
+      <div v-if="fabric" class="card-body">
+        <p class="fabric-summary">
+          <template v-if="!fabricTotals.error && !fabricTotals.warning && !fabricTotals.unreachable">
+            <span class="mdi mdi-check-circle-outline sev-ok"></span> Every reachable node matches the configuration.
+          </template>
+          <template v-else>
+            <span v-if="fabricTotals.error" class="badge badge-danger">{{ fabricTotals.error }} error{{ fabricTotals.error === 1 ? '' : 's' }}</span>
+            <span v-if="fabricTotals.warning" class="badge badge-warning">{{ fabricTotals.warning }} warning{{ fabricTotals.warning === 1 ? '' : 's' }}</span>
+            <span v-if="fabricTotals.unreachable" class="badge badge-neutral">{{ fabricTotals.unreachable }} unreachable</span>
+          </template>
+          <span v-if="fabricTotals.info" class="badge badge-neutral">{{ fabricTotals.info }} note{{ fabricTotals.info === 1 ? '' : 's' }}</span>
+          <span class="cell-sub">checked {{ new Date(fabric.checked_at).toLocaleTimeString() }}</span>
+        </p>
+        <div v-for="g in fabricGroups" :key="g.name" class="fabric-group">
+          <h3 class="fabric-location"><span class="mdi mdi-lan"></span> {{ g.name }}</h3>
+          <ul v-if="g.cluster.length" class="findings">
+            <li v-for="(f, i) in g.cluster" :key="'c' + i" :class="SEVERITY[f.severity].cls">
+              <span class="mdi" :class="SEVERITY[f.severity].icon"></span>
+              <span><code>{{ f.network }}</code> · {{ f.message }}<span v-if="f.actual" class="cell-sub mono"> {{ f.actual }}<template v-if="f.expected"> → expected {{ f.expected }}</template></span></span>
+            </li>
+          </ul>
+          <div v-for="n in g.nodes" :key="n.node_id" class="fabric-node">
+            <div class="fabric-node-head">
+              <router-link :to="`/admin/nodes/${n.node_id}`">{{ n.node_name }}</router-link>
+              <span v-if="!n.reachable" class="badge badge-neutral" :title="n.error">unreachable</span>
+              <span v-else-if="!n.findings.length" class="badge badge-success badge-dot">as configured</span>
+              <span v-if="n.reachable" class="cell-sub">{{ n.networks }} networks</span>
+            </div>
+            <ul v-if="n.findings.length" class="findings">
+              <li v-for="(f, i) in n.findings" :key="i" :class="SEVERITY[f.severity].cls">
+                <span class="mdi" :class="SEVERITY[f.severity].icon"></span>
+                <span><code>{{ f.network }}</code> · {{ f.message }}<span v-if="f.actual" class="cell-sub mono"> {{ f.actual }}<template v-if="f.expected"> → expected {{ f.expected }}</template></span></span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header">
         <div>
@@ -167,7 +270,8 @@ const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
               </td>
               <td>
                 <template v-if="a.kind === 'reserved'">
-                  <span class="cell-sub" title="Found on a host without an allocation, for instance a network created before the pool existed, so the allocator never hands it out.">Already in use on a host</span>
+                  <span v-if="reservedHolders[a.subnet]" class="mono text-sm">{{ reservedHolders[a.subnet] }}</span>
+                  <span v-else class="cell-sub" title="Found on a host without an allocation, for instance a network created before the pool existed, so the allocator never hands it out. Run the node network check to see which network holds it.">Already in use on a host</span>
                 </template>
                 <template v-else>
                   <span class="mono text-sm">{{ a.docker_name }}</span>
@@ -207,4 +311,16 @@ const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
 .chip { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; }
 .chip.active { background: var(--primary-500); border-color: var(--primary-500); color: #fff; }
 .chip-count { opacity: 0.75; margin-left: 2px; }
+.fabric-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.fabric-group + .fabric-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.fabric-location { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 0 0 8px; }
+.fabric-node { margin: 8px 0 0 4px; }
+.fabric-node-head { display: flex; align-items: center; gap: 8px; }
+.findings { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.findings li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.findings .mdi { font-size: 16px; line-height: 1.3; }
+.sev-error .mdi { color: var(--danger); }
+.sev-warning .mdi { color: var(--warning); }
+.sev-info .mdi { color: var(--text-muted); }
+.sev-ok { color: var(--success); }
 </style>

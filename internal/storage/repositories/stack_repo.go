@@ -144,3 +144,10 @@ func (r *StackRepository) DetachApps(stackID uint) error {
 
 // IDByUID resolves a stack's uid to its numeric id.
 func (r *StackRepository) IDByUID(uid string) (uint, error) { return idByUID[models.Stack](r.db, uid) }
+
+// DockerNetworks lists every stack's Docker network name.
+func (r *StackRepository) DockerNetworks() ([]string, error) {
+	var out []string
+	err := r.db.Model(&models.Stack{}).Where("docker_network <> ''").Pluck("docker_network", &out).Error
+	return out, err
+}
