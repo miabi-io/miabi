@@ -26,7 +26,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jkaninda/logger"
@@ -268,42 +270,147 @@ func randHex(n int) string {
 // Detail is a network with the addressing the engine actually gave it; the only place the IPv6 half is visible.
 type Detail struct {
 	models.Network
-	// False when recorded but absent from the engine; addressing fields are then empty rather than stale.
-	Exists      bool   `json:"exists"`
+	// Exists is true when any node checked has the network; an overlay appears on a node only once something attaches.
+	Exists bool `json:"exists"`
+	// PoolManaged means Subnet and Gateway are the pool's, identical on every node; otherwise they come from a live copy.
+	PoolManaged bool   `json:"pool_managed"`
 	Subnet      string `json:"subnet,omitempty"`
 	Gateway     string `json:"gateway,omitempty"`
 	IPv6Subnet  string `json:"ipv6_subnet,omitempty"`
 	IPv6Gateway string `json:"ipv6_gateway,omitempty"`
 	EnableIPv6  bool   `json:"enable_ipv6"`
 	Scope       string `json:"scope,omitempty"`
+	// Nodes are the control plane and every node one of the network's apps or databases runs on.
+	Nodes     []NodePresence             `json:"nodes"`
+	Apps      []repositories.NetworkUser `json:"apps"`
+	Databases []repositories.NetworkUser `json:"databases"`
 }
 
-// Detail returns Exists false, not an error, for a network the engine lacks: the row still says what the workspace owns.
+type NodePresence struct {
+	NodeID    uint   `json:"node_id"`
+	NodeName  string `json:"node_name"`
+	Reachable bool   `json:"reachable"`
+	Exists    bool   `json:"exists"`
+	Subnet    string `json:"subnet,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	// Drifted is a copy whose subnet differs from the pool's, so the workspace has two addressings.
+	Drifted bool `json:"drifted,omitempty"`
+}
+
+const detailNodeTimeout = 5 * time.Second
+
+// Detail returns Exists false, not an error, for a network no node has yet: the row still says what the workspace owns.
 func (s *Service) Detail(ctx context.Context, workspaceID, id uint) (*Detail, error) {
 	n, err := s.repo.FindInWorkspace(workspaceID, id)
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	out := &Detail{Network: *n}
-	if s.docker == nil {
-		return out, nil
+	out := &Detail{Network: *n, Nodes: []NodePresence{}, Apps: []repositories.NetworkUser{}, Databases: []repositories.NetworkUser{}}
+	// A scan with no rows leaves a nil slice, which would reach the UI as null rather than an empty list.
+	if apps, err := s.repo.AppsUsing(n.ID); err == nil && apps != nil {
+		out.Apps = apps
 	}
-	nets, lerr := s.docker.ListNetworks(ctx)
-	if lerr != nil {
-		return out, nil
+	if dbs, err := s.repo.DatabasesUsing(n.ID); err == nil && dbs != nil {
+		out.Databases = dbs
 	}
-	for i := range nets {
-		if nets[i].Name != n.DockerName {
-			continue
-		}
-		live := nets[i]
-		out.Exists = true
-		out.Subnet, out.Gateway = live.Subnet, live.Gateway
-		out.IPv6Subnet, out.IPv6Gateway = live.IPv6Subnet, live.IPv6Gateway
-		out.EnableIPv6, out.Scope = live.EnableIPv6, live.Scope
-		break
+	if subnet, gateway, ok := s.alloc.Lookup(n.DockerName); ok {
+		out.Subnet, out.Gateway, out.PoolManaged = subnet, gateway, true
+	}
+	out.Nodes = s.presence(ctx, n.DockerName, out)
+	for _, p := range out.Nodes {
+		out.Exists = out.Exists || p.Exists
 	}
 	return out, nil
+}
+
+// One query per node in parallel, bounded, so a slow node cannot hold the whole view.
+func (s *Service) presence(ctx context.Context, dockerName string, d *Detail) []NodePresence {
+	targets := s.detailNodes(d)
+	out := make([]NodePresence, len(targets))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for i, t := range targets {
+		wg.Add(1)
+		go func(i int, t detailNode) {
+			defer wg.Done()
+			p := NodePresence{NodeID: t.id, NodeName: t.name}
+			if t.client != nil {
+				qctx, cancel := context.WithTimeout(ctx, detailNodeTimeout)
+				nets, err := t.client.ListNetworks(qctx)
+				cancel()
+				if err == nil {
+					p.Reachable = true
+					for _, live := range nets {
+						if live.Name != dockerName {
+							continue
+						}
+						p.Exists, p.Subnet, p.Scope = true, live.Subnet, live.Scope
+						p.Drifted = d.PoolManaged && live.Subnet != "" && live.Subnet != d.Subnet
+						mu.Lock()
+						if d.Scope == "" {
+							d.Scope, d.EnableIPv6 = live.Scope, live.EnableIPv6
+							d.IPv6Subnet, d.IPv6Gateway = live.IPv6Subnet, live.IPv6Gateway
+						}
+						if !d.PoolManaged && d.Subnet == "" {
+							d.Subnet, d.Gateway = live.Subnet, live.Gateway
+						}
+						mu.Unlock()
+						break
+					}
+				}
+			}
+			out[i] = p
+		}(i, t)
+	}
+	wg.Wait()
+	return out
+}
+
+type detailNode struct {
+	id     uint
+	name   string
+	client docker.Client
+}
+
+func (s *Service) detailNodes(d *Detail) []detailNode {
+	want := map[uint]bool{0: true}
+	for _, u := range append(append([]repositories.NetworkUser{}, d.Apps...), d.Databases...) {
+		want[u.ServerID] = true
+	}
+	var servers []models.Server
+	if s.servers != nil {
+		servers, _ = s.servers.List()
+	}
+	localID, localName := uint(0), "control plane"
+	byID := map[uint]*models.Server{}
+	for i := range servers {
+		byID[servers[i].ID] = &servers[i]
+		if servers[i].IsLocal {
+			localID, localName = servers[i].ID, servers[i].Label()
+		}
+	}
+	out := []detailNode{{id: localID, name: localName, client: s.docker}}
+	ids := make([]uint, 0, len(want))
+	for id := range want {
+		if id != 0 && id != localID {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		srv, ok := byID[id]
+		if !ok {
+			continue
+		}
+		n := detailNode{id: id, name: srv.Label()}
+		if s.clients != nil {
+			if dc, err := s.clients.For(id); err == nil {
+				n.client = dc
+			}
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 const nodeRemoveTimeout = 10 * time.Second

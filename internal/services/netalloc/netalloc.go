@@ -165,6 +165,18 @@ func (s *Service) Release(dockerName string) error {
 	return err
 }
 
+// Lookup is the subnet the pool pinned a network to, the same on every node that has it.
+func (s *Service) Lookup(dockerName string) (subnet, gateway string, ok bool) {
+	if s == nil {
+		return "", "", false
+	}
+	a, err := s.repo.FindByDockerName(dockerName)
+	if err != nil {
+		return "", "", false
+	}
+	return a.Subnet, a.Gateway, true
+}
+
 func (s *Service) EnsureManaged(ctx context.Context, dc NetworkProvisioner, spec docker.NetworkSpec, nodeID uint, kind string) (id, subnet string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
