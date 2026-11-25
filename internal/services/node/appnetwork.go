@@ -22,6 +22,7 @@ package node
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
@@ -85,25 +86,42 @@ func AdoptAppNetworkAddressing(ctx context.Context, dc docker.Client) {
 
 // AppNetworkSpec reuses one subnet everywhere: bridges are node-local, so every node can share it.
 func AppNetworkSpec() docker.NetworkSpec {
-	spec := docker.NetworkSpec{
+	spec, _ := appNetworkSpec()
+	return spec
+}
+
+// defaulted reports the installer's default subnet, which may clash on a host the operator never configured for it.
+func appNetworkSpec() (spec docker.NetworkSpec, defaulted bool) {
+	spec = docker.NetworkSpec{
 		Name:   AppNetwork,
 		Driver: "bridge",
 		Labels: docker.PlatformLabels(docker.RoleProxyNetwork, docker.ManagedByMiabi, nil),
 	}
+	ipv6 := appNetworkIPv6
 	switch n := localAppNetwork; {
 	case appNetworkCIDR != "":
-		ipv6 := appNetworkIPv6
 		spec.Subnet, spec.EnableIPv6 = appNetworkCIDR, &ipv6
 	case n != nil:
-		ipv6 := n.EnableIPv6
+		v6 := n.EnableIPv6
 		spec.Subnet, spec.Gateway = n.Subnet, n.Gateway
-		spec.EnableIPv6, spec.IPv6Subnet = &ipv6, n.IPv6Subnet
+		spec.EnableIPv6, spec.IPv6Subnet = &v6, n.IPv6Subnet
+	default:
+		spec.Subnet, spec.EnableIPv6, defaulted = stack.DefaultSubnet, &ipv6, true
 	}
-	return spec
+	return spec, defaulted
 }
 
 func EnsureAppNetwork(ctx context.Context, dc docker.Client) (string, error) {
-	return dc.EnsureNetworkSpec(ctx, AppNetworkSpec())
+	spec, defaulted := appNetworkSpec()
+	id, err := dc.EnsureNetworkSpec(ctx, spec)
+	if err == nil || !defaulted || !strings.Contains(strings.ToLower(err.Error()), "overlap") {
+		return id, err
+	}
+	// Only the unconfigured default yields to Docker's pool; a subnet the operator set is never second-guessed.
+	logger.Warn("the default proxy subnet overlaps a network on this host; using Docker's address pool. Set MIABI_PROXY_SUBNET to choose one",
+		"network", AppNetwork, "subnet", spec.Subnet, "error", err)
+	spec.Subnet = ""
+	return dc.EnsureNetworkSpec(ctx, spec)
 }
 
 // EnsureNetworkNamed routes the proxy network through AppNetworkSpec so no caller creates it on Docker's pool.

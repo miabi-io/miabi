@@ -72,8 +72,8 @@ func TestAppNetworkSpecMirrorsLocalAddressing(t *testing.T) {
 	t.Cleanup(func() { AppNetwork, localAppNetwork, appNetworkCIDR = prevName, prevLocal, prevCIDR })
 
 	AppNetwork, localAppNetwork, appNetworkCIDR = "miabi", nil, ""
-	if spec := AppNetworkSpec(); spec.Subnet != "" || spec.EnableIPv6 != nil {
-		t.Fatalf("unadopted spec = %+v, want Docker defaults", spec)
+	if spec := AppNetworkSpec(); spec.Subnet != stack.DefaultSubnet {
+		t.Fatalf("unconfigured spec subnet = %q, want the installer default %s", spec.Subnet, stack.DefaultSubnet)
 	}
 
 	AdoptAppNetworkAddressing(context.Background(), netLister{nets: []docker.Network{
@@ -106,5 +106,40 @@ func TestAppNetworkSpecPrefersConfiguredSubnet(t *testing.T) {
 	spec := AppNetworkSpec()
 	if spec.Subnet != "10.63.0.0/16" || spec.EnableIPv6 == nil || !*spec.EnableIPv6 {
 		t.Fatalf("spec = %+v, want the configured 10.63.0.0/16 with IPv6", spec)
+	}
+}
+
+type overlapEnsurer struct {
+	docker.Client
+	overlap string
+	specs   []docker.NetworkSpec
+}
+
+func (o *overlapEnsurer) EnsureNetworkSpec(_ context.Context, spec docker.NetworkSpec) (string, error) {
+	o.specs = append(o.specs, spec)
+	if spec.Subnet != "" && spec.Subnet == o.overlap {
+		return "", errors.New("Pool overlaps with other one on this address space")
+	}
+	return "id", nil
+}
+
+// Only the unconfigured default yields to Docker's pool when it clashes; an operator's subnet must fail loudly.
+func TestDefaultProxySubnetFallsBackOnOverlap(t *testing.T) {
+	prevName, prevLocal, prevCIDR := AppNetwork, localAppNetwork, appNetworkCIDR
+	t.Cleanup(func() { AppNetwork, localAppNetwork, appNetworkCIDR = prevName, prevLocal, prevCIDR })
+	AppNetwork, localAppNetwork, appNetworkCIDR = "miabi-proxy", nil, ""
+
+	dc := &overlapEnsurer{overlap: stack.DefaultSubnet}
+	if _, err := EnsureAppNetwork(context.Background(), dc); err != nil {
+		t.Fatalf("default subnet overlap: %v", err)
+	}
+	if len(dc.specs) != 2 || dc.specs[1].Subnet != "" {
+		t.Fatalf("specs = %+v, want a retry on Docker's pool", dc.specs)
+	}
+
+	appNetworkCIDR = "10.99.0.0/16"
+	dc = &overlapEnsurer{overlap: "10.99.0.0/16"}
+	if _, err := EnsureAppNetwork(context.Background(), dc); err == nil || len(dc.specs) != 1 {
+		t.Fatalf("configured subnet overlap = %v after %d attempts, want the error and no retry", err, len(dc.specs))
 	}
 }
