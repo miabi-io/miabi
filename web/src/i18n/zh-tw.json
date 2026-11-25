@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "網域",
+      "networks": "網路",
       "routes": "路由",
       "title": "網路"
     },

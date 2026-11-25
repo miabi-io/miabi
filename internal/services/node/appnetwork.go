@@ -111,6 +111,24 @@ func appNetworkSpec() (spec docker.NetworkSpec, defaulted bool) {
 	return spec, defaulted
 }
 
+const (
+	SubnetSourceConfigured   = "configured"
+	SubnetSourceControlPlane = "control-plane"
+	SubnetSourceDefault      = "default"
+)
+
+// AppNetworkSource is the proxy subnet nodes create and where it came from: configured, copied from the control plane, or the default.
+func AppNetworkSource() (subnet, source string) {
+	spec, defaulted := appNetworkSpec()
+	switch {
+	case appNetworkCIDR != "":
+		return spec.Subnet, SubnetSourceConfigured
+	case defaulted:
+		return spec.Subnet, SubnetSourceDefault
+	}
+	return spec.Subnet, SubnetSourceControlPlane
+}
+
 func EnsureAppNetwork(ctx context.Context, dc docker.Client) (string, error) {
 	spec, defaulted := appNetworkSpec()
 	id, err := dc.EnsureNetworkSpec(ctx, spec)

@@ -20,6 +20,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/gorm"
 )
@@ -68,4 +70,36 @@ func (r *NetworkAllocationRepository) Count() (int64, error) {
 	var n int64
 	err := r.db.Model(&models.NetworkAllocation{}).Count(&n).Error
 	return n, err
+}
+
+// AllocationDetail is a ledger row with the workspace, network or stack, and node it belongs to.
+type AllocationDetail struct {
+	ID            uint      `json:"id"`
+	DockerName    string    `json:"docker_name"`
+	Subnet        string    `json:"subnet"`
+	Gateway       string    `json:"gateway"`
+	Kind          string    `json:"kind"`
+	NodeID        uint      `json:"node_id"`
+	NodeName      string    `json:"node_name,omitempty"`
+	WorkspaceID   uint      `json:"workspace_id"`
+	WorkspaceName string    `json:"workspace_name,omitempty"`
+	OwnerName     string    `json:"owner_name,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// ListDetailed resolves names in one query; a row whose network or stack is gone keeps empty names.
+func (r *NetworkAllocationRepository) ListDetailed() ([]AllocationDetail, error) {
+	var out []AllocationDetail
+	err := r.db.Raw(`
+SELECT a.id, a.docker_name, a.subnet, a.gateway, a.kind, a.node_id, a.created_at,
+	COALESCE(n.workspace_id, s.workspace_id, 0) AS workspace_id,
+	COALESCE(NULLIF(w.display_name, ''), w.name, '') AS workspace_name,
+	COALESCE(NULLIF(n.display_name, ''), n.name, NULLIF(s.display_name, ''), s.name, '') AS owner_name,
+	COALESCE(NULLIF(sv.display_name, ''), sv.name, '') AS node_name
+FROM network_allocations a
+LEFT JOIN networks n ON n.docker_name = a.docker_name
+LEFT JOIN stacks s ON s.docker_network = a.docker_name
+LEFT JOIN workspaces w ON w.id = COALESCE(n.workspace_id, s.workspace_id)
+LEFT JOIN servers sv ON sv.id = a.node_id AND a.node_id <> 0`).Scan(&out).Error
+	return out, err
 }

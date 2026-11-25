@@ -1716,7 +1716,29 @@ export interface NetworkingInfo {
   ipv6_reason?: string
   pool_cidr?: string
   subnet_prefix?: number
+  /** False when the allocator could not start, so networks use Docker's own pool. */
+  pool_enabled: boolean
+  pool_used: number
+  pool_total: number
   proxy_network?: string
+  proxy_subnet?: string
+  /** configured (MIABI_PROXY_SUBNET), control-plane (copied from its network) or default. */
+  proxy_subnet_source?: 'configured' | 'control-plane' | 'default'
+}
+
+/** One subnet of the pool's ledger, with the workspace, network and node it belongs to. */
+export interface NetworkAllocation {
+  id: number
+  docker_name: string
+  subnet: string
+  gateway: string
+  kind: 'workspace' | 'stack' | 'overlay' | 'gateway' | 'reserved' | string
+  node_id: number
+  node_name?: string
+  workspace_id: number
+  workspace_name?: string
+  owner_name?: string
+  created_at: string
 }
 
 export interface StackStatusCounts {

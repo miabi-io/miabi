@@ -51,6 +51,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { key: 'adminNav.networking.domains', name: 'Domains', path: '/admin/domains', icon: 'mdi-web' },
       { key: 'adminNav.networking.routes', name: 'Routes', path: '/admin/routes', icon: 'mdi-sitemap-outline' },
+      { key: 'adminNav.networking.networks', name: 'Networks', path: '/admin/networks', icon: 'mdi-lan' },
     ],
   },
   {

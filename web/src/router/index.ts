@@ -107,6 +107,7 @@ const routes = [
       { path: 'workspaces/:id', name: 'admin-workspace-detail', component: () => import('@/views/admin/WorkspaceDetail.vue'), meta: { title: 'Workspace', admin: true } },
       { path: 'domains', name: 'admin-domains', component: () => import('@/views/admin/Domains.vue'), meta: { title: 'Domains', admin: true } },
       { path: 'routes', name: 'admin-routes', component: () => import('@/views/admin/Routes.vue'), meta: { title: 'Routes', admin: true } },
+      { path: 'networks', name: 'admin-networks', component: () => import('@/views/admin/Networks.vue'), meta: { title: 'Networks', admin: true } },
       { path: 'domains/:id', name: 'admin-domain-detail', component: () => import('@/views/admin/DomainDetail.vue'), meta: { title: 'Domain', admin: true } },
       { path: 'clusters', name: 'admin-clusters', component: () => import('@/views/admin/Clusters.vue'), meta: { title: 'Clusters', admin: true } },
       { path: 'clusters/:id', name: 'admin-cluster-detail', component: () => import('@/views/admin/ClusterDetail.vue'), meta: { title: 'Cluster', admin: true } },

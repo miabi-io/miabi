@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "Domínios",
+      "networks": "Redes",
       "routes": "Rotas",
       "title": "Rede"
     },

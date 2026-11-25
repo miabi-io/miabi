@@ -154,7 +154,7 @@ type Router struct {
 	app *okapi.Okapi
 	cfg *config.Config
 	// Resolved at boot because the IPv6 answer depends on the engine, not only the environment.
-	netInfo      handlers.NetworkingInfo
+	networking   *handlers.NetworkingHandler
 	v1           *okapi.Group
 	authenticate okapi.Middleware
 	scope        okapi.Middleware
@@ -1410,17 +1410,22 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		}
 	}
 
+	// A typed nil would read as a running allocator.
+	var poolStats handlers.PoolStats
+	if subnetAllocator != nil {
+		poolStats = subnetAllocator
+	}
 	r := &Router{
 		app: app,
 		cfg: cfg,
-		netInfo: handlers.NetworkingInfo{
+		networking: handlers.NewNetworkingHandler(handlers.NetworkingInfo{
 			IPv6Enabled:   cfg.NetworkIPv6,
 			IPv6Active:    ipv6Active,
 			IPv6ULAPrefix: cfg.NetworkIPv6ULAPrefix,
 			PoolCIDR:      cfg.NetworkPoolCIDR,
 			SubnetPrefix:  cfg.NetworkSubnetPrefix,
 			ProxyNetwork:  cfg.ProxyNetwork,
-		},
+		}, poolStats, repositories.NewNetworkAllocationRepository(db)),
 		v1:              app.Group("/api/v1"),
 		authenticate:    middlewares.Authenticate(jwtAuth, apiKeyService, userRepo, appRepo),
 		scope:           middlewares.WorkspaceScope(workspaceRepo, customRoleRepo, restrictionService, appRepo),

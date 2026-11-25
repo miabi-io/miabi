@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "Domini",
+      "networks": "Reti",
       "routes": "Route",
       "title": "Rete"
     },
