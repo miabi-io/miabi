@@ -45,7 +45,7 @@ type RemoveResult struct {
 
 var (
 	ErrNotOrphan     = errors.New("not an orphaned Miabi network: a workspace, stack or the pool still claims it")
-	ErrNotMiabis     = errors.New("Miabi did not create this network, so it is never removed from here")
+	ErrNotMiabis     = errors.New("this network was not created by Miabi, so it is never removed from here")
 	ErrNetworkInUse  = errors.New("containers still reference this network")
 	ErrNetworkAbsent = errors.New("the network no longer exists on this node")
 )
