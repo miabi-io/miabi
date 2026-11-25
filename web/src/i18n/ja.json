@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "ドメイン",
+      "networks": "ネットワーク",
       "routes": "ルート",
       "title": "ネットワーク"
     },

@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "도메인",
+      "networks": "네트워크",
       "routes": "라우트",
       "title": "네트워킹"
     },

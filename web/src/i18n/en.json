@@ -138,6 +138,7 @@
     },
     "networking": {
       "domains": "Domains",
+      "networks": "Networks",
       "routes": "Routes",
       "title": "Networking"
     },
