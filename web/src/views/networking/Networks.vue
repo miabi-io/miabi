@@ -21,7 +21,7 @@ const showCreate = ref(false)
 const toDelete = ref<Network | null>(null)
 const deleting = ref(false)
 const saving = ref(false)
-const form = ref({ name: '', driver: 'bridge', internal: false })
+const form = ref({ name: '', internal: false })
 
 // The detail modal reads the addressing itself; this page only chooses which network to show.
 const detailFor = ref<Network | null>(null)
@@ -40,7 +40,7 @@ async function load(id: number | null) {
 watch(currentWorkspaceId, load, { immediate: true })
 
 function openCreate() {
-  form.value = { name: '', driver: 'bridge', internal: false }
+  form.value = { name: '', internal: false }
   showCreate.value = true
 }
 
@@ -142,10 +142,6 @@ async function confirmRemove() {
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" :placeholder="$t('networks.namePlaceholder')" required autofocus />
-            </div>
-            <div class="form-group">
-              <label class="form-label">{{ $t('networks.driver') }}</label>
-              <input v-model="form.driver" class="form-input" :placeholder="$t('networks.bridge')" />
             </div>
             <label class="checkbox-label" style="margin-bottom: 0">
               <input type="checkbox" v-model="form.internal" />{{ $t('networks.internalNoExternalConnectivity') }}</label>

@@ -223,7 +223,7 @@ func TestNetworkSpecOverlayIsAttachableAndEncrypted(t *testing.T) {
 	}
 }
 
-// Single-node installs never get an overlay; an explicit driver from the caller always wins.
+// Miabi chooses the driver from the location: a bridge in a cluster could not be joined by its services.
 func TestDriverFor(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -234,8 +234,10 @@ func TestDriverFor(t *testing.T) {
 	}{
 		{name: "no cluster: default is a node-local bridge", want: DriverBridge},
 		{name: "cluster: default spans nodes", clusterOn: true, want: DriverOverlay},
-		{name: "explicit bridge wins in cluster mode", clusterOn: true, explicit: DriverBridge, want: DriverBridge},
-		{name: "explicit overlay is allowed", explicit: DriverOverlay, want: DriverOverlay},
+		{name: "requested bridge still spans nodes in cluster mode", clusterOn: true, explicit: DriverBridge, want: DriverOverlay},
+		{name: "requested overlay stays a bridge without a cluster", explicit: DriverOverlay, want: DriverBridge},
+		{name: "macvlan would put tenants on the host LAN", explicit: "macvlan", wantErr: true},
+		{name: "ipvlan likewise", explicit: "ipvlan", wantErr: true},
 		{name: "unknown driver is rejected", explicit: "vxlan", wantErr: true},
 	}
 	for _, tt := range tests {

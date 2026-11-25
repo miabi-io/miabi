@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jkaninda/logger"
 	"github.com/miabi-io/miabi/internal/docker"
@@ -41,7 +42,7 @@ var (
 	ErrNameRequired  = errors.New("network name is required")
 	ErrNameTaken     = errors.New("a network with this name already exists")
 	ErrNotFound      = errors.New("network not found")
-	ErrInUse         = errors.New("network is attached to one or more applications")
+	ErrInUse         = errors.New("network is attached to one or more applications or databases")
 	ErrIsDefault     = errors.New("the default network cannot be deleted")
 	ErrInvalidDriver = errors.New("unsupported network driver")
 )
@@ -174,21 +175,17 @@ func (s *Service) create(ctx context.Context, workspaceID uint, in Input, isDefa
 	return net, nil
 }
 
-// Cluster mode needs networks that span nodes (overlay); otherwise a node-local bridge. An explicit driver wins.
-func (s *Service) driverFor(explicit string) (string, error) {
-	driver := strings.TrimSpace(explicit)
-	if driver == "" {
-		if s.clusterOn() {
-			return DriverOverlay, nil
-		}
-		return DriverBridge, nil
-	}
-	switch driver {
-	case DriverBridge, DriverOverlay, "macvlan", "ipvlan":
-		return driver, nil
+// Miabi picks bridge or overlay from the location; macvlan and ipvlan would put tenant containers on the host's LAN.
+func (s *Service) driverFor(requested string) (string, error) {
+	switch strings.TrimSpace(requested) {
+	case "", DriverBridge, DriverOverlay:
 	default:
-		return "", fmt.Errorf("%w: unsupported network driver %q", ErrInvalidDriver, driver)
+		return "", fmt.Errorf("%w %q: Miabi chooses the driver from the location, so leave it empty", ErrInvalidDriver, requested)
 	}
+	if s.clusterOn() {
+		return DriverOverlay, nil
+	}
+	return DriverBridge, nil
 }
 
 // An overlay is created on the manager only; swarm materializes it on a worker when a container attaches.
@@ -239,16 +236,21 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint) error {
 	if n.IsDefault {
 		return ErrIsDefault
 	}
-	count, err := s.repo.CountAppsUsing(n.ID)
+	apps, err := s.repo.CountAppsUsing(n.ID)
 	if err != nil {
 		return err
 	}
-	if count > 0 {
+	dbs, err := s.repo.CountDatabasesUsing(n.ID)
+	if err != nil {
+		return err
+	}
+	if apps+dbs > 0 {
 		return ErrInUse
 	}
 	if err := s.docker.RemoveNetwork(ctx, n.DockerName); err != nil {
 		return fmt.Errorf("remove docker network: %w", err)
 	}
+	s.removeFromNodes(ctx, n.DockerName)
 	if s.alloc != nil {
 		_ = s.alloc.Release(n.DockerName) // return the subnet to the pool
 	}
@@ -302,4 +304,58 @@ func (s *Service) Detail(ctx context.Context, workspaceID, id uint) (*Detail, er
 		break
 	}
 	return out, nil
+}
+
+const nodeRemoveTimeout = 10 * time.Second
+
+// Deploys recreate a workspace network on every node that runs one of its apps; left there, each copy is an orphan.
+func (s *Service) removeFromNodes(ctx context.Context, dockerName string) {
+	if s.servers == nil || s.clients == nil {
+		return
+	}
+	servers, err := s.servers.List()
+	if err != nil {
+		logger.Warn("network delete: could not list nodes; copies on remote nodes stay until removed", "network", dockerName, "error", err)
+		return
+	}
+	for i := range servers {
+		srv := &servers[i]
+		if srv.IsLocal {
+			continue
+		}
+		dc, err := s.clients.For(srv.ID)
+		if err != nil {
+			logger.Warn("network delete: node offline; its copy stays until removed from Admin → Networks",
+				"network", dockerName, "node", srv.Name)
+			continue
+		}
+		s.removeFromNode(ctx, dc, srv.Name, dockerName)
+	}
+}
+
+func (s *Service) removeFromNode(ctx context.Context, dc docker.Client, node, dockerName string) {
+	ctx, cancel := context.WithTimeout(ctx, nodeRemoveTimeout)
+	defer cancel()
+	nets, err := dc.ListNetworks(ctx)
+	if err != nil {
+		logger.Warn("network delete: could not list a node's networks", "network", dockerName, "node", node, "error", err)
+		return
+	}
+	for _, n := range nets {
+		if n.Name != dockerName {
+			continue
+		}
+		err := dc.RemoveNetwork(ctx, dockerName)
+		switch {
+		case err == nil:
+			logger.Info("network delete: removed a node's copy", "network", dockerName, "node", node)
+		case n.Scope == "swarm":
+			// Only a manager can remove an overlay; the cluster's manager drops it for every node.
+			logger.Debug("network delete: overlay left to its swarm manager", "network", dockerName, "node", node, "error", err)
+		default:
+			logger.Warn("network delete: a node's copy is still in use; remove it from Admin → Networks once free",
+				"network", dockerName, "node", node, "error", err)
+		}
+		return
+	}
 }
