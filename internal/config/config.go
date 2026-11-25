@@ -174,7 +174,7 @@ type Config struct {
 
 	// ProxyNetwork is empty until startup resolves it with node.ResolveAppNetwork when MIABI_PROXY_NETWORK is unset.
 	ProxyNetwork string
-	// ProxySubnet is miabi.yaml's networking.proxy.subnet; empty falls back to the local network's addressing.
+	// ProxySubnet is miabi.yaml's networking.proxy.subnet; empty copies the local proxy network, else 10.63.0.0/16.
 	ProxySubnet string
 
 	// InternalNetwork is empty on a Docker Compose install, leaving ProxyNetwork as the only fabric.
