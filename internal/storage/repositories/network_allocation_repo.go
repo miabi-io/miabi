@@ -103,3 +103,9 @@ LEFT JOIN workspaces w ON w.id = COALESCE(n.workspace_id, s.workspace_id)
 LEFT JOIN servers sv ON sv.id = a.node_id AND a.node_id <> 0`).Scan(&out).Error
 	return out, err
 }
+
+func (r *NetworkAllocationRepository) All() ([]models.NetworkAllocation, error) {
+	var out []models.NetworkAllocation
+	err := r.db.Find(&out).Error
+	return out, err
+}

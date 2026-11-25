@@ -96,6 +96,7 @@ import (
 	mwservice "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/monitoring"
 	"github.com/miabi-io/miabi/internal/services/netalloc"
+	"github.com/miabi-io/miabi/internal/services/netfabric"
 	"github.com/miabi-io/miabi/internal/services/network"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/services/nodestats"
@@ -145,6 +146,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/miabi-io/miabi/internal/web"
 	"github.com/miabi-io/miabi/internal/worker"
+	platformstack "github.com/miabi-io/miabi/pkg/stack"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -1556,6 +1558,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminRunner:       handlers.NewAdminRunnerHandler(runnerService, auditLogger),
 		},
 	}
+	r.networking.SetFabric(netfabric.New(nodeService, nodeClients, clusterRepo,
+		repositories.NewNetworkAllocationRepository(db), networkRepo, stackRepo,
+		func() netfabric.Expected {
+			return netfabric.Expected{
+				Proxy: node.AppNetworkSpec(), LegacyProxy: platformstack.LegacyNetwork, IngressName: node.IngressOverlay,
+				PoolCIDR: cfg.NetworkPoolCIDR, ManagerOf: clusterService.Manager, IsSwarm: clusterService.IsSwarm,
+				LegacyIsOurs: node.IsLegacyProxyNetwork,
+			}
+		}))
 
 	r.h.auth.SetUserSettings(userSettingsService)
 	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)

@@ -1726,6 +1726,35 @@ export interface NetworkingInfo {
   proxy_subnet_source?: 'configured' | 'control-plane' | 'default'
 }
 
+export interface NetworkFinding {
+  severity: 'error' | 'warning' | 'info'
+  kind: string
+  network: string
+  expected?: string
+  actual?: string
+  message: string
+}
+
+/** One node's networks compared with what Miabi expects; unreachable nodes carry the error instead. */
+export interface NetworkNodeReport {
+  node_id: number
+  node_name: string
+  cluster_id: number
+  cluster_name?: string
+  reachable: boolean
+  error?: string
+  networks: number
+  findings: NetworkFinding[]
+}
+
+export interface NetworkFabricReport {
+  checked_at: string
+  clusters: { cluster_id: number; cluster_name: string; findings: NetworkFinding[] }[] | null
+  nodes: NetworkNodeReport[]
+  /** The network actually holding each reserved pool subnet, found on the nodes. */
+  reserved: { subnet: string; network: string; node_id: number; node_name: string }[]
+}
+
 /** One subnet of the pool's ledger, with the workspace, network and node it belongs to. */
 export interface NetworkAllocation {
   id: number
