@@ -1693,15 +1693,39 @@ export interface Network {
 }
 
 // The stored row is what Miabi asked for; these fields are what the engine actually created.
-export interface NetworkDetail extends Network {
-  // False for an overlay no local container has attached yet or an offline node; addressing is then empty.
+export interface NetworkNodePresence {
+  node_id: number
+  node_name: string
+  reachable: boolean
   exists: boolean
+  subnet?: string
+  scope?: string
+  /** The copy's subnet differs from the pool's. */
+  drifted?: boolean
+}
+
+export interface NetworkUser {
+  id: number
+  name: string
+  label: string
+  server_id: number
+}
+
+export interface NetworkDetail extends Network {
+  /** True when any node checked has the network; an overlay appears on a node only once something attaches. */
+  exists: boolean
+  /** Subnet and gateway are the pool's, identical on every node. */
+  pool_managed: boolean
   subnet?: string
   gateway?: string
   ipv6_subnet?: string
   ipv6_gateway?: string
   enable_ipv6: boolean
   scope?: string
+  /** The control plane and every node one of the network's apps or databases runs on. */
+  nodes: NetworkNodePresence[]
+  apps: NetworkUser[]
+  databases: NetworkUser[]
 }
 
 // ipv6_enabled is what the operator asked for; ipv6_active is what Miabi could actually apply.

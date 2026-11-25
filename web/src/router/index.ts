@@ -58,6 +58,7 @@ const routes = [
       { path: 'releases', name: 'releases', component: () => import('@/views/releases/Releases.vue'), meta: { title: 'Releases', titleKey: 'nav.cicd.releases' } },
       { path: 'environments', name: 'environments', component: () => import('@/views/environments/Environments.vue'), meta: { title: 'Environments', titleKey: 'nav.cicd.environments' } },
       { path: 'networks', name: 'networks', component: () => import('@/views/networking/Networks.vue'), meta: { title: 'Networks', titleKey: 'nav.networking.networks' } },
+      { path: 'networks/:id', name: 'network-detail', component: () => import('@/views/networking/NetworkDetail.vue'), meta: { title: 'Network', titleKey: 'pageTitle.networkDetail' } },
       { path: 'domains', name: 'domains', component: () => import('@/views/networking/Domains.vue'), meta: { title: 'Domains', titleKey: 'nav.networking.domains' } },
       { path: 'domains/:id', name: 'domain-detail', component: () => import('@/views/networking/DomainDetail.vue'), meta: { title: 'Domain', titleKey: 'pageTitle.domainDetail' } },
       { path: 'dns-providers', name: 'dns-providers', component: () => import('@/views/networking/DnsProviders.vue'), meta: { title: 'DNS Providers', titleKey: 'nav.networking.dnsProviders' } },

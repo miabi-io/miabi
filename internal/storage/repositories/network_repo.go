@@ -100,3 +100,27 @@ func (r *NetworkRepository) CountAppsUsing(networkID uint) (int64, error) {
 	err := r.db.Table("application_networks").Where("network_id = ?", networkID).Count(&count).Error
 	return count, err
 }
+
+// NetworkUser is an application or database instance attached to a network, with the node it runs on.
+type NetworkUser struct {
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	Label    string `json:"label"`
+	ServerID uint   `json:"server_id"`
+}
+
+func (r *NetworkRepository) AppsUsing(networkID uint) ([]NetworkUser, error) {
+	var out []NetworkUser
+	err := r.db.Raw(`SELECT a.id, a.name, COALESCE(NULLIF(a.display_name, ''), a.name) AS label, a.server_id
+FROM applications a JOIN application_networks an ON an.application_id = a.id
+WHERE an.network_id = ? ORDER BY label`, networkID).Scan(&out).Error
+	return out, err
+}
+
+func (r *NetworkRepository) DatabasesUsing(networkID uint) ([]NetworkUser, error) {
+	var out []NetworkUser
+	err := r.db.Raw(`SELECT d.id, d.name, COALESCE(NULLIF(d.display_name, ''), d.name) AS label, d.server_id
+FROM database_instances d JOIN database_instance_networks dn ON dn.database_instance_id = d.id
+WHERE dn.network_id = ? ORDER BY label`, networkID).Scan(&out).Error
+	return out, err
+}

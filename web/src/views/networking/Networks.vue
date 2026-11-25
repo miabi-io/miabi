@@ -2,17 +2,18 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNotificationStore } from '@/stores/notification'
 import { networkApi } from '@/api/networks'
 import type { Network } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
-import NetworkDetailModal from '@/components/NetworkDetailModal.vue'
 
 const ws = useWorkspaceStore()
 const { t } = useI18n()
 const notify = useNotificationStore()
+const router = useRouter()
 const { currentWorkspaceId } = storeToRefs(ws)
 
 const items = ref<Network[]>([])
@@ -23,8 +24,6 @@ const deleting = ref(false)
 const saving = ref(false)
 const form = ref({ name: '', internal: false })
 
-// The detail modal reads the addressing itself; this page only chooses which network to show.
-const detailFor = ref<Network | null>(null)
 
 async function load(id: number | null) {
   if (!id) { items.value = []; return }
@@ -96,9 +95,9 @@ async function confirmRemove() {
       </div>
       <div v-else class="table-wrapper">
         <table>
-          <thead><tr><th>{{ $t('networks.network') }}</th><th>{{ $t('db.dockerName') }}</th><th>{{ $t('networks.driver') }}</th><th></th></tr></thead>
+          <thead><tr><th>{{ $t('networks.network') }}</th><th>{{ $t('db.dockerName') }}</th><th>{{ $t('networks.reach') }}</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="n in items" :key="n.id">
+            <tr v-for="n in items" :key="n.id" class="row-clickable" @click="router.push(`/networks/${n.id}`)">
               <td>
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-lan" style="font-size: 14px"></span></span>
@@ -109,12 +108,9 @@ async function confirmRemove() {
                 </div>
               </td>
               <td class="cell-sub">{{ n.docker_name }}</td>
-              <td class="cell-sub">{{ n.driver }}</td>
+              <td class="cell-sub" :title="n.driver">{{ n.driver === 'overlay' ? $t('networks.reachLocation') : $t('networks.reachNode') }}</td>
               <td class="text-right">
-                <button class="btn-icon btn-icon-sm btn-icon-accent" :title="$t('appDetail.networkDetails')" :aria-label="$t('appDetail.networkDetails')" @click="detailFor = n">
-                  <span class="mdi mdi-ip-network-outline"></span>
-                </button>
-                <button v-if="ws.canEdit && !n.is_default" class="btn-icon btn-icon-sm btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = n">
+                <button v-if="ws.canEdit && !n.is_default" class="btn-icon btn-icon-sm btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click.stop="toDelete = n">
                   <span class="mdi mdi-delete-outline"></span>
                 </button>
               </td>
@@ -125,13 +121,6 @@ async function confirmRemove() {
     </div>
 
     <Teleport to="body">
-      <NetworkDetailModal
-        v-if="detailFor"
-        :workspace-id="currentWorkspaceId"
-        :network="detailFor"
-        @close="detailFor = null"
-      />
-
       <AppModal v-if="showCreate" @close="showCreate = false">
         <div class="modal-header">
           <h3>{{ $t('networks.newNetwork') }}</h3>

@@ -27,7 +27,6 @@ import ResourceIcon from '@/components/ResourceIcon.vue'
 import ShellTerminal from '@/components/ShellTerminal.vue'
 import ContainerProcesses from '@/components/ContainerProcesses.vue'
 import LogViewer from '@/components/LogViewer.vue'
-import NetworkDetailModal from '@/components/NetworkDetailModal.vue'
 import LogSizeControl from '@/components/LogSizeControl.vue'
 import { useLogSize, isLogSize, logHeight } from '@/composables/useLogSize'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -512,7 +511,6 @@ const registries = ref<Registry[]>([])
 const gitRepos = ref<GitRepository[]>([])
 const networks = ref<Network[]>([])
 // Which network's addressing (IPv4, IPv6, gateways) the detail modal is showing.
-const netDetailFor = ref<Network | null>(null)
 // Shown only when a container has an address; single-stack installs would show a dash on every row.
 const anyContainerIPv6 = computed(() => (liveStatus.value?.networks ?? []).some((n) => !!n.ipv6_address))
 const stacks = ref<Stack[]>([])
@@ -2624,7 +2622,7 @@ async function detachDatabase(d: AppDatabase) {
                   <span v-if="n.driver === 'overlay'" class="text-muted"> {{ $t('appDetail.net.spansNodes') }}</span>
                 </td>
                 <td class="text-right">
-                  <button class="btn-icon btn-icon-sm btn-icon-accent" :title="$t('appDetail.networkDetails')" :aria-label="$t('appDetail.networkDetails')" @click="netDetailFor = n">
+                  <button class="btn-icon btn-icon-sm btn-icon-accent" :title="$t('appDetail.networkDetails')" :aria-label="$t('appDetail.networkDetails')" @click="router.push(`/networks/${n.id}`)">
                     <span class="mdi mdi-ip-network-outline"></span>
                   </button>
                 </td>
@@ -4160,16 +4158,6 @@ async function detachDatabase(d: AppDatabase) {
       </div>
       </div>
     </div>
-
-    <!-- Delete application -->
-    <Teleport to="body">
-      <NetworkDetailModal
-        v-if="netDetailFor"
-        :workspace-id="wid"
-        :network="netDetailFor"
-        @close="netDetailFor = null"
-      />
-    </Teleport>
 
     <Teleport to="body">
       <RouteFormModal
