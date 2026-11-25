@@ -109,3 +109,9 @@ func (r *NetworkAllocationRepository) All() ([]models.NetworkAllocation, error) 
 	err := r.db.Find(&out).Error
 	return out, err
 }
+
+// ReleaseReserved returns a reserved subnet to the pool once the network that held it is gone.
+func (r *NetworkAllocationRepository) ReleaseReserved(subnet string) error {
+	return r.db.Where("docker_name = ? AND kind = ?", "reserved:"+subnet, models.NetAllocKindReserved).
+		Delete(&models.NetworkAllocation{}).Error
+}

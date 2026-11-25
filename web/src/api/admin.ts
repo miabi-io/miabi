@@ -33,7 +33,7 @@ import type {
   PlanInput,
   DatabaseSize,
   DatabaseSizeInput,
-  NetworkAllocation, NetworkFabricReport, NetworkingInfo,
+  NetworkAllocation, NetworkFabricReport, NetworkingInfo, OrphanRemoveResult,
   StorageClass,
   StorageClassDetail,
   StorageClassInput,
@@ -306,6 +306,9 @@ export const adminApi = {
     api.get<ApiResponse<{ allocations: NetworkAllocation[] }>>('/admin/networking/allocations'),
   // Asks every node's engine, so it takes a few seconds.
   checkNetworkFabric: () => api.get<ApiResponse<NetworkFabricReport>>('/admin/networking/fabric', { timeout: 60000 }),
+  // Each network is checked again on the node before removal; refusals come back per network.
+  removeOrphanNetworks: (nodeId: number, networks: string[]) =>
+    api.post<ApiResponse<{ results: OrphanRemoveResult[] }>>('/admin/networking/orphans/remove', { node_id: nodeId, networks }),
   // Read-only encryption posture (per-workspace keys, auto-rotation, gateway config encryption).
   getEncryptionInfo: () =>
     api.get<ApiResponse<{ encryption_enabled: boolean; per_workspace_keys: boolean; auto_rotate: boolean; rotate_months: number; gateway_config_encryption: boolean }>>('/admin/encryption'),

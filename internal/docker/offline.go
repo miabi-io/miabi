@@ -35,6 +35,10 @@ func (o offlineClient) Info(context.Context) (Info, error) { return Info{}, o.er
 func (o offlineClient) Capabilities(context.Context) (Capabilities, error) {
 	return Capabilities{}, o.err
 }
+func (o offlineClient) ContainersOnNetwork(context.Context, string) ([]string, error) {
+	return nil, o.err
+}
+
 func (o offlineClient) ListContainers(context.Context, bool) ([]Container, error) {
 	return nil, o.err
 }

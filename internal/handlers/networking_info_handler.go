@@ -21,12 +21,15 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"sort"
 	"strings"
 
 	"github.com/jkaninda/okapi"
+	"github.com/miabi-io/miabi/internal/middlewares"
+	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/netfabric"
 	"github.com/miabi-io/miabi/internal/services/node"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -59,6 +62,7 @@ type PoolStats interface {
 }
 
 type NetworkingHandler struct {
+	audit       *audit.Logger
 	fabric      *netfabric.Service
 	info        NetworkingInfo
 	pool        PoolStats
@@ -106,7 +110,39 @@ func subnetLess(a, b string) bool {
 	return pa.Addr().Less(pb.Addr())
 }
 
-func (h *NetworkingHandler) SetFabric(f *netfabric.Service) { h.fabric = f }
+func (h *NetworkingHandler) SetFabric(f *netfabric.Service, auditLog *audit.Logger) {
+	h.fabric, h.audit = f, auditLog
+}
+
+type RemoveOrphanNetworksRequest struct {
+	Body struct {
+		NodeID uint `json:"node_id" required:"true"`
+		// Networks are Docker network names the check reported as orphans; each is checked again before removal.
+		Networks []string `json:"networks" required:"true" minItems:"1" maxItems:"200"`
+	} `json:"body"`
+}
+
+type RemoveOrphanNetworksResponse struct {
+	Results []netfabric.RemoveResult `json:"results"`
+}
+
+func (h *NetworkingHandler) RemoveOrphans(c *okapi.Context, req *RemoveOrphanNetworksRequest) error {
+	if h.fabric == nil {
+		return c.AbortWithError(http.StatusServiceUnavailable, errors.New("the network check is not available in this process"))
+	}
+	results, err := h.fabric.RemoveOrphans(c.Request().Context(), req.Body.NodeID, req.Body.Networks)
+	if err != nil {
+		return c.AbortWithError(http.StatusBadGateway, fmt.Errorf("the node's networks could not be read: %w", err))
+	}
+	actor := middlewares.UserID(c)
+	for _, r := range results {
+		if r.Removed && h.audit != nil {
+			h.audit.Record(audit.Entry{ActorID: &actor, Action: "networking.orphan_remove", TargetType: "network",
+				TargetID: fmt.Sprintf("%d/%s", req.Body.NodeID, r.Network), IP: c.RealIP()})
+		}
+	}
+	return ok(c, RemoveOrphanNetworksResponse{Results: results})
+}
 
 // Fabric asks every node's engine for its networks, so it runs on demand rather than with the page.
 func (h *NetworkingHandler) Fabric(c *okapi.Context) error {

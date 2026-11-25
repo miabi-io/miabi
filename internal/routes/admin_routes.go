@@ -369,6 +369,16 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Response:    &dto.Response[netfabric.Report]{},
 		},
 		{
+			Method:      http.MethodPost,
+			Path:        "/networking/orphans/remove",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.networking.RemoveOrphans),
+			Summary:     "Remove orphaned Miabi networks from a node, each re-checked first; frees their reserved pool subnets",
+			Request:     &handlers.RemoveOrphanNetworksRequest{},
+			Response:    &dto.Response[handlers.RemoveOrphanNetworksResponse]{},
+		},
+		{
 			Method:      http.MethodGet,
 			Path:        "/encryption",
 			Group:       g,

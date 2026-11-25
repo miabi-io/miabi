@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { NetworkAllocation, NetworkFabricReport, NetworkFinding, NetworkingInfo } from '@/api/types'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useNotificationStore } from '@/stores/notification'
 
 const notify = useNotificationStore()
@@ -97,6 +98,30 @@ const SEVERITY: Record<NetworkFinding['severity'], { icon: string; cls: string }
   error: { icon: 'mdi-close-circle-outline', cls: 'sev-error' },
   warning: { icon: 'mdi-alert-outline', cls: 'sev-warning' },
   info: { icon: 'mdi-information-outline', cls: 'sev-info' },
+}
+
+type NodeReport = NetworkFabricReport['nodes'][number]
+const removableOrphans = (n: NodeReport) => n.findings.filter((f) => f.kind === 'orphan' && f.removable).map((f) => f.network)
+
+const removal = ref<{ node: NodeReport; networks: string[] } | null>(null)
+const removing = ref(false)
+async function confirmRemoval() {
+  if (!removal.value) return
+  removing.value = true
+  try {
+    const { node, networks } = removal.value
+    const results = (await adminApi.removeOrphanNetworks(node.node_id, networks)).data.data.results
+    const removed = results.filter((r) => r.removed).length
+    const refused = results.filter((r) => !r.removed)
+    if (removed) notify.success(`Removed ${removed} network${removed === 1 ? '' : 's'} from ${node.node_name}`)
+    for (const r of refused) notify.error(`${r.network} was not removed: ${r.error}`)
+    removal.value = null
+    await Promise.all([runCheck(), load()])
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    removing.value = false
+  }
 }
 
 // Filled once a check has run: a reservation alone does not say which network holds the range.
@@ -219,17 +244,39 @@ const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
               <span v-if="!n.reachable" class="badge badge-neutral" :title="n.error">unreachable</span>
               <span v-else-if="!n.findings.length" class="badge badge-success badge-dot">as configured</span>
               <span v-if="n.reachable" class="cell-sub">{{ n.networks }} networks</span>
+              <button
+                v-if="removableOrphans(n).length > 1"
+                class="btn btn-ghost btn-xs"
+                @click="removal = { node: n, networks: removableOrphans(n) }"
+              ><span class="mdi mdi-delete-sweep-outline"></span> Remove {{ removableOrphans(n).length }} orphans</button>
             </div>
             <ul v-if="n.findings.length" class="findings">
               <li v-for="(f, i) in n.findings" :key="i" :class="SEVERITY[f.severity].cls">
                 <span class="mdi" :class="SEVERITY[f.severity].icon"></span>
-                <span><code>{{ f.network }}</code> · {{ f.message }}<span v-if="f.actual" class="cell-sub mono"> {{ f.actual }}<template v-if="f.expected"> → expected {{ f.expected }}</template></span></span>
+                <span class="finding-text"><code>{{ f.network }}</code> · {{ f.message }}<span v-if="f.actual" class="cell-sub mono"> {{ f.actual }}<template v-if="f.expected"> → expected {{ f.expected }}</template></span></span>
+                <button
+                  v-if="f.kind === 'orphan' && f.removable"
+                  class="btn btn-ghost btn-xs"
+                  :aria-label="`Remove ${f.network}`"
+                  @click="removal = { node: n, networks: [f.network] }"
+                >Remove</button>
               </li>
             </ul>
           </div>
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="!!removal"
+      :title="removal && removal.networks.length > 1 ? `Remove ${removal.networks.length} orphaned networks?` : 'Remove this orphaned network?'"
+      :message="removal ? `${removal.networks.join(', ')} on ${removal.node.node_name} will be removed. Each is checked again first: a network a workspace, stack or any container (running or stopped) still uses is left alone. Their reserved subnets go back to the pool.` : ''"
+      confirm-label="Remove"
+      variant="danger"
+      :busy="removing"
+      @confirm="confirmRemoval"
+      @cancel="removal = null"
+    />
 
     <div class="card">
       <div class="card-header">
@@ -318,6 +365,7 @@ const SUBNET_SOURCES: Record<string, { label: string; title: string }> = {
 .fabric-node-head { display: flex; align-items: center; gap: 8px; }
 .findings { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .findings li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.finding-text { flex: 1; }
 .findings .mdi { font-size: 16px; line-height: 1.3; }
 .sev-error .mdi { color: var(--danger); }
 .sev-warning .mdi { color: var(--warning); }

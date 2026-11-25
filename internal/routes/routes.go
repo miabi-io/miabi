@@ -1558,15 +1558,17 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			adminRunner:       handlers.NewAdminRunnerHandler(runnerService, auditLogger),
 		},
 	}
-	r.networking.SetFabric(netfabric.New(nodeService, nodeClients, clusterRepo,
-		repositories.NewNetworkAllocationRepository(db), networkRepo, stackRepo,
+	allocRepo := repositories.NewNetworkAllocationRepository(db)
+	fabric := netfabric.New(nodeService, nodeClients, clusterRepo, allocRepo, networkRepo, stackRepo,
 		func() netfabric.Expected {
 			return netfabric.Expected{
 				Proxy: node.AppNetworkSpec(), LegacyProxy: platformstack.LegacyNetwork, IngressName: node.IngressOverlay,
 				PoolCIDR: cfg.NetworkPoolCIDR, ManagerOf: clusterService.Manager, IsSwarm: clusterService.IsSwarm,
 				LegacyIsOurs: node.IsLegacyProxyNetwork,
 			}
-		}))
+		})
+	fabric.SetReservedReleaser(allocRepo)
+	r.networking.SetFabric(fabric, auditLogger)
 
 	r.h.auth.SetUserSettings(userSettingsService)
 	r.h.adminSetting.SetAuthAccess(registrationService, cfg.PasswordResetEnabled)

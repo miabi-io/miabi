@@ -184,6 +184,22 @@ func (e *engineClient) ListContainers(ctx context.Context, all bool) ([]Containe
 	return out, nil
 }
 
+func (e *engineClient) ContainersOnNetwork(ctx context.Context, network string) ([]string, error) {
+	res, err := e.cli.ContainerList(ctx, client.ContainerListOptions{All: true, Filters: client.Filters{}.Add("network", network)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(res.Items))
+	for _, c := range res.Items {
+		name := c.ID
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
 func (e *engineClient) InspectContainer(ctx context.Context, id string) (Container, error) {
 	res, err := e.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
 	if err != nil {
