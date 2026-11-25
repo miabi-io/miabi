@@ -51,6 +51,8 @@ type Client interface {
 	Capabilities(ctx context.Context) (Capabilities, error)
 
 	ListContainers(ctx context.Context, all bool) ([]Container, error)
+	// ContainersOnNetwork counts stopped containers too: removing their network would leave them unable to start.
+	ContainersOnNetwork(ctx context.Context, network string) ([]string, error)
 	InspectContainer(ctx context.Context, id string) (Container, error)
 	InspectContainerConfig(ctx context.Context, id string) (ContainerConfig, error)
 	RunContainer(ctx context.Context, spec RunSpec) (string, error)

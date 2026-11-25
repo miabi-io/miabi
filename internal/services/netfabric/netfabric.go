@@ -49,6 +49,8 @@ type Finding struct {
 	Expected string `json:"expected,omitempty"`
 	Actual   string `json:"actual,omitempty"`
 	Message  string `json:"message"`
+	// Removable marks an orphan Miabi created, which the remove action accepts.
+	Removable bool `json:"removable,omitempty"`
 }
 
 type NodeReport struct {
@@ -127,6 +129,7 @@ type Service struct {
 	stacks   StackNetworks
 	expect   func() Expected
 	now      func() time.Time
+	releaser ReservedReleaser
 }
 
 func New(nodes Nodes, clients Clients, clusters Clusters, ledger Ledger, networks WorkspaceNetworks, stacks StackNetworks, expect func() Expected) *Service {
@@ -298,9 +301,10 @@ func workspaceFindings(nets []docker.Network, k *known) []Finding {
 			out = append(out, Finding{Severity: SeverityError, Kind: "shadow-bridge", Network: n.Name, Actual: n.Subnet,
 				Message: "A local bridge has the name of a swarm overlay, so containers here may attach to the wrong network. Remove the bridge."})
 			continue
-		case local && !isWorkspace && !k.stacks[n.Name] && !allocated:
+		case isOrphan(n, k):
 			out = append(out, Finding{Severity: SeverityWarning, Kind: "orphan", Network: n.Name, Actual: n.Subnet,
-				Message: "No workspace or stack uses this network any more. Remove it once no container is attached."})
+				Message:   "No workspace or stack uses this network any more. Remove it once no container is attached.",
+				Removable: n.Labels[docker.ManagedLabel] == "true"})
 			continue
 		}
 		switch {

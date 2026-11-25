@@ -1733,6 +1733,16 @@ export interface NetworkFinding {
   expected?: string
   actual?: string
   message: string
+  /** An orphan Miabi created, which the remove action accepts. */
+  removable?: boolean
+}
+
+export interface OrphanRemoveResult {
+  network: string
+  removed: boolean
+  /** The network's reserved pool subnet went back to the pool. */
+  released?: boolean
+  error?: string
 }
 
 /** One node's networks compared with what Miabi expects; unreachable nodes carry the error instead. */
