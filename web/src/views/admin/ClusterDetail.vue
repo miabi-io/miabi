@@ -327,7 +327,7 @@ const additionalGateways = computed(() => members.value.filter((n) => n.addition
 const gatewayMoving = computed(() => !!ingressNode.value && gatewayForm.value.server_id !== ingressNode.value.id)
 const gatewayExplainer = computed(() => {
   if (isDefault.value) return "The control plane's gateway serves every app in this cluster, over the ingress overlay for swarm members."
-  if (cluster.value?.mode === 'swarm') return "The gateway on this swarm's ingress node serves every app here, over the swarm's overlay."
+  if (cluster.value?.mode === 'swarm') return "The swarm's gateway node serves every app here, over the swarm's overlay."
   return "The node's own gateway serves its apps."
 })
 const showGateway = ref(false)
